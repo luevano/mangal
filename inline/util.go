@@ -122,6 +122,7 @@ func assignAnilist(ctx context.Context, client *libmangal.Client, args Args, man
 	}
 }
 
+// TODO: fix error msgs and checks for empty chapter lists, the logger needs to be reworked
 func getChapters(ctx context.Context, client *libmangal.Client, args Args, manga mangadata.Manga) ([]mangadata.Chapter, error) {
 	volumes, err := client.MangaVolumes(ctx, manga)
 	if err != nil {

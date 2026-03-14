@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/disgo/webhook"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/config"
@@ -177,7 +178,8 @@ func Send(chapters chapter.Chapters) error {
 				Fields:      fields,
 			},
 		},
-	})
+	},
+		rest.CreateWebhookMessageParams{})
 	if err != nil {
 		return DiscordNotifyError(err.Error())
 	}
@@ -205,7 +207,8 @@ func SendError(toSend error) error {
 				Timestamp: &t,
 			},
 		},
-	})
+	},
+		rest.CreateWebhookMessageParams{})
 	if err != nil {
 		return DiscordErrorNotifyError{toSend, err}
 	}
