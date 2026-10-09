@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -132,6 +133,7 @@ func RunDownload(ctx context.Context, args Args) error {
 
 				// In case that the error is not due to 429 code, just continue to the next chapter
 				// as ch.Down will not be available
+				fmt.Fprintf(os.Stderr, "error: chapter %s: %s\n", ch.Chapter, ch.Err)
 				continue
 			}
 
