@@ -147,6 +147,9 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		i, _ := s.list.SelectedItem().(*item)
 		switch {
 		case key.Matches(msg, s.keyMap.toggle):
+			if reason := i.unavailable(); reason != "" {
+				return base.Notify("Chapter unavailable: " + reason)
+			}
 			i.toggle()
 			if i.selected {
 				s.selected.Put(i)
@@ -184,7 +187,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 					continue
 				}
 
-				if !it.selected {
+				if !it.selected && it.unavailable() == "" {
 					it.toggle()
 					s.selected.Put(it)
 				}

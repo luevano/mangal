@@ -92,7 +92,18 @@ func (i *item) Title() string {
 		title.WriteString(i.renderedDownloadedFormats)
 	}
 
+	// grayed out with the reason, it can't be selected nor downloaded
+	if reason := i.unavailable(); reason != "" {
+		title.WriteString(" [" + reason + "]")
+		return style.Normal.Secondary.Render(title.String())
+	}
+
 	return title.String()
+}
+
+// unavailable is the reason the chapter can't be downloaded, empty if it can.
+func (i *item) unavailable() string {
+	return i.chapter.Info().Unavailable
 }
 
 // Description implements list.DefaultItem.

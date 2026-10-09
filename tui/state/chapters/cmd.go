@@ -96,6 +96,9 @@ func (s *state) downloadCmd(item *item) tea.Cmd {
 		if size == 1 {
 			i = s.selected.Keys()[0]
 		}
+		if reason := i.unavailable(); reason != "" {
+			return base.Notify("Chapter unavailable: " + reason)
+		}
 		msg := "Download chapter " +
 			stringutil.FormatFloa32(i.chapter.Info().Number) +
 			` ("` + i.chapter.Info().Title + `")?`
@@ -166,6 +169,9 @@ func (s *state) readCmd(ctx context.Context, item *item) tea.Cmd {
 	i := item
 	if s.selected.Size() == 1 {
 		i = s.selected.Keys()[0]
+	}
+	if reason := i.unavailable(); reason != "" {
+		return base.Notify("Chapter unavailable: " + reason)
 	}
 
 	if i.readAvailablePath != "" {
