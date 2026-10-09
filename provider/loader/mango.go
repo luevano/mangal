@@ -35,6 +35,7 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 	if androidID := config.Providers.MangaPlus.AndroidID.Get(); androidID != "" {
 		o.MangaPlus.AndroidID = androidID
 	}
+	o.MangaPlus.Secret = config.Providers.MangaPlus.Secret.Get()
 
 	var loaders []libmangal.ProviderLoader
 	loaders = append(loaders, apis.Loaders(o)...)

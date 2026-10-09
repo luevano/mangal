@@ -459,18 +459,23 @@ func initConfig() config {
 				}),
 				OSVersion: reg(entry[string, string]{
 					Key:         "providers.mangaplus.os_version",
-					Default:     "30",
+					Default:     "36",
 					Description: "The OS Version used for the MangaPlus API calls.",
 				}),
 				AppVersion: reg(entry[string, string]{
 					Key:         "providers.mangaplus.app_version",
-					Default:     "150",
+					Default:     "250",
 					Description: "The App Version used for the MangaPlus API calls.",
 				}),
 				AndroidID: reg(entry[string, string]{
 					Key:         "providers.mangaplus.android_id",
 					Default:     "",
 					Description: "The Android ID used for the MangaPlus API calls. If empty will be randomly generated.",
+				}),
+				Secret: reg(entry[string, string]{
+					Key:         "providers.mangaplus.secret",
+					Default:     "",
+					Description: "The device secret from the official MangaPlus app, for subscription chapters. If empty a new device is registered (free chapters only).",
 				}),
 			},
 		},
