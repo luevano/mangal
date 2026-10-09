@@ -100,6 +100,10 @@ func RunDownload(ctx context.Context, args Args) error {
 			retry = false
 			ch.Down, ch.Err = client.DownloadChapter(ctx, ch.Chapter, downloadOptions)
 			if ch.Err != nil {
+				// cancelled (e.g. ctrl+c), don't keep trying the rest of the chapters
+				if ctx.Err() != nil {
+					return notify.SendError(ctx.Err())
+				}
 				errMsg := ch.Err.Error()
 				// TODO: handle other responses here too if possible
 				if strings.Contains(errMsg, "429") && strings.Contains(errMsg, "Retry-After") {
