@@ -2,14 +2,12 @@ package download
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/util"
 	"github.com/skratchdot/open-golang/open"
 )
 
@@ -30,24 +28,13 @@ func (s *state) downloadChapterCmd(ctx context.Context) tea.Cmd {
 
 		downChap, err = s.client.DownloadChapter(ctx, ch.Chapter, s.options)
 		if err != nil {
-			errMsg := err.Error()
-			// TODO: handle other responses here too if possible
-			//
 			// on too many requests error
-			if strings.Contains(errMsg, "429") && strings.Contains(errMsg, "Retry-After") {
+			if wait, ok := util.RetryAfter(err); ok {
 				s.retryCount++
 				if s.retryCount > s.maxRetries {
 					return fmt.Errorf("exceeded max retries (%d) while downloading chapters", s.maxRetries)
 				}
-
-				raTemp := strings.Split(errMsg, ":")
-				raParsed, err := strconv.Atoi(strings.TrimSpace(raTemp[len(raTemp)-1]))
-				if err != nil {
-					return errors.New("error while parsing Retry-Count from error mesage: " + err.Error())
-				}
-
-				retryAfter := time.Duration(min(10, raParsed)) * time.Second
-				return retryChapterMsg{After: retryAfter}
+				return retryChapterMsg{After: min(10*time.Second, wait)}
 			}
 		}
 		ch.Down = downChap

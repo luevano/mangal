@@ -3,11 +3,8 @@ package inline
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/luevano/libmangal/metadata"
@@ -15,6 +12,7 @@ import (
 	"github.com/luevano/mangal/config"
 	"github.com/luevano/mangal/log"
 	"github.com/luevano/mangal/notify"
+	"github.com/luevano/mangal/util"
 	"github.com/luevano/mangal/util/chapter"
 )
 
@@ -105,9 +103,7 @@ func RunDownload(ctx context.Context, args Args) error {
 				if ctx.Err() != nil {
 					return notify.SendError(ctx.Err())
 				}
-				errMsg := ch.Err.Error()
-				// TODO: handle other responses here too if possible
-				if strings.Contains(errMsg, "429") && strings.Contains(errMsg, "Retry-After") {
+				if wait, ok := util.RetryAfter(ch.Err); ok {
 					retry = true
 					retryCount++
 					if retryCount > maxRetries {
@@ -116,15 +112,7 @@ func RunDownload(ctx context.Context, args Args) error {
 						return notify.SendError(err)
 					}
 
-					raTemp := strings.Split(errMsg, ":")
-					raParsed, err := strconv.Atoi(strings.TrimSpace(raTemp[len(raTemp)-1]))
-					if err != nil {
-						// TODO: use as ch.Err?
-						err = errors.New("error while parsing Retry-Count from error mesage: " + err.Error())
-						return notify.SendError(err)
-					}
-
-					retryAfter := time.Duration(min(10, raParsed)) * time.Second
+					retryAfter := min(10*time.Second, wait)
 					// TODO: handle different in case that JSONOutput is desired?
 					fmt.Printf("429 Too Many Requests (retry #%d). Retrying in %s\n", retryCount, retryAfter)
 					time.Sleep(retryAfter)
