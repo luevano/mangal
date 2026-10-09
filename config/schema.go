@@ -131,7 +131,8 @@ type configProvidersMangaPlus struct {
 	OSVersion  *entry[string, string]
 	AppVersion *entry[string, string]
 	AndroidID  *entry[string, string]
-	Secret     *entry[string, string]
+	Viewer     *entry[string, string]
+	SecretFile *entry[string, string]
 }
 
 type configProvidersMangaDex struct {

@@ -74,7 +74,7 @@ func initConfig() config {
 				Default:     filepath.Join(xdg.CacheHome, meta.AppName),
 				Description: "Path where cache will be written to.",
 				Unmarshal: func(s string) (string, error) {
-					return expandPath(s)
+					return ExpandPath(s)
 				},
 				Validate: func(s string) error {
 					if s == "" {
@@ -136,7 +136,7 @@ func initConfig() config {
 				Default:     xdg.UserDirs.Download,
 				Description: "Path where chapters will be downloaded.",
 				Unmarshal: func(s string) (string, error) {
-					return expandPath(s)
+					return ExpandPath(s)
 				},
 				Validate: func(s string) error {
 					if s == "" {
@@ -383,7 +383,7 @@ func initConfig() config {
 				Default:     filepath.Join(dir, "providers"),
 				Description: "Path where providers will be placed/looked for.",
 				Unmarshal: func(s string) (string, error) {
-					return expandPath(s)
+					return ExpandPath(s)
 				},
 				Validate: func(s string) error {
 					if s == "" {
@@ -472,10 +472,21 @@ func initConfig() config {
 					Default:     "",
 					Description: "The Android ID used for the MangaPlus API calls. If empty will be randomly generated.",
 				}),
-				Secret: reg(entry[string, string]{
-					Key:         "providers.mangaplus.secret",
+				Viewer: reg(entry[string, string]{
+					Key:         "providers.mangaplus.viewer",
+					Default:     "app",
+					Description: `MangaPlus chapter viewer, "app" (same as the official app, needed for subscription images) or "legacy" (deprecated, old endpoint).`,
+					Validate: func(s string) error {
+						if s != "app" && s != "legacy" {
+							return fmt.Errorf("MangaPlus viewer %q not supported, needs to be one of %q or %q", s, "app", "legacy")
+						}
+						return nil
+					},
+				}),
+				SecretFile: reg(entry[string, string]{
+					Key:         "providers.mangaplus.secret_file",
 					Default:     "",
-					Description: "The device secret from the official MangaPlus app, for subscription chapters. If empty a new device is registered (free chapters only).",
+					Description: "Path to a file with the device secret from the official MangaPlus app, for subscription chapters. If empty a new device is registered (free chapters only).",
 				}),
 			},
 		},
@@ -485,7 +496,7 @@ func initConfig() config {
 				Default:     "",
 				Description: "Path to the manga library. Empty string will fallback to the download.path.",
 				Unmarshal: func(s string) (string, error) {
-					return expandPath(s)
+					return ExpandPath(s)
 				},
 			}),
 		},

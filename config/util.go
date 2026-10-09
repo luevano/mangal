@@ -8,12 +8,12 @@ import (
 )
 
 // TODO: use this for all paths.
-// expandPath expands the path to include the home directory if the path
+// ExpandPath expands the path to include the home directory if the path
 // is prefixed with `~`. If it isn't prefixed with `~`, the path is
 // returned as-is.
 //
 // https://github.com/mitchellh/go-homedir/blob/af06845cf3004701891bf4fdb884bfe4920b3727/homedir.go#L55-L77
-func expandPath(path string) (string, error) {
+func ExpandPath(path string) (string, error) {
 	if len(path) == 0 {
 		return path, nil
 	}

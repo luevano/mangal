@@ -119,7 +119,7 @@ require (
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/luevano/mangodex v0.3.9 // indirect
-	github.com/luevano/mangoplus v0.5.0 // indirect
+	github.com/luevano/mangoplus v0.5.0
 	github.com/mailru/easyjson v0.9.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

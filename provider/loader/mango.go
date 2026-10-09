@@ -1,12 +1,18 @@
 package loader
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/config"
+	"github.com/luevano/mangal/log"
 	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangoplus"
 	mango "github.com/luevano/mangoprovider"
 	"github.com/luevano/mangoprovider/apis"
 	"github.com/luevano/mangoprovider/scrapers"
@@ -35,7 +41,8 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 	if androidID := config.Providers.MangaPlus.AndroidID.Get(); androidID != "" {
 		o.MangaPlus.AndroidID = androidID
 	}
-	o.MangaPlus.Secret = config.Providers.MangaPlus.Secret.Get()
+	o.MangaPlus.Viewer = mangoplus.Viewer(config.Providers.MangaPlus.Viewer.Get())
+	o.MangaPlus.Secret = mangaPlusSecret()
 
 	var loaders []libmangal.ProviderLoader
 	loaders = append(loaders, apis.Loaders(o)...)
@@ -49,4 +56,28 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 	}
 
 	return loaders, nil
+}
+
+// mangaPlusSecret reads the secret from the configured file, empty (free tier) if not set or missing.
+func mangaPlusSecret() string {
+	path := config.Providers.MangaPlus.SecretFile.Get()
+	if path == "" {
+		return ""
+	}
+	// config paths aren't expanded on load
+	if expanded, err := config.ExpandPath(path); err == nil {
+		path = expanded
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		msg := fmt.Sprintf("couldn't read MangaPlus secret file %q, using free tier: %s", path, err)
+		if errors.Is(err, fs.ErrNotExist) {
+			msg = fmt.Sprintf("MangaPlus secret file %q doesn't exist, using free tier", path)
+		}
+		log.L.Warn().Msg(msg)
+		log.Log("%s", msg)
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
