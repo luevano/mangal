@@ -28,13 +28,14 @@ type entry[Raw, Value any] struct {
 
 func (e *entry[Raw, Value]) Get() Value {
 	v := Get(e.Key)
-	value, ok := v.(Value)
+	// check Raw first, when Raw and Value are the same type Unmarshal still needs to run (e.g. expanding paths)
+	raw, ok := v.(Raw)
 	if !ok {
-		v, err := e.Unmarshal(v.(Raw))
-		if err != nil {
-			panic(fmt.Errorf("config entry Get: error unmarshaling raw value %v (%T) from key %q: %s", v, v, e.Key, err.Error()))
-		}
-		value = v
+		return v.(Value)
+	}
+	value, err := e.Unmarshal(raw)
+	if err != nil {
+		panic(fmt.Errorf("config entry Get: error unmarshaling raw value %v (%T) from key %q: %s", v, v, e.Key, err.Error()))
 	}
 	return value
 }
@@ -84,22 +85,20 @@ func reg[Raw, Value any](e entry[Raw, Value]) *entry[Raw, Value] {
 			return raw, nil
 		},
 		Unmarshal: func(a any) (any, error) {
-			value, ok := a.(Value)
+			raw, ok := a.(Raw)
 			if !ok {
-				return e.Unmarshal(a.(Raw))
+				return a.(Value), nil
 			}
-			return value, nil
+			return e.Unmarshal(raw)
 		},
 		Validate: func(a any) error {
-			value, ok := a.(Value)
+			raw, ok := a.(Raw)
 			if !ok {
-				// if the incoming value is not a Value,
-				// then mostlikely it is a Raw
-				v, err := e.Unmarshal(a.(Raw))
-				if err != nil {
-					return fmt.Errorf("error validating field %q: wrong type of value: expected %T, got %T", e.Key, *new(Value), a)
-				}
-				value = v
+				return e.Validate(a.(Value))
+			}
+			value, err := e.Unmarshal(raw)
+			if err != nil {
+				return fmt.Errorf("error validating field %q: wrong type of value: expected %T, got %T", e.Key, *new(Value), a)
 			}
 			return e.Validate(value)
 		},

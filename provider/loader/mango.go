@@ -64,10 +64,6 @@ func mangaPlusSecret() string {
 	if path == "" {
 		return ""
 	}
-	// config paths aren't expanded on load
-	if expanded, err := config.ExpandPath(path); err == nil {
-		path = expanded
-	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {

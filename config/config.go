@@ -74,7 +74,7 @@ func initConfig() config {
 				Default:     filepath.Join(xdg.CacheHome, meta.AppName),
 				Description: "Path where cache will be written to.",
 				Unmarshal: func(s string) (string, error) {
-					return ExpandPath(s)
+					return expandPath(s)
 				},
 				Validate: func(s string) error {
 					if s == "" {
@@ -136,7 +136,7 @@ func initConfig() config {
 				Default:     xdg.UserDirs.Download,
 				Description: "Path where chapters will be downloaded.",
 				Unmarshal: func(s string) (string, error) {
-					return ExpandPath(s)
+					return expandPath(s)
 				},
 				Validate: func(s string) error {
 					if s == "" {
@@ -383,7 +383,7 @@ func initConfig() config {
 				Default:     filepath.Join(dir, "providers"),
 				Description: "Path where providers will be placed/looked for.",
 				Unmarshal: func(s string) (string, error) {
-					return ExpandPath(s)
+					return expandPath(s)
 				},
 				Validate: func(s string) error {
 					if s == "" {
@@ -487,6 +487,9 @@ func initConfig() config {
 					Key:         "providers.mangaplus.secret_file",
 					Default:     "",
 					Description: "Path to a file with the device secret from the official MangaPlus app, for subscription chapters. If empty a new device is registered (free chapters only).",
+					Unmarshal: func(s string) (string, error) {
+						return expandPath(s)
+					},
 				}),
 			},
 		},
@@ -496,7 +499,7 @@ func initConfig() config {
 				Default:     "",
 				Description: "Path to the manga library. Empty string will fallback to the download.path.",
 				Unmarshal: func(s string) (string, error) {
-					return ExpandPath(s)
+					return expandPath(s)
 				},
 			}),
 		},
