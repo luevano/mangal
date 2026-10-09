@@ -483,6 +483,21 @@ func initConfig() config {
 						return nil
 					},
 				}),
+				RequestInterval: reg(entry[string, string]{
+					Key:         "providers.mangaplus.request_interval",
+					Default:     "500ms",
+					Description: `Minimum time between MangaPlus API requests, a duration string such as "500ms" or "1s". Warning: lowering or removing it ("0s") risks getting the device locked out for 10+ minutes.`,
+					Validate: func(s string) error {
+						d, err := time.ParseDuration(s)
+						if err != nil {
+							return err
+						}
+						if d < 0 {
+							return fmt.Errorf("MangaPlus request interval %q can't be negative", s)
+						}
+						return nil
+					},
+				}),
 				SecretFile: reg(entry[string, string]{
 					Key:         "providers.mangaplus.secret_file",
 					Default:     "",

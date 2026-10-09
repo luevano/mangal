@@ -127,12 +127,13 @@ type configProvidersFilter struct {
 }
 
 type configProvidersMangaPlus struct {
-	Quality    *entry[string, string]
-	OSVersion  *entry[string, string]
-	AppVersion *entry[string, string]
-	AndroidID  *entry[string, string]
-	Viewer     *entry[string, string]
-	SecretFile *entry[string, string]
+	Quality         *entry[string, string]
+	OSVersion       *entry[string, string]
+	AppVersion      *entry[string, string]
+	AndroidID       *entry[string, string]
+	Viewer          *entry[string, string]
+	RequestInterval *entry[string, string]
+	SecretFile      *entry[string, string]
 }
 
 type configProvidersMangaDex struct {

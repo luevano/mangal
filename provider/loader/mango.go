@@ -42,6 +42,8 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 		o.MangaPlus.AndroidID = androidID
 	}
 	o.MangaPlus.Viewer = mangoplus.Viewer(config.Providers.MangaPlus.Viewer.Get())
+	// already validated by the config
+	o.MangaPlus.RequestInterval, _ = time.ParseDuration(config.Providers.MangaPlus.RequestInterval.Get())
 	o.MangaPlus.Secret = mangaPlusSecret()
 
 	var loaders []libmangal.ProviderLoader
