@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -78,7 +77,7 @@ var inlineJSONCmd = &cobra.Command{
 	Short: "Output search results",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
-		if err := inline.RunJSON(context.Background(), inlineArgs); err != nil {
+		if err := inline.RunJSON(cmd.Context(), inlineArgs); err != nil {
 			errorf(cmd, err.Error())
 		}
 	},
@@ -104,7 +103,7 @@ var inlineDownloadCmd = &cobra.Command{
 	Short: "Download manga",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
-		if err := inline.RunDownload(context.Background(), inlineArgs); err != nil {
+		if err := inline.RunDownload(cmd.Context(), inlineArgs); err != nil {
 			errorf(cmd, err.Error())
 		}
 	},

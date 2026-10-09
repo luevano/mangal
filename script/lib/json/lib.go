@@ -68,7 +68,7 @@ func jsonPrint(state *lua.LState) int {
 	util.Must(state, err)
 
 	deadline := time.Now().Add(5 * time.Second)
-	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	ctx, cancel := context.WithDeadline(state.Context(), deadline)
 	defer cancel()
 
 	var iter gojq.Iter

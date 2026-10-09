@@ -168,7 +168,7 @@ func (o *MyAnimeListLoginOption) codeGrantHandler(ctxCancel context.CancelFunc, 
 		}
 
 		token, err := oAuthConfig.Exchange(
-			context.Background(),
+			r.Context(),
 			o.code,
 			oauth2.VerifierOption(codeChallenge),
 		)

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -74,7 +73,7 @@ var scriptCmd = &cobra.Command{
 			reader = os.Stdin
 		}
 
-		if err := script.Run(context.Background(), scriptArgs, reader); err != nil {
+		if err := script.Run(cmd.Context(), scriptArgs, reader); err != nil {
 			errorf(cmd, err.Error())
 		}
 	},

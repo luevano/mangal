@@ -34,7 +34,7 @@ func addClient(state *lua.LState, client *libmangal.Client) {
 }
 
 func Run(ctx context.Context, args Args, script io.Reader) error {
-	client, err := client.NewClientByID(context.Background(), args.Provider)
+	client, err := client.NewClientByID(ctx, args.Provider)
 	if err != nil {
 		return err
 	}

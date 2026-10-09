@@ -1,7 +1,6 @@
 package anilist
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -31,7 +30,7 @@ func (m *Model) loginCachedCmd(item *item) tea.Cmd {
 
 		// TODO: check if the error is due to expired token
 		// delete cached username/token and ask for re-authentication
-		err = m.anilist.Login(context.Background(), token.AccessToken)
+		err = m.anilist.Login(m.ctx, token.AccessToken)
 		if err != nil {
 			return err
 		}
@@ -68,21 +67,19 @@ func (m *Model) loginCmd() tea.Msg {
 		return NotificationMsg("anilist login error: ID is empty")
 	}
 
-	ctx := context.Background()
-
 	// Get Anilist login option and attempt to authorize
 	loginOption, err := oauth.NewAnilistLoginOption(id, secret)
 	if err != nil {
 		return err
 	}
-	err = loginOption.Authorize(ctx)
+	err = loginOption.Authorize(m.ctx)
 	if err != nil {
 		return err
 	}
 
 	// Get just authorized token and attempt to login
 	token := loginOption.Token()
-	err = m.anilist.Login(ctx, token.AccessToken)
+	err = m.anilist.Login(m.ctx, token.AccessToken)
 	if err != nil {
 		return NotificationMsg("anilist login error: " + err.Error())
 	}

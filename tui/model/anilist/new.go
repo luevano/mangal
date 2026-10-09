@@ -1,6 +1,7 @@
 package anilist
 
 import (
+	"context"
 	"time"
 
 	_list "github.com/charmbracelet/bubbles/list"
@@ -14,7 +15,7 @@ import (
 	"github.com/luevano/mangal/util/cache"
 )
 
-func New(anilist *metadata.ProviderWithCache, standalone bool) *Model {
+func New(ctx context.Context, anilist *metadata.ProviderWithCache, standalone bool) *Model {
 	_styles := defaultStyles()
 	input := textinput.New()
 	input.Width = 60
@@ -48,6 +49,7 @@ func New(anilist *metadata.ProviderWithCache, standalone bool) *Model {
 	list.KeyMap.List.PrevPage.SetEnabled(false)
 
 	m := &Model{
+		ctx:                  ctx,
 		idInput:              idInput,
 		secretInput:          secretInput,
 		codeInput:            codeInput,

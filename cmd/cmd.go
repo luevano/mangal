@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	cc "github.com/ivanpirog/coloredcobra"
 	"github.com/luevano/mangal/config"
@@ -58,7 +61,10 @@ func Execute() {
 			NoBottomNewline: true,
 		})
 	}
-	if err := rootCmd.Execute(); err != nil {
+	// cancelled on ctrl+c, commands get it with cmd.Context()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		errorf(rootCmd, err.Error())
 	}
 }

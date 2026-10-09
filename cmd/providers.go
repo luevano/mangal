@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"net/url"
 
 	"github.com/luevano/libmangal"
@@ -30,13 +29,13 @@ var providersAddCmd = &cobra.Command{
 	Use:   "add <url>",
 	Short: "Install provider",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		URL, err := url.Parse(args[0])
 		if err != nil {
 			return err
 		}
 
-		return manager.Add(context.Background(), manager.AddOptions{
+		return manager.Add(cmd.Context(), manager.AddOptions{
 			URL: URL,
 		})
 	},
@@ -51,7 +50,7 @@ var providersUpCmd = &cobra.Command{
 	Short: "Update providers",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return manager.Update(context.Background(), manager.UpdateOptions{})
+		return manager.Update(cmd.Context(), manager.UpdateOptions{})
 	},
 }
 

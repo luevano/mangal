@@ -1,6 +1,7 @@
 package anilist
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -35,6 +36,9 @@ const (
 var _ tea.Model = (*Model)(nil)
 
 type Model struct {
+	// tea models don't get a context on Update, used for the login requests
+	ctx context.Context
+
 	idInput,
 	secretInput,
 	codeInput textinput.Model

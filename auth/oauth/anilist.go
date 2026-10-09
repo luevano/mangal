@@ -219,7 +219,7 @@ func (o *AnilistLoginOption) codeGrantHandler(ctxCancel context.CancelFunc, toke
 			return
 		}
 
-		token, err := oAuthConfig.Exchange(context.Background(), o.code)
+		token, err := oAuthConfig.Exchange(r.Context(), o.code)
 		if err != nil {
 			*tokenErr = err
 			w.Write([]byte("error: " + (*tokenErr).Error() + closeMsg))

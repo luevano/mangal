@@ -16,7 +16,7 @@ var anilistCmd = &cobra.Command{
 	Short: "Anilist auth commands",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
-		if _, err := tea.NewProgram(anilistViewer.New(anilist.Anilist(), true)).Run(); err != nil {
+		if _, err := tea.NewProgram(anilistViewer.New(cmd.Context(), anilist.Anilist(), true)).Run(); err != nil {
 			errorf(cmd, err.Error())
 		}
 	},

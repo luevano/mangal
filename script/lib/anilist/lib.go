@@ -1,8 +1,6 @@
 package anilist
 
 import (
-	"context"
-
 	luadoc "github.com/luevano/gopher-luadoc"
 	"github.com/luevano/libmangal/metadata"
 	lmanilist "github.com/luevano/libmangal/metadata/anilist"
@@ -125,7 +123,7 @@ func newFindClosestManga(anilist *metadata.ProviderWithCache) lua.LGFunction {
 	return func(state *lua.LState) int {
 		title := state.CheckString(1)
 
-		manga, found, err := anilist.FindClosest(context.Background(), title, 3, 3)
+		manga, found, err := anilist.FindClosest(state.Context(), title, 3, 3)
 		util.Must(state, err)
 
 		util.Push(state, manga, mangaTypeName)
