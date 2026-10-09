@@ -94,7 +94,7 @@ func RunDownload(ctx context.Context, args Args) error {
 	// TODO: make configurable
 	maxRetries := 10
 	retryCount := 0
-	for i, ch := range chapters {
+	for _, ch := range chapters {
 		retry := true
 		for retry {
 			retry = false
@@ -132,9 +132,6 @@ func RunDownload(ctx context.Context, args Args) error {
 
 				// In case that the error is not due to 429 code, just continue to the next chapter
 				// as ch.Down will not be available
-				if args.Provider == "mango-mangaplus" && i != len(chapters)-1 {
-					time.Sleep(time.Second)
-				}
 				continue
 			}
 
@@ -146,11 +143,6 @@ func RunDownload(ctx context.Context, args Args) error {
 				fmt.Println(string(dc))
 			} else {
 				fmt.Println(ch.Down.Path())
-			}
-			// To avoid abusing the mangaplus api, since there are no status codes returned to check
-			// sleep for a second after each chapter download
-			if ch.Down.ChapterStatus == metadata.DownloadStatusNew && args.Provider == "mango-mangaplus" && i != len(chapters)-1 {
-				time.Sleep(time.Second)
 			}
 		}
 	}
