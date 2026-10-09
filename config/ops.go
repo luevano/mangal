@@ -149,6 +149,27 @@ func Load(path string) error {
 	return nil
 }
 
+// WriteKey sets the key and writes only that key to the existing config file, the rest of the file
+// stays as is. Errors if there's no config file, it's never created here.
+//
+// Unlike Write, runtime values (e.g. from flags) and missing defaults aren't written.
+func WriteKey(key string, value any) error {
+	if err := Set(key, value); err != nil {
+		return err
+	}
+
+	file := viper.New()
+	file.SetConfigFile(Path)
+	if err := file.ReadInConfig(); err != nil {
+		return errorf("WriteKey: error reading the config file: %s", err.Error())
+	}
+	file.Set(key, value)
+	if err := file.WriteConfig(); err != nil {
+		return errorf("WriteKey: error writing the config file: %s", err.Error())
+	}
+	return nil
+}
+
 // Write current configuration to disk (to the set config directory/file).
 //
 // Tries to write to the first path available.

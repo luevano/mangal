@@ -45,6 +45,8 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 	// already validated by the config
 	o.MangaPlus.RequestInterval, _ = time.ParseDuration(config.Providers.MangaPlus.RequestInterval.Get())
 	o.MangaPlus.Secret = mangaPlusSecret()
+	o.MangaPlus.FreeSecret = config.Providers.MangaPlus.FreeSecret.Get()
+	o.MangaPlus.OnRegister = saveMangaPlusFreeSecret
 
 	var loaders []libmangal.ProviderLoader
 	loaders = append(loaders, apis.Loaders(o)...)
@@ -78,4 +80,18 @@ func mangaPlusSecret() string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
+}
+
+// saveMangaPlusFreeSecret saves a newly registered free device, so it's reused instead of registering a new one.
+func saveMangaPlusFreeSecret(secret string) {
+	// mangal only creates its config file when asked (config write/set), don't create it here
+	if _, err := os.Stat(config.Path); err != nil {
+		return
+	}
+	// only this key, config.Write would also save the flags of this run
+	if err := config.WriteKey(config.Providers.MangaPlus.FreeSecret.Key, secret); err != nil {
+		msg := fmt.Sprintf("couldn't save the MangaPlus free device secret: %s", err)
+		log.L.Warn().Msg(msg)
+		log.Log("%s", msg)
+	}
 }

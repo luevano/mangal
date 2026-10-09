@@ -133,6 +133,7 @@ type configProvidersMangaPlus struct {
 	AndroidID       *entry[string, string]
 	Viewer          *entry[string, string]
 	RequestInterval *entry[string, string]
+	FreeSecret      *entry[string, string]
 	SecretFile      *entry[string, string]
 }
 

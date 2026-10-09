@@ -498,6 +498,11 @@ func initConfig() config {
 						return nil
 					},
 				}),
+				FreeSecret: reg(entry[string, string]{
+					Key:         "providers.mangaplus.free_secret",
+					Default:     "",
+					Description: "Device secret of a free MangaPlus device, saved automatically the first time one is registered so it's reused. Only used when there's no secret_file.",
+				}),
 				SecretFile: reg(entry[string, string]{
 					Key:         "providers.mangaplus.secret_file",
 					Default:     "",
