@@ -464,7 +464,7 @@ func initConfig() config {
 				}),
 				AppVersion: reg(entry[string, string]{
 					Key:         "providers.mangaplus.app_version",
-					Default:     "250",
+					Default:     "265",
 					Description: "The App Version used for the MangaPlus API calls.",
 				}),
 				AndroidID: reg(entry[string, string]{
