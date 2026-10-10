@@ -105,20 +105,26 @@ func getSelectedMangaResults(args Args, mangas []mangadata.Manga) ([]MangaResult
 // use the provider metadata if preferred and search metadata in general otherwise
 func assignAnilist(ctx context.Context, client *libmangal.Client, args Args, mangaResults *[]MangaResult) {
 	for i, mangaResult := range *mangaResults {
-		var meta metadata.Metadata
-		var found bool
-		var aniErr error
 		// guaranteed to exist
 		ani, _ := client.GetMetadataProvider(metadata.IDSourceAnilist)
+		var match metadata.Match
+		var found bool
+		var aniErr error
 		if args.AnilistID != 0 {
-			meta, found, aniErr = ani.SearchByIDContext(ctx, args.AnilistID)
+			match.Metadata, found, aniErr = ani.SearchByIDContext(ctx, args.AnilistID)
+			match.Bound = true
 		} else {
-			meta, found, aniErr = client.SearchByMangaContext(ctx, ani, mangaResult.Manga)
+			match, found, aniErr = client.MatchMangaContext(ctx, ani, mangaResult.Manga)
 		}
-		if aniErr == nil && found {
-			aniMeta := meta.(*lmanilist.Manga)
-			(*mangaResults)[i].Anilist = aniMeta
+		aniMeta, ok := match.Metadata.(*lmanilist.Manga)
+		if aniErr != nil || !found || !ok {
+			continue
 		}
+		if match.Bad() {
+			(*mangaResults)[i].AnilistBadMatch = &BadMatch{Score: match.Score, Anilist: aniMeta}
+			continue
+		}
+		(*mangaResults)[i].Anilist = aniMeta
 	}
 }
 

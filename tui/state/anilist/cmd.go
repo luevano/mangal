@@ -46,15 +46,16 @@ func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 	return tea.Sequence(
 		base.Loading(fmt.Sprintf("Searching %q on Anilist", query)),
 		func() tea.Msg {
-			var mangas []metadata.Metadata
+			q := metadata.Query{Titles: []string{query}}
+			var items []list.Item
 
 			// to keep the closest on top
-			closest, found, err := s.anilist.FindClosestContext(ctx, query, 3, 3)
+			closest, found, err := s.anilist.FindClosestContext(ctx, q)
 			if err != nil {
 				return err
 			}
 			if found {
-				mangas = append(mangas, closest)
+				items = append(items, &item{meta: closest.Metadata, bad: closest.Bad(), score: closest.Score})
 			}
 
 			// the rest of the results
@@ -64,16 +65,13 @@ func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 			}
 			for _, manga := range mangaSearchResults {
 				// except the closest
-				if manga.ID() == closest.ID() {
+				if found && manga.ID() == closest.Metadata.ID() {
 					continue
 				}
-				mangas = append(mangas, manga)
+				score := metadata.Score(q, manga)
+				items = append(items, &item{meta: manga, bad: score < metadata.GoodMatchScore, score: score})
 			}
 
-			items := make([]list.Item, len(mangas))
-			for i, m := range mangas {
-				items[i] = &item{meta: m}
-			}
 			s.list.SetItems(items)
 
 			s.searched = true

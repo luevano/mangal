@@ -123,11 +123,17 @@ func newFindClosestManga(anilist *metadata.ProviderWithCache) lua.LGFunction {
 	return func(state *lua.LState) int {
 		title := state.CheckString(1)
 
-		manga, found, err := anilist.FindClosestContext(state.Context(), title, 3, 3)
+		match, found, err := anilist.FindClosestContext(state.Context(), metadata.Query{Titles: []string{title}})
 		util.Must(state, err)
 
-		util.Push(state, manga, mangaTypeName)
-		state.Push(lua.LBool(found))
+		// bad matches are only shown to users, never used automatically
+		if !found || match.Bad() {
+			state.Push(lua.LNil)
+			state.Push(lua.LFalse)
+			return 2
+		}
+		util.Push(state, match.Metadata, mangaTypeName)
+		state.Push(lua.LTrue)
 		return 2
 	}
 }

@@ -112,9 +112,8 @@ func (s *Server) GetMangaPage(ctx context.Context, request api.GetMangaPageReque
 	//
 	// guaranteed to exist
 	ani, _ := c.GetMetadataProvider(metadata.IDSourceAnilist)
-	meta, found, _ := ani.FindClosestContext(ctx, info.Title, 3, 3)
-	anilistManga := meta.(*anilist.Manga)
-	if found {
+	match, found, _ := ani.FindClosestContext(ctx, metadata.Query{Titles: []string{info.Title}})
+	if anilistManga, ok := match.Metadata.(*anilist.Manga); found && !match.Bad() && ok {
 		response.AnilistManga = &api.AnilistManga{
 			BannerImage: &anilistManga.BannerImage,
 			CoverImage: api.CoverImage{
