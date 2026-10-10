@@ -2,6 +2,7 @@ package inline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -182,6 +183,10 @@ func getSelectedChapters(args Args, chapters []mangadata.Chapter) ([]mangadata.C
 	selectorRegex, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(chapters) == 0 {
+		return nil, errors.New("no chapters")
 	}
 
 	// Assumes that the chapters are in ascending order
