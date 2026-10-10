@@ -30,7 +30,7 @@ func (m *Model) loginCachedCmd(item *item) tea.Cmd {
 
 		// TODO: check if the error is due to expired token
 		// delete cached username/token and ask for re-authentication
-		err = m.anilist.Login(m.ctx, token.AccessToken)
+		err = m.anilist.LoginContext(m.ctx, token.AccessToken)
 		if err != nil {
 			return err
 		}
@@ -79,7 +79,7 @@ func (m *Model) loginCmd() tea.Msg {
 
 	// Get just authorized token and attempt to login
 	token := loginOption.Token()
-	err = m.anilist.Login(m.ctx, token.AccessToken)
+	err = m.anilist.LoginContext(m.ctx, token.AccessToken)
 	if err != nil {
 		return NotificationMsg("anilist login error: " + err.Error())
 	}

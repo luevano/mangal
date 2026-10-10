@@ -22,7 +22,7 @@ func RunDownload(ctx context.Context, args Args) error {
 		return notify.SendError(err)
 	}
 
-	mangas, err := client.SearchMangas(ctx, args.Query)
+	mangas, err := client.SearchMangasContext(ctx, args.Query)
 	if err != nil {
 		return notify.SendError(err)
 	}
@@ -59,7 +59,7 @@ func RunDownload(ctx context.Context, args Args) error {
 	if !useMangaMetadata && args.AnilistID != 0 {
 		// guaranteed to exist
 		ani, _ := client.GetMetadataProvider(metadata.IDSourceAnilist)
-		meta, found, err = ani.SearchByID(ctx, args.AnilistID)
+		meta, found, err = ani.SearchByIDContext(ctx, args.AnilistID)
 		if err != nil {
 			return notify.SendError(err)
 		}
@@ -97,7 +97,7 @@ func RunDownload(ctx context.Context, args Args) error {
 		retry := true
 		for retry {
 			retry = false
-			ch.Down, ch.Err = client.DownloadChapter(ctx, ch.Chapter, downloadOptions)
+			ch.Down, ch.Err = client.DownloadChapterContext(ctx, ch.Chapter, downloadOptions)
 			if ch.Err != nil {
 				// cancelled (e.g. ctrl+c), don't keep trying the rest of the chapters
 				if ctx.Err() != nil {

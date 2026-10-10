@@ -96,7 +96,7 @@ func newSearchMangas(anilist *metadata.ProviderWithCache) lua.LGFunction {
 	return func(state *lua.LState) int {
 		query := state.CheckString(1)
 
-		metas, err := anilist.Search(state.Context(), query)
+		metas, err := anilist.SearchContext(state.Context(), query)
 		util.Must(state, err)
 
 		// TODO: better handle this?
@@ -123,7 +123,7 @@ func newFindClosestManga(anilist *metadata.ProviderWithCache) lua.LGFunction {
 	return func(state *lua.LState) int {
 		title := state.CheckString(1)
 
-		manga, found, err := anilist.FindClosest(state.Context(), title, 3, 3)
+		manga, found, err := anilist.FindClosestContext(state.Context(), title, 3, 3)
 		util.Must(state, err)
 
 		util.Push(state, manga, mangaTypeName)

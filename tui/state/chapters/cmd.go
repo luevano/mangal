@@ -122,7 +122,7 @@ func (s *state) downloadChapterCmd(ctx context.Context, item *item, options libm
 			s.actionRunningNow("download")
 			defer s.actionRunningNow("")
 
-			downChap, err := s.client.DownloadChapter(ctx, chapter, options)
+			downChap, err := s.client.DownloadChapterContext(ctx, chapter, options)
 			if err != nil {
 				return err
 			}
@@ -194,7 +194,7 @@ func (s *state) readChapterCmd(ctx context.Context, path string, item *item, opt
 			s.actionRunningNow("read")
 			defer s.actionRunningNow("")
 
-			err := s.client.ReadChapter(ctx, path, chapter, options)
+			err := s.client.ReadChapterContext(ctx, path, chapter, options)
 			if err != nil {
 				return err
 			}

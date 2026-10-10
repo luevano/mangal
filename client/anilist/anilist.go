@@ -1,7 +1,6 @@
 package anilist
 
 import (
-	"context"
 	"log"
 
 	"github.com/luevano/libmangal/metadata"
@@ -55,7 +54,7 @@ func newAnilist() *metadata.ProviderWithCache {
 		var token oauth2.Token
 		found, _ := cache.GetAnilistAuthData(username, &token)
 		if found {
-			err = provider.Login(context.Background(), token.AccessToken)
+			err = provider.Login(token.AccessToken)
 		}
 	}
 

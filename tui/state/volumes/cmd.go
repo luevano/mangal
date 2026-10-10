@@ -13,7 +13,7 @@ func (s *state) searchVolumeChapters(ctx context.Context, item *item) tea.Cmd {
 	return tea.Sequence(
 		base.Loading(fmt.Sprintf("Searching chapters for volume %s", item.volume)),
 		func() tea.Msg {
-			chapterList, err := s.client.VolumeChapters(ctx, item.volume)
+			chapterList, err := s.client.VolumeChaptersContext(ctx, item.volume)
 			if err != nil {
 				return err
 			}

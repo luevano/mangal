@@ -9,7 +9,7 @@ import (
 )
 
 func searchMangas(ctx context.Context, client *libmangal.Client, query string) ([]mangadata.Manga, error) {
-	return client.SearchMangas(ctx, query)
+	return client.SearchMangasContext(ctx, query)
 }
 
 func mangaVolumes(ctx context.Context, client *libmangal.Client, query, mangaID string) ([]mangadata.Volume, error) {
@@ -20,7 +20,7 @@ func mangaVolumes(ctx context.Context, client *libmangal.Client, query, mangaID 
 
 	for _, manga := range mangas {
 		if manga.Info().ID == mangaID {
-			return client.MangaVolumes(ctx, manga)
+			return client.MangaVolumesContext(ctx, manga)
 		}
 	}
 
@@ -35,7 +35,7 @@ func volumeChapters(ctx context.Context, client *libmangal.Client, query, mangaI
 
 	for _, volume := range volumes {
 		if volume.Info().Number == volumeNumber {
-			return client.VolumeChapters(ctx, volume)
+			return client.VolumeChaptersContext(ctx, volume)
 		}
 	}
 

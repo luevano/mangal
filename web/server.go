@@ -66,14 +66,14 @@ func (s *Server) GetMangaPage(ctx context.Context, request api.GetMangaPageReque
 		return nil, fmt.Errorf("manga with id %s not found", request.Params.Manga)
 	}
 
-	volumes, err := c.MangaVolumes(ctx, manga)
+	volumes, err := c.MangaVolumesContext(ctx, manga)
 	if err != nil {
 		return nil, err
 	}
 
 	v := make([]api.VolumeWithChapters, len(volumes))
 	for i, volume := range volumes {
-		chapters, err := c.VolumeChapters(ctx, volume)
+		chapters, err := c.VolumeChaptersContext(ctx, volume)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +112,7 @@ func (s *Server) GetMangaPage(ctx context.Context, request api.GetMangaPageReque
 	//
 	// guaranteed to exist
 	ani, _ := c.GetMetadataProvider(metadata.IDSourceAnilist)
-	meta, found, _ := ani.FindClosest(ctx, info.Title, 3, 3)
+	meta, found, _ := ani.FindClosestContext(ctx, info.Title, 3, 3)
 	anilistManga := meta.(*anilist.Manga)
 	if found {
 		response.AnilistManga = &api.AnilistManga{

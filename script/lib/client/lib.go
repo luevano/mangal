@@ -302,7 +302,7 @@ func newSearchMangas(client *libmangal.Client) lua.LGFunction {
 	return func(state *lua.LState) int {
 		query := state.CheckString(1)
 
-		mangas, err := client.SearchMangas(state.Context(), query)
+		mangas, err := client.SearchMangasContext(state.Context(), query)
 		util.Must(state, err)
 
 		table := util.SliceToTable(state, mangas, func(manga mangadata.Manga) lua.LValue {
@@ -322,7 +322,7 @@ func newMangaVolumes(client *libmangal.Client) lua.LGFunction {
 	return func(state *lua.LState) int {
 		manga := util.Check[mangadata.Manga](state, 1)
 
-		volumes, err := client.MangaVolumes(state.Context(), manga)
+		volumes, err := client.MangaVolumesContext(state.Context(), manga)
 		util.Must(state, err)
 
 		table := util.SliceToTable(state, volumes, func(volume mangadata.Volume) lua.LValue {
@@ -342,7 +342,7 @@ func newVolumeChapters(client *libmangal.Client) lua.LGFunction {
 	return func(state *lua.LState) int {
 		volume := util.Check[mangadata.Volume](state, 1)
 
-		chapters, err := client.VolumeChapters(state.Context(), volume)
+		chapters, err := client.VolumeChaptersContext(state.Context(), volume)
 		util.Must(state, err)
 
 		table := util.SliceToTable(state, chapters, func(chapter mangadata.Chapter) lua.LValue {
@@ -362,7 +362,7 @@ func newChapterPages(client *libmangal.Client) lua.LGFunction {
 	return func(state *lua.LState) int {
 		chapter := util.Check[mangadata.Chapter](state, 1)
 
-		pages, err := client.ChapterPages(state.Context(), chapter)
+		pages, err := client.ChapterPagesContext(state.Context(), chapter)
 		util.Must(state, err)
 
 		table := util.SliceToTable(state, pages, func(page mangadata.Page) lua.LValue {
@@ -382,7 +382,7 @@ func newDownloadPage(client *libmangal.Client) lua.LGFunction {
 	return func(state *lua.LState) int {
 		page := util.Check[mangadata.Page](state, 1)
 
-		pageWithImage, err := client.DownloadPage(state.Context(), page)
+		pageWithImage, err := client.DownloadPageContext(state.Context(), page)
 		util.Must(state, err)
 
 		util.Push(state, pageWithImage, pageWithImageTypeName)
@@ -414,7 +414,7 @@ func newDownloadChapter(client *libmangal.Client) lua.LGFunction {
 	return func(state *lua.LState) int {
 		chapter := util.Check[mangadata.Chapter](state, 1)
 
-		downChap, err := client.DownloadChapter(state.Context(), chapter, config.DownloadOptions())
+		downChap, err := client.DownloadChapterContext(state.Context(), chapter, config.DownloadOptions())
 		util.Must(state, err)
 
 		util.Push(state, downChap, downloadedChapterTypeName)

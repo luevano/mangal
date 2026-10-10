@@ -49,7 +49,7 @@ func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 			var mangas []metadata.Metadata
 
 			// to keep the closest on top
-			closest, found, err := s.anilist.FindClosest(ctx, query, 3, 3)
+			closest, found, err := s.anilist.FindClosestContext(ctx, query, 3, 3)
 			if err != nil {
 				return err
 			}
@@ -58,7 +58,7 @@ func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 			}
 
 			// the rest of the results
-			mangaSearchResults, err := s.anilist.Search(ctx, query)
+			mangaSearchResults, err := s.anilist.SearchContext(ctx, query)
 			if err != nil {
 				return nil
 			}

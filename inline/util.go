@@ -111,9 +111,9 @@ func assignAnilist(ctx context.Context, client *libmangal.Client, args Args, man
 		// guaranteed to exist
 		ani, _ := client.GetMetadataProvider(metadata.IDSourceAnilist)
 		if args.AnilistID != 0 {
-			meta, found, aniErr = ani.SearchByID(ctx, args.AnilistID)
+			meta, found, aniErr = ani.SearchByIDContext(ctx, args.AnilistID)
 		} else {
-			meta, found, aniErr = client.SearchByManga(ctx, ani, mangaResult.Manga)
+			meta, found, aniErr = client.SearchByMangaContext(ctx, ani, mangaResult.Manga)
 		}
 		if aniErr == nil && found {
 			aniMeta := meta.(*lmanilist.Manga)
@@ -124,7 +124,7 @@ func assignAnilist(ctx context.Context, client *libmangal.Client, args Args, man
 
 // TODO: fix error msgs and checks for empty chapter lists, the logger needs to be reworked
 func getChapters(ctx context.Context, client *libmangal.Client, args Args, manga mangadata.Manga) ([]mangadata.Chapter, error) {
-	volumes, err := client.MangaVolumes(ctx, manga)
+	volumes, err := client.MangaVolumesContext(ctx, manga)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +149,7 @@ func getChapters(ctx context.Context, client *libmangal.Client, args Args, manga
 func getAllVolumeChapters(ctx context.Context, client *libmangal.Client, args Args, volumes []mangadata.Volume) ([]mangadata.Chapter, error) {
 	var chapters []mangadata.Chapter
 	for _, volume := range volumes {
-		volumeChapters, err := client.VolumeChapters(ctx, volume)
+		volumeChapters, err := client.VolumeChaptersContext(ctx, volume)
 		if err != nil {
 			return nil, err
 		}

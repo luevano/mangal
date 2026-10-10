@@ -89,7 +89,7 @@ func NewClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal
 	options.VolumeName = template.Volume
 	options.ChapterName = template.Chapter
 
-	client, err := libmangal.NewClient(ctx, loader, options)
+	client, err := libmangal.NewClientContext(ctx, loader, options)
 	if err != nil {
 		return nil, err
 	}

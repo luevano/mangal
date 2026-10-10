@@ -14,7 +14,7 @@ func RunJSON(ctx context.Context, args Args) error {
 		return err
 	}
 
-	mangas, err := client.SearchMangas(ctx, args.Query)
+	mangas, err := client.SearchMangasContext(ctx, args.Query)
 	if err != nil {
 		return err
 	}

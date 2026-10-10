@@ -41,7 +41,7 @@ func (s *state) searchMangasCmd(ctx context.Context, query string) tea.Cmd {
 	return tea.Sequence(
 		base.Loading(fmt.Sprintf("Searching for %q", query)),
 		func() tea.Msg {
-			mangas, err := s.client.SearchMangas(ctx, query)
+			mangas, err := s.client.SearchMangasContext(ctx, query)
 			if err != nil {
 				return nil
 			}
@@ -64,7 +64,7 @@ func (s *state) searchMetadataCmd(ctx context.Context, item *item) tea.Cmd {
 	return tea.Sequence(
 		base.Loading(fmt.Sprintf("Searching metadata for %q", item.manga)),
 		func() tea.Msg {
-			meta, err := s.client.SearchMetadata(ctx, item.manga)
+			meta, err := s.client.SearchMetadataContext(ctx, item.manga)
 			if err != nil {
 				return err
 			}
@@ -84,7 +84,7 @@ func (s *state) searchVolumesCmd(ctx context.Context, item *item) tea.Cmd {
 	return tea.Sequence(
 		base.Loading(fmt.Sprintf("Searching volumes for %q", item.manga)),
 		func() tea.Msg {
-			volumeList, err := s.client.MangaVolumes(ctx, item.manga)
+			volumeList, err := s.client.MangaVolumesContext(ctx, item.manga)
 			if err != nil {
 				return err
 			}
@@ -109,7 +109,7 @@ func (s *state) searchChaptersCmd(ctx context.Context, manga mangadata.Manga, vo
 		base.NotifyWithDuration(fmt.Sprintf("Skipped single volume (cfg: %s)", config.TUI.ExpandSingleVolume.Key), 3*time.Second),
 		base.Loading("Searching chapters"),
 		func() tea.Msg {
-			chapterList, err := s.client.VolumeChapters(ctx, volume)
+			chapterList, err := s.client.VolumeChaptersContext(ctx, volume)
 			if err != nil {
 				return err
 			}
@@ -128,7 +128,7 @@ func (s *state) searchAllChaptersCmd(ctx context.Context, manga mangadata.Manga,
 		func() tea.Msg {
 			var chapterList []mangadata.Chapter
 			for _, v := range volumes {
-				c, err := s.client.VolumeChapters(ctx, v)
+				c, err := s.client.VolumeChaptersContext(ctx, v)
 				if err != nil {
 					return err
 				}
