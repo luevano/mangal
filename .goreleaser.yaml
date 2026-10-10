@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: mangal
+
+before:
+  hooks:
+    # the version is a constant (meta.Version), the tag has to match it
+    - '{{ if not .IsSnapshot }}sh -c ''grep -q "Version = \"{{ .Version }}\"" meta/meta.go || { echo "meta.Version is not {{ .Version }}"; exit 1; }''{{ else }}true{{ end }}'
+    # the web UI is embedded in the binary, it isn't committed
+    - sh -c 'cd web/ui && npm ci && npm run build-only'
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: [-s -w]
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [LICENSE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: git
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\(.+\))??!?:.+$'
+      order: 2
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - '^docs'
+      - '^test'
+      - '^ci'
+      - '^style'
+      - '^chore'
+
+release:
+  github:
+    owner: luevano
+    name: mangal
+  # published by hand after checking it
+  draft: true

@@ -19,12 +19,24 @@ jobs:
       GOFLAGS: -mod=readonly
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/ui/package-lock.json
+
+      # the web UI is embedded, it isn't committed
+      - name: Build the web UI
+        working-directory: web/ui
+        run: npm ci && npm run build-only
 
       - name: Test
         run: go test -race -v ./...
