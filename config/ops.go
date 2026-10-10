@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/adrg/xdg"
 	"github.com/luevano/mangal/meta"
@@ -109,9 +110,11 @@ func Init() {
 	viper.SetConfigName(meta.AppName)
 	viper.SetConfigType("toml")
 
-	// Accept environment variables, all uppercase with "MANGAL_" prefix
+	// Accept environment variables, all uppercase with "MANGAL_" prefix and "_" for ".",
+	// e.g. MANGAL_DOWNLOAD_PATH for download.path
 	viper.SetEnvPrefix("mangal") // uppercased automatically
-	viper.AutomaticEnv()         // env keys will match exactly to the ones registered (using _ as delimiter)
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
 }
 
 // Load the config file and validates all config keys.

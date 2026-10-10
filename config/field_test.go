@@ -59,3 +59,11 @@ func TestWriteKeyDoesNotCreateConfig(t *testing.T) {
 		t.Error("config file was created")
 	}
 }
+
+func TestEnvOverride(t *testing.T) {
+	Init()
+	t.Setenv("MANGAL_DOWNLOAD_MANGA_NAME_TEMPLATE", "{{ .Manga.Title }}")
+	if got := Download.Manga.NameTemplate.Get(); got != "{{ .Manga.Title }}" {
+		t.Errorf("got %q, want the env value", got)
+	}
+}
