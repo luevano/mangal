@@ -93,6 +93,7 @@ func RunDownload(ctx context.Context, args Args) error {
 	// TODO: make configurable
 	maxRetries := 10
 	retryCount := 0
+	failed := 0
 	for _, ch := range chapters {
 		retry := true
 		for retry {
@@ -122,6 +123,7 @@ func RunDownload(ctx context.Context, args Args) error {
 				// In case that the error is not due to 429 code, just continue to the next chapter
 				// as ch.Down will not be available
 				fmt.Fprintf(os.Stderr, "error: chapter %s: %s\n", ch.Chapter, ch.Err)
+				failed++
 				continue
 			}
 
@@ -136,5 +138,12 @@ func RunDownload(ctx context.Context, args Args) error {
 			}
 		}
 	}
-	return notify.Send(chapters)
+	if err := notify.Send(chapters); err != nil {
+		return err
+	}
+	// so scripts can tell from the exit code
+	if failed > 0 {
+		return fmt.Errorf("%d of %d chapters failed", failed, len(chapters))
+	}
+	return nil
 }
