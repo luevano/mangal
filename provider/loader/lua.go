@@ -121,6 +121,12 @@ func newLoader(info libmangal.ProviderInfo, dir string) (libmangal.ProviderLoade
 		UserAgent:    config.Download.UserAgent.Get(),
 		CacheStore:   cache.CacheStore,
 		PackagePaths: []string{dir},
+		Filter: luaprovider.FilterOptions{
+			NSFW:                    config.Providers.Filter.NSFW.Get(),
+			Language:                config.Providers.Filter.Language.Get(),
+			AvoidDuplicateChapters:  config.Providers.Filter.AvoidDuplicateChapters.Get(),
+			ShowUnavailableChapters: config.Providers.Filter.ShowUnavailableChapters.Get(),
+		},
 	}
 
 	return luaprovider.NewLoader(providerMainFileContents, info, options)
