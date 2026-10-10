@@ -31,10 +31,10 @@ require (
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luevano/gopher-luadoc v0.3.3
-	github.com/luevano/libmangal v0.22.0
-	github.com/luevano/luaprovider v0.15.2
+	github.com/luevano/libmangal v0.22.1
+	github.com/luevano/luaprovider v0.15.3
 	github.com/luevano/mangoplus v0.7.1
-	github.com/luevano/mangoprovider v0.17.2
+	github.com/luevano/mangoprovider v0.17.3
 	github.com/mattn/go-runewidth v0.0.31
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.16.0
