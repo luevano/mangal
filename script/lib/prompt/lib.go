@@ -1,8 +1,8 @@
 package prompt
 
 import (
-	"github.com/luevano/mangal/script/lib/prompt/fzf"
 	luadoc "github.com/luevano/gopher-luadoc"
+	"github.com/luevano/mangal/script/lib/prompt/fzf"
 )
 
 const libName = "prompt"

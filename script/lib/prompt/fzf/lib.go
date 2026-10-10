@@ -2,8 +2,8 @@ package fzf
 
 import (
 	"github.com/ktr0731/go-fuzzyfinder"
-	"github.com/luevano/mangal/script/lib/util"
 	luadoc "github.com/luevano/gopher-luadoc"
+	"github.com/luevano/mangal/script/lib/util"
 	lua "github.com/yuin/gopher-lua"
 )
 
