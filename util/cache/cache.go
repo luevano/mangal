@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/luevano/libmangal/mangadata"
@@ -50,18 +51,8 @@ func init() {
 //
 // The TTL is decided based on the db name or bucket name.
 func CacheStore(dbName, bucketName string) (gokv.Store, error) {
-	// Dir
-	dir := path.CacheDir()
-	switch dbName {
-	// metadata cache dbs into the subdir "metadata"
-	case string(metadata.IDCodeAnilist),
-		string(metadata.IDCodeMyAnimeList),
-		string(metadata.IDCodeKitsu),
-		string(metadata.IDCodeMangaUpdates),
-		string(metadata.IDCodeAnimePlanet):
-		dir = filepath.Join(dir, metadataDir)
-	}
-	if err := afs.Afero.MkdirAll(dir, config.Download.ModeDir.Get()); err != nil {
+	dir, err := cacheDir(path.CacheDir(), dbName)
+	if err != nil {
 		return nil, err
 	}
 
@@ -98,4 +89,34 @@ func CacheStore(dbName, bucketName string) (gokv.Store, error) {
 		Path:       filepath.Join(dir, dbName+".db"),
 		Codec:      encoding.Gob,
 	})
+}
+
+// metadataDBNames are the metadata providers' ids (libmangal's metadata.ProviderInfo.ID,
+// their cache db name).
+var metadataDBNames = []string{"anilist", "myanimelist", "kitsu", "mangaupdates", "animeplanet"}
+
+// cacheDir is the directory of the db: metadata cache dbs go into the subdir "metadata".
+//
+// They used to land in the cache root, a db there is moved over once.
+func cacheDir(root, dbName string) (string, error) {
+	dir := root
+	if slices.Contains(metadataDBNames, dbName) {
+		dir = filepath.Join(root, metadataDir)
+	}
+	if err := afs.Afero.MkdirAll(dir, config.Download.ModeDir.Get()); err != nil {
+		return "", err
+	}
+	if dir == root {
+		return dir, nil
+	}
+
+	old, moved := filepath.Join(root, dbName+".db"), filepath.Join(dir, dbName+".db")
+	oldExists, err := afs.Afero.Exists(old)
+	if err != nil || !oldExists {
+		return dir, err
+	}
+	if exists, err := afs.Afero.Exists(moved); err != nil || exists {
+		return dir, err
+	}
+	return dir, afs.Afero.Rename(old, moved)
 }
