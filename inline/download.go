@@ -65,7 +65,7 @@ func RunDownload(ctx context.Context, args Args) error {
 			return notify.SendError(err)
 		}
 		if !found {
-			err = fmt.Errorf("couldn't find anilist manga with id %q (from argument)", args.AnilistID)
+			err = fmt.Errorf("couldn't find anilist manga with id %d (from argument)", args.AnilistID)
 			return notify.SendError(err)
 		}
 		manga.SetMetadata(meta)

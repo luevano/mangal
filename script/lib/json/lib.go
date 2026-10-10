@@ -76,7 +76,7 @@ func jsonPrint(state *lua.LState) int {
 	if reflect.ValueOf(value).Kind() == reflect.Slice {
 		var v []any
 		if err := json.Unmarshal([]byte(marshalled), &v); err != nil {
-			state.RaiseError(err.Error())
+			state.RaiseError("%s", err.Error())
 			return 0
 		}
 		util.Must(state, err)
@@ -97,7 +97,7 @@ func jsonPrint(state *lua.LState) int {
 		}
 
 		if err, ok := next.(error); ok {
-			state.RaiseError(err.Error())
+			state.RaiseError("%s", err.Error())
 			return 0
 		}
 
