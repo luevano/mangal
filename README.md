@@ -61,6 +61,8 @@ just build # or full or install
 ./mangal
 ```
 
+Releases are built by [GoReleaser](https://goreleaser.com) when a `v*` tag is pushed (see `.goreleaser.yaml`), `meta.Version` has to match the tag.
+
 ## Usage
 
 By default if just executing the `mangal` command, it will start the TUI. To list all options:
@@ -101,7 +103,7 @@ These are either the native Go implementations already included (from [mangoprov
 mangal providers ls
 ```
 
-When a provider is renamed (e.g. MangaSee is now Weeb Central, `mango-weebcentral`), its old id still works with a warning.
+When a provider is renamed (e.g. MangaSee is now Weeb Central, `mango-weebcentral`), its old id still works with a warning. Data saved under the old id can be moved to the new one with `mangal migrate` (lists the changes, `--apply` does them).
 
 #### Lua providers
 
@@ -125,6 +127,8 @@ Downloaded chapters are named with the `download.*.name_template` config templat
 mangal library rename          # list the renames
 mangal library rename --apply  # do them
 ```
+
+The cache and mangal's data (Anilist title bindings, logins, search history, the library index) are kept in SQLite databases, see `mangal path`. The cache can be cleared with `mangal cache clear [provider]`.
 
 Metadata comes from [Anilist](https://anilist.co) (or the provider) and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config. Log in with `mangal anilist` to also sync the reading progress when reading from the TUI.
 
