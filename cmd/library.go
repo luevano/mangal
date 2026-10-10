@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"github.com/luevano/mangal/storage"
+	"github.com/luevano/mangal/util/cache"
 	"path/filepath"
 
 	"github.com/luevano/libmangal/metadata"
@@ -89,11 +91,19 @@ templates give them. Only lists the renames unless --apply is set.`,
 			cmd.Println("run with --apply to rename")
 			return nil
 		}
+		_, dataDB, err := cache.DBs()
+		if err != nil {
+			return err
+		}
+		index := storage.MangaDirs{DB: dataDB}
 		for i, err := range library.Apply(afs.Afero, renames) {
 			r := renames[i]
 			if err != nil {
 				cmd.PrintErrf("skipped %s: %s\n", rel(r.From), err)
 				continue
+			}
+			if err := index.Moved(r.From, r.To); err != nil {
+				return err
 			}
 			cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To))
 		}

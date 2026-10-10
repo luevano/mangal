@@ -2,9 +2,6 @@ package cache
 
 import (
 	"encoding/gob"
-	"errors"
-	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/luevano/libmangal/mangadata"
@@ -12,16 +9,11 @@ import (
 	"github.com/luevano/libmangal/metadata/anilist"
 	"github.com/luevano/libmangal/metadata/myanimelist"
 	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/path"
-	"github.com/luevano/mangal/util/afs"
-	"github.com/luevano/mangal/util/cache/bbolt"
+	"github.com/luevano/mangal/storage"
 	mango "github.com/luevano/mangoprovider"
 	"github.com/philippgille/gokv"
-	"github.com/philippgille/gokv/encoding"
 	"golang.org/x/oauth2"
 )
-
-const metadataDir = "metadata"
 
 func init() {
 	// CacheStore uses gob; types that will be stores must be registered first
@@ -45,78 +37,47 @@ func init() {
 	gob.RegisterName("oauth-token", &oauth2.Token{})
 }
 
-// TODO: add subdir as parameter to avoid checking if the db is supposed to go into metadata dir
+// CacheStore is the general store builder with a provided db name (a provider id, a
+// metadata provider id, or mangal's own) and bucket name (the kind of data).
 //
-// CacheStore is the general cache store builder with a provided db name and bucket name.
-//
-// The TTL is decided based on the db name or bucket name.
+// Each kind of data has its own table, in the cache database or, for what isn't cache
+// (title bindings, logins, search history), in the data database. The TTL is decided by
+// the kind.
 func CacheStore(dbName, bucketName string) (gokv.Store, error) {
-	dir, err := cacheDir(path.CacheDir(), dbName)
+	cacheDB, dataDB, err := open()
 	if err != nil {
 		return nil, err
 	}
-
-	// TTL
 	ttl, err := time.ParseDuration(config.Cache.TTL.Get())
 	if err != nil {
 		return nil, err
 	}
-	switch bucketName {
-	case bbolt.TTLBucketName:
-		return nil, errors.New(`can't use reserved bucket name "` + bbolt.TTLBucketName + `"`)
-	case metadata.CacheBucketNameQueryToIDs:
-		ttl = time.Hour * 24 * 2
-	case metadata.CacheBucketNameTitleToID:
-		// TODO: keeping the same old behavior, need to rework this;
-		// the infinite TTL is implemented now
-		ttl = time.Hour * 9999
-	case metadata.CacheBucketNameIDToManga:
-		ttl = time.Hour * 24 * 2
-	case BucketNameAuthHistory,
-		BucketNameAnilistAuthData,
-		BucketNameMyAnimeListAuthData:
-		// no expiry on the auth data, when the
-		// tokens expire, delete the individual
-		// auth data and prompt for re-authenticat
-		ttl = 0
-	case BucketNameSearchHistory:
-		ttl = 0 // no expiry
-	}
+	metadataTTL := 48 * time.Hour
 
-	return bbolt.NewStore(bbolt.Options{
-		TTL:        ttl,
-		BucketName: bucketName,
-		Path:       filepath.Join(dir, dbName+".db"),
-		Codec:      encoding.Gob,
-	})
-}
-
-// metadataDBNames are the metadata providers' ids (libmangal's metadata.ProviderInfo.ID,
-// their cache db name).
-var metadataDBNames = []string{"anilist", "myanimelist", "kitsu", "mangaupdates", "animeplanet"}
-
-// cacheDir is the directory of the db: metadata cache dbs go into the subdir "metadata".
-//
-// They used to land in the cache root, a db there is moved over once.
-func cacheDir(root, dbName string) (string, error) {
-	dir := root
-	if slices.Contains(metadataDBNames, dbName) {
-		dir = filepath.Join(root, metadataDir)
+	switch {
+	case dbName == CacheDBNameMangalAuth && bucketName == BucketNameAuthHistory:
+		return storage.KV{DB: dataDB, Table: storage.TableAuthHistory}, nil
+	case dbName == CacheDBNameMangalAuth:
+		// no expiry, when the tokens expire the auth data is deleted and a new login asked
+		return storage.KV{DB: dataDB, Table: storage.TableAuthTokens, Owner: bucketName}, nil
+	case dbName == CacheDBNameMangal && bucketName == BucketNameSearchHistory:
+		return storage.KV{DB: dataDB, Table: storage.TableSearchHistory}, nil
+	case bucketName == metadata.CacheBucketNameTitleToID:
+		return storage.KV{DB: dataDB, Table: storage.TableTitleBindings, Owner: dbName}, nil
+	case bucketName == metadata.CacheBucketNameQueryToIDs:
+		return storage.KV{DB: cacheDB, Table: storage.TableMetadataSearches, Owner: dbName, TTL: metadataTTL}, nil
+	case bucketName == metadata.CacheBucketNameIDToManga:
+		return storage.KV{DB: cacheDB, Table: storage.TableMetadata, Owner: dbName, TTL: metadataTTL}, nil
+	case bucketName == mango.CacheBucketNameMangas:
+		return storage.KV{DB: cacheDB, Table: storage.TableMangaSearches, Owner: dbName, TTL: ttl}, nil
+	case bucketName == mango.CacheBucketNameVolumes:
+		return storage.KV{DB: cacheDB, Table: storage.TableVolumes, Owner: dbName, TTL: ttl}, nil
+	case bucketName == mango.CacheBucketNameChapters:
+		return storage.KV{DB: cacheDB, Table: storage.TableChapters, Owner: dbName, TTL: ttl}, nil
+	case bucketName == dbName:
+		// luaprovider caches http responses with the provider id as the bucket
+		return storage.KV{DB: cacheDB, Table: storage.TableLuaHTTP, Owner: dbName, TTL: ttl}, nil
+	default:
+		return storage.KV{DB: cacheDB, Table: storage.TableOther, Owner: dbName + "/" + bucketName, TTL: ttl}, nil
 	}
-	if err := afs.Afero.MkdirAll(dir, config.Download.ModeDir.Get()); err != nil {
-		return "", err
-	}
-	if dir == root {
-		return dir, nil
-	}
-
-	old, moved := filepath.Join(root, dbName+".db"), filepath.Join(dir, dbName+".db")
-	oldExists, err := afs.Afero.Exists(old)
-	if err != nil || !oldExists {
-		return dir, err
-	}
-	if exists, err := afs.Afero.Exists(moved); err != nil || exists {
-		return dir, err
-	}
-	return dir, afs.Afero.Rename(old, moved)
 }

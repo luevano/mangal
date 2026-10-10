@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/luevano/mangal/util/cache"
 	"os"
 	"os/signal"
 	"syscall"
@@ -79,5 +80,13 @@ func initConfig(flag *pflag.Flag) func() {
 		}
 		// once the config finishes initializing (using custom config path or not), set the actual icon type
 		icon.SetType(config.Icons.Get())
+
+		if err := cache.Open(); err != nil {
+			fmt.Fprintf(os.Stderr, "%s storage: %s\n", icon.Cross.Colored(), err)
+			os.Exit(1)
+		}
+		for _, notice := range cache.Notices() {
+			fmt.Fprintf(os.Stderr, "notice: %s\n", notice)
+		}
 	}
 }

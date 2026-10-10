@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"fmt"
+	"github.com/luevano/mangal/storage"
+	"github.com/luevano/mangal/util/cache"
 	"net/http"
 	"os"
 	"sync"
@@ -89,6 +91,11 @@ func NewClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal
 	options.MangaName = template.Manga
 	options.VolumeName = template.Volume
 	options.ChapterName = template.Chapter
+	_, dataDB, err := cache.DBs()
+	if err != nil {
+		return nil, err
+	}
+	options.MangaDirIndex = storage.MangaDirs{DB: dataDB}
 
 	client, err := libmangal.NewClientContext(ctx, loader, options)
 	if err != nil {
@@ -117,6 +124,10 @@ func NewClientByID(ctx context.Context, provider string) (*libmangal.Client, err
 		msg := fmt.Sprintf("provider %q is now %q (%s), use that id instead", provider, info.ID, info.Name)
 		log.Log(msg)
 		fmt.Fprintln(os.Stderr, "warning: "+msg)
+	}
+	if notice, _, err := cache.OldIDsNotice(loaders); err == nil && notice != "" {
+		log.Log(notice)
+		fmt.Fprintln(os.Stderr, "warning: "+notice)
 	}
 
 	client, err := NewClient(ctx, loader)

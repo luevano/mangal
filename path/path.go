@@ -1,6 +1,7 @@
 package path
 
 import (
+	"github.com/adrg/xdg"
 	"os"
 	"path/filepath"
 
@@ -17,6 +18,7 @@ const (
 	PathTemp      PathName = "temp"
 	PathProviders PathName = "providers"
 	PathLog       PathName = "log"
+	PathData      PathName = "data"
 )
 
 type Paths map[PathName]string
@@ -47,11 +49,19 @@ func AllPaths() Paths {
 		PathTemp:      TempDir(),
 		PathProviders: ProvidersDir(),
 		PathLog:       LogDir(),
+		PathData:      DataDir(),
 	}
 }
 
 func CacheDir() string {
 	dir := config.Cache.Path.Get()
+	createDirIfAbsent(dir)
+	return dir
+}
+
+// DataDir is where mangal keeps data that isn't cache (e.g. its database).
+func DataDir() string {
+	dir := filepath.Join(xdg.DataHome, meta.AppName)
 	createDirIfAbsent(dir)
 	return dir
 }

@@ -78,3 +78,28 @@ func TestPlanAndApply(t *testing.T) {
 		t.Error("renamed over an existing directory")
 	}
 }
+
+func TestOldMarkers(t *testing.T) {
+	fsys := afero.NewMemMapFs()
+	weebCentral := libmangal.ProviderInfo{ID: "mango-weebcentral", Name: "Weeb Central", History: []libmangal.ProviderAlias{{ID: "mango-mangasee"}}}
+	loaders := []libmangal.ProviderLoader{loader{weebCentral}}
+	writeInfo(t, fsys, "/lib/Berserk", libmangal.MangaDirInfo{Provider: "mango-mangasee", Manga: mangadata.MangaInfo{ID: "1"}})
+	writeInfo(t, fsys, "/lib/Vagabond", libmangal.MangaDirInfo{Provider: "mango-weebcentral", Manga: mangadata.MangaInfo{ID: "2"}})
+
+	markers, err := OldMarkers(fsys, "/lib", false, loaders)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(markers) != 1 || markers[0] != (OldMarker{Dir: "/lib/Berserk", Old: "mango-mangasee", New: "mango-weebcentral"}) {
+		t.Fatalf("got %+v", markers)
+	}
+	if err := UpdateMarker(fsys, markers[0]); err != nil {
+		t.Fatal(err)
+	}
+	if info, _ := libmangal.ReadMangaDirInfo(fsys, "/lib/Berserk"); info.Provider != "mango-weebcentral" || info.Manga.ID != "1" {
+		t.Errorf("got %+v", info)
+	}
+	if markers, _ := OldMarkers(fsys, "/lib", false, loaders); len(markers) != 0 {
+		t.Errorf("still old: %+v", markers)
+	}
+}

@@ -2,6 +2,8 @@ package base
 
 import (
 	"context"
+	"github.com/luevano/mangal/theme/color"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -17,6 +19,9 @@ var _ tea.Model = (*model)(nil)
 //
 // model is the parent of all States (windows), could be thought of as the main window.
 type model struct {
+	// notices are shown when the model starts
+	notices []string
+
 	state    State
 	viewport *viewport.Model
 	history  *history
@@ -45,7 +50,10 @@ type model struct {
 
 // Init implements tea.Model.
 func (m *model) Init() tea.Cmd {
-	return m.state.Init(m.ctx)
+	if len(m.notices) == 0 {
+		return m.state.Init(m.ctx)
+	}
+	return tea.Batch(m.state.Init(m.ctx), Viewport("Notice", strings.Join(m.notices, "\n\n"), color.Warning))
 }
 
 // stateSize returns the usable size of the state viewport (everything but the header/footer).

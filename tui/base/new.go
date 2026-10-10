@@ -10,7 +10,8 @@ import (
 	"github.com/luevano/mangal/tui/model/viewport"
 )
 
-func New(state State) *model {
+// New creates the model, the notices are shown when it starts.
+func New(state State, notices ...string) *model {
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
 	_styles := defaultStyles()
@@ -33,6 +34,7 @@ func New(state State) *model {
 		showBreadcrumbs:             config.TUI.ShowBreadcrumbs.Get(),
 		showLoadingMessage:          true,
 		showSubtitle:                true,
+		notices:                     notices,
 	}
 
 	return model

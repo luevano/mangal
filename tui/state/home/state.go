@@ -2,6 +2,9 @@ package home
 
 import (
 	"context"
+	"github.com/luevano/libmangal"
+	"github.com/luevano/mangal/theme/color"
+	"github.com/luevano/mangal/util/cache"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -58,10 +61,12 @@ func (s *state) Resize(size base.Size) tea.Cmd {
 
 // Init implements base.State.
 func (s *state) Init(ctx context.Context) tea.Cmd {
+	var loaders []libmangal.ProviderLoader
 	return tea.Sequence(
 		base.Loading("Loading providers"),
 		func() tea.Msg {
-			loaders, err := manager.Loaders()
+			var err error
+			loaders, err = manager.Loaders()
 			if err != nil {
 				return err
 			}
@@ -70,6 +75,9 @@ func (s *state) Init(ctx context.Context) tea.Cmd {
 		},
 		base.Loaded,
 		func() tea.Msg {
+			if _, notice, err := cache.OldIDsNotice(loaders); err == nil && notice != "" {
+				return base.Viewport("Notice", notice, color.Warning)()
+			}
 			if config.TUI.SkipHome.Get() {
 				return s.providersState
 			}
