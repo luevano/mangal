@@ -56,6 +56,7 @@ type configDownloadProvider struct {
 
 type configDownloadManga struct {
 	CreateDir            *entry[bool, bool]
+	ReuseDir             *entry[bool, bool]
 	Cover                *entry[bool, bool]
 	Banner               *entry[bool, bool]
 	NameTemplate         *entry[string, string]

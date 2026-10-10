@@ -8,6 +8,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/config"
+	"github.com/luevano/mangal/log"
 	"github.com/luevano/mangal/path"
 	"github.com/luevano/mangal/theme/icon"
 	"github.com/luevano/mangal/theme/style"
@@ -148,15 +149,12 @@ func (i *item) updatePaths() {
 
 	i.fullTempPath = filepath.Join(path.TempDir(), providerFilename, mangaFilename, volumeFilename)
 
-	downloadPath := path.DownloadsDir()
-	if config.Download.Provider.CreateDir.Get() {
-		downloadPath = filepath.Join(downloadPath, providerFilename)
-	}
-	if config.Download.Manga.CreateDir.Get() {
-		downloadPath = filepath.Join(downloadPath, mangaFilename)
-	}
-	if config.Download.Volume.CreateDir.Get() {
-		downloadPath = filepath.Join(downloadPath, volumeFilename)
+	// the same directory a download goes to, with a reused manga directory
+	options := config.DownloadOptions()
+	options.Directory = path.DownloadsDir()
+	downloadPath, err := client.ChapterDir(i.chapter, options)
+	if err != nil {
+		log.Log("chapter %q directory: %s", i.chapter, err)
 	}
 	i.fullDownloadPath = downloadPath
 }

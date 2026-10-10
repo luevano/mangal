@@ -13,6 +13,7 @@ func DownloadOptions() libmangal.DownloadOptions {
 	o.Directory = Download.Path.Get()
 	o.CreateProviderDir = Download.Provider.CreateDir.Get()
 	o.CreateMangaDir = Download.Manga.CreateDir.Get()
+	o.ReuseMangaDir = Download.Manga.ReuseDir.Get()
 	o.CreateVolumeDir = Download.Volume.CreateDir.Get()
 	o.SkipIfExists = Download.SkipIfExists.Get()
 	o.Strict = Download.Metadata.Strict.Get()

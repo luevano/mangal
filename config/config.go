@@ -224,6 +224,11 @@ func initConfig() config {
 					Default:     true,
 					Description: "Create manga directory.",
 				}),
+				ReuseDir: reg(entry[bool, bool]{
+					Key:         "download.manga.reuse_dir",
+					Default:     true,
+					Description: "Download into the directory that already has the manga (found by its .libmangal.json) even if the name template now gives another name.",
+				}),
 				Cover: reg(entry[bool, bool]{
 					Key:         "download.manga.cover",
 					Default:     false,
