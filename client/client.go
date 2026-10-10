@@ -4,16 +4,17 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/client/anilist"
 	"github.com/luevano/mangal/config"
+	"github.com/luevano/mangal/log"
 	"github.com/luevano/mangal/provider/manager"
 	"github.com/luevano/mangal/template"
 	"github.com/luevano/mangal/util/afs"
-	"github.com/samber/lo"
 	"github.com/zyedidia/generic/queue"
 )
 
@@ -107,12 +108,15 @@ func NewClientByID(ctx context.Context, provider string) (*libmangal.Client, err
 		return nil, err
 	}
 
-	loader, ok := lo.Find(loaders, func(loader libmangal.ProviderLoader) bool {
-		return loader.Info().ID == provider
-	})
-
+	loader, alias, ok := libmangal.FindLoader(loaders, provider)
 	if !ok {
 		return nil, fmt.Errorf("provider with ID %q not found", provider)
+	}
+	if alias != nil {
+		info := loader.Info()
+		msg := fmt.Sprintf("provider %q is now %q (%s), use that id instead", provider, info.ID, info.Name)
+		log.Log(msg)
+		fmt.Fprintln(os.Stderr, "warning: "+msg)
 	}
 
 	client, err := NewClient(ctx, loader)

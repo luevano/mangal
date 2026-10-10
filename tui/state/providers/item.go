@@ -2,6 +2,7 @@ package providers
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -51,12 +52,31 @@ func (i *item) Title() string {
 // Description implements list.DefaultItem.
 func (i *item) Description() string {
 	info := i.loader.Info()
+	website := info.Website
+	if len(info.History) != 0 {
+		website += style.Normal.Secondary.Render(" (formerly " + formerly(info) + ")")
+	}
 	if *i.extraInfo {
 		moreInfo := fmt.Sprintf("%s v%s", info.ID, info.Version)
-		return lipgloss.JoinVertical(lipgloss.Left, moreInfo, info.Website)
+		return lipgloss.JoinVertical(lipgloss.Left, moreInfo, website)
 	}
 
-	return info.Website
+	return website
+}
+
+// formerly lists the previous names (or ids) of the provider, newest first.
+func formerly(info libmangal.ProviderInfo) string {
+	var names []string
+	for _, alias := range info.History {
+		name := alias.Name
+		if name == "" || name == info.Name {
+			name = alias.ID
+		}
+		if !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 func (i *item) isLoaded() bool {
