@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/luevano/mangal/util"
 	"net/url"
 
 	"github.com/luevano/libmangal"
@@ -87,7 +88,7 @@ var providersRmCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		for _, tag := range args {
 			if err := manager.Remove(tag); err != nil {
-				errorf(cmd, err.Error())
+				errorf(cmd, "%s", util.ErrorTree(err))
 			}
 		}
 	},
@@ -124,7 +125,7 @@ var providersNewCmd = &cobra.Command{
 		}
 
 		if err := manager.New(options); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 	},
 }

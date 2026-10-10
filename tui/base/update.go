@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"github.com/luevano/mangal/util"
 	"strings"
 	"time"
 
@@ -74,7 +75,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		log.L.Err(msg).Msg("")
-		return m, Viewport("Error", msg.Error(), color.Error)
+		return m, Viewport("Error", util.ErrorTree(msg), color.Error)
 	}
 
 	if m.inViewport {

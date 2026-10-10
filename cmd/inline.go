@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/luevano/mangal/util"
 	"strings"
 
 	"github.com/luevano/libmangal"
@@ -78,7 +79,7 @@ var inlineJSONCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
 		if err := inline.RunJSON(cmd.Context(), inlineArgs); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 	},
 }
@@ -104,7 +105,7 @@ var inlineDownloadCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
 		if err := inline.RunDownload(cmd.Context(), inlineArgs); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 	},
 }

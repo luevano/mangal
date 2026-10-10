@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/luevano/mangal/util"
 	"io"
 	"os"
 	"strings"
@@ -61,7 +62,7 @@ var scriptCmd = &cobra.Command{
 				config.Download.ModeFile.Get(),
 			)
 			if err != nil {
-				errorf(cmd, err.Error())
+				errorf(cmd, "%s", util.ErrorTree(err))
 			}
 
 			defer file.Close()
@@ -74,7 +75,7 @@ var scriptCmd = &cobra.Command{
 		}
 
 		if err := script.Run(cmd.Context(), scriptArgs, reader); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 	},
 }

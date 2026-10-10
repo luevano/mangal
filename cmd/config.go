@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/luevano/mangal/util"
 	"strconv"
 
 	"github.com/luevano/mangal/config"
@@ -58,7 +59,7 @@ var configInfoCmd = &cobra.Command{
 		if configInfoArgs.JSON {
 			jsonEntries, err := json.Marshal(configEntries)
 			if err != nil {
-				errorf(cmd, err.Error())
+				errorf(cmd, "%s", util.ErrorTree(err))
 			}
 			cmd.Println(string(jsonEntries))
 			return
@@ -100,7 +101,7 @@ var configWriteCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
 		if err := config.Write(); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 
 		successf(cmd, "Wrote config to the file")
@@ -151,14 +152,14 @@ var configSetCmd = &cobra.Command{
 		case int:
 			parsedInt, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
-				errorf(cmd, err.Error())
+				errorf(cmd, "%s", util.ErrorTree(err))
 			}
 
 			converted = int(parsedInt)
 		case bool:
 			parsedBool, err := strconv.ParseBool(value)
 			if err != nil {
-				errorf(cmd, err.Error())
+				errorf(cmd, "%s", util.ErrorTree(err))
 			}
 
 			converted = parsedBool
@@ -167,11 +168,11 @@ var configSetCmd = &cobra.Command{
 		}
 
 		if err := config.Set(key, converted); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 
 		if err := config.Write(); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 
 		successf(cmd, "Successfully set %q to %v", key, converted)

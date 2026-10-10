@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/luevano/mangal/util"
 	"github.com/luevano/mangal/util/cache"
 	"os"
 	"os/signal"
@@ -25,7 +26,7 @@ var rootCmd = &cobra.Command{
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
 		if err := tui.Run(); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 	},
 	// A default completion option is always added, this would disable it.
@@ -66,7 +67,7 @@ func Execute() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
-		errorf(rootCmd, err.Error())
+		errorf(rootCmd, "%s", util.ErrorTree(err))
 	}
 }
 

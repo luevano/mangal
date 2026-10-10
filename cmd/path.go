@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"github.com/luevano/mangal/util"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/path"
@@ -70,7 +71,7 @@ var pathCmd = &cobra.Command{
 		if pathArgs.JSON {
 			err := json.NewEncoder(cmd.OutOrStdout()).Encode(paths)
 			if err != nil {
-				errorf(cmd, err.Error())
+				errorf(cmd, "%s", util.ErrorTree(err))
 			}
 			return
 		}
@@ -81,7 +82,7 @@ var pathCmd = &cobra.Command{
 		}
 
 		if _, err := tea.NewProgram(pathViewer.New(true)).Run(); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 	},
 }

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"github.com/luevano/mangal/util"
 	"strings"
 	"text/template"
 
@@ -69,17 +70,17 @@ var templatesExecCmd = &cobra.Command{
 			Funcs(funcs.FuncMap).
 			Parse(strings.Join(args, " "))
 		if err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 
 		var value map[string]any
 
 		if err := json.Unmarshal([]byte(templatesExecArgs.Value), &value); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 
 		if err := tmpl.Execute(cmd.OutOrStdout(), value); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 
 		cmd.Println()

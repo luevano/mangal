@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/luevano/mangal/util"
 
 	"github.com/luevano/mangal/config"
 	"github.com/luevano/mangal/web"
@@ -26,7 +27,7 @@ var webCmd = &cobra.Command{
 	Args:    cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
 		if err := web.Run(webArgs); err != nil {
-			errorf(cmd, err.Error())
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 	},
 }
