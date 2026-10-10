@@ -78,10 +78,7 @@ func getLoaders(bundleID, dir string) ([]libmangal.ProviderLoader, error) {
 		return nil, err
 	}
 
-	// to make provider ids unique, attach the bundle id
-	if bundleID != "" {
-		providerInfo.ID = fmt.Sprint(bundleID, "-", providerInfo.ID)
-	}
+	providerInfo.ProviderInfo = withBundleID(providerInfo.ProviderInfo, bundleID)
 
 	switch providerInfo.Type {
 	case info.TypeLua:
@@ -130,4 +127,19 @@ func newLoader(info libmangal.ProviderInfo, dir string) (libmangal.ProviderLoade
 	}
 
 	return luaprovider.NewLoader(providerMainFileContents, info, options)
+}
+
+// withBundleID attaches the bundle id to the provider ids (current and old) to make them unique.
+func withBundleID(info libmangal.ProviderInfo, bundleID string) libmangal.ProviderInfo {
+	if bundleID == "" {
+		return info
+	}
+	info.ID = fmt.Sprint(bundleID, "-", info.ID)
+	history := make([]libmangal.ProviderAlias, len(info.History))
+	for i, alias := range info.History {
+		alias.ID = fmt.Sprint(bundleID, "-", alias.ID)
+		history[i] = alias
+	}
+	info.History = history
+	return info
 }

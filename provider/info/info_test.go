@@ -49,3 +49,29 @@ id = "some-id"
 		})
 	}
 }
+
+func TestNewHistory(t *testing.T) {
+	toml := `
+type = "lua"
+id = "weebcentral"
+name = "Weeb Central"
+version = "0.4.0"
+website = "https://weebcentral.com/"
+
+[[history]]
+id = "mangasee"
+name = "MangaSee"
+website = "https://mangasee123.com/"
+`
+	info, err := New(strings.NewReader(toml))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []libmangal.ProviderAlias{{ID: "mangasee", Name: "MangaSee", Website: "https://mangasee123.com/"}}
+	if !reflect.DeepEqual(info.History, want) {
+		t.Errorf("got %+v, want %+v", info.History, want)
+	}
+	if !info.Matches("mangasee") {
+		t.Error("doesn't match its old id")
+	}
+}
