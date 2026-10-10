@@ -324,6 +324,11 @@ func initConfig() config {
 					Default:     true,
 					Description: "Generate `ComicInfo.xml` file.",
 				}),
+				ComicInfoXMLVolume: reg(entry[bool, bool]{
+					Key:         "download.metadata.comicinfo_xml_volume",
+					Default:     false,
+					Description: "Write the volume number in `ComicInfo.xml`. Off by default, most scrapers put every chapter in volume 1.",
+				}),
 			},
 		},
 		TUI: configTUI{

@@ -76,6 +76,7 @@ type configDownloadMetadata struct {
 	Strict                  *entry[bool, bool]
 	Search                  *entry[bool, bool]
 	ComicInfoXML            *entry[bool, bool]
+	ComicInfoXMLVolume      *entry[bool, bool]
 	SeriesJSON              *entry[bool, bool]
 	SkipSeriesJSONIfOngoing *entry[bool, bool]
 }

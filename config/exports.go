@@ -24,6 +24,8 @@ func DownloadOptions() libmangal.DownloadOptions {
 	o.SkipSeriesJSONIfOngoing = Download.Metadata.SkipSeriesJSONIfOngoing.Get()
 	o.WriteComicInfoXML = Download.Metadata.ComicInfoXML.Get()
 	o.ComicInfoXMLOptions = metadata.DefaultComicInfoOptions()
+	o.ComicInfoXMLOptions.LanguageISO = Providers.Filter.Language.Get()
+	o.ComicInfoXMLOptions.AddVolume = Download.Metadata.ComicInfoXMLVolume.Get()
 	o.ImageTransformer = func(bytes []byte) ([]byte, error) {
 		return bytes, nil
 	}
