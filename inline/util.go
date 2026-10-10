@@ -105,20 +105,37 @@ func getSelectedMangaResults(args Args, mangas []mangadata.Manga) ([]MangaResult
 // TODO: refactor to handle metadata in general, not just anilist;
 // use the provider metadata if preferred and search metadata in general otherwise
 func assignAnilist(ctx context.Context, client *libmangal.Client, args Args, mangaResults *[]MangaResult) {
-	for i, mangaResult := range *mangaResults {
-		// guaranteed to exist
-		ani, _ := client.GetMetadataProvider(metadata.IDSourceAnilist)
-		var match metadata.Match
-		var found bool
-		var aniErr error
-		if args.AnilistID != 0 {
-			match.Metadata, found, aniErr = ani.SearchByIDContext(ctx, args.AnilistID)
-			match.Bound = true
-		} else {
-			match, found, aniErr = client.MatchMangaContext(ctx, ani, mangaResult.Manga)
+	if len(*mangaResults) == 0 {
+		return
+	}
+	// guaranteed to exist
+	ani, _ := client.GetMetadataProvider(metadata.IDSourceAnilist)
+
+	matches := make([]metadata.Match, len(*mangaResults))
+	found := make([]bool, len(*mangaResults))
+	var err error
+	if args.AnilistID != 0 {
+		var meta metadata.Metadata
+		meta, found[0], err = ani.SearchByIDContext(ctx, args.AnilistID)
+		for i := range matches {
+			matches[i], found[i] = metadata.Match{Metadata: meta, Score: 1, Bound: true}, found[0]
 		}
+	} else {
+		// all at once, AniList allows few requests a minute
+		mangas := make([]mangadata.Manga, len(*mangaResults))
+		for i, r := range *mangaResults {
+			mangas[i] = r.Manga
+		}
+		matches, found, err = client.MatchMangasContext(ctx, ani, mangas)
+	}
+	if err != nil {
+		log.Log("anilist: %s", err)
+		return
+	}
+
+	for i, match := range matches {
 		aniMeta, ok := match.Metadata.(*lmanilist.Manga)
-		if aniErr != nil || !found || !ok {
+		if !found[i] || !ok {
 			continue
 		}
 		if match.Bad() {
