@@ -6,10 +6,10 @@ Fork of [metafates/mangal@v5](https://github.com/metafates/mangal/tree/v5).
 
 Version 5 is now based on metafates' [mangalorg](https://github.com/mangalorg) suite, which I've forked to work on them myself:
 
-- [libmangal](https://github.com/luevano/libmangal)
-- [luaprovider](https://github.com/luevano/luaprovider)
-- [gopher-luadoc](https://github.com/luevano/gopher-luadoc)
-- [saturno](https://github.com/luevano/saturno)
+- [libmangal](https://github.com/luevano/libmangal): the engine (providers, downloads, metadata)
+- [mangoprovider](https://github.com/luevano/mangoprovider): native Go providers, using [mangodex](https://github.com/luevano/mangodex) and [mangoplus](https://github.com/luevano/mangoplus)
+- [luaprovider](https://github.com/luevano/luaprovider): Lua script providers, using [gopher-luadoc](https://github.com/luevano/gopher-luadoc)
+- [saturno](https://github.com/luevano/saturno): Lua providers
 
 ## Development
 
@@ -19,8 +19,8 @@ For now, just notes for myself while I work on this.
 
 The following needs to be installed before starting development:
 
-- `go>=1.22`
-  - [`oapi-codegen`](https://github.com/deepmap/oapi-codegen): `go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@latest`
+- `go>=1.27`
+  - [`oapi-codegen`](https://github.com/oapi-codegen/oapi-codegen): `go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest`
   - [`enumer`](https://github.com/dmarkham/enumer): `go install github.com/dmarkham/enumer@latest`
 - [`just`](https://github.com/casey/just)
 - `npm`
@@ -95,13 +95,19 @@ mangal config set download.path $HOME/downloads_test
 
 ### Providers
 
-These are either the native Go implementations already included (from [mangoprovider](/luevano/mangoprovider)) or Lua scripts that handle the site scrape logic (search mangas, list mangas/chapters/images, etc).
+These are either the native Go implementations already included (from [mangoprovider](https://github.com/luevano/mangoprovider)) or Lua scripts that handle the site scrape logic (search mangas, list mangas/chapters/images, etc). List them with:
+
+```sh
+mangal providers ls
+```
+
+When a provider is renamed (e.g. MangaSee is now Weeb Central, `mango-weebcentral`), its old id still works with a warning.
 
 #### Lua providers
 
-Some Lua providers are available at [saturno](/luevano/saturno). Do note that these are outdated and should only be used as starting points to create new missing providers until implemented in `mangoprovider`.
+Some Lua providers are available at [saturno](https://github.com/luevano/saturno), mostly as examples since `mangoprovider` already covers those sites.
 
-Each Lua provider is a directory with the `main.lua` (scraper) and `mangal.toml` (metadata) files inside. By default, they need to be placed in `$XDG_CONFIG_HOME/mangal/providers`.
+Each Lua provider is a directory with the `main.lua` (scraper) and `mangal.toml` (metadata) files inside. By default, they need to be placed in `$XDG_CONFIG_HOME/mangal/providers`. Old ids of a renamed provider go in `mangal.toml` as `[[history]]` entries.
 
 A new provider can be created by running:
 
@@ -110,6 +116,17 @@ mangal providers new
 ```
 
 It is automatically placed in the required path.
+
+### Downloads
+
+Downloaded chapters are named with the `download.*.name_template` config templates (see [Templates](#templates)). Each manga directory gets a `.libmangal.json` so it's found again when its name changes (title updates, renamed providers): new chapters keep going into the same directory. To rename the existing directories to what the current templates give:
+
+```sh
+mangal library rename          # list the renames
+mangal library rename --apply  # do them
+```
+
+Metadata comes from [Anilist](https://anilist.co) (or the provider) and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config. Log in with `mangal anilist` to also sync the reading progress when reading from the TUI.
 
 ### Templates
 
@@ -165,15 +182,23 @@ mangal inline download -p saturno-mangapill -q "Tengoku Daimakyou" -m exact -c 1
 
 For more, use the `-h` flag.
 
-#### Script
+#### Web
 
-Similar to [mangalorg/mangalcli](https://github.com/mangalorg/mangalcli) where a `run.lua` and a "provider" is required:
+Serves a web UI:
 
 ```sh
-mangal script -f run.lua -p mangapill -v "title=tengoku"
+mangal web --open
 ```
 
-I'm using the sample `mangapill.lua` mentioned in [Providers](#providers) with the following modified `run.lua`:
+#### Script
+
+Similar to [mangalorg/mangalcli](https://github.com/mangalorg/mangalcli) where a `run.lua` and a provider are required:
+
+```sh
+mangal script -f run.lua -p mango-mangapill -v "title=tengoku"
+```
+
+For example, with this `run.lua`:
 
 ```lua
 local mangal = require('mangal')
