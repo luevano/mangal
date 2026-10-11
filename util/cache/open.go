@@ -88,6 +88,17 @@ func Watches() (storage.Watches, error) {
 	return s.Watches(), err
 }
 
+// ClearChapterCache forgets the provider's cached chapter lists, see
+// storage.Storage.ClearChapterCache.
+func ClearChapterCache(provider string) error {
+	s, err := Storage()
+	if err != nil {
+		return err
+	}
+	_, err = s.ClearChapterCache(provider)
+	return err
+}
+
 // AccountsStore is the cached provider accounts, by provider id.
 func AccountsStore(ttl time.Duration) (storage.KV, error) {
 	s, err := Storage()

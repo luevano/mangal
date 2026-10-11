@@ -207,3 +207,23 @@ func TestClearCacheProviderRows(t *testing.T) {
 		t.Errorf("%d left, want the other provider's 2", n)
 	}
 }
+
+func TestClearChapterCache(t *testing.T) {
+	cache, data := openBoth(t)
+	st := Storage{Cache: cache, Data: data}
+	opts := StoreOptions{TTL: time.Hour}
+	_ = st.Store("p", "volumes", opts).Set("m", 1)
+	_ = st.Store("p", "chapters", opts).Set("m", 1)
+	_ = st.Store("p", "p", opts).Set("url", 1) // lua http
+	_ = st.Store("p", "mangas", opts).Set("q", 1)
+	_ = st.Store("other", "chapters", opts).Set("m", 1)
+	if n, err := st.ClearChapterCache("p"); err != nil || n != 3 {
+		t.Fatalf("cleared %d, %v", n, err)
+	}
+	if n, _ := countProviderRows(cache, "p"); n != 1 {
+		t.Errorf("%d left, want the searches", n)
+	}
+	if n, _ := countProviderRows(cache, "other"); n != 1 {
+		t.Errorf("another provider's cache cleared")
+	}
+}

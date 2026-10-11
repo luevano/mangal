@@ -149,3 +149,23 @@ func countProviderRows(cache *DB, id string) (int, error) {
 	}
 	return total, nil
 }
+
+// ClearChapterCache deletes the cached volumes, chapters and Lua http responses of a provider,
+// so its next chapter lists are fetched (e.g. to check for new chapters). It returns how
+// many were deleted.
+func (s Storage) ClearChapterCache(id string) (int64, error) {
+	var total int64
+	err := s.Cache.InTx(func(tx *sql.Tx) error {
+		total = 0
+		for _, table := range []string{TableVolumes, TableChapters, TableLuaHTTP} {
+			res, err := tx.Exec(`DELETE FROM `+table+` WHERE owner = ?`, id)
+			if err != nil {
+				return fmt.Errorf("clear %s of %s: %w", table, id, err)
+			}
+			n, _ := res.RowsAffected()
+			total += n
+		}
+		return nil
+	})
+	return total, err
+}
