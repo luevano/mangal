@@ -16,7 +16,7 @@ var _ help.KeyMap = (*keyMap)(nil)
 func newKeyMap() keyMap {
 	return keyMap{
 		login:   util.Bind("log in", "i"),
-		logout:  util.Bind("log out (this session)", "o"),
+		logout:  util.Bind("log out", "o"),
 		new:     util.Bind("new login", "n"),
 		forget:  util.Bind("forget", "ctrl+d"),
 		up:      util.BindNamedKey("↑/k", "up", "k", "up"),

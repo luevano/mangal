@@ -97,8 +97,12 @@ func (l Login) Expired() bool {
 	return !l.Expires.IsZero() && time.Now().After(l.Expires)
 }
 
-// SavedLogin is the last user's saved login, read locally (no request).
+// SavedLogin is the last user's saved login, read locally (no request). There's none after
+// a logout, until the next login.
 func SavedLogin() (Login, bool, error) {
+	if out, err := cache.AnilistLoggedOut(); err != nil || out {
+		return Login{}, false, err
+	}
 	user, err := lastUser()
 	if err != nil || user == "" {
 		return Login{}, false, err

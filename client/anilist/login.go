@@ -106,7 +106,18 @@ func LoginSaved(ctx context.Context, user string) (metadata.User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("log in %q: %w", user, err)
 	}
-	return u, updateUsers(func(h *cache.UserHistory) { h.Add(u.Name()) })
+	return u, loggedIn(u)
+}
+
+// loggedIn makes the user the last one, so it logs in on startup again.
+func loggedIn(u metadata.User) error {
+	if err := updateUsers(func(h *cache.UserHistory) { h.Add(u.Name()) }); err != nil {
+		return err
+	}
+	if err := cache.SetAnilistLoggedOut(false); err != nil {
+		return fmt.Errorf("save the login: %w", err)
+	}
+	return nil
 }
 
 // LoginNew authorizes mangal with the AniList API client (in the browser), logs in and
@@ -132,10 +143,11 @@ func LoginNew(ctx context.Context, id, secret string) (metadata.User, error) {
 	if err := cache.SetAnilistAuthData(u.Name(), token); err != nil {
 		return nil, fmt.Errorf("save login of %q: %w", u.Name(), err)
 	}
-	return u, updateUsers(func(h *cache.UserHistory) { h.Add(u.Name()) })
+	return u, loggedIn(u)
 }
 
-// Logout logs out for the rest of the process, the saved login stays.
+// Logout logs out, also of the next runs: the saved login stays (a login picks it from the
+// saved users) but isn't used on startup until the next login.
 func Logout() error {
 	ani, err := Anilist()
 	if err != nil {
@@ -144,6 +156,12 @@ func Logout() error {
 	loginSem <- struct{}{}
 	defer func() { <-loginSem }()
 	loginTried = true
+	if err := cache.SetAnilistLoggedOut(true); err != nil {
+		return fmt.Errorf("save the logout: %w", err)
+	}
+	if !ani.Authenticated() {
+		return nil
+	}
 	return ani.Logout()
 }
 

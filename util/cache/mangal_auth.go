@@ -63,3 +63,19 @@ func ExpireAnilistAuthData(username string) error {
 	token.Expiry = time.Now()
 	return SetAnilistAuthData(username, &token)
 }
+
+// anilistLoggedOut is the auth history key saying the user logged out of Anilist: the saved
+// login isn't used on startup until the next login.
+const anilistLoggedOut = AnilistAuthHistory + "/logged_out"
+
+// SetAnilistLoggedOut saves whether the user logged out of Anilist.
+func SetAnilistLoggedOut(out bool) error {
+	return set(CacheDBNameMangalAuth, BucketNameAuthHistory, anilistLoggedOut, out)
+}
+
+// AnilistLoggedOut is true if the user logged out of Anilist (and didn't log in since).
+func AnilistLoggedOut() (bool, error) {
+	var out bool
+	_, err := get(CacheDBNameMangalAuth, BucketNameAuthHistory, anilistLoggedOut, &out)
+	return out, err
+}
