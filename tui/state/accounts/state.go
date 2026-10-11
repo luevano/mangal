@@ -30,10 +30,18 @@ func (s *state) Status() string                { return "" }
 func (s *state) Resize(size base.Size) tea.Cmd { return nil }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
+	s.model.SetContext(ctx)
 	return s.model.Init()
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
+	s.model.SetContext(ctx)
+	switch msg.(type) {
+	case accounts.LoginAnilistMsg:
+		return func() tea.Msg { return newAnilistLogin(ctx) }
+	case base.RestoredMsg:
+		return s.model.Reload()
+	}
 	_, cmd := s.model.Update(msg)
 	return cmd
 }

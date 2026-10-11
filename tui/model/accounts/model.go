@@ -52,6 +52,9 @@ type loadedMsg struct {
 
 type notificationMsg string
 
+// LoginAnilistMsg asks the TUI to open the Anilist login (when not standalone).
+type LoginAnilistMsg struct{}
+
 // New creates the model, standalone for mangal accounts (with its own quit keys).
 func New(ctx context.Context, standalone bool) *Model {
 	t := table.New(
@@ -100,6 +103,17 @@ func (m *Model) load(refresh bool) tea.Cmd {
 
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
+	return m.load(false)
+}
+
+// SetContext replaces the context for the requests, the TUI's changes when going back.
+func (m *Model) SetContext(ctx context.Context) {
+	m.ctx = ctx
+}
+
+// Reload lists the accounts again (e.g. after logging in), from the cache.
+func (m *Model) Reload() tea.Cmd {
+	m.notification = ""
 	return m.load(false)
 }
 
@@ -164,8 +178,7 @@ func (m *Model) login() tea.Cmd {
 	switch entry.Provider {
 	case "":
 		if !m.standalone {
-			m.notification = `log into Anilist with "mangal accounts" or "mangal anilist"`
-			return nil
+			return func() tea.Msg { return LoginAnilistMsg{} }
 		}
 		m.LoginAnilist = true
 		m.quitting = true

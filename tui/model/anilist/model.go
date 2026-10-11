@@ -90,6 +90,20 @@ func (m *Model) LoggedOut() bool {
 	return m.state == LoggedOut
 }
 
+// KeyMap is the model's keys, for the TUI's help.
+func (m *Model) KeyMap() help.KeyMap {
+	if m.LoggedOut() && !m.inNew {
+		return base.CombinedKeyMap(&m.list.KeyMap, &m.keyMap)
+	}
+	return &m.keyMap
+}
+
+// Backable reports whether esc leaves the model (it isn't used to cancel an input or
+// go back to the saved logins).
+func (m *Model) Backable() bool {
+	return !m.inInput && !m.keyMap.back.Enabled()
+}
+
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
 	if m.anilist == nil {

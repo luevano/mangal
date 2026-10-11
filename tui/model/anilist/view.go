@@ -16,12 +16,20 @@ func (m *Model) viewStandalone(content string, keyMap help.KeyMap) string {
 	return m.styles.view.Render(view)
 }
 
+// viewEmbedded is the content and the notification, the TUI renders the rest.
+func (m *Model) viewEmbedded(content string) string {
+	if m.notification == "" {
+		return content
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, content, " ", m.styles.notification.Render(m.notification))
+}
+
 func (m *Model) viewLoggedIn() string {
 	view := fmt.Sprintf("Logged in as %s", m.user.String())
 	if m.standalone {
 		return m.viewStandalone(view, &m.keyMap)
 	}
-	return view
+	return m.viewEmbedded(view)
 }
 
 func (m *Model) viewNewLogin() string {
@@ -29,7 +37,7 @@ func (m *Model) viewNewLogin() string {
 	if m.standalone {
 		return m.viewStandalone(view, &m.keyMap)
 	}
-	return view
+	return m.viewEmbedded(view)
 }
 
 func (m *Model) viewLoggedOut() string {
@@ -37,7 +45,7 @@ func (m *Model) viewLoggedOut() string {
 	if m.standalone {
 		return m.viewStandalone(view, base.CombinedKeyMap(&m.list.KeyMap, &m.keyMap))
 	}
-	return view
+	return m.viewEmbedded(view)
 }
 
 // viewAvailableLogins renders the list of available logins.
