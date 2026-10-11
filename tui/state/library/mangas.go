@@ -176,6 +176,21 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return func() tea.Msg { return newMangaState(s.library, item.manga) }
 		case key.Matches(msg, s.keyMap.merge):
 			return s.mergeCmd(item)
+		case key.Matches(msg, s.keyMap.delete):
+			message := fmt.Sprintf("Delete %q? Its folder (%d chapters) goes to the trash and it leaves the library.", item.manga.Title, item.manga.Chapters)
+			if item.manga.Dir == "" {
+				message = fmt.Sprintf("Delete %q? Its %d chapters go to the trash and it leaves the library.", item.manga.Title, item.manga.Chapters)
+			}
+			s.confirm.askDelete("Delete", message, s.View(), func() tea.Msg {
+				if err := library.DeleteManga(afs.Afero, s.library, path.DownloadsDir(), item.manga); err != nil {
+					return err
+				}
+				return reloadMsg{notify: fmt.Sprintf("deleted %s (in the trash until emptied)", item.manga.Title)}
+			})
+			if s.keep == item {
+				s.keep, item.keep = nil, false
+			}
+			return nil
 		case key.Matches(msg, s.keyMap.remove):
 			if !item.missing {
 				return base.Notify("only mangas whose folder is missing can be removed from the library")
@@ -276,7 +291,7 @@ func (s *mangasState) View() string {
 }
 
 type mangasKeyMap struct {
-	confirm, scan, merge, remove, trash key.Binding
+	confirm, scan, merge, remove, trash, delete key.Binding
 }
 
 func newMangasKeyMap() mangasKeyMap {
@@ -286,11 +301,12 @@ func newMangasKeyMap() mangasKeyMap {
 		merge:   util.Bind("merge", "m"),
 		remove:  util.Bind("remove missing", "x"),
 		trash:   util.Bind("trash", "t"),
+		delete:  util.Bind("delete", "d"),
 	}
 }
 
 func (k mangasKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.confirm, k.scan, k.merge, k.trash}
+	return []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash}
 }
 
 func (k mangasKeyMap) FullHelp() [][]key.Binding {

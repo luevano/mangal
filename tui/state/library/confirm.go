@@ -27,6 +27,16 @@ func newConfirmer() confirmer {
 }
 
 func (c *confirmer) ask(title, message, behind string, onYes tea.Cmd) {
+	c.askWith([]string{"y", "enter"}, title, message, behind, onYes)
+}
+
+// askDelete also confirms with d, the key that started it (d then d), but not with enter.
+func (c *confirmer) askDelete(title, message, behind string, onYes tea.Cmd) {
+	c.askWith([]string{"d", "y"}, title, message, behind, onYes)
+}
+
+func (c *confirmer) askWith(yes []string, title, message, behind string, onYes tea.Cmd) {
+	c.model.SetYesKeys(yes...)
 	c.model.SetData(title, message)
 	c.active, c.onYes, c.behind = true, onYes, behind
 }

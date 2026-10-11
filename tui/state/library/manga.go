@@ -48,6 +48,7 @@ type mangaState struct {
 	library storage.Library
 	manga   storage.Manga
 	list    *list.Model
+	confirm confirmer
 	keyMap  mangaKeyMap
 }
 
@@ -56,6 +57,7 @@ func newMangaState(lib storage.Library, manga storage.Manga) *mangaState {
 		library: lib,
 		manga:   manga,
 		list:    list.New(2, 1, "chapter", "chapters", []*downloadItem{}, func(i *downloadItem) _list.DefaultItem { return i }),
+		confirm: newConfirmer(),
 		keyMap:  newMangaKeyMap(),
 	}
 }
@@ -105,27 +107,50 @@ func (s *mangaState) onScanned(msg mangaScannedMsg) tea.Cmd {
 }
 
 func (s *mangaState) Intermediate() bool { return false }
-func (s *mangaState) Backable() bool     { return s.list.Unfiltered() }
+func (s *mangaState) Backable() bool     { return s.list.Unfiltered() && !s.confirm.active }
 func (s *mangaState) KeyMap() help.KeyMap {
 	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)
 }
-func (s *mangaState) Title() base.Title             { return base.Title{Text: s.manga.Title} }
-func (s *mangaState) Subtitle() string              { return s.manga.Path() }
-func (s *mangaState) Status() string                { return s.list.Status() }
-func (s *mangaState) Resize(size base.Size) tea.Cmd { return s.list.Resize(size) }
+func (s *mangaState) Title() base.Title { return base.Title{Text: s.manga.Title} }
+func (s *mangaState) Subtitle() string  { return s.manga.Path() }
+func (s *mangaState) Status() string    { return s.list.Status() }
+func (s *mangaState) Resize(size base.Size) tea.Cmd {
+	s.confirm.size = size
+	return s.list.Resize(size)
+}
 
 func (s *mangaState) Init(ctx context.Context) tea.Cmd {
 	return tea.Sequence(s.list.Init(), s.scan)
 }
 
 func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
+	if cmd, done := s.confirm.update(msg); done {
+		return cmd
+	}
 	if msg, ok := msg.(mangaScannedMsg); ok {
 		return s.onScanned(msg)
+	}
+	if msg, ok := msg.(reloadMsg); ok {
+		return tea.Batch(s.reload(), base.Notify(msg.notify))
 	}
 	if msg, ok := msg.(tea.KeyMsg); ok && !s.list.Filtering() {
 		switch {
 		case key.Matches(msg, s.keyMap.scan):
 			return s.scan
+		case key.Matches(msg, s.keyMap.delete):
+			item, ok := s.list.SelectedItem().(*downloadItem)
+			if !ok {
+				break
+			}
+			dl := item.download
+			message := fmt.Sprintf("Delete chapter %s (%s)? The file goes to the trash.", item.Title(), dl.Format)
+			s.confirm.askDelete("Delete", message, s.View(), func() tea.Msg {
+				if err := library.DeleteDownload(afs.Afero, s.library, path.DownloadsDir(), s.manga, dl); err != nil {
+					return err
+				}
+				return reloadMsg{notify: fmt.Sprintf("deleted chapter %s (in the trash until emptied)", item.Title())}
+			})
+			return nil
 		case key.Matches(msg, s.keyMap.open):
 			if item, ok := s.list.SelectedItem().(*downloadItem); ok {
 				return func() tea.Msg {
@@ -140,18 +165,24 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return s.list.Update(msg)
 }
 
-func (s *mangaState) View() string { return s.list.View() }
+func (s *mangaState) View() string {
+	if s.confirm.active {
+		return s.confirm.view()
+	}
+	return s.list.View()
+}
 
 type mangaKeyMap struct {
-	open, scan key.Binding
+	open, scan, delete key.Binding
 }
 
 func newMangaKeyMap() mangaKeyMap {
 	return mangaKeyMap{
-		open: util.Bind("open", "enter"),
-		scan: util.Bind("scan", "s"),
+		open:   util.Bind("open", "enter"),
+		scan:   util.Bind("scan", "s"),
+		delete: util.Bind("delete", "d"),
 	}
 }
 
-func (k mangaKeyMap) ShortHelp() []key.Binding  { return []key.Binding{k.open, k.scan} }
+func (k mangaKeyMap) ShortHelp() []key.Binding  { return []key.Binding{k.open, k.scan, k.delete} }
 func (k mangaKeyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }

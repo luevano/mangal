@@ -1,10 +1,14 @@
 package confirm
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/luevano/mangal/v5/tui/util"
 )
 
 type Model struct {
@@ -24,6 +28,14 @@ type Model struct {
 func (m *Model) SetData(title, message string) {
 	m.title = title
 	m.message = message
+	m.preRender()
+}
+
+// SetYesKeys replaces the keys that confirm (y and enter by default), the help shows
+// them all but enter.
+func (m *Model) SetYesKeys(keys ...string) {
+	shown := slices.DeleteFunc(slices.Clone(keys), func(k string) bool { return k == "enter" })
+	m.keyMap.yes = util.BindNamedKey(strings.Join(shown, "/"), "yes", keys...)
 	m.preRender()
 }
 
