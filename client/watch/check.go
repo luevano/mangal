@@ -27,6 +27,9 @@ type CheckOptions struct {
 	Gaps bool
 	// OnEvent is told the progress, may be nil. It's never called concurrently.
 	OnEvent func(Event)
+	// OnRun is told the check run once it's recorded (it got the lock), may be nil. Not
+	// called on a dry run.
+	OnRun func(storage.CheckRun)
 }
 
 // EventKind is what an Event is about.
@@ -73,6 +76,18 @@ func (r Result) Newest() *float32 {
 	return newest
 }
 
+// Lowest is the lowest chapter number of the result, nil if none.
+func (r Result) Lowest() *float32 {
+	var lowest *float32
+	for _, ch := range r.Chapters {
+		if lowest == nil || ch.Number < *lowest {
+			n := ch.Number
+			lowest = &n
+		}
+	}
+	return lowest
+}
+
 // Report is a Check: the run (ID 0 on a dry run) and the result of each watch.
 type Report struct {
 	storage.CheckRun
@@ -108,6 +123,9 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 	if !opts.DryRun {
 		if report.CheckRun, err = s.Watches.StartRun(report.CheckRun); err != nil {
 			return Report{}, err
+		}
+		if opts.OnRun != nil {
+			opts.OnRun(report.CheckRun)
 		}
 	}
 

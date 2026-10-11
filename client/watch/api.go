@@ -1,0 +1,125 @@
+package watch
+
+import (
+	"errors"
+	"time"
+
+	"github.com/luevano/mangal/v5/storage"
+)
+
+// The JSON bodies of the `mangal serve` API (serve/), besides Watch, Report, CheckRun and
+// Status.
+
+// AddRequest is POST /api/watches, AddOptions in JSON.
+type AddRequest struct {
+	Provider  string           `json:"provider"`
+	MangaID   string           `json:"manga_id,omitempty"`
+	Query     string           `json:"query,omitempty"`
+	Selector  string           `json:"selector,omitempty"`
+	AnilistID int              `json:"anilist_id,omitempty"`
+	From      *float32         `json:"from,omitempty"`
+	Gaps      *bool            `json:"gaps,omitempty"`
+	Interval  storage.Duration `json:"interval,omitempty"`
+}
+
+func (r AddRequest) Options() AddOptions {
+	return AddOptions{Provider: r.Provider, MangaID: r.MangaID, Query: r.Query, Selector: r.Selector,
+		AnilistID: r.AnilistID, From: r.From, Gaps: r.Gaps, Interval: time.Duration(r.Interval)}
+}
+
+func addRequest(o AddOptions) AddRequest {
+	return AddRequest{Provider: o.Provider, MangaID: o.MangaID, Query: o.Query, Selector: o.Selector,
+		AnilistID: o.AnilistID, From: o.From, Gaps: o.Gaps, Interval: storage.Duration(o.Interval)}
+}
+
+// PatchRequest is PATCH /api/watches/{id}: Enabled pauses or resumes, the rest are
+// UpdateOptions. Nil keeps the value.
+type PatchRequest struct {
+	Enabled   *bool             `json:"enabled,omitempty"`
+	Interval  *storage.Duration `json:"interval,omitempty"`
+	Gaps      *bool             `json:"gaps,omitempty"`
+	AnilistID *int              `json:"anilist_id,omitempty"`
+	From      *float32          `json:"from,omitempty"`
+}
+
+// Update are the UpdateOptions of the request, false when it changes none.
+func (r PatchRequest) Update() (UpdateOptions, bool) {
+	opts := UpdateOptions{Gaps: r.Gaps, AnilistID: r.AnilistID, From: r.From}
+	if r.Interval != nil {
+		d := time.Duration(*r.Interval)
+		opts.Interval = &d
+	}
+	return opts, opts != UpdateOptions{}
+}
+
+func patchRequest(o UpdateOptions) PatchRequest {
+	r := PatchRequest{Gaps: o.Gaps, AnilistID: o.AnilistID, From: o.From}
+	if o.Interval != nil {
+		d := storage.Duration(*o.Interval)
+		r.Interval = &d
+	}
+	return r
+}
+
+// CheckRequest is POST /api/check: the watches with the IDs (every enabled one if none).
+// A dry run answers 200 with the Report, a check 202 with a CheckResponse (409 when one
+// is running) and runs in the server: GET /api/runs/{run} has it, finished once its
+// finished time is set.
+type CheckRequest struct {
+	IDs    []int64 `json:"ids,omitempty"`
+	Gaps   bool    `json:"gaps,omitempty"`
+	DryRun bool    `json:"dry_run,omitempty"`
+}
+
+// CheckResponse is the check run a CheckRequest started.
+type CheckResponse struct {
+	Run int64 `json:"run"`
+}
+
+// Error codes of an ErrorResponse, for the errors callers match.
+const (
+	CodeNotFound = "not_found"
+	CodeExists   = "exists"
+	CodeBusy     = "busy"
+)
+
+// ErrorResponse is the body of an API error.
+type ErrorResponse struct {
+	Error string `json:"error"`
+	// Code is set for the errors that match ErrNotFound, ErrExists and ErrBusy.
+	Code string `json:"code,omitempty"`
+}
+
+// ErrorCode is the Code of err, empty if none.
+func ErrorCode(err error) string {
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return CodeNotFound
+	case errors.Is(err, ErrExists):
+		return CodeExists
+	case errors.Is(err, ErrBusy):
+		return CodeBusy
+	}
+	return ""
+}
+
+// APIError is an error answered by the API, it matches the error of its Code.
+type APIError struct {
+	Status  int
+	Message string
+	Code    string
+}
+
+func (e *APIError) Error() string { return e.Message }
+
+func (e *APIError) Is(target error) bool {
+	switch e.Code {
+	case CodeNotFound:
+		return target == ErrNotFound
+	case CodeExists:
+		return target == ErrExists
+	case CodeBusy:
+		return target == ErrBusy
+	}
+	return false
+}

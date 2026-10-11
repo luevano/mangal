@@ -34,6 +34,9 @@ type Status struct {
 	// Checking is true while a check runs (from any process), since Since.
 	Checking bool      `json:"checking"`
 	Since    time.Time `json:"since,omitzero"`
+	// Run is the check run the server is doing (scheduled or asked through its API), 0
+	// when none or not known.
+	Run int64 `json:"run,omitempty"`
 	// NextCheck is the next scheduled check (the earliest due watch), zero without
 	// enabled watches or a scheduler.
 	NextCheck time.Time `json:"next_check,omitzero"`
