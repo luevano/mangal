@@ -50,7 +50,10 @@ func apiError(err error, c echo.Context) {
 			message = m
 		}
 	}
-	if status >= http.StatusInternalServerError && status != http.StatusServiceUnavailable {
+	switch {
+	case status == http.StatusBadGateway:
+		log.Warn("web: %s %s: %s", c.Request().Method, c.Request().URL, err)
+	case status >= http.StatusInternalServerError && status != http.StatusServiceUnavailable:
 		log.Error("web: %s %s: %s", c.Request().Method, c.Request().URL, err)
 	}
 
