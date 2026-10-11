@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/adrg/xdg"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/spf13/pflag"
@@ -231,9 +232,10 @@ func Validate() error {
 	return nil
 }
 
-// WriteKey sets the key and writes only that key to the existing config file: the other
-// keys keep their values, but the file is re-serialised (comments and order are lost).
-// Errors if there's no config file, it's never created here (see CreateFile).
+// WriteKey sets the key and writes only that key to the existing config file: its value
+// is edited in place (or added to its table), the rest of the file is kept as it is,
+// comments included. Errors if there's no config file, it's never created here (see
+// CreateFile).
 //
 // Unlike Write, runtime values (e.g. from flags) and missing defaults aren't written.
 func WriteKey(key string, value any) error {
@@ -241,12 +243,40 @@ func WriteKey(key string, value any) error {
 	if err != nil {
 		return err
 	}
+	data, err := afs.Afero.ReadFile(Path)
+	if err != nil {
+		return fmt.Errorf("write config key %q: %w", key, err)
+	}
+	edited, err := editTOML(data, key, raw)
+	if err == nil {
+		err = checkTOMLEdit(data, edited, key, raw)
+	}
+	if err != nil {
+		// TODO: drop the fallback once the editor has seen enough files
+		log.Warn("config: couldn't edit %q in place (%s), the file is re-serialised (its comments are lost)", key, err)
+		if err := rewriteKey(key, raw); err != nil {
+			return fmt.Errorf("write config key %q: %w", key, err)
+		}
+	} else {
+		mode := fs.FileMode(0o644)
+		if info, err := afs.Afero.Stat(Path); err == nil {
+			mode = info.Mode().Perm()
+		}
+		if err := afs.Afero.WriteFile(Path, edited, mode); err != nil {
+			return fmt.Errorf("write config key %q: %w", key, err)
+		}
+	}
+	viper.Set(key, raw)
+	return nil
+}
 
+// rewriteKey writes the key by re-serialising the whole file.
+func rewriteKey(key string, raw any) error {
 	file := viper.New()
 	file.SetFs(afs.Afero.Fs)
 	file.SetConfigFile(Path)
 	if err := file.ReadInConfig(); err != nil {
-		return fmt.Errorf("write config key %q: %w", key, err)
+		return err
 	}
 	// through the settings map and not Set: viper would merge a map value with the file's
 	settings := file.AllSettings()
@@ -255,13 +285,9 @@ func WriteKey(key string, value any) error {
 	out.SetFs(afs.Afero.Fs)
 	out.SetConfigFile(Path)
 	if err := out.MergeConfigMap(settings); err != nil {
-		return fmt.Errorf("write config key %q: %w", key, err)
+		return err
 	}
-	if err := out.WriteConfig(); err != nil {
-		return fmt.Errorf("write config key %q: %w", key, err)
-	}
-	viper.Set(key, raw)
-	return nil
+	return out.WriteConfig()
 }
 
 func setNested(m map[string]any, path []string, value any) {
