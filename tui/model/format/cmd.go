@@ -12,22 +12,20 @@ func backCmd() tea.Msg {
 
 func (m *Model) setFormatForCmd(what forWhat, format libmangal.Format) tea.Cmd {
 	return func() tea.Msg {
+		if err := config.CreateFile(); err != nil {
+			return err
+		}
 		var err error
 		switch what {
 		case forRead:
-			err = config.Read.Format.Set(format)
+			err = config.Read.Format.Write(format)
 		case forDownload:
-			err = config.Download.Format.Set(format)
+			err = config.Download.Format.Write(format)
 		case forBoth:
-			err = config.Read.Format.Set(format)
-			if err != nil {
-				return err
+			if err = config.Read.Format.Write(format); err == nil {
+				err = config.Download.Format.Write(format)
 			}
-			err = config.Download.Format.Set(format)
 		}
-		if err != nil {
-			return err
-		}
-		return config.Write()
+		return err
 	}
 }
