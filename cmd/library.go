@@ -120,13 +120,7 @@ var libraryDownloadsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		provider, mangaID := "", ""
-		if len(args) > 0 {
-			provider = args[0]
-		}
-		if len(args) > 1 {
-			mangaID = args[1]
-		}
+		provider, mangaID := providerManga(args)
 		downloads, err := lib.ListDownloads(provider, mangaID)
 		if err != nil {
 			return err
