@@ -1,18 +1,22 @@
-// Package anilist is the Anilist search of a manga, to bind its metadata.
+// Package anilist is the metadata bindings screen of a manga (AniList, Kitsu, MyAnimeList)
+// and the search of a source's manga to bind.
 package anilist
 
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
@@ -25,10 +29,13 @@ import (
 
 var _ base.State = (*state)(nil)
 
+// state is the search of a source's manga to bind.
 type state struct {
 	searchlist.Screen
-	manga   mangadata.Manga
-	anilist *lmmeta.ProviderWithCache
+	client   *libmangal.Client
+	manga    mangadata.Manga
+	src      client.MetadataSource
+	provider *lmmeta.ProviderWithCache
 
 	confirm,
 	search,
@@ -37,28 +44,38 @@ type state struct {
 
 type resultsMsg []_list.Item
 
-// Open shows the Anilist search for the manga, to bind its metadata.
-func Open(client *libmangal.Client, manga mangadata.Manga) tea.Cmd {
-	ani, err := client.GetMetadataProvider(lmmeta.IDSourceAnilist)
-	if err != nil {
-		return func() tea.Msg { return err }
-	}
-	return func() tea.Msg { return New(ani, manga) }
+type boundMsg struct {
+	src  client.MetadataSource
+	meta lmmeta.Metadata
 }
 
-// New is the Anilist search for the manga, starting with its title.
-func New(anilist *lmmeta.ProviderWithCache, manga mangadata.Manga) base.State {
-	l := list.New(2, 1, "anilist manga", "anilist mangas", []lmmeta.Metadata{}, func(meta lmmeta.Metadata) _list.DefaultItem {
-		return &item{meta: meta}
+// sourceColor is the title color of the source's screens.
+func sourceColor(code lmmeta.IDCode) lipgloss.Color {
+	switch code {
+	case lmmeta.IDCodeKitsu:
+		return color.Kitsu
+	case lmmeta.IDCodeMyAnimeList:
+		return color.MyAnimeList
+	}
+	return color.Anilist
+}
+
+// newSearch is the search of the source's manga to bind the manga to, starting with its
+// title. A number (or "id:<n>") gets the manga with that id.
+func newSearch(c *libmangal.Client, src client.MetadataSource, provider *lmmeta.ProviderWithCache, manga mangadata.Manga) base.State {
+	l := list.New(2, 1, src.Key+" manga", src.Key+" mangas", []lmmeta.Metadata{}, func(meta lmmeta.Metadata) _list.DefaultItem {
+		return &item{src: src, meta: meta}
 	})
 	s := &state{
-		Screen: searchlist.New(search.New("Search anilist manga...", manga.Info().Title, 64, 5), l, searchlist.History{
+		Screen: searchlist.New(search.New("Search "+src.Name+" manga or id...", manga.Info().Title, 64, 5), l, searchlist.History{
 			Get: cache.GetAnilistSearchHistory,
 			Set: cache.SetAnilistSearchHistory,
 		}),
+		client:   c,
 		manga:    manga,
-		anilist:  anilist,
-		confirm:  util.Bind("confirm", "enter"),
+		src:      src,
+		provider: provider,
+		confirm:  util.Bind("bind", "enter"),
 		search:   util.Bind("search", "s"),
 		metadata: util.Bind("metadata", "m"),
 	}
@@ -71,7 +88,7 @@ func (s *state) KeyMap() help.KeyMap {
 }
 
 func (s *state) Title() base.Title {
-	return base.Title{Text: "Anilist Search", Background: color.Anilist, Foreground: color.Bright}
+	return base.Title{Text: s.src.Name + " Search", Background: sourceColor(s.src.Code), Foreground: color.Bright}
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
@@ -87,6 +104,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		cmd := s.SetResults(msg)
 		s.updateKeys()
 		return cmd
+	case boundMsg:
+		return tea.Sequence(base.Back, base.Notify(fmt.Sprintf("Bound %s %q", msg.src.Name, msg.meta)))
 	case search.SearchMsg:
 		return tea.Batch(s.Screen.Update(msg), s.searchCmd(ctx, string(msg)))
 	case tea.KeyMsg:
@@ -96,9 +115,10 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		i, ok := s.List.SelectedItem().(*item)
 		switch {
 		case key.Matches(msg, s.confirm) && ok:
-			s.manga.SetMetadata(i.meta)
-			log.Info("set anilist %q to manga %q", i.meta, s.manga)
-			return base.Notify(fmt.Sprintf("Set Anilist %q", i.meta))
+			if base.Busy(ctx) {
+				return nil
+			}
+			return s.bindCmd(ctx, i.meta)
 		case key.Matches(msg, s.search):
 			s.List.ResetFilter()
 			return s.Search.Focus()
@@ -109,30 +129,52 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return s.Screen.Update(msg)
 }
 
+func (s *state) bindCmd(ctx context.Context, meta lmmeta.Metadata) tea.Cmd {
+	c, manga, src := s.client, s.manga, s.src
+	return base.Load(ctx, fmt.Sprintf("Binding %s %q", src.Name, meta), func(ctx context.Context) (boundMsg, error) {
+		bound, err := client.Bind(ctx, c, c.Info().ID, manga.Info().ID, manga, src.Code, meta.ID().Raw, false)
+		return boundMsg{src: src, meta: bound}, err
+	}, func(msg boundMsg) tea.Msg { return msg })
+}
+
+var idQuery = regexp.MustCompile(`^\s*(?:id:\s*)?(\d+)\s*$`)
+
 func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
-	return base.Load(ctx, fmt.Sprintf("Searching %q on Anilist", query), func(ctx context.Context) ([]_list.Item, error) {
+	return base.Load(ctx, fmt.Sprintf("Searching %q on %s", query, s.src.Name), func(ctx context.Context) ([]_list.Item, error) {
+		if m := idQuery.FindStringSubmatch(query); m != nil {
+			id, _ := strconv.Atoi(m[1])
+			meta, found, err := s.provider.SearchByIDContext(ctx, id)
+			if err != nil {
+				return nil, fmt.Errorf("get %s manga %d: %w", s.src.Name, id, err)
+			}
+			if !found {
+				return nil, nil
+			}
+			return []_list.Item{&item{src: s.src, meta: meta, score: 1}}, nil
+		}
+
 		q := lmmeta.Query{Titles: []string{query}}
 		var items []_list.Item
 
 		// the closest on top
-		closest, found, err := s.anilist.FindClosestContext(ctx, q)
+		closest, found, err := s.provider.FindClosestContext(ctx, q)
 		if err != nil {
-			return nil, fmt.Errorf("search %q on anilist: %w", query, err)
+			return nil, fmt.Errorf("search %q on %s: %w", query, s.src.Name, err)
 		}
 		if found {
-			items = append(items, &item{meta: closest.Metadata, bad: closest.Bad(), score: closest.Score})
+			items = append(items, &item{src: s.src, meta: closest.Metadata, bad: closest.Bad(), score: closest.Score})
 		}
 
-		results, err := s.anilist.SearchContext(ctx, query)
+		results, err := s.provider.SearchContext(ctx, query)
 		if err != nil {
-			return nil, fmt.Errorf("search %q on anilist: %w", query, err)
+			return nil, fmt.Errorf("search %q on %s: %w", query, s.src.Name, err)
 		}
 		for _, manga := range results {
 			if found && manga.ID() == closest.Metadata.ID() {
 				continue
 			}
 			score := lmmeta.Score(q, manga)
-			items = append(items, &item{meta: manga, bad: score < lmmeta.GoodMatchScore, score: score})
+			items = append(items, &item{src: s.src, meta: manga, bad: score < lmmeta.GoodMatchScore, score: score})
 		}
 		return items, nil
 	}, func(items []_list.Item) tea.Msg { return resultsMsg(items) })

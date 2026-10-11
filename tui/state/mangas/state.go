@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/client"
 	clientanilist "github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
@@ -283,10 +284,10 @@ func (s *state) openCmd(ctx context.Context, i *item) tea.Cmd {
 	}, func(msg openedMsg) tea.Msg { return msg })
 }
 
-// searchMetadata finds the manga on Anilist, or Kitsu. Without a match the manga still opens, a
-// strict download then says what to do.
+// searchMetadata is the manga's default metadata binding, else it finds the manga on Anilist,
+// or Kitsu. Without a match the manga still opens, a strict download then says what to do.
 func (s *state) searchMetadata(ctx context.Context, manga mangadata.Manga) (lmmeta.Metadata, string) {
-	meta, err := s.client.SearchMetadataContext(ctx, manga)
+	meta, err := client.SearchMetadata(ctx, s.client, manga)
 	switch {
 	case err != nil:
 		log.Warn("search metadata for %q: %s", manga, err)
