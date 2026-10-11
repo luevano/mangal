@@ -193,3 +193,45 @@ func TestMigrateOldIDs(t *testing.T) {
 		t.Errorf("%d cache entries of the new id, want its own 1 kept", n)
 	}
 }
+
+type fakeManga struct {
+	info mangadata.MangaInfo
+	meta metadata.Metadata
+}
+
+func (m fakeManga) String() string                     { return m.info.Title }
+func (m fakeManga) Info() mangadata.MangaInfo          { return m.info }
+func (m fakeManga) Metadata() metadata.Metadata        { return m.meta }
+func (m fakeManga) SetMetadata(meta metadata.Metadata) {}
+
+type fakeMeta struct {
+	metadata.Metadata
+	id metadata.ID
+}
+
+func (m fakeMeta) ID() metadata.ID          { return m.id }
+func (m fakeMeta) ExtraIDs() []metadata.ID { return nil }
+
+func TestMangaFor(t *testing.T) {
+	library := Library{DB: openData(t)}
+	anilistID := metadata.ID{Raw: "30002", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}
+	// downloaded under the old id
+	_ = library.RememberMangaDir("/lib/MangaSee", "Berserk", libmangal.MangaDirInfo{Provider: "mango-mangasee", Manga: mangadata.MangaInfo{ID: "berserk", Title: "Berserk"}})
+	// found by a scan, no source yet
+	_ = library.RememberMangaDir("/lib/Weeb Central", "Vagabond", libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "Vagabond"}, MetadataIDs: []metadata.ID{anilistID}})
+
+	if m, ok, err := library.MangaFor(weebCentral, fakeManga{info: mangadata.MangaInfo{ID: "berserk"}}, true); err != nil || !ok || m.Dir != "Berserk" {
+		t.Errorf("by source: %+v, %t, %v", m, ok, err)
+	}
+	vagabond := fakeManga{info: mangadata.MangaInfo{ID: "vagabond"}, meta: fakeMeta{id: anilistID}}
+	if m, ok, err := library.MangaFor(weebCentral, vagabond, true); err != nil || !ok || m.Dir != "Vagabond" {
+		t.Errorf("by metadata: %+v, %t, %v", m, ok, err)
+	}
+	other := libmangal.ProviderInfo{ID: "mango-mangadex", Name: "MangaDex"}
+	if _, ok, _ := library.MangaFor(other, vagabond, true); ok {
+		t.Error("found in another provider's directory")
+	}
+	if _, ok, _ := library.MangaFor(other, vagabond, false); !ok {
+		t.Error("not found without provider directories")
+	}
+}

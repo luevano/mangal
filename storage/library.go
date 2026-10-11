@@ -383,6 +383,63 @@ func (l Library) MangaBySource(provider, mangaID string) (Manga, bool, error) {
 	return mangas[0], true, nil
 }
 
+// MangaFor is the library manga the provider's manga is downloaded into: the one it was
+// downloaded into (also under an old provider id), else a manga folder sharing a metadata
+// id, matched like FindMangaDir does on download. With providerDirs that folder must be in
+// a directory named after the provider (its id or name, current or old).
+func (l Library) MangaFor(provider libmangal.ProviderInfo, manga mangadata.Manga, providerDirs bool) (Manga, bool, error) {
+	ids := []string{provider.ID}
+	for _, alias := range provider.History {
+		ids = append(ids, alias.ID)
+	}
+	for _, id := range ids {
+		m, ok, err := l.MangaBySource(id, manga.Info().ID)
+		if err != nil || ok {
+			return m, ok, err
+		}
+	}
+
+	want := libmangal.MangaDirInfo{Provider: provider.ID, Manga: manga.Info(), MetadataIDs: metadataIDs(manga)}
+	if len(want.MetadataIDs) == 0 {
+		return Manga{}, false, nil
+	}
+	dirs := append(ids, provider.Name)
+	for _, alias := range provider.History {
+		if alias.Name != "" {
+			dirs = append(dirs, alias.Name)
+		}
+	}
+	mangas, err := l.mangas(`WHERE m.dir != '' AND m.metadata_ids != '[]' ORDER BY m.id`)
+	if err != nil {
+		return Manga{}, false, fmt.Errorf("find the library manga of %q: %w", manga.Info().Title, err)
+	}
+	for _, m := range mangas {
+		if providerDirs && !slices.Contains(dirs, filepath.Base(m.Parent)) {
+			continue
+		}
+		if libmangal.MatchMangaDir(provider, want, libmangal.MangaDirInfo{MetadataIDs: m.MetadataIDs}) != libmangal.MangaDirNoMatch {
+			return m, true, nil
+		}
+	}
+	return Manga{}, false, nil
+}
+
+// metadataIDs are the manga's metadata ids other than the provider's own, like libmangal
+// writes them in the MangaDirInfo.
+func metadataIDs(manga mangadata.Manga) []metadata.ID {
+	meta := manga.Metadata()
+	if meta == nil {
+		return nil
+	}
+	var ids []metadata.ID
+	for _, id := range append([]metadata.ID{meta.ID()}, meta.ExtraIDs()...) {
+		if id.Source != metadata.IDSourceProvider && id.Raw != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 // SetDownloadPath updates the path of a recorded file (it was moved).
 func (l Library) SetDownloadPath(from, to string) error {
 	if _, err := l.DB.Exec(`UPDATE downloads SET path = ? WHERE path = ?`, to, from); err != nil {
