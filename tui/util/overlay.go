@@ -1,173 +1,70 @@
 package util
 
 import (
-	"bytes"
 	"strings"
 
-	_ansi "github.com/charmbracelet/x/ansi"
-	"github.com/mattn/go-runewidth"
-	"github.com/muesli/reflow/ansi"
-	"github.com/muesli/reflow/truncate"
-	"github.com/muesli/termenv"
+	"github.com/charmbracelet/x/ansi"
 )
 
-/*
-* Taken from: https://github.com/Gaurav-Gosain/ollamanager/blob/master/tui/string_function.go,
-* as per https://github.com/charmbracelet/lipgloss/pull/102#issuecomment-2188983884,
-* this would be a temporary implementation while they work on it
-* */
+const reset = "\x1b[m"
 
-// whitespace is a whitespace renderer.
-type whitespace struct {
-	chars string
-	style termenv.Style
-}
+// PlaceOverlay draws fg over bg with its top left corner at (x, y), clamped so fg stays
+// inside bg. A fg taller than bg makes the result taller.
+func PlaceOverlay(x, y int, fg, bg string) string {
+	fgLines, fgWidth := lines(fg)
+	bgLines, bgWidth := lines(bg)
 
-type WhitespaceOption func(*whitespace)
-
-// Render whitespaces.
-func (w whitespace) render(width int) string {
-	if w.chars == "" {
-		w.chars = " "
+	x = max(0, min(x, bgWidth-fgWidth))
+	y = max(0, min(y, len(bgLines)-len(fgLines)))
+	for len(bgLines) < y+len(fgLines) {
+		bgLines = append(bgLines, "")
 	}
 
-	r := []rune(w.chars)
-	j := 0
-	b := strings.Builder{}
+	for i, fgLine := range fgLines {
+		bgLine := bgLines[y+i]
+		var b strings.Builder
 
-	// Cycle through runes and print them into the whitespace.
-	for i := 0; i < width; {
-		b.WriteRune(r[j])
-		j++
-		if j >= len(r) {
-			j = 0
+		// a wide grapheme cut in half leaves the cut short, filled with spaces
+		left := ansi.Truncate(bgLine, x, "")
+		b.WriteString(left)
+		if strings.Contains(left, "\x1b") {
+			b.WriteString(reset)
 		}
-		i += _ansi.StringWidth(string(r[j]))
-	}
+		b.WriteString(strings.Repeat(" ", x-ansi.StringWidth(left)))
 
-	// Fill any extra gaps white spaces. This might be necessary if any runes
-	// are more than one cell wide, which could leave a one-rune gap.
-	short := width - _ansi.StringWidth(b.String())
-	if short > 0 {
-		b.WriteString(strings.Repeat(" ", short))
-	}
-
-	return w.style.Styled(b.String())
-}
-
-// PlaceOverlay places fg on top of bg.
-func PlaceOverlay(x, y int, fg, bg string, opts ...WhitespaceOption) string {
-	fgLines, fgWidth := getLines(fg)
-	bgLines, bgWidth := getLines(bg)
-	bgHeight := len(bgLines)
-	fgHeight := len(fgLines)
-
-	if fgWidth >= bgWidth && fgHeight >= bgHeight {
-		return fg
-	}
-	// TODO: allow placement outside of the bg box?
-	x = clamp(x, 0, bgWidth-fgWidth)
-	y = clamp(y, 0, bgHeight-fgHeight)
-
-	ws := &whitespace{}
-	for _, opt := range opts {
-		opt(ws)
-	}
-
-	var b strings.Builder
-	for i, bgLine := range bgLines {
-		if i > 0 {
-			b.WriteByte('\n')
-		}
-		if i < y || i >= y+fgHeight {
-			b.WriteString(bgLine)
-			continue
-		}
-
-		pos := 0
-		if x > 0 {
-			left := truncate.String(bgLine, uint(x))
-			pos = ansi.PrintableRuneWidth(left)
-			b.WriteString(left)
-			if pos < x {
-				b.WriteString(ws.render(x - pos))
-				pos = x
-			}
-		}
-
-		fgLine := fgLines[i-y]
 		b.WriteString(fgLine)
-		pos += ansi.PrintableRuneWidth(fgLine)
+		b.WriteString(strings.Repeat(" ", fgWidth-ansi.StringWidth(fgLine)))
 
-		right := cutLeft(bgLine, pos)
-		bgWidth := ansi.PrintableRuneWidth(bgLine)
-		rightWidth := ansi.PrintableRuneWidth(right)
-		if rightWidth <= bgWidth-pos {
-			b.WriteString(ws.render(bgWidth - rightWidth - pos))
-		}
-
-		b.WriteString(right)
-	}
-
-	return b.String()
-}
-
-// cutLeft cuts printable characters from the left.
-// This function is heavily based on muesli's ansi and truncate packages.
-func cutLeft(s string, cutWidth int) string {
-	var (
-		pos    int
-		isAnsi bool
-		ab     bytes.Buffer
-		b      bytes.Buffer
-	)
-	for _, c := range s {
-		var w int
-		if c == ansi.Marker || isAnsi {
-			isAnsi = true
-			ab.WriteRune(c)
-			if ansi.IsTerminator(c) {
-				isAnsi = false
-				if bytes.HasSuffix(ab.Bytes(), []byte("[0m")) {
-					ab.Reset()
-				}
+		end := x + fgWidth
+		if lineWidth := ansi.StringWidth(bgLine); lineWidth > end {
+			right := ansi.TruncateLeft(bgLine, end, "")
+			// TruncateLeft keeps a wide grapheme cut in half, drop it too
+			for cut := end + 1; ansi.StringWidth(right) > lineWidth-end; cut++ {
+				right = ansi.TruncateLeft(bgLine, cut, "")
 			}
-		} else {
-			w = runewidth.RuneWidth(c)
-		}
-
-		if pos >= cutWidth {
-			if b.Len() == 0 {
-				if ab.Len() > 0 {
-					b.Write(ab.Bytes())
-				}
-				if pos-cutWidth > 1 {
-					b.WriteByte(' ')
-					continue
-				}
+			if strings.Contains(fgLine, "\x1b") {
+				b.WriteString(reset)
 			}
-			b.WriteRune(c)
+			b.WriteString(strings.Repeat(" ", lineWidth-end-ansi.StringWidth(right)))
+			b.WriteString(right)
 		}
-		pos += w
+		bgLines[y+i] = b.String()
 	}
-	return b.String()
+	return strings.Join(bgLines, "\n")
 }
 
-func clamp(v, lower, upper int) int {
-	return min(max(v, lower), upper)
+// PlaceCenter draws fg over the center of bg, sized width x height.
+func PlaceCenter(width, height int, fg, bg string) string {
+	_, fgWidth := lines(fg)
+	return PlaceOverlay((width-fgWidth)/2, (height-strings.Count(fg, "\n")-1)/2, fg, bg)
 }
 
-// Split a string into lines, additionally returning the size of the widest
-// line.
-func getLines(s string) (lines []string, widest int) {
-	lines = strings.Split(s, "\n")
-
-	for _, l := range lines {
-		w := _ansi.StringWidth(l)
-		if widest < w {
-			widest = w
-		}
+// lines splits s into lines, with the width of the widest.
+func lines(s string) ([]string, int) {
+	ls := strings.Split(s, "\n")
+	widest := 0
+	for _, l := range ls {
+		widest = max(widest, ansi.StringWidth(l))
 	}
-
-	return lines, widest
+	return ls, widest
 }
