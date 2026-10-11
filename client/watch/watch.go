@@ -437,7 +437,7 @@ func jitter(w storage.Watch, max time.Duration) time.Duration {
 	}
 	h := fnv.New64a()
 	fmt.Fprintf(h, "%d/%d", w.ID, w.LastChecked.Unix())
-	return time.Duration(h.Sum64() % uint64(max+1))
+	return time.Duration(h.Sum64()%uint64(max/time.Second+1)) * time.Second
 }
 
 // GapsDue is true when the watch's gap filling is due (see watch.gap_interval).

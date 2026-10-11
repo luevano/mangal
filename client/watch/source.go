@@ -10,12 +10,17 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
-// ClientSource is the provider's shared client (client.AcquireByID).
+// ClientSource is the provider's shared client (client.AcquireByID). Its cached chapter
+// lists are dropped: a check needs the current ones.
 func ClientSource(ctx context.Context, provider string) (Source, error) {
 	c, _, err := client.AcquireByID(ctx, provider)
 	if err != nil {
+		return nil, err
+	}
+	if err := cache.ClearChapterCache(c.Info().ID); err != nil {
 		return nil, err
 	}
 	return clientSource{c}, nil
