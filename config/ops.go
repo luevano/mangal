@@ -17,8 +17,13 @@ import (
 	"github.com/spf13/viper"
 )
 
-// ErrUnknownKey is returned for a key that isn't registered.
+// ErrUnknownKey is matched by the errors about a key that isn't registered.
 var ErrUnknownKey = errors.New("unknown config key")
+
+type unknownKeyError string
+
+func (e unknownKeyError) Error() string        { return fmt.Sprintf("unknown config key %q", string(e)) }
+func (e unknownKeyError) Is(target error) bool { return target == ErrUnknownKey }
 
 // unsupported are the keys of the loaded file that aren't registered.
 var unsupported []string
@@ -47,7 +52,7 @@ func setup() {
 func lookup(key string) (field, error) {
 	f, ok := fields[key]
 	if !ok {
-		return nil, fmt.Errorf("%w %q", ErrUnknownKey, key)
+		return nil, unknownKeyError(key)
 	}
 	return f, nil
 }
