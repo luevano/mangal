@@ -3,15 +3,17 @@ package cache
 import (
 	"time"
 
+	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/storage/legacy"
 	"golang.org/x/oauth2"
 )
 
-const CacheDBNameMangalAuth = "mangal-auth"
+const CacheDBNameMangalAuth = storage.OwnerMangalAuth
 
 const (
-	BucketNameAuthHistory         = "auth-history"
-	BucketNameAnilistAuthData     = "anilist"
-	BucketNameMyAnimeListAuthData = "myanimelist"
+	BucketNameAuthHistory         = storage.BucketAuthHistory
+	BucketNameAnilistAuthData     = legacy.BucketAnilistAuth
+	BucketNameMyAnimeListAuthData = legacy.BucketMyAnimeListAuth
 )
 
 const (

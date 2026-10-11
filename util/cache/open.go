@@ -6,31 +6,33 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/luevano/libmangal"
 
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/storage/legacy"
 )
 
 var (
-	openOnce        sync.Once
-	cacheDB, dataDB *storage.DB
-	openErr         error
-	notices         []string
+	openOnce sync.Once
+	st       storage.Storage
+	openErr  error
+	notices  []string
 )
 
 // Open opens the cache and data databases (once per process) and converts the old
 // cache files, if any.
 func Open() error {
-	_, _, err := open()
+	_, err := Storage()
 	return err
 }
 
 // Close closes the databases, if they were opened. Only when mangal exits.
 func Close() error {
 	var errs []error
-	for _, db := range []*storage.DB{cacheDB, dataDB} {
+	for _, db := range []*storage.DB{st.Cache, st.Data} {
 		if db != nil {
 			errs = append(errs, db.Close())
 		}
@@ -44,41 +46,58 @@ func Notices() []string {
 	return notices
 }
 
-// DBs returns the cache and data databases.
-func DBs() (cache, data *storage.DB, err error) {
-	return open()
-}
-
-func open() (*storage.DB, *storage.DB, error) {
+// Storage is mangal's databases, opened once per process.
+func Storage() (storage.Storage, error) {
 	openOnce.Do(func() {
+		var cacheDB, dataDB *storage.DB
 		cacheDB, openErr = storage.OpenCache(filepath.Join(path.CacheDir(), storage.FilenameCache))
 		if openErr != nil {
 			return
 		}
 		dataDB, openErr = storage.OpenData(filepath.Join(path.DataDir(), storage.FilenameData))
 		if openErr != nil {
+			_ = cacheDB.Close()
 			return
 		}
-		var notice string
-		notice, openErr = importBBolt(path.CacheDir(), dataDB)
-		if notice != "" {
+		st = storage.Storage{Cache: cacheDB, Data: dataDB}
+		if notice := legacy.Import(path.CacheDir(), dataDB); notice != "" {
 			notices = append(notices, notice)
 		}
 		if notice := useKeyring(dataDB); notice != "" {
 			notices = append(notices, notice)
 		}
 	})
-	return cacheDB, dataDB, openErr
+	return st, openErr
+}
+
+// Library is the library index.
+func Library() (storage.Library, error) {
+	s, err := Storage()
+	return s.Library(), err
+}
+
+// AccountsStore is the cached provider accounts, by provider id.
+func AccountsStore(ttl time.Duration) (storage.KV, error) {
+	s, err := Storage()
+	return s.AccountsStore(ttl), err
+}
+
+// DBs returns the cache and data databases.
+//
+// Deprecated: use Storage, Library or AccountsStore.
+func DBs() (cache, data *storage.DB, err error) {
+	s, err := Storage()
+	return s.Cache, s.Data, err
 }
 
 // OldIDsNotice tells about data still under old provider ids, short for a one line
 // warning and long to explain what migrating does. Both are empty if there's none.
 func OldIDsNotice(loaders []libmangal.ProviderLoader) (short, long string, err error) {
-	cacheDB, dataDB, err := open()
+	s, err := Storage()
 	if err != nil {
 		return "", "", err
 	}
-	oldIDs, err := storage.FindOldIDs(cacheDB, dataDB, loaders)
+	oldIDs, err := s.FindOldIDs(loaders)
 	if err != nil || len(oldIDs) == 0 {
 		return "", "", err
 	}

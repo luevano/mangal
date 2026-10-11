@@ -1,4 +1,4 @@
-package cache
+package legacy
 
 import (
 	"os"
@@ -52,8 +52,8 @@ func TestImportBBolt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	writeBolt(t, filepath.Join(dir, "mangal-auth.db"), BucketNameAnilistAuthData, map[string]any{"david": oauth2.Token{AccessToken: "secret"}})
-	writeBolt(t, filepath.Join(dir, "mangal-auth.db"), BucketNameAuthHistory, map[string]any{AnilistAuthHistory: UserHistory{}})
+	writeBolt(t, filepath.Join(dir, "mangal-auth.db"), BucketAnilistAuth, map[string]any{"david": oauth2.Token{AccessToken: "secret"}})
+	writeBolt(t, filepath.Join(dir, "mangal-auth.db"), storage.BucketAuthHistory, map[string]any{"anilist": []string{}})
 	writeBolt(t, filepath.Join(dir, "metadata", "anilist.db"), metadata.CacheBucketNameTitleToID, map[string]any{"berserk": 30002})
 	writeBolt(t, filepath.Join(dir, "anilist.db"), metadata.CacheBucketNameTitleToID, map[string]any{"vagabond": 30656})
 	writeBolt(t, filepath.Join(dir, "mango-mangadex.db"), "chapters", map[string]any{"x": 1})
@@ -63,22 +63,20 @@ func TestImportBBolt(t *testing.T) {
 	writeBolt(t, filepath.Join(dir, "anilist", "access-token.db"), "access-token", map[string]any{"hi": "token"})
 
 	// a file held by another (old) mangal
+	writeBolt(t, filepath.Join(dir, "mango-mangaplus.db"), "volumes", map[string]any{"x": 1})
 	held, err := bolt.Open(filepath.Join(dir, "mango-mangaplus.db"), 0o600, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer held.Close()
 
-	notice, err := importBBolt(dir, data)
-	if err != nil {
-		t.Fatal(err)
-	}
+	notice := Import(dir, data)
 	if !strings.Contains(notice, "kept 3 title bindings, 1 logins and 1 histories") || !strings.Contains(notice, "log in again") || !strings.Contains(notice, "mango-mangaplus.db are in use") {
 		t.Errorf("notice %q", notice)
 	}
 
 	var token oauth2.Token
-	if found, err := (storage.KV{DB: data, Table: storage.TableAuthTokens, Owner: BucketNameAnilistAuthData}).Get("david", &token); err != nil || !found || token.AccessToken != "secret" {
+	if found, err := (storage.KV{DB: data, Table: storage.TableAuthTokens, Owner: BucketAnilistAuth}).Get("david", &token); err != nil || !found || token.AccessToken != "secret" {
 		t.Errorf("token %+v, %t, %v", token, found, err)
 	}
 	bindings := storage.KV{DB: data, Table: storage.TableTitleBindings, Owner: "anilist"}
@@ -102,10 +100,38 @@ func TestImportBBolt(t *testing.T) {
 
 	// nothing left to convert (but the one in use)
 	held.Close()
-	if notice, err := importBBolt(dir, data); err != nil || !strings.Contains(notice, "kept 0 title bindings") {
-		t.Errorf("second run: %q, %v", notice, err)
+	if notice := Import(dir, data); !strings.Contains(notice, "kept 0 title bindings") {
+		t.Errorf("second run: %q", notice)
 	}
-	if notice, _ := importBBolt(dir, data); notice != "" {
+	if notice := Import(dir, data); notice != "" {
 		t.Errorf("third run: %q", notice)
+	}
+}
+
+func TestImportForeign(t *testing.T) {
+	dir := t.TempDir()
+	data, err := storage.OpenData(filepath.Join(t.TempDir(), storage.FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// someone else's bbolt file, a file that isn't bbolt, and an old file that can't be
+	// converted (the data database is closed)
+	writeBolt(t, filepath.Join(dir, "other-app.db"), "users", map[string]any{"x": 1})
+	if err := os.WriteFile(filepath.Join(dir, "notes.db"), []byte("not bbolt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if notice := Import(dir, data); notice != "" {
+		t.Errorf("notice %q, want none", notice)
+	}
+
+	writeBolt(t, filepath.Join(dir, "mangal.db"), storage.BucketSearchHistory, map[string]any{"mangas": []string{}})
+	data.Close()
+	if notice := Import(dir, data); !strings.Contains(notice, "Couldn't convert") || strings.Contains(notice, "Converted") {
+		t.Errorf("notice %q", notice)
+	}
+	for _, name := range []string{"other-app.db", "notes.db", "mangal.db"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("%s: %v, want it kept", name, err)
+		}
 	}
 }

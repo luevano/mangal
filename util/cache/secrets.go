@@ -15,8 +15,8 @@ const (
 )
 
 func mangaPlusAuth() (storage.KV, error) {
-	_, dataDB, err := open()
-	return authStore(dataDB, authOwnerMangaPlus), err
+	st, err := Storage()
+	return st.AuthStore(authOwnerMangaPlus, keyring), err
 }
 
 func getString(key string) (string, error) {
@@ -83,9 +83,4 @@ func useKeyring(data *storage.DB) string {
 		return fmt.Sprintf("Moved %d logins and secrets from the OS keyring back to mangal's database.", moved)
 	}
 	return ""
-}
-
-// authStore is the logins of the owner (e.g. "anilist"), in the OS keyring when auth.keyring.
-func authStore(data *storage.DB, owner string) storage.KV {
-	return storage.KV{DB: data, Table: storage.TableAuthTokens, Owner: owner, Keyring: keyring}
 }

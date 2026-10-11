@@ -2,14 +2,13 @@ package cache
 
 import (
 	"encoding/gob"
+	"fmt"
 	"time"
 
-	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/metadata/anilist"
 	"github.com/luevano/libmangal/metadata/myanimelist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
-	mango "github.com/luevano/mangoprovider"
 	"github.com/philippgille/gokv"
 	"golang.org/x/oauth2"
 )
@@ -30,53 +29,28 @@ func init() {
 	gob.RegisterName("oauth-token", &oauth2.Token{})
 }
 
-// CacheStore is the general store builder with a provided db name (a provider id, a
-// metadata provider id, or mangal's own) and bucket name (the kind of data).
-//
-// Each kind of data has its own table, in the cache database or, for what isn't cache
-// (title bindings, logins, search history), in the data database. The TTL is decided by
-// the kind.
+// CacheStore is the store of a db name (a provider id, a metadata provider id, or mangal's
+// own) and bucket name (the kind of data), see storage.Storage.Store.
 func CacheStore(dbName, bucketName string) (gokv.Store, error) {
-	cacheDB, dataDB, err := open()
+	st, err := Storage()
 	if err != nil {
 		return nil, err
 	}
+	opts, err := storeOptions()
+	if err != nil {
+		return nil, err
+	}
+	return st.Store(dbName, bucketName, opts), nil
+}
+
+func storeOptions() (storage.StoreOptions, error) {
 	ttl, err := time.ParseDuration(config.Cache.TTL.Get())
 	if err != nil {
-		return nil, err
+		return storage.StoreOptions{}, fmt.Errorf("cache.ttl: %w", err)
 	}
-	metadataTTL := 48 * time.Hour
-
-	switch {
-	case dbName == CacheDBNameMangalAuth && bucketName == BucketNameAuthHistory:
-		return storage.KV{DB: dataDB, Table: storage.TableAuthHistory}, nil
-	case dbName == CacheDBNameMangalAuth:
-		// no expiry, an expired token is kept (marked, see ExpireAnilistAuthData) to tell the user
-		return authStore(dataDB, bucketName), nil
-	case dbName == CacheDBNameMangal && bucketName == BucketNameSearchHistory:
-		return storage.KV{DB: dataDB, Table: storage.TableSearchHistory}, nil
-	case bucketName == metadata.CacheBucketNameTitleToID:
-		return storage.KV{DB: dataDB, Table: storage.TableTitleBindings, Owner: dbName}, nil
-	case bucketName == metadata.CacheBucketNameQueryToIDs:
-		return storage.KV{DB: cacheDB, Table: storage.TableMetadataSearches, Owner: dbName, TTL: metadataTTL}, nil
-	case bucketName == metadata.CacheBucketNameIDToManga:
-		return storage.KV{DB: cacheDB, Table: storage.TableMetadata, Owner: dbName, TTL: metadataTTL}, nil
-	case bucketName == mango.CacheBucketNameMangas:
-		return storage.KV{DB: cacheDB, Table: storage.TableMangaSearches, Owner: dbName, TTL: ttl}, nil
-	case bucketName == mango.CacheBucketNameVolumes:
-		return storage.KV{DB: cacheDB, Table: storage.TableVolumes, Owner: dbName, TTL: ttl}, nil
-	case bucketName == mango.CacheBucketNameChapters:
-		return storage.KV{DB: cacheDB, Table: storage.TableChapters, Owner: dbName, TTL: ttl}, nil
-	case bucketName == mango.CacheBucketNameMirrors:
-		mirrorTTL, err := time.ParseDuration(config.Cache.MirrorTTL.Get())
-		if err != nil {
-			return nil, err
-		}
-		return storage.KV{DB: cacheDB, Table: storage.TableOther, Owner: dbName + "/" + bucketName, TTL: mirrorTTL}, nil
-	case bucketName == dbName:
-		// luaprovider caches http responses with the provider id as the bucket
-		return storage.KV{DB: cacheDB, Table: storage.TableLuaHTTP, Owner: dbName, TTL: ttl}, nil
-	default:
-		return storage.KV{DB: cacheDB, Table: storage.TableOther, Owner: dbName + "/" + bucketName, TTL: ttl}, nil
+	mirrorTTL, err := time.ParseDuration(config.Cache.MirrorTTL.Get())
+	if err != nil {
+		return storage.StoreOptions{}, fmt.Errorf("cache.mirror_ttl: %w", err)
 	}
+	return storage.StoreOptions{TTL: ttl, MirrorTTL: mirrorTTL, Keyring: keyring}, nil
 }

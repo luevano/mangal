@@ -1,9 +1,11 @@
 package cache
 
-const CacheDBNameMangal = "mangal"
+import "github.com/luevano/mangal/v5/storage"
+
+const CacheDBNameMangal = storage.OwnerMangal
 
 const (
-	BucketNameSearchHistory = "search-history"
+	BucketNameSearchHistory = storage.BucketSearchHistory
 )
 
 const (
