@@ -43,8 +43,9 @@ const (
 )
 
 var (
-	// ErrBusy is a check of providers another check has (in this or another process).
-	ErrBusy = errors.New("providers busy with another check")
+	// ErrBusy is a check of providers another check or a download has (in this or another
+	// process).
+	ErrBusy = errors.New("providers busy with another check or a download")
 	// ErrNotFound is a watch id that doesn't exist.
 	ErrNotFound = storage.ErrWatchNotFound
 	// ErrExists is watching a manga that's already watched.

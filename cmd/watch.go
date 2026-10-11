@@ -435,8 +435,8 @@ provider; --due: only the due ones), and download what's new. A check counts as 
 scheduled one: the next check is an interval from now.
 
 A provider is checked by one check at a time, also across processes (e.g. "mangal
-serve"): the watches of a provider another check has are skipped, and when every one is
-busy it's an error. Errors are sent to Discord as configured (watch.notify), and make the
+serve"): the watches of a provider another check or a download has are skipped, and when
+every one is busy it's an error. Errors are sent to Discord as configured (watch.notify), and make the
 exit code 1.`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if watchCheckArgs.Provider != "" && len(args) > 0 {

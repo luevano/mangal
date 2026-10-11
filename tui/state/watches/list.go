@@ -664,7 +664,7 @@ func (s *listState) check(ctx context.Context, ids []int64, opts watch.CheckOpti
 	return tea.Batch(base.Notify("Checking "+what), checkCmd(base.Background(ctx), s.manager, ids, opts), s.tick(pollChecking), s.spin())
 }
 
-// busyMessage is a check refused because another check has its providers.
+// busyMessage is a check refused because another check or a download has its providers.
 const busyMessage = "Another check or a download has those providers, try again when it's done"
 
 func checkCmd(ctx context.Context, m watch.Manager, ids []int64, opts watch.CheckOptions) tea.Cmd {
