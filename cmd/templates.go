@@ -2,13 +2,11 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
-	"text/template"
 
-	"github.com/luevano/mangal/v5/template/funcs"
+	"github.com/luevano/mangal/v5/template"
 	"github.com/luevano/mangal/v5/theme/style"
-	"github.com/luevano/mangal/v5/util"
-	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
 
@@ -31,9 +29,9 @@ var templatesFuncsCmd = &cobra.Command{
 	Short: "Show available functions",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
-		for k, v := range funcs.Funcs {
-			cmd.Println(style.Bold.Accent.Render(k))
-			cmd.Println(style.Normal.Secondary.Render(v.Description))
+		for _, f := range template.Funcs {
+			cmd.Println(style.Bold.Accent.Render(f.Name))
+			cmd.Println(style.Normal.Secondary.Render(f.Description))
 			cmd.Println()
 		}
 	},
@@ -46,17 +44,8 @@ var templatesExecArgs = struct {
 func init() {
 	templatesCmd.AddCommand(templatesExecCmd)
 
-	exampleValue := struct {
-		Title  string
-		Number float64
-	}{
-		Title:  "Example Title",
-		Number: 32.5,
-	}
-	marshalled := lo.Must(json.Marshal(exampleValue))
-
 	f := templatesExecCmd.Flags()
-	f.StringVarP(&templatesExecArgs.Value, "value", "v", string(marshalled), "JSON object to use as value")
+	f.StringVarP(&templatesExecArgs.Value, "value", "v", `{"Title":"Example Title","Number":32.5}`, "JSON object to use as value")
 }
 
 var templatesExecCmd = &cobra.Command{
@@ -64,25 +53,16 @@ var templatesExecCmd = &cobra.Command{
 	Short: "Execute template",
 	Args:  cobra.MinimumNArgs(1),
 	// TODO: fix issue when using spaces in -v
-	Run: func(cmd *cobra.Command, args []string) {
-		tmpl, err := template.
-			New("exec").
-			Funcs(funcs.FuncMap).
-			Parse(strings.Join(args, " "))
-		if err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
-		}
-
+	RunE: func(cmd *cobra.Command, args []string) error {
 		var value map[string]any
-
 		if err := json.Unmarshal([]byte(templatesExecArgs.Value), &value); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
+			return fmt.Errorf("parse --value: %w", err)
 		}
-
-		if err := tmpl.Execute(cmd.OutOrStdout(), value); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
+		out, err := template.Exec(strings.Join(args, " "), value)
+		if err != nil {
+			return err
 		}
-
-		cmd.Println()
+		cmd.Println(out)
+		return nil
 	},
 }

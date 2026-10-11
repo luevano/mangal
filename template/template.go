@@ -1,16 +1,22 @@
+// Package template runs the download name templates (config download.*.name_template).
 package template
 
 import (
+	"fmt"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/config"
-	"github.com/luevano/mangal/v5/template/funcs"
-	"github.com/luevano/mangal/v5/util"
+	"github.com/luevano/mangal/v5/log"
 )
+
+func init() {
+	config.CheckTemplate = Check
+}
 
 type mangaTemplateData struct {
 	Provider libmangal.ProviderInfo
@@ -31,78 +37,103 @@ type chapterTemplateData struct {
 	Manga    mangadata.MangaInfo
 }
 
-func Provider(provider libmangal.ProviderInfo) string {
-	var sb strings.Builder
+// parsed templates by text, they're parsed once
+var parsed sync.Map
 
-	err := template.Must(template.New("provider").
-		Funcs(funcs.FuncMap).
-		Parse(config.Download.Provider.NameTemplate.Get())).
-		Execute(&sb, provider)
-	if err != nil {
-		util.Errorf("error during execution of the provider name template: %s\n", err)
+// Parse parses a name template with the template functions.
+func Parse(text string) (*template.Template, error) {
+	if t, ok := parsed.Load(text); ok {
+		return t.(*template.Template), nil
 	}
+	t, err := template.New("").Funcs(funcMap).Parse(text)
+	if err != nil {
+		return nil, err
+	}
+	parsed.Store(text, t)
+	return t, nil
+}
 
-	return sb.String()
+// Check validates a name template.
+func Check(text string) error {
+	_, err := Parse(text)
+	return err
+}
+
+// defaults are libmangal's names, used when a template fails
+var defaults = sync.OnceValue(libmangal.DefaultClientOptions)
+
+// execute runs the template of the config key, or returns fallback() if it fails.
+func execute(key, text string, data any, fallback func() string) string {
+	t, err := Parse(text)
+	if err == nil {
+		var sb strings.Builder
+		if err = t.Execute(&sb, data); err == nil {
+			return sb.String()
+		}
+	}
+	name := fallback()
+	log.Warn("%s: %s, using %q", key, err, name)
+	return name
+}
+
+func Provider(provider libmangal.ProviderInfo) string {
+	e := config.Download.Provider.NameTemplate
+	return execute(e.Key, e.Get(), provider, func() string {
+		return defaults().ProviderName(provider)
+	})
 }
 
 func Manga(provider libmangal.ProviderInfo, manga mangadata.Manga) string {
-	var sb strings.Builder
-
-	plt := config.Download.Manga.NameTemplateFallback.Get()
 	// Prioritize the NameTemplate (includes AnilistManga data)
+	e := config.Download.Manga.NameTemplateFallback
 	meta := manga.Metadata()
 	if metadata.Validate(meta) == nil {
-		plt = config.Download.Manga.NameTemplate.Get()
+		e = config.Download.Manga.NameTemplate
 	}
-
-	err := template.Must(template.New("manga").
-		Funcs(funcs.FuncMap).
-		Parse(plt)).
-		Execute(&sb, mangaTemplateData{
-			Provider: provider,
-			Manga:    manga.Info(),
-			Metadata: meta,
-		})
-	if err != nil {
-		util.Errorf("error during execution of the manga name template: %s\n", err)
+	data := mangaTemplateData{
+		Provider: provider,
+		Manga:    manga.Info(),
+		Metadata: meta,
 	}
-
-	return sb.String()
+	return execute(e.Key, e.Get(), data, func() string {
+		return defaults().MangaName(provider, manga)
+	})
 }
 
 func Volume(provider libmangal.ProviderInfo, volume mangadata.Volume) string {
-	var sb strings.Builder
-
-	err := template.Must(template.New("volume").
-		Funcs(funcs.FuncMap).
-		Parse(config.Download.Volume.NameTemplate.Get())).
-		Execute(&sb, volumeTemplateData{
-			Provider: provider,
-			Volume:   volume.Info(),
-			Manga:    volume.Manga().Info(),
-		})
-	if err != nil {
-		util.Errorf("error during execution of the volume name template: %s\n", err)
+	e := config.Download.Volume.NameTemplate
+	data := volumeTemplateData{
+		Provider: provider,
+		Volume:   volume.Info(),
+		Manga:    volume.Manga().Info(),
 	}
-
-	return sb.String()
+	return execute(e.Key, e.Get(), data, func() string {
+		return defaults().VolumeName(provider, volume)
+	})
 }
 
 func Chapter(provider libmangal.ProviderInfo, chapter mangadata.Chapter) string {
-	var sb strings.Builder
-
-	err := template.Must(template.New("chapter").
-		Funcs(funcs.FuncMap).
-		Parse(config.Download.Chapter.NameTemplate.Get())).
-		Execute(&sb, chapterTemplateData{
-			Provider: provider,
-			Chapter:  chapter.Info(),
-			Volume:   chapter.Volume().Info(),
-			Manga:    chapter.Volume().Manga().Info(),
-		})
-	if err != nil {
-		util.Errorf("Error during execution of the chapter name template: %s\n", err)
+	e := config.Download.Chapter.NameTemplate
+	data := chapterTemplateData{
+		Provider: provider,
+		Chapter:  chapter.Info(),
+		Volume:   chapter.Volume().Info(),
+		Manga:    chapter.Volume().Manga().Info(),
 	}
+	return execute(e.Key, e.Get(), data, func() string {
+		return defaults().ChapterName(provider, chapter)
+	})
+}
 
-	return sb.String()
+// Exec runs a template with the given data, for trying templates out.
+func Exec(text string, data any) (string, error) {
+	t, err := Parse(text)
+	if err != nil {
+		return "", fmt.Errorf("parse template: %w", err)
+	}
+	var sb strings.Builder
+	if err := t.Execute(&sb, data); err != nil {
+		return "", fmt.Errorf("execute template: %w", err)
+	}
+	return sb.String(), nil
 }
