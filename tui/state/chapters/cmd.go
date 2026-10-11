@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
@@ -122,7 +123,7 @@ func (s *state) downloadChapterCmd(ctx context.Context, item *item, options libm
 			s.actionRunningNow("download")
 			defer s.actionRunningNow("")
 
-			downChap, err := s.client.DownloadChapterContext(ctx, chapter, options)
+			downChap, err := client.DownloadChapter(ctx, s.client, chapter, options)
 			if err != nil {
 				return err
 			}

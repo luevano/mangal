@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/v5/client"
+	mangalclient "github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
@@ -17,7 +17,7 @@ import (
 )
 
 func RunDownload(ctx context.Context, args Args) error {
-	client, err := client.NewClientByID(ctx, args.Provider)
+	client, err := mangalclient.NewClientByID(ctx, args.Provider)
 	if err != nil {
 		return notify.SendError(err)
 	}
@@ -98,7 +98,7 @@ func RunDownload(ctx context.Context, args Args) error {
 		retry := true
 		for retry {
 			retry = false
-			ch.Down, ch.Err = client.DownloadChapterContext(ctx, ch.Chapter, downloadOptions)
+			ch.Down, ch.Err = mangalclient.DownloadChapter(ctx, client, ch.Chapter, downloadOptions)
 			if ch.Err != nil {
 				// cancelled (e.g. ctrl+c), don't keep trying the rest of the chapters
 				if ctx.Err() != nil {

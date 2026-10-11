@@ -4,6 +4,7 @@ import (
 	luadoc "github.com/luevano/gopher-luadoc"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	mangalclient "github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/script/lib/util"
 	lua "github.com/yuin/gopher-lua"
@@ -414,7 +415,7 @@ func newDownloadChapter(client *libmangal.Client) lua.LGFunction {
 	return func(state *lua.LState) int {
 		chapter := util.Check[mangadata.Chapter](state, 1)
 
-		downChap, err := client.DownloadChapterContext(state.Context(), chapter, config.DownloadOptions())
+		downChap, err := mangalclient.DownloadChapter(state.Context(), client, chapter, config.DownloadOptions())
 		util.Must(state, err)
 
 		util.Push(state, downChap, downloadedChapterTypeName)

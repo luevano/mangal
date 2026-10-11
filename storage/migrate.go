@@ -17,6 +17,8 @@ type OldID struct {
 	Old, New, Name string
 	// MangaDirs is how many library index entries use the old id.
 	MangaDirs int
+	// Downloads is how many downloaded chapters use the old id.
+	Downloads int
 	// Cache is how many cache entries use the old id (dropped when migrating).
 	Cache int
 }
@@ -25,7 +27,7 @@ type OldID struct {
 func FindOldIDs(cache, data *DB, loaders []libmangal.ProviderLoader) ([]OldID, error) {
 	counts := map[string]*OldID{}
 	var order []string
-	add := func(id string, dirs, entries int) {
+	add := func(id string, dirs, downloads, entries int) {
 		if _, alias, ok := libmangal.FindLoader(loaders, id); !ok || alias == nil {
 			return
 		}
@@ -35,14 +37,18 @@ func FindOldIDs(cache, data *DB, loaders []libmangal.ProviderLoader) ([]OldID, e
 			order = append(order, id)
 		}
 		counts[id].MangaDirs += dirs
+		counts[id].Downloads += downloads
 		counts[id].Cache += entries
 	}
 
-	if err := countBy(data, `SELECT provider, count(*) FROM manga_dirs GROUP BY provider`, func(id string, n int) { add(id, n, 0) }); err != nil {
+	if err := countBy(data, `SELECT provider, count(*) FROM manga_dirs GROUP BY provider`, func(id string, n int) { add(id, n, 0, 0) }); err != nil {
+		return nil, err
+	}
+	if err := countBy(data, `SELECT provider, count(*) FROM downloads GROUP BY provider`, func(id string, n int) { add(id, 0, n, 0) }); err != nil {
 		return nil, err
 	}
 	for _, table := range providerTables {
-		if err := countBy(cache, `SELECT owner, count(*) FROM `+table+` GROUP BY owner`, func(id string, n int) { add(id, 0, n) }); err != nil {
+		if err := countBy(cache, `SELECT owner, count(*) FROM `+table+` GROUP BY owner`, func(id string, n int) { add(id, 0, 0, n) }); err != nil {
 			return nil, err
 		}
 	}
@@ -72,11 +78,14 @@ func countBy(db *DB, query string, f func(string, int)) error {
 	return rows.Err()
 }
 
-// MigrateOldIDs moves the library index entries of each old id to its new id and drops
+// MigrateOldIDs moves the library index entries and downloads of each old id to its new id and drops
 // its cache entries (they're rebuilt under the new id).
 func MigrateOldIDs(cache, data *DB, oldIDs []OldID) error {
 	for _, id := range oldIDs {
 		if err := migrateMangaDirs(data, id); err != nil {
+			return fmt.Errorf("migrate %s: %w", id.Old, err)
+		}
+		if _, err := data.Exec(`UPDATE downloads SET provider = ? WHERE provider = ?`, id.New, id.Old); err != nil {
 			return fmt.Errorf("migrate %s: %w", id.Old, err)
 		}
 		for _, table := range providerTables {

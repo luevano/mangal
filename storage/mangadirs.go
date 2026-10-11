@@ -66,6 +66,11 @@ func (m MangaDirs) Moved(from, to string) error {
 	if err == nil {
 		_, err = m.DB.Exec(`UPDATE manga_dirs SET parent = ? WHERE parent = ?`, to, from)
 	}
+	if err == nil {
+		// the downloaded chapters under the directory
+		_, err = m.DB.Exec(`UPDATE downloads SET path = ? || substr(path, ?) WHERE substr(path, 1, ?) = ?`,
+			to, len(from)+1, len(from)+1, from+string(filepath.Separator))
+	}
 	if err != nil {
 		return fmt.Errorf("move %s in the library index: %w", from, err)
 	}

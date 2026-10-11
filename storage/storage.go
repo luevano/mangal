@@ -85,6 +85,20 @@ var dataMigrations = []string{
 	PRIMARY KEY (parent, name)
 );
 CREATE INDEX manga_dirs_provider ON manga_dirs (provider)`,
+	`CREATE TABLE downloads (
+	path          TEXT PRIMARY KEY,
+	provider      TEXT NOT NULL,
+	manga_id      TEXT NOT NULL,
+	manga_title   TEXT NOT NULL,
+	volume        REAL NOT NULL,
+	chapter       REAL NOT NULL,
+	chapter_title TEXT NOT NULL,
+	chapter_url   TEXT NOT NULL,
+	format        TEXT NOT NULL,
+	pages         INTEGER NOT NULL,
+	downloaded    INTEGER NOT NULL
+);
+CREATE INDEX downloads_manga ON downloads (provider, manga_id)`,
 }
 
 // DB is an open SQLite database.

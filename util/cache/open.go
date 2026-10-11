@@ -71,13 +71,13 @@ func OldIDsNotice(loaders []libmangal.ProviderLoader) (short, long string, err e
 	var renames, details []string
 	for _, id := range oldIDs {
 		renames = append(renames, fmt.Sprintf("%s is now %s", id.Old, id.New))
-		details = append(details, fmt.Sprintf("- %s is now %s (%s): %d library entries, %d cache entries", id.Old, id.New, id.Name, id.MangaDirs, id.Cache))
+		details = append(details, fmt.Sprintf("- %s is now %s (%s): %d library entries, %d downloads, %d cache entries", id.Old, id.New, id.Name, id.MangaDirs, id.Downloads, id.Cache))
 	}
 	short = fmt.Sprintf("data under old provider ids (%s), run %q to update it", strings.Join(renames, ", "), "mangal migrate")
 	long = "Some data still uses old provider ids:\n\n" + strings.Join(details, "\n") + `
 
 Run "mangal migrate" to see what would change and "mangal migrate --apply" to do it:
-the library entries and their .libmangal.json files move to the new ids and the old
+the library entries, downloads and .libmangal.json files move to the new ids and the old
 cache is dropped (it rebuilds). Folders aren't renamed or moved, "mangal library rename"
 does that. Until then everything keeps working through the old ids.`
 	return short, long, nil

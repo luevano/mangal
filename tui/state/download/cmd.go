@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/util"
 	"github.com/skratchdot/open-golang/open"
 )
@@ -26,7 +27,7 @@ func (s *state) downloadChapterCmd(ctx context.Context) tea.Cmd {
 			err      error
 		)
 
-		downChap, err = s.client.DownloadChapterContext(ctx, ch.Chapter, s.options)
+		downChap, err = client.DownloadChapter(ctx, s.client, ch.Chapter, s.options)
 		if err != nil {
 			// on too many requests error
 			if wait, ok := util.RetryAfter(err); ok {

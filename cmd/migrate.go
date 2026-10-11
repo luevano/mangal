@@ -24,8 +24,8 @@ var migrateCmd = &cobra.Command{
 	Use:   "migrate",
 	Short: "Move data under old provider ids to the current ones",
 	Long: `Providers that were renamed keep their old ids in their history, data saved under an
-old id still works but can be moved to the current id: the library index entries and the
-.libmangal.json files of the downloaded mangas get the new id, and the old cache is
+old id still works but can be moved to the current id: the library index entries, the
+downloads and the .libmangal.json files of the downloaded mangas get the new id, and the old cache is
 dropped (it rebuilds). Folders aren't renamed or moved, "mangal library rename" does that.
 
 Only lists what would change unless --apply is set.`,
@@ -53,7 +53,7 @@ Only lists what would change unless --apply is set.`,
 		}
 
 		for _, id := range oldIDs {
-			cmd.Printf("%s -> %s (%s): %d library entries, %d cache entries (dropped)\n", id.Old, id.New, id.Name, id.MangaDirs, id.Cache)
+			cmd.Printf("%s -> %s (%s): %d library entries, %d downloads, %d cache entries (dropped)\n", id.Old, id.New, id.Name, id.MangaDirs, id.Downloads, id.Cache)
 		}
 		for _, marker := range markers {
 			cmd.Printf("%s: %s -> %s\n", marker.Dir, marker.Old, marker.New)
