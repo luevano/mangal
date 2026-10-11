@@ -56,9 +56,9 @@ func init() {
 }
 
 var inlineCmd = &cobra.Command{
-	Use:     config.ModeInline.String(),
+	Use:     "inline",
 	Short:   "Useful for automation",
-	Long:    fmt.Sprintf("%s, useful for automation", config.ModeInline),
+	Long:    "inline, useful for automation",
 	GroupID: groupMode,
 	Args:    cobra.NoArgs,
 }

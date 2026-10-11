@@ -46,9 +46,9 @@ func init() {
 }
 
 var scriptCmd = &cobra.Command{
-	Use:     config.ModeScript.String(),
+	Use:     "script",
 	Short:   "Useful for custom process with Lua",
-	Long:    fmt.Sprintf("%s, useful for custom process with Lua", config.ModeScript),
+	Long:    "script, useful for custom process with Lua",
 	GroupID: groupMode,
 	Args:    cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {

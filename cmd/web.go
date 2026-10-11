@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
-	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/util"
 	"github.com/luevano/mangal/v5/web"
 	"github.com/spf13/cobra"
@@ -20,9 +17,9 @@ func init() {
 }
 
 var webCmd = &cobra.Command{
-	Use:     config.ModeWeb.String(),
+	Use:     "web",
 	Short:   "Start server",
-	Long:    fmt.Sprintf("%s, start server", config.ModeWeb),
+	Long:    "web, start server",
 	GroupID: groupMode,
 	Args:    cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
