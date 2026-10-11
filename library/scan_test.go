@@ -295,3 +295,32 @@ func TestScanUnmarkedProviderDirsOff(t *testing.T) {
 		t.Errorf("got %+v, %v, want nothing added", res, err)
 	}
 }
+
+func TestScanUnmarkedKitsuTag(t *testing.T) {
+	root := t.TempDir()
+	library := newLibrary(t)
+	scanner := Scanner{FS: afero.NewOsFs(), Library: library}
+	// named from Kitsu metadata (Anilist found nothing)
+	folder := filepath.Join(root, "mango-mangadex", "Some Manga (2010) [ktid-12345]")
+	writeCBZ(t, filepath.Join(folder, "[0001.0] One.cbz"), "1")
+
+	if res, err := scanner.Scan(root, true); err != nil || res.New != 1 {
+		t.Fatalf("got %+v, %v, want 1 new manga", res, err)
+	}
+	m, ok, err := library.MangaByFolder(filepath.Dir(folder), filepath.Base(folder))
+	kitsuID := metadata.ID{Raw: "12345", Source: metadata.IDSourceKitsu, Code: metadata.IDCodeKitsu}
+	if err != nil || !ok || m.Title != "Some Manga" || len(m.MetadataIDs) != 1 || m.MetadataIDs[0] != kitsuID {
+		t.Fatalf("got %+v, %t, %v", m, ok, err)
+	}
+
+	provider := libmangal.ProviderInfo{ID: "mango-mangadex"}
+	want := libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "uuid"}, MetadataIDs: []metadata.ID{kitsuID}}
+	if dir, found, err := library.FindMangaDir(filepath.Dir(folder), provider, want); err != nil || !found || dir != filepath.Base(folder) {
+		t.Errorf("find by the kitsu id: %q, %t, %v", dir, found, err)
+	}
+	// the same number on Anilist is another manga
+	want.MetadataIDs = []metadata.ID{{Raw: "12345", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}}
+	if dir, found, err := library.FindMangaDir(filepath.Dir(folder), provider, want); err != nil || found {
+		t.Errorf("found by an anilist id: %q, %t, %v", dir, found, err)
+	}
+}
