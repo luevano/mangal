@@ -12,7 +12,6 @@ import (
 	"github.com/luevano/mangal/v5/log"
 	providerloader "github.com/luevano/mangal/v5/provider/loader"
 	"github.com/luevano/mangal/v5/provider/manager"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/template"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -118,7 +117,7 @@ func AcquireByID(ctx context.Context, id string) (*libmangal.Client, []string, e
 		warnings = append(warnings, notice)
 	}
 	for _, w := range warnings {
-		log.Log("%s", w)
+		log.Warn("%s", w)
 	}
 
 	client, err := Acquire(ctx, loader)
@@ -182,11 +181,10 @@ func newClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal
 	options.MangaName = template.Manga
 	options.VolumeName = template.Volume
 	options.ChapterName = template.Chapter
-	_, dataDB, err := cache.DBs()
+	library, err := cache.Library()
 	if err != nil {
 		return nil, fmt.Errorf("open data db: %w", err)
 	}
-	library := storage.Library{DB: dataDB}
 	options.MangaDirIndex = library
 	options.ChapterIndex = library
 
@@ -199,6 +197,8 @@ func newClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal
 	if err != nil {
 		return nil, fmt.Errorf("load provider %q: %w", loader.Info().ID, err)
 	}
+	// every mode gets the provider's logs (page lines at debug)
+	client.Logger().SetOnLog(log.ProviderHook(""))
 	// no login here, see anilist.EnsureLogin
 	if err := client.SetMetadataProvider(ani); err != nil {
 		_ = client.Close()
