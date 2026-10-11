@@ -1,7 +1,12 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -12,73 +17,110 @@ import (
 	"github.com/spf13/viper"
 )
 
-// All of these are mostly just viper wrappers,
-// which are used by the Config entries or the fields.
+// ErrUnknownKey is returned for a key that isn't registered.
+var ErrUnknownKey = errors.New("unknown config key")
 
-// Get value of the key.
-//
-// Wrapper of viper.Get.
-func Get(key string) any {
-	if ok := Exists(key); !ok {
-		panic(errorf("Get: key %q is not set", key))
-	}
-	return viper.Get(key)
+// unsupported are the keys of the loaded file that aren't registered.
+var unsupported []string
+
+func init() {
+	setup()
 }
 
-// Default value for the key.
-func Default(key string) any {
-	if ok := Exists(key); !ok {
-		panic(errorf("Default: key %q is not set", key))
+// setup configures viper and sets the defaults, nothing is read here.
+func setup() {
+	viper.KeyDelimiter(".")
+	viper.SetFs(afs.Afero.Fs)
+	viper.SetConfigType("toml")
+
+	// Accept environment variables, all uppercase with "MANGAL_" prefix and "_" for ".",
+	// e.g. MANGAL_DOWNLOAD_PATH for download.path
+	viper.SetEnvPrefix(meta.AppName) // uppercased automatically
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
+
+	for key, f := range fields {
+		viper.SetDefault(key, f.defaultRaw())
 	}
-	return fields[key].Default
 }
 
-// Description of the key value.
-func Description(key string) string {
-	if ok := Exists(key); !ok {
-		panic(errorf("Description: key %q is not set", key))
+func lookup(key string) (field, error) {
+	f, ok := fields[key]
+	if !ok {
+		return nil, fmt.Errorf("%w %q", ErrUnknownKey, key)
 	}
-	return fields[key].Description
+	return f, nil
 }
 
-// Set a value for the key.
-//
-// Wrapper of viper.Set.
+// Get returns the value of the key as stored in the file (e.g. a format as a string).
+func Get(key string) (any, error) {
+	f, err := lookup(key)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := f.toRaw(viper.Get(key))
+	if err != nil {
+		return nil, fmt.Errorf("config key %q: %w", key, err)
+	}
+	return raw, nil
+}
+
+// Default value of the key, as stored in the file.
+func Default(key string) (any, error) {
+	f, err := lookup(key)
+	if err != nil {
+		return nil, err
+	}
+	return f.defaultRaw(), nil
+}
+
+// Description of the key.
+func Description(key string) (string, error) {
+	f, err := lookup(key)
+	if err != nil {
+		return "", err
+	}
+	return f.description(), nil
+}
+
+// IsSecret is true for keys that hold secrets (tokens, webhooks).
+func IsSecret(key string) bool {
+	f, ok := fields[key]
+	return ok && f.secret()
+}
+
+// Set a value for the key for this run, it isn't written to the file (see WriteKey). The
+// value can be the raw one (as in the file), the typed one or a string.
 func Set(key string, value any) error {
-	if err := Validate(key, value); err != nil {
-		return errorf("Set: %s", err.Error())
+	raw, err := Parse(key, value)
+	if err != nil {
+		return err
 	}
-	viper.Set(key, value)
+	viper.Set(key, raw)
 	return nil
 }
 
-// SetDefault sets a default value for the key.
-//
-// Wrapper of viper.SetDefault.
-func SetDefault(key string, value any) error {
-	if err := Validate(key, value); err != nil {
-		return errorf("SetDefault: %s", err.Error())
+// Parse validates the value for the key and returns it as stored in the file. The value
+// can be the raw one, the typed one or a string (e.g. "5" for an int key).
+func Parse(key string, value any) (any, error) {
+	f, err := lookup(key)
+	if err != nil {
+		return nil, err
 	}
-	viper.SetDefault(key, value)
-	return nil
+	raw, err := f.toRaw(value)
+	if err != nil {
+		return nil, fmt.Errorf("config key %q: %w", key, err)
+	}
+	return raw, nil
 }
 
-// BindPFlag binds a pflag to a key.
-//
-// Wrapper of viper.BindPFlag. Panics on error.
-func BindPFlag(key string, flag *pflag.Flag) {
+// BindPFlag makes the flag, when given, the value of the key.
+func BindPFlag(key string, flag *pflag.Flag) error {
+	if _, err := lookup(key); err != nil {
+		return err
+	}
 	if err := viper.BindPFlag(key, flag); err != nil {
-		panic(errorf("BindPFlag: couldn't bind flag to key %q: %s", err.Error()))
-	}
-}
-
-// Validate the value for a the registered key.
-func Validate(key string, value any) error {
-	if ok := Exists(key); !ok {
-		return fmt.Errorf("Validate: key %q is not set", key)
-	}
-	if err := fields[key].Validate(value); err != nil {
-		return fmt.Errorf("Validate: couldn't validate value %v for key %q: %s", value, key, err.Error())
+		return fmt.Errorf("bind flag %q to config key %q: %w", flag.Name, key, err)
 	}
 	return nil
 }
@@ -89,123 +131,178 @@ func Exists(key string) bool {
 	return found
 }
 
-// Keys returns all the registered keys.
+// Keys returns all the registered keys, sorted.
 func Keys() []string {
-	keys := make([]string, len(fields))
-	i := 0
-	for k := range fields {
-		keys[i] = k
-		i++
-	}
-	return keys
+	return slices.Sorted(maps.Keys(fields))
 }
 
-// Init initializes viper with the desired config (viper) options
-func Init() {
-	viper.KeyDelimiter(".")
-	viper.SetFs(afs.Afero.Fs)
-	viper.SetTypeByDefaultValue(true)
-
-	viper.AddConfigPath(xdgConfig())
-	viper.AddConfigPath(xdg.Home)
-	viper.SetConfigName(meta.AppName)
-	viper.SetConfigType("toml")
-
-	// Accept environment variables, all uppercase with "MANGAL_" prefix and "_" for ".",
-	// e.g. MANGAL_DOWNLOAD_PATH for download.path
-	viper.SetEnvPrefix("mangal") // uppercased automatically
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv()
+// Unsupported are the keys of the loaded config file that mangal doesn't know (e.g. removed
+// ones), sorted.
+func Unsupported() []string {
+	return unsupported
 }
 
-// Load the config file and validates all config keys.
+// envName is the environment variable of the key.
+func envName(key string) string {
+	return strings.ToUpper(meta.AppName + "_" + strings.ReplaceAll(key, ".", "_"))
+}
+
+// Load reads the config file at path. An empty path is the default location, which
+// doesn't need to exist; an explicit path does.
 //
-// If path is empty, it will try to load from xdg.ConfigHome then from xdg.Home.
+// The values aren't validated here: Validate does it once the flags are parsed.
 func Load(path string) error {
-	if path != "" {
-		viper.SetConfigFile(path)
+	explicit := path != ""
+	if !explicit {
+		path = defaultPath()
 	}
+	Path = path
 
-	// will read config and set all keys that match
+	viper.SetConfigFile(path)
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return err
+		if explicit || !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("read config %q: %w", path, err)
 		}
 	}
 
-	// validate all values now that the config was read
-	keys := viper.AllKeys()
-	for _, key := range keys {
-		if !Exists(key) {
-			// a table entry (providers.mirrors.<id>): the table is the key
-			if parent, ok := mapParent(key); ok {
-				if !slices.Contains(keys, parent) {
-					keys = append(keys, parent)
-				}
-				continue
-			}
-			fmt.Printf("Config key %q is not supported, update config file\n", key)
-			continue
+	unsupported = nil
+	for _, key := range viper.AllKeys() {
+		if !Exists(key) && !underMap(key) {
+			unsupported = append(unsupported, key)
 		}
+	}
+	slices.Sort(unsupported)
+	return nil
+}
 
-		field := fields[key]
-		v := Get(key)
-		value, err := field.Unmarshal(v)
-		if err != nil {
-			return fmt.Errorf("key %q: %w", key, err)
+// defaultPath is the config file in the config dir, or the one in the home dir if only that
+// one exists (viper used to look there too).
+func defaultPath() string {
+	path := filepath.Join(dir, filename)
+	if _, err := afs.Afero.Stat(path); err == nil {
+		return path
+	}
+	home := filepath.Join(xdg.Home, filename)
+	if _, err := afs.Afero.Stat(home); err == nil {
+		return home
+	}
+	return path
+}
+
+// underMap is true for an entry of a map key, e.g. providers.mirrors.<id>.
+func underMap(key string) bool {
+	for k, f := range fields {
+		if f.isMap() && strings.HasPrefix(key, k+".") {
+			return true
 		}
-		if err := Validate(key, value); err != nil {
-			return err
+	}
+	return false
+}
+
+// Validate checks the value of every key, wherever it comes from (file, environment,
+// flags).
+func Validate() error {
+	var errs []error
+	for _, key := range Keys() {
+		if _, err := fields[key].toRaw(viper.Get(key)); err != nil {
+			if _, ok := os.LookupEnv(envName(key)); ok {
+				err = fmt.Errorf("%w (from %s)", err, envName(key))
+			}
+			errs = append(errs, fmt.Errorf("%s: %w", key, err))
 		}
+	}
+	if len(errs) != 0 {
+		return fmt.Errorf("invalid config: %w", errors.Join(errs...))
 	}
 	return nil
 }
 
-// mapParent is the registered key key is an entry of, if any (for map values, which viper
-// lists by entry).
-func mapParent(key string) (string, bool) {
-	for i := strings.LastIndex(key, "."); i > 0; i = strings.LastIndex(key[:i], ".") {
-		if Exists(key[:i]) {
-			return key[:i], true
-		}
-	}
-	return "", false
-}
-
-// WriteKey sets the key and writes only that key to the existing config file, the rest of the file
-// stays as is. Errors if there's no config file, it's never created here.
+// WriteKey sets the key and writes only that key to the existing config file: the other
+// keys keep their values, but the file is re-serialised (comments and order are lost).
+// Errors if there's no config file, it's never created here (see CreateFile).
 //
 // Unlike Write, runtime values (e.g. from flags) and missing defaults aren't written.
 func WriteKey(key string, value any) error {
-	if err := Set(key, value); err != nil {
+	raw, err := Parse(key, value)
+	if err != nil {
 		return err
 	}
 
 	file := viper.New()
+	file.SetFs(afs.Afero.Fs)
 	file.SetConfigFile(Path)
 	if err := file.ReadInConfig(); err != nil {
-		return errorf("WriteKey: error reading the config file: %s", err.Error())
+		return fmt.Errorf("write config key %q: %w", key, err)
 	}
-	file.Set(key, value)
-	if err := file.WriteConfig(); err != nil {
-		return errorf("WriteKey: error writing the config file: %s", err.Error())
+	// through the settings map and not Set: viper would merge a map value with the file's
+	settings := file.AllSettings()
+	setNested(settings, strings.Split(key, "."), raw)
+	out := viper.New()
+	out.SetFs(afs.Afero.Fs)
+	out.SetConfigFile(Path)
+	if err := out.MergeConfigMap(settings); err != nil {
+		return fmt.Errorf("write config key %q: %w", key, err)
+	}
+	if err := out.WriteConfig(); err != nil {
+		return fmt.Errorf("write config key %q: %w", key, err)
+	}
+	viper.Set(key, raw)
+	return nil
+}
+
+func setNested(m map[string]any, path []string, value any) {
+	for _, k := range path[:len(path)-1] {
+		next, ok := m[k].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			m[k] = next
+		}
+		m = next
+	}
+	m[path[len(path)-1]] = value
+}
+
+// CreateFile creates an empty config file (and its directory) at Path if there's none.
+func CreateFile() error {
+	if _, err := afs.Afero.Stat(Path); err == nil {
+		return nil
+	}
+	if err := afs.Afero.MkdirAll(filepath.Dir(Path), 0o755); err != nil {
+		return fmt.Errorf("create config file: %w", err)
+	}
+	if err := afs.Afero.WriteFile(Path, nil, 0o644); err != nil {
+		return fmt.Errorf("create config file: %w", err)
 	}
 	return nil
 }
 
-// Write current configuration to disk (to the set config directory/file).
-//
-// Tries to write to the first path available.
+// Write writes every key to the config file: the file's values and the defaults of the
+// keys it doesn't have (values from the environment or flags aren't written). The file
+// is re-serialised (comments and order are lost), and created if there's none.
 func Write() error {
-	switch viper.WriteConfig().(type) {
-	case nil:
-		return nil
-	case viper.ConfigFileNotFoundError:
-		if err := viper.SafeWriteConfig(); err != nil {
-			return errorf("Write: error writing new config file: %s", err.Error())
-		}
-		return nil
-	default:
-		return errorf("Write: unexpected error")
+	file := viper.New()
+	file.SetFs(afs.Afero.Fs)
+	file.SetConfigFile(Path)
+	if err := file.ReadInConfig(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("write config: %w", err)
 	}
+	settings := file.AllSettings()
+	for _, key := range Keys() {
+		if !file.IsSet(key) {
+			setNested(settings, strings.Split(key, "."), fields[key].defaultRaw())
+		}
+	}
+	out := viper.New()
+	out.SetFs(afs.Afero.Fs)
+	out.SetConfigFile(Path)
+	if err := out.MergeConfigMap(settings); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	if err := afs.Afero.MkdirAll(filepath.Dir(Path), 0o755); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	if err := out.WriteConfig(); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
 }

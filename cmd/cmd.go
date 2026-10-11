@@ -50,8 +50,9 @@ func Execute() {
 	// Load the config before any command execution
 	// Looks weird, it sets the same variable it uses for default and then path.ConfigDir
 	// will also read this set flag but it also creates the directory if doesn't exist.
+	loadErr := config.Load("")
 	rootCmd.PersistentFlags().StringVar(&config.Path, "config", config.Path, "Config file path")
-	cobra.OnInitialize(initConfig(rootCmd.PersistentFlags().Lookup("config")))
+	cobra.OnInitialize(initConfig(rootCmd.PersistentFlags().Lookup("config"), loadErr))
 
 	if config.CLI.ColoredHelp.Get() {
 		cc.Init(&cc.Config{
@@ -83,14 +84,16 @@ func Execute() {
 }
 
 // re-reads the config from the changed flag
-func initConfig(flag *pflag.Flag) func() {
+func initConfig(flag *pflag.Flag, loadErr error) func() {
 	return func() {
 		if flag.Changed {
-			if err := config.Load(config.Path); err != nil {
-				errorf(rootCmd, "%s", util.ErrorTree(fmt.Errorf("load config %q: %w", config.Path, err)))
-			}
-		} else if err := config.LoadError(); err != nil {
-			errorf(rootCmd, "%s", util.ErrorTree(fmt.Errorf("load config %q: %w", config.Path, err)))
+			loadErr = config.Load(config.Path)
+		}
+		if loadErr != nil {
+			errorf(rootCmd, "%s", util.ErrorTree(loadErr))
+		}
+		if err := config.Validate(); err != nil {
+			errorf(rootCmd, "%s", util.ErrorTree(err))
 		}
 		// once the config finishes initializing (using custom config path or not), set the actual icon type
 		icon.SetType(config.Icons.Get())

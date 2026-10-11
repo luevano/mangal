@@ -4,21 +4,7 @@ import (
 	"io/fs"
 
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/v5/theme/icon"
 )
-
-type config struct {
-	Icons        *entry[string, icon.Type]
-	Cache        configCache
-	CLI          configCLI
-	Read         configRead
-	Download     configDownload
-	TUI          configTUI
-	Providers    configProviders
-	Library      configLibrary
-	Notification configNotification
-	Auth         configAuth
-}
 
 type configAuth struct {
 	Keyring *entry[bool, bool]

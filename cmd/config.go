@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -49,10 +48,16 @@ var configInfoCmd = &cobra.Command{
 
 		configEntries := map[string]configEntry{}
 		for _, key := range config.Keys() {
+			value, err := config.Get(key)
+			if err != nil {
+				errorf(cmd, "%s", util.ErrorTree(err))
+			}
+			def, _ := config.Default(key)
+			description, _ := config.Description(key)
 			configEntries[key] = configEntry{
-				Value:       config.Get(key),
-				Default:     config.Default(key),
-				Description: config.Description(key),
+				Value:       value,
+				Default:     def,
+				Description: description,
 			}
 		}
 
@@ -119,12 +124,11 @@ var configGetCmd = &cobra.Command{
 	SilenceErrors:     true,
 	ValidArgsFunction: completionConfigKeys,
 	Run: func(cmd *cobra.Command, args []string) {
-		key := args[0]
-		if !config.Exists(key) {
-			errorf(cmd, "config key %q doesn't exist", key)
+		value, err := config.Get(args[0])
+		if err != nil {
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
-
-		cmd.Println(config.Get(key))
+		cmd.Println(value)
 	},
 }
 
@@ -141,40 +145,17 @@ var configSetCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		key, value := args[0], args[1]
 
-		var converted any
-
-		// All of this seems innecessary.
-		switch config.Get(key).(type) {
-		case nil:
-			errorf(cmd, "unknown config key %q", key)
-		case string:
-			converted = value
-		case int:
-			parsedInt, err := strconv.ParseInt(value, 10, 64)
-			if err != nil {
-				errorf(cmd, "%s", util.ErrorTree(err))
-			}
-
-			converted = int(parsedInt)
-		case bool:
-			parsedBool, err := strconv.ParseBool(value)
-			if err != nil {
-				errorf(cmd, "%s", util.ErrorTree(err))
-			}
-
-			converted = parsedBool
-		default:
-			errorf(cmd, "unknown value type")
+		raw, err := config.Parse(key, value)
+		if err != nil {
+			errorf(cmd, "%s", util.ErrorTree(err))
 		}
-
-		if err := config.Set(key, converted); err != nil {
+		if err := config.CreateFile(); err != nil {
+			errorf(cmd, "%s", util.ErrorTree(err))
+		}
+		if err := config.WriteKey(key, raw); err != nil {
 			errorf(cmd, "%s", util.ErrorTree(err))
 		}
 
-		if err := config.Write(); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
-		}
-
-		successf(cmd, "Successfully set %q to %v", key, converted)
+		successf(cmd, "Successfully set %q to %v", key, raw)
 	},
 }
