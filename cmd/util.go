@@ -10,7 +10,6 @@ import (
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/theme/icon"
-	"github.com/luevano/mangal/v5/util"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -18,11 +17,6 @@ import (
 
 func successf(cmd *cobra.Command, format string, a ...any) {
 	cmd.Printf("%s %s\n", icon.Check.Colored(), fmt.Sprintf(format, a...))
-}
-
-func errorf(cmd *cobra.Command, format string, a ...any) {
-	cmd.PrintErrf(fmt.Sprintf("%s %s\n", icon.Cross.Colored(), format), a...)
-	util.Exit(1)
 }
 
 func completionProviderIDs(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
