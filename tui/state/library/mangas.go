@@ -44,11 +44,15 @@ func (i *mangaItem) Title() string {
 }
 
 func (i *mangaItem) Description() string {
+	parts := []string{fmt.Sprintf("%d chapters", i.manga.Chapters)}
 	var sources []string
 	for _, src := range i.manga.Sources {
 		sources = append(sources, src.Provider)
 	}
-	return fmt.Sprintf("%d chapters · %s · %s", i.manga.Chapters, strings.Join(sources, ", "), i.manga.Path())
+	if len(sources) != 0 {
+		parts = append(parts, strings.Join(sources, ", "))
+	}
+	return strings.Join(append(parts, i.manga.Path()), " · ")
 }
 
 type mangasState struct {

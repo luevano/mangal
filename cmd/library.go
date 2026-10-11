@@ -213,7 +213,11 @@ var libraryLsCmd = &cobra.Command{
 			for _, src := range m.Sources {
 				sources = append(sources, src.Provider)
 			}
-			cmd.Printf("%d  %s  %d chapters  %s  [%s]\n", m.ID, m.Title, m.Chapters, m.Path(), strings.Join(sources, ", "))
+			line := fmt.Sprintf("%d  %s  %d chapters  %s", m.ID, m.Title, m.Chapters, m.Path())
+			if len(sources) != 0 {
+				line += "  [" + strings.Join(sources, ", ") + "]"
+			}
+			cmd.Println(line)
 		}
 		printTrash(cmd)
 		return nil

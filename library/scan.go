@@ -111,7 +111,7 @@ func (s Scanner) ScanManga(m storage.Manga, root string, providerDirs bool) (Sca
 		res.Removed++
 	}
 
-	info, _ := libmangal.ReadMangaDirInfo(s.FS, folder)
+	provider, mangaID := s.sourceOf(m, folder, root, providerDirs)
 	for _, f := range files {
 		if known[f.path] {
 			continue
@@ -121,7 +121,7 @@ func (s Scanner) ScanManga(m storage.Manga, root string, providerDirs bool) (Sca
 			continue
 		}
 		err := s.Library.RecordDownload(m.Parent, m.Dir, storage.Download{
-			Path: f.path, Provider: info.Provider, MangaID: info.Manga.ID, MangaTitle: m.Title,
+			Path: f.path, Provider: provider, MangaID: mangaID, MangaTitle: m.Title,
 			Chapter: f.number, ChapterTitle: f.title, ChapterURL: f.url,
 			Format: f.format.String(), Pages: f.pages, Downloaded: f.modTime,
 		})
@@ -134,7 +134,8 @@ func (s Scanner) ScanManga(m storage.Manga, root string, providerDirs bool) (Sca
 }
 
 // Scan reconciles the whole library with the files under root, and adds the manga
-// folders with a .libmangal.json that aren't in it yet.
+// folders that aren't in it yet: with a .libmangal.json, or else any folder with chapters
+// (under the provider directories when providerDirs), guessed by guessInfo.
 func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
 	var res ScanResult
 	mangas, err := s.Library.Mangas()
@@ -149,7 +150,7 @@ func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
 		res.add(r)
 	}
 
-	folders, err := s.markedFolders(root, providerDirs)
+	folders, err := s.mangaFolders(root, providerDirs)
 	if err != nil {
 		return res, err
 	}
@@ -161,7 +162,21 @@ func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
 			}
 			continue
 		}
-		if err := s.Library.RememberMangaDir(parent, dir, folder.info); err != nil {
+		info := folder.info
+		if !folder.marked {
+			if s.holdsMangas(folder.path) {
+				continue
+			}
+			files, err := s.chapterFiles(folder.path)
+			if err != nil {
+				return res, err
+			}
+			if len(files) == 0 {
+				continue
+			}
+			info = s.guessInfo(folder.path, files)
+		}
+		if err := s.Library.RememberMangaDir(parent, dir, info); err != nil {
 			return res, err
 		}
 		m, _, err := s.Library.MangaByFolder(parent, dir)
@@ -212,13 +227,22 @@ func movedTo(files []chapterFile, known map[string]bool, dl storage.Download) (c
 	return chapterFile{}, false
 }
 
-type markedFolder struct {
-	path string
-	info libmangal.MangaDirInfo
+type mangaFolder struct {
+	path   string
+	info   libmangal.MangaDirInfo
+	marked bool
 }
 
 // markedFolders are the folders with a .libmangal.json under root (and its provider directories).
-func (s Scanner) markedFolders(root string, providerDirs bool) ([]markedFolder, error) {
+func (s Scanner) markedFolders(root string, providerDirs bool) ([]mangaFolder, error) {
+	folders, err := s.mangaFolders(root, providerDirs)
+	return slices.DeleteFunc(folders, func(f mangaFolder) bool { return !f.marked }), err
+}
+
+// mangaFolders are the folders that may be mangas: with a .libmangal.json under root (and
+// its provider directories), and the rest of the provider directories' folders (root's
+// when not providerDirs, its folders are the provider directories otherwise).
+func (s Scanner) mangaFolders(root string, providerDirs bool) ([]mangaFolder, error) {
 	parents := []string{root}
 	if providerDirs {
 		entries, err := afero.ReadDir(s.FS, root)
@@ -231,8 +255,8 @@ func (s Scanner) markedFolders(root string, providerDirs bool) ([]markedFolder, 
 			}
 		}
 	}
-	var folders []markedFolder
-	for _, parent := range parents {
+	var folders []mangaFolder
+	for i, parent := range parents {
 		entries, err := afero.ReadDir(s.FS, parent)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return nil, err
@@ -243,10 +267,11 @@ func (s Scanner) markedFolders(root string, providerDirs bool) ([]markedFolder, 
 			}
 			path := filepath.Join(parent, e.Name())
 			info, err := libmangal.ReadMangaDirInfo(s.FS, path)
-			if err != nil {
-				continue
+			if err == nil {
+				folders = append(folders, mangaFolder{path: path, info: info, marked: true})
+			} else if !providerDirs || i > 0 {
+				folders = append(folders, mangaFolder{path: path})
 			}
-			folders = append(folders, markedFolder{path: path, info: info})
 		}
 	}
 	return folders, nil
@@ -288,6 +313,7 @@ type chapterFile struct {
 	hasNumber bool
 	number    float32
 	title     string
+	series    string
 	url       string
 	pages     int
 	modTime   time.Time
@@ -395,6 +421,7 @@ func (s Scanner) readZip(f *chapterFile) {
 		}
 		var info struct {
 			Title  string `xml:"Title"`
+			Series string `xml:"Series"`
 			Number string `xml:"Number"`
 			Web    string `xml:"Web"`
 		}
@@ -406,7 +433,7 @@ func (s Scanner) readZip(f *chapterFile) {
 		if n, err := strconv.ParseFloat(strings.TrimSpace(info.Number), 32); err == nil {
 			f.number, f.hasNumber = float32(n), true
 		}
-		f.title, f.url = info.Title, info.Web
+		f.title, f.series, f.url = info.Title, info.Series, info.Web
 	}
 }
 

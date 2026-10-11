@@ -225,3 +225,72 @@ func TestMoveToTrashMergesFolders(t *testing.T) {
 		}
 	}
 }
+
+func TestScanUnmarked(t *testing.T) {
+	root := t.TempDir()
+	library := newLibrary(t)
+	scanner := Scanner{FS: afero.NewOsFs(), Library: library}
+
+	// downloaded before the markers: name from the default template, a series.json
+	claymore := filepath.Join(root, "mango-mangadex", "Claymore (2001) [alid-30583]")
+	writeCBZ(t, filepath.Join(claymore, "[0001.0] Silver-eyed Slayer.cbz"), "1")
+	writeCBZ(t, filepath.Join(claymore, "[0002.0] Claws in the Sky.cbz"), "2")
+	// only the series.json knows the id
+	vagabond := filepath.Join(root, "mango-mangasee", "Vagabond")
+	writeCBZ(t, filepath.Join(vagabond, "Vol. 1", "[0001.0] One.cbz"), "1")
+	series := `{"metadata":{"name":"Vagabond","comicid":30656,"comic_image":"https://s4.anilist.co/file/x.png"}}`
+	if err := os.WriteFile(filepath.Join(vagabond, metadata.FilenameSeriesJSON), []byte(series), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// not mangas: an empty folder, and the provider directories themselves
+	if err := os.MkdirAll(filepath.Join(root, "mango-mangadex", "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := scanner.Scan(root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.New != 2 || res.Added != 3 {
+		t.Fatalf("got %+v, want 2 new mangas with 3 chapters", res)
+	}
+
+	m, ok, err := library.MangaByFolder(filepath.Dir(claymore), filepath.Base(claymore))
+	if err != nil || !ok || m.Title != "Claymore" || len(m.MetadataIDs) != 1 || m.MetadataIDs[0].Raw != "30583" || len(m.Sources) != 0 {
+		t.Fatalf("claymore: %+v, %t, %v", m, ok, err)
+	}
+	downloads, _ := library.Downloads(m.ID)
+	if len(downloads) != 2 || downloads[0].Provider != "mango-mangadex" {
+		t.Errorf("claymore downloads %+v", downloads)
+	}
+	m, ok, _ = library.MangaByFolder(filepath.Dir(vagabond), "Vagabond")
+	if !ok || len(m.MetadataIDs) != 1 || m.MetadataIDs[0].Raw != "30656" {
+		t.Errorf("vagabond: %+v, %t", m, ok)
+	}
+
+	// the next download from a provider finds the folder by the metadata id
+	want := libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "uuid"}, MetadataIDs: []metadata.ID{{Raw: "30583", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}}}
+	dir, found, err := library.FindMangaDir(filepath.Dir(claymore), libmangal.ProviderInfo{ID: "mango-mangadex"}, want)
+	if err != nil || !found || dir != filepath.Base(claymore) {
+		t.Errorf("find manga dir: %q, %t, %v", dir, found, err)
+	}
+
+	// scanning again changes nothing
+	if res, err := scanner.Scan(root, true); err != nil || res.New != 0 || res.Added != 0 {
+		t.Errorf("second scan: %+v, %v", res, err)
+	}
+}
+
+func TestScanUnmarkedProviderDirsOff(t *testing.T) {
+	root := t.TempDir()
+	library := newLibrary(t)
+	scanner := Scanner{FS: afero.NewOsFs(), Library: library}
+	writeCBZ(t, filepath.Join(root, "mango-mangadex", "Claymore (2001) [alid-30583]", "[0001.0] One.cbz"), "1")
+	touch(t, filepath.Join(root, "mango-mangadex", "Claymore (2001) [alid-30583]", metadata.FilenameCoverJPG))
+
+	// the provider directory isn't a manga
+	res, err := scanner.Scan(root, false)
+	if err != nil || res.New != 0 {
+		t.Errorf("got %+v, %v, want nothing added", res, err)
+	}
+}

@@ -162,8 +162,12 @@ func (l Library) FindMangaDir(parent string, provider libmangal.ProviderInfo, in
 	}
 	best, name := libmangal.MangaDirNoMatch, ""
 	for _, m := range mangas {
+		// a folder found by a scan has no source until it's downloaded into
+		haves := []libmangal.MangaDirInfo{{MetadataIDs: m.MetadataIDs}}
 		for _, src := range m.Sources {
-			have := libmangal.MangaDirInfo{Provider: src.Provider, Manga: mangadata.MangaInfo{ID: src.MangaID}, MetadataIDs: m.MetadataIDs}
+			haves = append(haves, libmangal.MangaDirInfo{Provider: src.Provider, Manga: mangadata.MangaInfo{ID: src.MangaID}, MetadataIDs: m.MetadataIDs})
+		}
+		for _, have := range haves {
 			if match := libmangal.MatchMangaDir(provider, info, have); match > best {
 				best, name = match, m.Dir
 			}
@@ -203,10 +207,12 @@ func mangaFor(tx *sql.Tx, parent, dir string, src Source) (int64, error) {
 	} else if err != nil {
 		return 0, err
 	}
-	if src.Provider != "" {
-		_, err = tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title) VALUES (?, ?, ?, ?)
-ON CONFLICT (provider, manga_id) DO UPDATE SET manga = excluded.manga, title = excluded.title`, src.Provider, src.MangaID, id, src.Title)
+	// without a manga id (a folder found by a scan) there's nothing to link yet
+	if src.Provider == "" || src.MangaID == "" {
+		return id, nil
 	}
+	_, err = tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title) VALUES (?, ?, ?, ?)
+ON CONFLICT (provider, manga_id) DO UPDATE SET manga = excluded.manga, title = excluded.title`, src.Provider, src.MangaID, id, src.Title)
 	return id, err
 }
 
