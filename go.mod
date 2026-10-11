@@ -24,10 +24,10 @@ require (
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luevano/gopher-luadoc v0.3.3
-	github.com/luevano/libmangal v0.22.1
-	github.com/luevano/luaprovider v0.15.3
+	github.com/luevano/libmangal v0.23.0
+	github.com/luevano/luaprovider v0.15.4
 	github.com/luevano/mangoplus v0.7.1
-	github.com/luevano/mangoprovider v0.17.3
+	github.com/luevano/mangoprovider v0.17.4
 	github.com/mattn/go-runewidth v0.0.31
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.16.0
@@ -51,6 +51,7 @@ require (
 	go.etcd.io/bbolt v1.4.3
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90
 	golang.org/x/oauth2 v0.36.0
+	modernc.org/sqlite v1.60.1
 )
 
 require (
@@ -175,6 +176,5 @@ require (
 	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.60.1 // indirect
 	mvdan.cc/xurls/v2 v2.6.0 // indirect
 )
