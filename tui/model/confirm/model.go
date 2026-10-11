@@ -50,15 +50,33 @@ func (m *Model) Init() tea.Cmd {
 	return nil
 }
 
-func (m *Model) Update(msg tea.Msg) tea.Cmd {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
+type answer int
+
+const (
+	noAnswer answer = iota
+	answerYes
+	answerNo
+)
+
+func (m *Model) answer(msg tea.Msg) answer {
+	if msg, ok := msg.(tea.KeyMsg); ok {
 		switch {
 		case key.Matches(msg, m.keyMap.yes):
-			return yesCmd
+			return answerYes
 		case key.Matches(msg, m.keyMap.no):
-			return noCmd
+			return answerNo
 		}
+	}
+	return noAnswer
+}
+
+// Update answers with a YesMsg or a NoMsg.
+func (m *Model) Update(msg tea.Msg) tea.Cmd {
+	switch m.answer(msg) {
+	case answerYes:
+		return yesCmd
+	case answerNo:
+		return noCmd
 	}
 	return nil
 }
