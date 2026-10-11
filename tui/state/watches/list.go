@@ -181,17 +181,17 @@ func newListState(connect connector) *listState {
 			checkProvider: util.Bind("check its provider", "alt+c"),
 			pause:         util.Bind("pause/resume", "p"),
 			pauseProvider: util.Bind("pause/resume its provider", "P"),
-			delete:        util.Bind("delete", "d"),
+			delete:        util.Bind("stop watching", "x"),
 			edit:          util.Bind("edit", "e"),
-			gaps:          util.Bind("check gaps", "g"),
+			gaps:          util.Bind("fill gaps", "F"),
 			refresh:       util.Bind("refresh", "r"),
-			runs:          util.Bind("runs", "h"),
+			runs:          util.Bind("every check run", "V"),
 			library:       util.Bind("library manga", "L"),
 			history:       util.Bind("provider history", "v"),
 			nextProvider:  util.Bind("next provider", "tab"),
 			group:         util.Bind("group by provider", "o"),
-			live:          util.Bind("live log", "l"),
-			running:       util.Bind("every live check", "alt+l"),
+			live:          util.Bind("live log", "t"),
+			running:       util.Bind("every live check", "T"),
 			relink:        util.Bind("re-link manga", "m"),
 			missing:       util.Bind("needs re-link only", "n"),
 		},
@@ -637,8 +637,9 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		return pauseProviderCmd(m, w), true
 	case key.Matches(msg, s.keys.delete):
 		message := fmt.Sprintf("Stop watching %q? The history of its checks stays, the downloads too.", w.Title)
-		s.confirm.AskDelete("Delete", message, s.View(), func() tea.Msg {
-			return actionMsg{label: "Deleting " + w.Title, do: func(ctx context.Context) (string, error) {
+		// x then x, as the library's d then d
+		s.confirm.AskWith([]string{"x", "y"}, "Stop watching", message, s.View(), func() tea.Msg {
+			return actionMsg{label: "Removing " + w.Title, do: func(ctx context.Context) (string, error) {
 				return "stopped watching " + w.Title, m.Remove(ctx, w.ID)
 			}}
 		})

@@ -38,7 +38,7 @@ func New(client *libmangal.Client, manga mangadata.Manga, volumes []mangadata.Vo
 		manga:    manga,
 		client:   client,
 		confirm:  util.Bind("confirm", "enter"),
-		anilist:  util.Bind("metadata", "A"),
+		anilist:  util.Bind("bindings", "A"),
 		metadata: util.Bind("metadata", "m"),
 		info:     util.Bind("info", "i"),
 	}

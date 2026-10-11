@@ -103,3 +103,19 @@ func TestFormatBindings(t *testing.T) {
 		t.Error("none")
 	}
 }
+
+// TestKeys: no key means two things on a screen (its keys, the list's, the global ones).
+func TestKeys(t *testing.T) {
+	mangas := newMangasState(library.Files{})
+	manga := newMangaState(library.Files{}, storage.Manga{ID: 7, Title: "Berserk"})
+	trash := newTrashState(library.Files{})
+	for name, keys := range map[string][]string{
+		"mangas": base.KeyCollisions(mangas.keyMap(), mangas.List.KeyMap.Browsing()...),
+		"manga":  base.KeyCollisions(manga.keyMap(), manga.List.KeyMap.Browsing()...),
+		"trash":  base.KeyCollisions(trash.keyMap(), trash.List.KeyMap.Browsing()...),
+	} {
+		if len(keys) != 0 {
+			t.Errorf("%s: %v", name, keys)
+		}
+	}
+}

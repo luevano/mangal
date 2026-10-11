@@ -3,6 +3,7 @@ package watches
 import (
 	"context"
 	"errors"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/util"
 )
 
 type fakeManager struct {
@@ -720,5 +722,61 @@ func TestRelink(t *testing.T) {
 	e.Update(ctx, relinkedMsg{w: moved})
 	if !strings.Contains(e.manga.display, "mango-weebcentral · 01J76") || strings.Contains(e.manga.display, "needs") {
 		t.Errorf("edit after the re-link: %q", e.manga.display)
+	}
+}
+
+// TestKeys: no key means two things on a screen (its keys, the list's, the global ones).
+func TestKeys(t *testing.T) {
+	m := testManager()
+	w := m.watches[0]
+	l := loaded(t, m)
+	d := newDetailsState(m, w, 2)
+	h := newHistoryState(m, w.Provider)
+	runs := newRunsState(m)
+	run := newRunState(m, 1)
+	r := newRelinkState(m, w)
+	p := newProviderPick(w.Provider)
+	live := newLiveState(m, &w)
+	for name, keys := range map[string][]string{
+		"list":          base.KeyCollisions(l.keyMap(), l.List.KeyMap.Browsing()...),
+		"details":       base.KeyCollisions(d.keyMap(), d.List.KeyMap.Browsing()...),
+		"history":       base.KeyCollisions(h.keyMap(), h.List.KeyMap.Browsing()...),
+		"runs":          base.KeyCollisions(runs.keyMap(), runs.List.KeyMap.Browsing()...),
+		"run":           base.KeyCollisions(run.keyMap(), run.List.KeyMap.Browsing()...),
+		"relink":        base.KeyCollisions(util.KeyMap{Short: []key.Binding{r.assign, r.search, r.pick}}, r.List.KeyMap.Browsing()...),
+		"provider pick": base.KeyCollisions(p.keyMap(), p.List.KeyMap.Browsing()...),
+		"live":          base.KeyCollisions(live.KeyMap()),
+	} {
+		if len(keys) != 0 {
+			t.Errorf("%s: %v", name, keys)
+		}
+	}
+}
+
+// TestStopWatching: x asks, x (or y) again removes the watch.
+func TestStopWatching(t *testing.T) {
+	s := loaded(t, testManager())
+	ctx := context.Background()
+	if cmd := s.Update(ctx, press("x")); cmd != nil || !s.confirm.Active() {
+		t.Fatal("x doesn't ask")
+	}
+	cmd := s.Update(ctx, press("x"))
+	if cmd == nil {
+		t.Fatal("x x: no cmd")
+	}
+	var action actionMsg
+	for msg := cmd(); ; {
+		if a, ok := msg.(actionMsg); ok {
+			action = a
+			break
+		}
+		batch, ok := msg.(tea.BatchMsg)
+		if !ok || len(batch) == 0 {
+			t.Fatalf("x x: %#v", msg)
+		}
+		msg = batch[len(batch)-1]()
+	}
+	if !strings.Contains(action.label, "Berserk") {
+		t.Errorf("action %q", action.label)
 	}
 }

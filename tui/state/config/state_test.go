@@ -2,6 +2,8 @@ package config
 
 import (
 	"context"
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/luevano/mangal/v5/tui/util"
 	"os"
 	"path/filepath"
 	"strings"
@@ -311,5 +313,15 @@ func TestSearchCollapsedSections(t *testing.T) {
 		if !strings.HasPrefix(row, "section:") {
 			t.Fatalf("after the search %q shows", row)
 		}
+	}
+}
+
+// TestKeys: no key means two things on the config window (its keys, the list's, the global
+// ones; the entries editor and the inputs are their own modes).
+func TestKeys(t *testing.T) {
+	s, _, _ := newTest(t, "download.path")
+	k := s.keys
+	if keys := base.KeyCollisions(util.KeyMap{Short: []key.Binding{k.change, k.reset, k.expandAll}}, s.list.KeyMap.Browsing()...); len(keys) != 0 {
+		t.Error(keys)
 	}
 }

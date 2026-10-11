@@ -54,7 +54,7 @@ func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState 
 		refresh: util.Bind("refresh", "r"),
 		library: util.Bind("library manga", "L"),
 		history: util.Bind("provider history", "v"),
-		live:    util.Bind("live log", "l"),
+		live:    util.Bind("live log", "t"),
 		relink:  util.Bind("re-link manga", "m"),
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
@@ -77,7 +77,7 @@ func (s *detailsState) header() string {
 			if ps.State != "" && ps.State != "checking" {
 				line += ": " + ps.State
 			}
-			line += " (l: live log)"
+			line += " (t: live log)"
 		}
 		header += "\n" + style.Normal.Accent.Render(line)
 	}

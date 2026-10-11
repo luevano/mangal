@@ -1,6 +1,10 @@
 package list
 
 import (
+	"cmp"
+	"slices"
+	"strings"
+
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
@@ -48,5 +52,34 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 			k.List.CancelWhileFiltering,
 			k.List.AcceptWhileFiltering,
 		},
+	}
+}
+
+// Browsing are the list's keys outside of filtering: moving, paging, filtering and
+// reversing.
+func (k KeyMap) Browsing() []key.Binding {
+	l := k.List
+	return []key.Binding{l.CursorUp, l.CursorDown, l.PrevPage, l.NextPage, l.GoToStart, l.GoToEnd, l.Filter, k.Reverse}
+}
+
+// keyNames are the help names of the special keys.
+var keyNames = map[string]string{"up": "↑", "down": "↓", "left": "←", "right": "→", "pgdown": "pgdn"}
+
+// Reserve takes the keys from the list's own bindings, for a screen key that had them
+// first (e.g. d for delete, which also pages down by default): the help shows the keys
+// left.
+func (m *Model) Reserve(keys ...string) {
+	l := &m.Model.KeyMap
+	for _, b := range []*key.Binding{&l.CursorUp, &l.CursorDown, &l.PrevPage, &l.NextPage, &l.GoToStart, &l.GoToEnd, &l.Filter} {
+		left := slices.DeleteFunc(slices.Clone(b.Keys()), func(k string) bool { return slices.Contains(keys, k) })
+		if len(left) == len(b.Keys()) {
+			continue
+		}
+		names := make([]string, 0, 3)
+		for _, k := range left[:min(3, len(left))] {
+			names = append(names, cmp.Or(keyNames[k], k))
+		}
+		b.SetKeys(left...)
+		b.SetHelp(strings.Join(names, "/"), b.Help().Desc)
 	}
 }

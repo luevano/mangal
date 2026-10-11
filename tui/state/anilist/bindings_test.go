@@ -1,6 +1,7 @@
 package anilist
 
 import (
+	"github.com/luevano/mangal/v5/tui/base"
 	"strings"
 	"testing"
 
@@ -36,5 +37,13 @@ func TestIDQuery(t *testing.T) {
 	}
 	if !strings.HasPrefix(client.MetadataSources[0].URL, "https://anilist.co/") {
 		t.Error("anilist url")
+	}
+}
+
+// TestKeys: no key means two things on the screen (its keys, the list's, the global ones).
+func TestKeys(t *testing.T) {
+	s := newBindings(nil, nil).(*bindingsState)
+	if keys := base.KeyCollisions(s.keyMap(), s.List.KeyMap.Browsing()...); len(keys) != 0 {
+		t.Error(keys)
 	}
 }

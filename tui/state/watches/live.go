@@ -124,11 +124,11 @@ func newLiveState(m watch.Manager, w *watch.Watch) *liveState {
 	return &liveState{
 		manager:  m,
 		watch:    w,
-		up:       util.Bind("up", "up", "k"),
-		down:     util.Bind("down", "down", "j"),
-		pageUp:   util.Bind("page up", "pgup", "b"),
-		pageDown: util.Bind("page down", "pgdown", "f", " "),
-		follow:   util.Bind("follow", "G", "end"),
+		up:       util.BindNamedKey("↑/k", "up", "up", "k"),
+		down:     util.BindNamedKey("↓/j", "down", "down", "j"),
+		pageUp:   util.BindNamedKey("pgup/b", "page up", "pgup", "b"),
+		pageDown: util.BindNamedKey("pgdn/f/space", "page down", "pgdown", "f", " "),
+		follow:   util.BindNamedKey("G/end", "follow", "G", "end"),
 	}
 }
 

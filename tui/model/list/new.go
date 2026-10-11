@@ -69,8 +69,9 @@ func New[T any](
 		Model:    l,
 		delegate: &delegate,
 		size:     size,
-		KeyMap:   newKeyMap(&l.KeyMap),
 	}
+	// the help shows the keys the list has (and enables), not a copy's
+	s.KeyMap = newKeyMap(&s.Model.KeyMap)
 	s.updateKeybinds()
 	return s
 }

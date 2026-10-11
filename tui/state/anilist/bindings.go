@@ -51,7 +51,7 @@ func newBindings(c *libmangal.Client, manga mangadata.Manga) base.State {
 		client:   c,
 		manga:    manga,
 		search:   util.Bind("search", "enter", "s"),
-		remove:   util.Bind("remove", "d"),
+		remove:   util.Bind("remove", "x"),
 		metadata: util.Bind("metadata", "m"),
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "source", "sources", []*sourceItem{}, func(i *sourceItem) _list.DefaultItem { return i }), s.keyMap)

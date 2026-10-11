@@ -85,3 +85,16 @@ func (c combinedKeyMap) ShortHelp() []key.Binding {
 func (c combinedKeyMap) FullHelp() [][]key.Binding {
 	return append(c.first.FullHelp(), c.second.FullHelp()...)
 }
+
+// GlobalKeys are the keys every screen has while not typing (quit, back, home, help, log,
+// config): a screen's own keys mustn't use them.
+func GlobalKeys() []key.Binding {
+	k := newKeyMap()
+	return []key.Binding{k.quit, k.back, k.home, k.help, k.log, k.config}
+}
+
+// KeyCollisions are the keys that would mean two things on a screen, between its own keys
+// (screen), the list's (extra, e.g. list.KeyMap.Browsing) and the global ones. For tests.
+func KeyCollisions(screen help.KeyMap, extra ...key.Binding) []string {
+	return util.Collisions(append(append(GlobalKeys(), util.Bindings(screen)...), extra...)...)
+}

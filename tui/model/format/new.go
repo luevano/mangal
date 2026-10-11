@@ -21,6 +21,7 @@ func New(accentColor lipgloss.Color) *Model {
 		},
 	)
 	list.SetAccentColor(accentColor)
+	list.Reserve("d")
 
 	t := lipgloss.NewStyle().
 		Background(accentColor).

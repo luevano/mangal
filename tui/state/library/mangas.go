@@ -131,6 +131,8 @@ func newMangasState(files library.Files) *mangasState {
 		},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "manga", "mangas", []*mangaItem{}, func(i *mangaItem) _list.DefaultItem { return i }), s.keyMap)
+	// delete had it before the list's next page
+	s.List.Reserve("d")
 	return s
 }
 

@@ -83,7 +83,7 @@ By default if just executing the `mangal` command, it will start the TUI. To lis
 mangal -h
 ```
 
-In the TUI `?` shows the keys of each screen and `,` opens the config window from any of them. On the home screen: `l` library, `w` watches, `a` accounts, `M` migrate; on a manga: `A` its metadata bindings, `w` watch it.
+In the TUI `?` shows the keys of each screen and `,` opens the config window from any of them. On the home screen: `l` library, `w` watches, `a` accounts, `M` migrate; on a manga: `A` its metadata bindings, `w` watch it. In the watches: `c` check, `p` pause, `e` edit (`m` re-links the manga), `x` stop watching, `F` fill gaps, `t` live log, `V` every check; lists keep `g`/`G` (start/end), `h`/`l` (pages) and `/` (filter).
 
 **Note:** A v4 config (usually `~/.config/mangal/mangal.toml`) doesn't work with v5: its keys are ignored with a warning, remove it.
 
@@ -119,7 +119,7 @@ These are either the native Go implementations already included (from [mangoprov
 mangal providers ls
 ```
 
-When a provider is renamed (e.g. MangaSee is now Weeb Central, `mango-weebcentral`), its old id still works with a warning. Data saved under the old id can be moved to the new one with `mangal migrate` (lists the changes, `--apply` does them), or with `M` on the TUI home.
+When a provider is renamed (e.g. MangaSee is now Weeb Central, `mango-weebcentral`), its old id still works with a warning. Data saved under the old id can be moved to the new one with `mangal migrate` (lists the changes, `--apply` does them), or with `M` on the TUI home. Moved watches need a re-link (the new site may use other manga ids): the scheduler skips them until a check finds the manga or `mangal watch move <id>` (`m` in the TUI watches, `n` lists them) points them to it.
 
 #### Lua providers
 
@@ -192,6 +192,7 @@ mangal watch add mango-mangaplus mid:100171 --anilist-id 132029
 mangal watch ls                  # last check, next check, errors
 mangal watch check [--dry-run]   # check now (--provider <id>, --due)
 mangal watch log --since 7d      # what each check got
+mangal watch move 12 mango-weebcentral   # another provider (or the same one's new id), keeping the watch
 mangal notify webhook            # save the Discord webhook: a message per manga with new chapters (watch.notify)
 ```
 

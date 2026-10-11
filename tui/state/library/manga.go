@@ -84,6 +84,7 @@ func newMangaState(files library.Files, manga storage.Manga) *mangaState {
 		watch:   util.Bind("its watch", "W"),
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "chapter", "chapters", []*downloadItem{}, func(i *downloadItem) _list.DefaultItem { return i }), s.keyMap)
+	s.List.Reserve("d")
 	return s
 }
 
