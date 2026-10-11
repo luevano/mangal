@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/meta"
+	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +28,6 @@ var versionCmd = &cobra.Command{
 			return
 		}
 
-		cmd.Println(meta.PrettyVersion())
+		cmd.Println(lipgloss.JoinVertical(lipgloss.Center, style.Bold.Accent.Render(meta.Logo), "\n"+meta.Versions()))
 	},
 }

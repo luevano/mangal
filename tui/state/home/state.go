@@ -6,11 +6,13 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/theme/color"
+	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/state/accounts"
 	"github.com/luevano/mangal/v5/tui/state/library"
@@ -124,5 +126,5 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 // View implements base.State.
 func (s *state) View() string {
-	return meta.PrettyVersion()
+	return lipgloss.JoinVertical(lipgloss.Center, style.Bold.Accent.Render(meta.Logo), "\n"+meta.Versions())
 }
