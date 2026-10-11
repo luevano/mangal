@@ -41,7 +41,7 @@ func TestWatches(t *testing.T) {
 	data := openData(t)
 	watches := Watches{DB: data}
 
-	w, err := watches.Add(Watch{Provider: "mango-mangaplus", MangaID: "100171", Title: "Dandadan", AnilistID: 132029, Enabled: true, From: f32(200)})
+	w, err := watches.Add(Watch{Provider: "mango-mangaplus", MangaID: "100171", Title: "Dandadan", Enabled: true, From: f32(200)})
 	if err != nil || w.ID == 0 {
 		t.Fatalf("add: %+v, %v", w, err)
 	}
@@ -49,7 +49,7 @@ func TestWatches(t *testing.T) {
 		t.Errorf("added twice: %v", err)
 	}
 	got, err := watches.Get(w.ID)
-	if err != nil || got.Title != "Dandadan" || got.AnilistID != 132029 || !got.Enabled || got.From == nil || *got.From != 200 || got.Interval != 0 || got.LastNew != nil {
+	if err != nil || got.Title != "Dandadan" || !got.Enabled || got.From == nil || *got.From != 200 || got.Interval != 0 || got.LastNew != nil {
 		t.Fatalf("get: %+v, %v", got, err)
 	}
 

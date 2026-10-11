@@ -2,7 +2,6 @@ package watch
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -44,29 +43,12 @@ func (s clientSource) Chapters(ctx context.Context, manga mangadata.Manga) ([]ma
 	return client.MangaChapters(ctx, s.c, manga)
 }
 
-func (s clientSource) BindAnilist(ctx context.Context, manga mangadata.Manga, anilistID int) error {
-	ani, err := s.c.GetMetadataProvider(metadata.IDSourceAnilist)
-	if err != nil {
-		return err
-	}
-	_ = anilist.EnsureLogin(ctx)
-	meta, found, err := ani.SearchByIDContext(ctx, anilistID)
-	if err != nil {
-		return fmt.Errorf("get anilist manga %d: %w", anilistID, err)
-	}
-	if !found {
-		return fmt.Errorf("anilist manga %d not found", anilistID)
-	}
-	manga.SetMetadata(meta)
-	return nil
+func (s clientSource) BoundMetadata(ctx context.Context, code metadata.IDCode, id string) (metadata.Metadata, error) {
+	return client.BoundMetadata(ctx, s.c, code, id)
 }
 
-func (s clientSource) Download(ctx context.Context, chapters []mangadata.Chapter, bound bool, onEvent func(client.Event)) client.Results {
+func (s clientSource) Download(ctx context.Context, chapters []mangadata.Chapter, onEvent func(client.Event)) client.Results {
 	options := config.DownloadOptions()
-	if bound {
-		// searching again would replace the bound metadata
-		options.SearchMetadata = false
-	}
 	if options.SearchMetadata {
 		_ = anilist.EnsureLogin(ctx)
 	}

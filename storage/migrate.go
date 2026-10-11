@@ -20,6 +20,8 @@ type OldID struct {
 	Reads int
 	// Watches is how many watches use the old id, WatchRuns how many of their checks.
 	Watches, WatchRuns int
+	// Bindings is how many metadata bindings use the old id.
+	Bindings int
 	// Cache is how many cache entries use the old id (dropped when migrating).
 	Cache int
 }
@@ -66,19 +68,22 @@ func FindOldIDs(cache, data *DB, loaders []libmangal.ProviderLoader) ([]OldID, e
 		if err := data.QueryRow(`SELECT count(*) FROM watch_runs WHERE provider = ?`, id).Scan(&old.WatchRuns); err != nil {
 			return nil, fmt.Errorf("count the watch runs of %s: %w", id, err)
 		}
+		if err := data.QueryRow(`SELECT count(*) FROM metadata_bindings WHERE provider = ?`, id).Scan(&old.Bindings); err != nil {
+			return nil, fmt.Errorf("count the metadata bindings of %s: %w", id, err)
+		}
 		n, err := countProviderRows(cache, id)
 		if err != nil {
 			return nil, fmt.Errorf("count the cache of %s: %w", id, err)
 		}
 		old.Cache = n
-		if old.Sources+old.Downloads+old.Reads+old.Watches+old.WatchRuns+old.Cache != 0 {
+		if old.Sources+old.Downloads+old.Reads+old.Watches+old.WatchRuns+old.Bindings+old.Cache != 0 {
 			oldIDs = append(oldIDs, old)
 		}
 	}
 	return oldIDs, nil
 }
 
-// MigrateOldIDs moves the library sources, downloads, reads and watches of each old id to its new id and drops
+// MigrateOldIDs moves the library sources, downloads, reads, watches and metadata bindings of each old id to its new id and drops
 // its cache entries (they're rebuilt under the new id).
 func MigrateOldIDs(cache, data *DB, oldIDs []OldID) error {
 	err := data.InTx(func(tx *sql.Tx) error {
@@ -97,6 +102,9 @@ func MigrateOldIDs(cache, data *DB, oldIDs []OldID) error {
 				return fmt.Errorf("migrate %s: %w", id.Old, err)
 			}
 			if err := migrateWatches(tx, id.Old, id.New); err != nil {
+				return fmt.Errorf("migrate %s: %w", id.Old, err)
+			}
+			if err := migrateBindings(tx, id.Old, id.New); err != nil {
 				return fmt.Errorf("migrate %s: %w", id.Old, err)
 			}
 		}

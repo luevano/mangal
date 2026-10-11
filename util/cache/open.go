@@ -88,6 +88,12 @@ func Watches() (storage.Watches, error) {
 	return s.Watches(), err
 }
 
+// Bindings are the metadata bindings of the provider mangas.
+func Bindings() (storage.Bindings, error) {
+	s, err := Storage()
+	return s.Bindings(), err
+}
+
 // ClearChapterCache forgets the provider's cached chapter lists, see
 // storage.Storage.ClearChapterCache.
 func ClearChapterCache(provider string) error {
@@ -120,7 +126,7 @@ func OldIDsNotice(loaders []libmangal.ProviderLoader) (short, long string, err e
 	var renames, details []string
 	for _, id := range oldIDs {
 		renames = append(renames, fmt.Sprintf("%s is now %s", id.Old, id.New))
-		details = append(details, fmt.Sprintf("- %s is now %s (%s): %d library mangas, %d downloads, %d read chapters, %d watches, %d cache entries", id.Old, id.New, id.Name, id.Sources, id.Downloads, id.Reads, id.Watches, id.Cache))
+		details = append(details, fmt.Sprintf("- %s is now %s (%s): %d library mangas, %d downloads, %d read chapters, %d watches, %d metadata bindings, %d cache entries", id.Old, id.New, id.Name, id.Sources, id.Downloads, id.Reads, id.Watches, id.Bindings, id.Cache))
 	}
 	short = fmt.Sprintf("data under old provider ids (%s), run %q to update it", strings.Join(renames, ", "), "mangal migrate")
 	long = "Some data still uses old provider ids:\n\n" + strings.Join(details, "\n") + `

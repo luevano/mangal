@@ -90,9 +90,11 @@ func (s *fakeSource) Chapters(_ context.Context, manga mangadata.Manga) ([]manga
 	return chs, nil
 }
 
-func (s *fakeSource) BindAnilist(context.Context, mangadata.Manga, int) error { return nil }
+func (s *fakeSource) BoundMetadata(context.Context, metadata.IDCode, string) (metadata.Metadata, error) {
+	return nil, nil
+}
 
-func (s *fakeSource) Download(ctx context.Context, chapters []mangadata.Chapter, _ bool, _ func(client.Event)) client.Results {
+func (s *fakeSource) Download(ctx context.Context, chapters []mangadata.Chapter, _ func(client.Event)) client.Results {
 	s.mu.Lock()
 	block, started := s.block, s.started
 	s.started = nil
@@ -225,8 +227,13 @@ func TestAPIWatches(t *testing.T) {
 	if code := s.call(t, "POST", "/api/watches", `{"provider":"fake","bogus":1}`, &e); code != http.StatusBadRequest {
 		t.Errorf("bad body: %d %+v", code, e)
 	}
+	var dan watch.Watch
+	if code := s.call(t, "POST", "/api/watches", `{"provider":"fake","manga_id":"dan","anilist_id":132029}`, &dan); code != http.StatusCreated ||
+		dan.AnilistID != 132029 || len(dan.Bindings) != 1 || dan.Bindings[0].ID != "132029" {
+		t.Errorf("add with anilist_id: %d %+v", code, dan)
+	}
 	var list []watch.Watch
-	if code := s.call(t, "GET", "/api/watches", "", &list); code != http.StatusOK || len(list) != 1 {
+	if code := s.call(t, "GET", "/api/watches", "", &list); code != http.StatusOK || len(list) != 2 || list[1].AnilistID != 132029 {
 		t.Errorf("list: %d %+v", code, list)
 	}
 	path := fmt.Sprintf("/api/watches/%d", w.ID)
@@ -241,6 +248,15 @@ func TestAPIWatches(t *testing.T) {
 	}
 	if code := s.call(t, "PATCH", path, `{}`, &e); code != http.StatusBadRequest {
 		t.Errorf("empty patch: %d", code)
+	}
+	// anilist_id is a shortcut for the default AniList binding
+	if code := s.call(t, "PATCH", path, `{"anilist_id":21087}`, &w); code != http.StatusOK || w.AnilistID != 21087 ||
+		len(w.Bindings) != 1 || w.Bindings[0].Source != "al" || w.Bindings[0].ID != "21087" || !w.Bindings[0].Default {
+		t.Errorf("patch anilist_id: %d %+v", code, w)
+	}
+	var unbound watch.Watch
+	if code := s.call(t, "PATCH", path, `{"anilist_id":0}`, &unbound); code != http.StatusOK || unbound.AnilistID != 0 || len(unbound.Bindings) != 0 {
+		t.Errorf("patch anilist_id 0: %d %+v", code, unbound)
 	}
 	var stale []watch.Watch
 	if code := s.call(t, "GET", "/api/watches/stale?since=0d", "", &stale); code != http.StatusOK || stale == nil {
@@ -382,7 +398,9 @@ func TestRemote(t *testing.T) {
 		t.Errorf("resume: %+v, %v", w, err)
 	}
 	interval, gaps := time.Duration(0), true
-	if w, err = r.Update(ctx, w.ID, watch.UpdateOptions{Interval: &interval, Gaps: &gaps}); err != nil || w.Interval != 0 || !w.Gaps {
+	anilistID := 21087
+	if w, err = r.Update(ctx, w.ID, watch.UpdateOptions{Interval: &interval, Gaps: &gaps, AnilistID: &anilistID}); err != nil || w.Interval != 0 || !w.Gaps ||
+		w.AnilistID != 21087 || len(w.Bindings) != 1 {
 		t.Errorf("update: %+v, %v", w, err)
 	}
 	if stale, err := r.Stale(ctx, 0); err != nil || len(stale) != 1 {

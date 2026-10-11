@@ -53,8 +53,9 @@ type Watch struct {
 	// Title is the manga's title on the provider, for display (and the search fallback of
 	// providers that can't get a manga by id).
 	Title string `json:"title"`
-	// AnilistID is the bound AniList manga, 0 for none (metadata searched as usual).
-	AnilistID int `json:"anilist_id,omitempty"`
+	// AnilistID is the manga's AniList binding (metadata_bindings), 0 for none. Not stored
+	// with the watch: client/watch fills it.
+	AnilistID int `json:"-"`
 	// LibraryManga is the library manga it's downloaded into, 0 until known.
 	LibraryManga int64 `json:"library_manga,omitempty"`
 	Enabled      bool  `json:"enabled"`
@@ -227,14 +228,14 @@ func fromUnix(s int64) time.Time {
 	return time.Unix(s, 0)
 }
 
-const watchColumns = `id, provider, manga_id, title, anilist_id, coalesce(library_manga, 0), enabled, coalesce(interval, 0), gaps,
+const watchColumns = `id, provider, manga_id, title, coalesce(library_manga, 0), enabled, coalesce(interval, 0), gaps,
 	from_number, added, last_checked, last_gap_check, last_new, last_new_at, last_error, failures`
 
 func scanWatch(rows *sql.Rows) (Watch, error) {
 	var w Watch
 	var interval, added, checked, gapChecked, newAt int64
 	var from, lastNew sql.NullFloat64
-	err := rows.Scan(&w.ID, &w.Provider, &w.MangaID, &w.Title, &w.AnilistID, &w.LibraryManga, &w.Enabled, &interval, &w.Gaps,
+	err := rows.Scan(&w.ID, &w.Provider, &w.MangaID, &w.Title, &w.LibraryManga, &w.Enabled, &interval, &w.Gaps,
 		&from, &added, &checked, &gapChecked, &lastNew, &newAt, &w.LastError, &w.Failures)
 	w.Interval = Duration(time.Duration(interval) * time.Second)
 	w.From, w.LastNew = floatPtr(from), floatPtr(lastNew)
@@ -259,8 +260,8 @@ func (s Watches) Add(w Watch) (Watch, error) {
 	if exists != 0 {
 		return w, fmt.Errorf("add watch of %s %q: %w", w.Provider, w.MangaID, ErrWatchExists)
 	}
-	res, err := s.DB.Exec(`INSERT INTO watches (provider, manga_id, title, anilist_id, library_manga, enabled, interval, gaps, from_number, added)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, w.Provider, w.MangaID, w.Title, w.AnilistID, nullID(w.LibraryManga), w.Enabled,
+	res, err := s.DB.Exec(`INSERT INTO watches (provider, manga_id, title, library_manga, enabled, interval, gaps, from_number, added)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, w.Provider, w.MangaID, w.Title, nullID(w.LibraryManga), w.Enabled,
 		nullInterval(w.Interval), w.Gaps, nullFloat(w.From), unix(w.Added))
 	if err != nil {
 		return w, fmt.Errorf("add watch of %s %q: %w", w.Provider, w.MangaID, err)
@@ -313,9 +314,9 @@ func (s Watches) Remove(id int64) error {
 
 // Save writes every field of the watch but its provider, manga id and added time.
 func (s Watches) Save(w Watch) error {
-	res, err := s.DB.Exec(`UPDATE watches SET title = ?, anilist_id = ?, library_manga = ?, enabled = ?, interval = ?, gaps = ?,
+	res, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = ?, enabled = ?, interval = ?, gaps = ?,
 	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?
-WHERE id = ?`, w.Title, w.AnilistID, nullID(w.LibraryManga), w.Enabled, nullInterval(w.Interval), w.Gaps,
+WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, nullInterval(w.Interval), w.Gaps,
 		nullFloat(w.From), unix(w.LastChecked), unix(w.LastGapCheck), nullFloat(w.LastNew), unix(w.LastNewAt), w.LastError, w.Failures, w.ID)
 	if err != nil {
 		return fmt.Errorf("save watch %d: %w", w.ID, err)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -83,7 +84,8 @@ type fakeSource struct {
 
 	mu         sync.Mutex
 	downloaded []float32
-	bound      map[string]int
+	// checked are the bindings checked with BoundMetadata
+	checked []string
 }
 
 func (s *fakeSource) Info() libmangal.ProviderInfo {
@@ -123,18 +125,18 @@ func (s *fakeSource) Chapters(_ context.Context, manga mangadata.Manga) ([]manga
 	return chs, nil
 }
 
-func (s *fakeSource) BindAnilist(_ context.Context, manga mangadata.Manga, id int) error {
+func (s *fakeSource) BoundMetadata(_ context.Context, code metadata.IDCode, id string) (metadata.Metadata, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.bound == nil {
-		s.bound = map[string]int{}
+	s.checked = append(s.checked, string(code)+":"+id)
+	n, err := strconv.Atoi(id)
+	if err != nil || n == 404 {
+		return nil, fmt.Errorf("%s manga %s not found", code, id)
 	}
-	s.bound[manga.Info().ID] = id
-	manga.SetMetadata(fakeMeta{id: id})
-	return nil
+	return fakeMeta{id: n}, nil
 }
 
-func (s *fakeSource) Download(ctx context.Context, chapters []mangadata.Chapter, _ bool, onEvent func(client.Event)) client.Results {
+func (s *fakeSource) Download(ctx context.Context, chapters []mangadata.Chapter, onEvent func(client.Event)) client.Results {
 	results := client.NewResults(chapters)
 	for i, r := range results {
 		info := r.Chapter.Info()
@@ -298,6 +300,17 @@ func TestCheck(t *testing.T) {
 	if w.Title != "Dandadan" || w.LibraryManga == 0 || w.LastDownloaded == nil || *w.LastDownloaded != 65 || !w.NextCheck.Equal(e.now) {
 		t.Fatalf("added %+v", w)
 	}
+	// --anilist-id is a default AniList binding
+	if w.AnilistID != 132029 || len(w.Bindings) != 1 || w.Bindings[0].Source != metadata.IDCodeAnilist || w.Bindings[0].ID != "132029" ||
+		!w.Bindings[0].Default || w.Bindings[0].Provider != "" || !slices.Equal(src.checked, []string{"al:132029"}) {
+		t.Errorf("binding %+v, checked %v", w.Bindings, src.checked)
+	}
+	if b, found, _ := (storage.Bindings{DB: e.svc.Watches.DB}).Default("mango-mangaplus", "dandadan"); !found || b.ID != "132029" {
+		t.Errorf("stored binding %+v", b)
+	}
+	if _, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", Query: "mid:dandadan", AnilistID: 404}); err == nil {
+		t.Error("added with a missing anilist manga")
+	}
 	if _, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", MangaID: "dandadan"}); !errors.Is(err, ErrExists) {
 		t.Errorf("added twice: %v", err)
 	}
@@ -328,8 +341,8 @@ func TestCheck(t *testing.T) {
 	if report.ID == 0 || report.Watches != 1 || report.NewChapters != 2 || r.Status != storage.StatusNew || r.ID == 0 {
 		t.Errorf("check %+v", report)
 	}
-	if !slices.Equal(src.downloaded, []float32{65.5, 66}) || src.bound["dandadan"] != 132029 {
-		t.Errorf("downloaded %v, bound %v", src.downloaded, src.bound)
+	if !slices.Equal(src.downloaded, []float32{65.5, 66}) {
+		t.Errorf("downloaded %v", src.downloaded)
 	}
 	if !slices.Equal(events, []EventKind{EventStart, EventChapter, EventChapter, EventDone}) {
 		t.Errorf("events %v", events)
@@ -584,7 +597,7 @@ func TestOfflineAndMissingProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gone.Enabled || gone.MangaID != "Gachiakuta" || gone.Title != "Gachiakuta" || !gone.ProviderMissing {
+	if gone.Enabled || gone.MangaID != "Gachiakuta" || gone.Title != "Gachiakuta" || !gone.ProviderMissing || gone.AnilistID != 144946 {
 		t.Fatalf("offline watch %+v", gone)
 	}
 	if _, err := e.svc.Add(ctx, AddOptions{Offline: true, Provider: "mango-mangasee", MangaID: "Gachiakuta"}); !errors.Is(err, ErrExists) {

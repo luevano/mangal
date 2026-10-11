@@ -7,14 +7,17 @@ package watch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
@@ -69,6 +72,30 @@ type Watch struct {
 	// ProviderMissing is a provider that isn't installed: the checks skip it (without an
 	// error) until it is again.
 	ProviderMissing bool `json:"provider_missing,omitempty"`
+	// Bindings are the manga's metadata bindings (source, id, default), the default first.
+	Bindings []storage.Binding `json:"bindings,omitempty"`
+}
+
+// UnmarshalJSON fills AnilistID from the bindings (the API's watches, see Remote).
+func (w *Watch) UnmarshalJSON(b []byte) error {
+	type plain Watch
+	if err := json.Unmarshal(b, (*plain)(w)); err != nil {
+		return err
+	}
+	w.fillBindings(w.Bindings)
+	return nil
+}
+
+// fillBindings sets Bindings without their provider and manga (the watch's) and AnilistID.
+func (w *Watch) fillBindings(bindings []storage.Binding) {
+	w.Bindings, w.AnilistID = nil, 0
+	for _, b := range bindings {
+		if b.Source == metadata.IDCodeAnilist {
+			w.AnilistID, _ = strconv.Atoi(b.ID)
+		}
+		b.Provider, b.MangaID = "", ""
+		w.Bindings = append(w.Bindings, b)
+	}
 }
 
 // Options are the watch.* settings.
@@ -125,11 +152,12 @@ type Source interface {
 	MangaByID(ctx context.Context, id string) (mangadata.Manga, bool, error)
 	SearchMangas(ctx context.Context, query string) ([]mangadata.Manga, error)
 	Chapters(ctx context.Context, manga mangadata.Manga) ([]mangadata.Chapter, error)
-	// BindAnilist sets the AniList manga with the id as the manga's metadata.
-	BindAnilist(ctx context.Context, manga mangadata.Manga, anilistID int) error
-	// Download downloads the chapters (client.Download); bound is true when the metadata
-	// was set with BindAnilist (not searched again).
-	Download(ctx context.Context, chapters []mangadata.Chapter, bound bool, onEvent func(client.Event)) client.Results
+	// BoundMetadata is the metadata of a source's manga id (client.BoundMetadata), to check
+	// a binding.
+	BoundMetadata(ctx context.Context, code metadata.IDCode, id string) (metadata.Metadata, error)
+	// Download downloads the chapters (client.Download, which uses the manga's default
+	// metadata binding).
+	Download(ctx context.Context, chapters []mangadata.Chapter, onEvent func(client.Event)) client.Results
 }
 
 // Notifier sends the notifications of the checks.
@@ -198,7 +226,7 @@ type AddOptions struct {
 	Query    string
 	// Selector is a manga selector (client/selector), exact if empty.
 	Selector string
-	// AnilistID binds the AniList manga, 0 for none.
+	// AnilistID binds the AniList manga (the default binding), 0 leaves the bindings.
 	AnilistID int
 	// From treats the chapters up to it as done, nil for none.
 	From *float32
@@ -228,16 +256,15 @@ func (s *Service) Add(ctx context.Context, opts AddOptions) (Watch, error) {
 		return Watch{}, fmt.Errorf("watch %q from %s: %w", manga.Info().Title, info.ID, ErrExists)
 	}
 	if opts.AnilistID != 0 {
-		if err := src.BindAnilist(ctx, manga, opts.AnilistID); err != nil {
+		if _, err := src.BoundMetadata(ctx, metadata.IDCodeAnilist, strconv.Itoa(opts.AnilistID)); err != nil {
 			return Watch{}, err
 		}
 	}
 	w := storage.Watch{
-		Provider:  info.ID,
-		MangaID:   manga.Info().ID,
-		Title:     manga.Info().Title,
-		AnilistID: opts.AnilistID,
-		Enabled:   true,
+		Provider: info.ID,
+		MangaID:  manga.Info().ID,
+		Title:    manga.Info().Title,
+		Enabled:  true,
 		Interval:  storage.Duration(opts.Interval),
 		Gaps:      s.Options.Gaps,
 		From:      opts.From,
@@ -252,6 +279,9 @@ func (s *Service) Add(ctx context.Context, opts AddOptions) (Watch, error) {
 		w.LibraryManga = m.ID
 	}
 	if w, err = s.Watches.Add(w); err != nil {
+		return Watch{}, err
+	}
+	if err := s.bindAnilist(w, opts.AnilistID); err != nil {
 		return Watch{}, err
 	}
 	return s.complete(w)
@@ -276,11 +306,10 @@ func (s *Service) addOffline(opts AddOptions) (Watch, error) {
 		return Watch{}, fmt.Errorf("watch %q from %s: %w", title, opts.Provider, ErrExists)
 	}
 	w := storage.Watch{
-		Provider:  opts.Provider,
-		MangaID:   id,
-		Title:     title,
-		AnilistID: opts.AnilistID,
-		Interval:  storage.Duration(opts.Interval),
+		Provider: opts.Provider,
+		MangaID:  id,
+		Title:    title,
+		Interval: storage.Duration(opts.Interval),
 		Gaps:      s.Options.Gaps,
 		From:      opts.From,
 		Added:     s.now(),
@@ -293,6 +322,9 @@ func (s *Service) addOffline(opts AddOptions) (Watch, error) {
 	}
 	w, err := s.Watches.Add(w)
 	if err != nil {
+		return Watch{}, err
+	}
+	if err := s.bindAnilist(w, opts.AnilistID); err != nil {
 		return Watch{}, err
 	}
 	full, err := s.complete(w)
@@ -408,8 +440,28 @@ func (s *Service) Get(ctx context.Context, id int64) (Watch, error) {
 }
 
 // complete adds what's worked out to the stored watch.
+// bindings are the metadata bindings, in the watches' database.
+func (s *Service) bindings() storage.Bindings {
+	return storage.Bindings{DB: s.Watches.DB}
+}
+
+// bindAnilist makes the AniList manga with the id the watched manga's default binding,
+// nothing for 0 (the shortcut of --anilist-id).
+func (s *Service) bindAnilist(w storage.Watch, anilistID int) error {
+	if anilistID == 0 {
+		return nil
+	}
+	return s.bindings().Set(storage.Binding{Provider: w.Provider, MangaID: w.MangaID, Source: metadata.IDCodeAnilist,
+		ID: strconv.Itoa(anilistID), Default: true, Updated: s.now()})
+}
+
 func (s *Service) complete(w storage.Watch) (Watch, error) {
 	full := Watch{Watch: w, NextCheck: s.NextCheck(w)}
+	bindings, err := s.bindings().Get(w.Provider, w.MangaID)
+	if err != nil {
+		return Watch{}, err
+	}
+	full.fillBindings(bindings)
 	last, err := s.lastDownloaded(w, w.LibraryManga)
 	if err != nil {
 		return Watch{}, err
@@ -462,7 +514,7 @@ type UpdateOptions struct {
 	// Interval overrides watch.interval, 0 goes back to it.
 	Interval *time.Duration
 	Gaps     *bool
-	// AnilistID binds an AniList manga, 0 unbinds it.
+	// AnilistID binds an AniList manga (the default binding), 0 unbinds it.
 	AnilistID *int
 	// From treats the chapters up to it as done.
 	From *float32
@@ -470,15 +522,25 @@ type UpdateOptions struct {
 
 // Update changes the watch's settings.
 func (s *Service) Update(ctx context.Context, id int64, opts UpdateOptions) (Watch, error) {
+	if opts.AnilistID != nil {
+		w, err := s.Watches.Get(id)
+		if err != nil {
+			return Watch{}, err
+		}
+		if *opts.AnilistID == 0 {
+			if _, err := s.bindings().Remove(w.Provider, w.MangaID, metadata.IDCodeAnilist); err != nil {
+				return Watch{}, err
+			}
+		} else if err := s.bindAnilist(w, *opts.AnilistID); err != nil {
+			return Watch{}, err
+		}
+	}
 	return s.update(id, func(w *storage.Watch) {
 		if opts.Interval != nil {
 			w.Interval = storage.Duration(*opts.Interval)
 		}
 		if opts.Gaps != nil {
 			w.Gaps = *opts.Gaps
-		}
-		if opts.AnilistID != nil {
-			w.AnilistID = *opts.AnilistID
 		}
 		if opts.From != nil {
 			w.From = opts.From

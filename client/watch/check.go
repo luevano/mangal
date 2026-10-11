@@ -313,11 +313,6 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 	if manga.Info().Title != "" {
 		w.Title = manga.Info().Title
 	}
-	if w.AnilistID != 0 {
-		if err := src.BindAnilist(ctx, manga, w.AnilistID); err != nil {
-			return s.failed(w, started, err)
-		}
-	}
 	chapters, err := src.Chapters(ctx, manga)
 	if err != nil {
 		return s.failed(w, started, err)
@@ -357,7 +352,7 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 	}
 
 	var errs []string
-	results := src.Download(ctx, picked, w.AnilistID != 0, onChapter)
+	results := src.Download(ctx, picked, onChapter)
 	for _, res := range results {
 		switch {
 		case res.Err != nil:

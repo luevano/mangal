@@ -101,6 +101,11 @@ func (s Storage) Watches() Watches {
 	return Watches{DB: s.Data}
 }
 
+// Bindings are the metadata bindings of the provider mangas.
+func (s Storage) Bindings() Bindings {
+	return Bindings{DB: s.Data}
+}
+
 // ClearCache deletes the cache entries of a provider (or metadata provider) id, or all of
 // them if the id is empty. It returns how many were deleted.
 func (s Storage) ClearCache(id string) (int64, error) {
