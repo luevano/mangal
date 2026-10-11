@@ -222,7 +222,7 @@ func kitsuAccount(ctx context.Context, refresh bool) AccountEntry {
 func myAnimeListAccount(ctx context.Context, refresh bool) AccountEntry {
 	id, _, err := cache.MyAnimeListClient()
 	if err != nil || id == "" {
-		details := []string{"l sets the client id (or mangal myanimelist client)"}
+		details := []string{"l sets the client id"}
 		if err != nil {
 			details = []string{err.Error()}
 		}
