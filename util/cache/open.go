@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,17 @@ var (
 func Open() error {
 	_, _, err := open()
 	return err
+}
+
+// Close closes the databases, if they were opened. Only when mangal exits.
+func Close() error {
+	var errs []error
+	for _, db := range []*storage.DB{cacheDB, dataDB} {
+		if db != nil {
+			errs = append(errs, db.Close())
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Notices are messages for the user from opening the storage (e.g. the old cache was

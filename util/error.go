@@ -13,7 +13,7 @@ import (
 // Printf wrapper that also exits, uses stderrr.
 func Errorf(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, format, a...)
-	os.Exit(1)
+	Exit(1)
 }
 
 // RateLimited is implemented by provider errors that say how long to wait,

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -54,20 +55,19 @@ func Exists(loader libmangal.ProviderLoader) bool {
 	return exists
 }
 
+// CloseAll closes every client, even if some fail.
 func CloseAll() error {
 	m.Lock()
 	defer m.Unlock()
 
+	var errs []error
 	for !clients.Empty() {
-		client := clients.Peek()
+		client := clients.Dequeue()
 		if err := client.Close(); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("close %s: %w", client, err))
 		}
-
-		clients.Dequeue()
 	}
-
-	return nil
+	return errors.Join(errs...)
 }
 
 func NewClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal.Client, error) {

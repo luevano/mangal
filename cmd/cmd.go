@@ -2,14 +2,17 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
 	cc "github.com/ivanpirog/coloredcobra"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui"
@@ -67,9 +70,16 @@ func Execute() {
 	// cancelled on ctrl+c, commands get it with cmd.Context()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// close the providers (browsers, flaresolverr sessions) and databases however mangal exits
+	util.OnExit(func() {
+		if err := errors.Join(client.CloseAll(), cache.Close()); err != nil {
+			log.Log("close on exit: %s", err)
+		}
+	})
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		errorf(rootCmd, "%s", util.ErrorTree(err))
 	}
+	util.RunExitHooks()
 }
 
 // re-reads the config from the changed flag
@@ -87,7 +97,7 @@ func initConfig(flag *pflag.Flag) func() {
 
 		if err := cache.Open(); err != nil {
 			fmt.Fprintf(os.Stderr, "%s storage: %s\n", icon.Cross.Colored(), err)
-			os.Exit(1)
+			util.Exit(1)
 		}
 		for _, notice := range append(cache.Notices(), anilist.LoginNotice()) {
 			if notice == "" {
