@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/luevano/libmangal"
@@ -52,8 +53,8 @@ func Add(ctx context.Context, dir, url string, progress io.Writer) (_ info.Info,
 	}
 
 	id := providerInfo.ID
-	if id == "" {
-		return info.Info{}, fmt.Errorf("%s has no id", info.Filename)
+	if err := checkName(id); err != nil {
+		return info.Info{}, fmt.Errorf("provider id: %w", err)
 	}
 
 	loaders, err := installed()
@@ -68,10 +69,27 @@ func Add(ctx context.Context, dir, url string, progress io.Writer) (_ info.Info,
 		return info.Info{}, fmt.Errorf("provider with id %q already exists", id)
 	}
 
-	if err := os.Rename(tempDir, filepath.Join(dir, id)); err != nil {
+	target := filepath.Join(dir, id)
+	if _, err := os.Lstat(target); err == nil {
+		return info.Info{}, fmt.Errorf("%s already exists", target)
+	}
+	if err := os.Rename(tempDir, target); err != nil {
 		return info.Info{}, err
 	}
 	return providerInfo, nil
+}
+
+// checkName errors if name isn't a plain dir name, so it can't point outside the providers dir.
+func checkName(name string) error {
+	switch {
+	case name == "":
+		return errors.New("empty")
+	case name == "." || name == ".." || strings.HasPrefix(name, "."):
+		return fmt.Errorf("%q starts with a dot", name)
+	case strings.ContainsAny(name, `/\`) || filepath.Base(name) != name || filepath.VolumeName(name) != "":
+		return fmt.Errorf("%q isn't a plain name", name)
+	}
+	return nil
 }
 
 func readInfo(dir string) (info.Info, error) {
@@ -138,11 +156,29 @@ func pull(ctx context.Context, dir string, progress io.Writer) error {
 
 // Remove removes the provider dir named tag from dir.
 func Remove(dir, tag string) error {
-	return os.RemoveAll(filepath.Join(dir, tag))
+	if err := checkName(tag); err != nil {
+		return fmt.Errorf("provider %w", err)
+	}
+	target := filepath.Join(dir, tag)
+	if stat, err := os.Lstat(target); err != nil || !stat.IsDir() {
+		return fmt.Errorf("provider %q not found in %s", tag, dir)
+	}
+	if err := os.RemoveAll(target); err != nil {
+		return fmt.Errorf("remove provider %q: %w", tag, err)
+	}
+	return nil
 }
 
 // New scaffolds a new provider repository in dir, in a dir named after its id.
 func New(dir string, providerInfo info.Info) error {
+	if err := checkName(providerInfo.ID); err != nil {
+		return fmt.Errorf("provider id: %w", err)
+	}
+	target := filepath.Join(dir, providerInfo.ID)
+	if _, err := os.Lstat(target); err == nil {
+		return fmt.Errorf("%s already exists", target)
+	}
+
 	files := afero.Afero{Fs: afero.NewMemMapFs()}
 	switch providerInfo.Type {
 	case info.TypeLua:
@@ -161,7 +197,7 @@ func New(dir string, providerInfo info.Info) error {
 		return err
 	}
 
-	return createRepo(filepath.Join(dir, providerInfo.ID), files)
+	return createRepo(target, files)
 }
 
 // modeFile is the mode of the scaffold files, like git checks them out.
@@ -215,7 +251,7 @@ func createRepo(dir string, files afero.Fs) error {
 		}
 		defer src.Close()
 
-		dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
+		dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, modeFile)
 		if err != nil {
 			return err
 		}

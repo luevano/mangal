@@ -159,3 +159,83 @@ func TestAdd(t *testing.T) {
 		t.Errorf("providers dir has %v", names)
 	}
 }
+
+func TestAddBadID(t *testing.T) {
+	installed = func() ([]libmangal.ProviderLoader, error) { return nil, nil }
+	t.Cleanup(func() { installed = manager.Loaders })
+
+	root := t.TempDir()
+	providers := filepath.Join(root, "a", "providers")
+	if err := os.MkdirAll(providers, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	origin := originRepo(t, root, "evil")
+	// rewrite the id in a second commit
+	work, err := git.PlainOpen(filepath.Join(root, "evil-work"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "evil-work", info.Filename), []byte("type = \"lua\"\nid = \"../x\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commit(t, work, filepath.Join(root, "evil-work"), info.Filename)
+
+	if _, err := Add(context.Background(), providers, origin, io.Discard); err == nil {
+		t.Fatal("added a provider with id ../x")
+	}
+	if _, err := os.Stat(filepath.Join(root, "a", "x")); err == nil {
+		t.Error("wrote outside the providers dir")
+	}
+}
+
+func TestRemove(t *testing.T) {
+	root := t.TempDir()
+	providers := filepath.Join(root, "providers")
+	if err := os.MkdirAll(filepath.Join(providers, "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tag := range []string{"", ".", "..", "../providers", "x/..", "/tmp", "missing"} {
+		if err := Remove(providers, tag); err == nil {
+			t.Errorf("removed %q", tag)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(providers, "x")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Remove(providers, "x"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(providers, "x")); err == nil {
+		t.Error("x not removed")
+	}
+}
+
+func TestNew(t *testing.T) {
+	dir := t.TempDir()
+	i := info.Info{
+		ProviderInfo: libmangal.ProviderInfo{ID: "x", Name: "X", Version: "0.1.0", Website: "https://example.com"},
+		Type:         info.TypeLua,
+	}
+	if err := New(dir, i); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{info.Filename, "main.lua", "sdk.lua", ".gitignore", "README.md", ".git"} {
+		if _, err := os.Stat(filepath.Join(dir, "x", name)); err != nil {
+			t.Error(err)
+		}
+	}
+	got, err := readInfo(filepath.Join(dir, "x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != "x" || got.Website != "https://example.com" {
+		t.Errorf("info %+v", got)
+	}
+	if err := New(dir, i); err == nil {
+		t.Error("overwrote x")
+	}
+	i.ID = "../y"
+	if err := New(dir, i); err == nil {
+		t.Error("created ../y")
+	}
+}
