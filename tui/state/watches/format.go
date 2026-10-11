@@ -141,13 +141,9 @@ func onOff(b bool) string {
 
 // settings are the watch's settings and state, for its details.
 func settings(w watch.Watch, backoff int, now time.Time) string {
-	anilist := "none"
-	if w.AnilistID != 0 {
-		anilist = fmt.Sprint(w.AnilistID)
-	}
 	lines := []string{
 		fmt.Sprintf("%s · %s · manga id %s", w.Provider, enabled(w), w.MangaID),
-		fmt.Sprintf("interval %s · gaps %s · anilist %s · from %s", interval(w), onOff(w.Gaps), anilist, formatNumber(w.From)),
+		fmt.Sprintf("interval %s · gaps %s · metadata %s · from %s", interval(w), onOff(w.Gaps), bindings(w), formatNumber(w.From)),
 		fmt.Sprintf("last downloaded %s · last checked %s · next check %s", formatNumber(w.LastDownloaded), ago(w.LastChecked, now), nextCheck(w, backoff, now)),
 	}
 	if w.LastError != "" {
@@ -161,4 +157,19 @@ func enabled(w watch.Watch) string {
 		return "enabled"
 	}
 	return "paused"
+}
+
+// bindings are the watch's metadata bindings as "al 132029 (default), mal 30230".
+func bindings(w watch.Watch) string {
+	if len(w.Bindings) == 0 {
+		return "none"
+	}
+	list := make([]string, len(w.Bindings))
+	for i, b := range w.Bindings {
+		list[i] = fmt.Sprintf("%s %s", b.Source, b.ID)
+		if b.Default && len(w.Bindings) > 1 {
+			list[i] += " (default)"
+		}
+	}
+	return strings.Join(list, ", ")
 }

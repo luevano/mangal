@@ -235,7 +235,7 @@ func TestDetailsRender(t *testing.T) {
 	s.Resize(base.Size{Width: 120, Height: 30})
 	s.Update(context.Background(), detailsMsg{w: m.watches[0], runs: m.runs})
 	view := s.View()
-	for _, want := range []string{"mango-mangapill", "last downloaded 380", "next check in 2h", "new 3 (378, 379, 380)", "from 377", "manual", "nothing"} {
+	for _, want := range []string{"mango-mangapill", "last downloaded 380", "next check in 2h", "metadata none", "new 3 (378, 379, 380)", "from 377", "manual", "nothing"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("details miss %q:\n%s", want, view)
 		}
@@ -245,6 +245,13 @@ func TestDetailsRender(t *testing.T) {
 		if !strings.Contains(report, want) {
 			t.Errorf("report misses %q:\n%s", want, report)
 		}
+	}
+}
+
+func TestBindings(t *testing.T) {
+	w := watch.Watch{Bindings: []storage.Binding{{Source: "al", ID: "132029", Default: true}, {Source: "mal", ID: "30230"}}}
+	if got := bindings(w); got != "al 132029 (default), mal 30230" {
+		t.Errorf("got %q", got)
 	}
 }
 
