@@ -110,3 +110,22 @@ func TestScheduleFlag(t *testing.T) {
 		t.Error("--interval isn't a hidden flag of watch set")
 	}
 }
+
+func TestMoveArgs(t *testing.T) {
+	isProvider := func(id string) bool { return strings.HasPrefix(id, "mango-") }
+	for _, tc := range []struct {
+		args            []string
+		provider, query string
+	}{
+		{nil, "", ""},
+		{[]string{"mango-weebcentral"}, "mango-weebcentral", ""},
+		{[]string{"Berserk"}, "", "Berserk"},
+		{[]string{"mid:01J76"}, "", "mid:01J76"},
+		{[]string{"mango-weebcentral", "One-Punch", "Man"}, "mango-weebcentral", "One-Punch Man"},
+		{[]string{"lua-x", "mid:1"}, "lua-x", "mid:1"},
+	} {
+		if p, q := moveArgs(tc.args, isProvider); p != tc.provider || q != tc.query {
+			t.Errorf("%q: %q %q, want %q %q", tc.args, p, q, tc.provider, tc.query)
+		}
+	}
+}

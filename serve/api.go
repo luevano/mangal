@@ -108,6 +108,7 @@ func (a *API) Register(mux *http.ServeMux) {
 	handle("GET /api/watches/{id}", a.get)
 	handle("PATCH /api/watches/{id}", a.patch)
 	handle("DELETE /api/watches/{id}", a.remove)
+	handle("POST /api/watches/{id}/relink", a.relink)
 	handle("POST /api/check", a.check)
 	handle("GET /api/runs", a.runs)
 	handle("GET /api/runs/{id}", a.run)
@@ -302,6 +303,32 @@ func (a *API) patch(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 	}
+	a.changed()
+	writeJSON(w, http.StatusOK, got)
+	return nil
+}
+
+func (a *API) relink(w http.ResponseWriter, r *http.Request) error {
+	id, err := pathID(r)
+	if err != nil {
+		return err
+	}
+	var req watch.RelinkOptions
+	if err := decode(r, &req); err != nil {
+		return err
+	}
+	if req.MangaID == "" && req.Query == "" {
+		return badRequest("manga_id or query is needed")
+	}
+	got, err := a.Manager().Relink(r.Context(), id, req)
+	if err != nil {
+		if watch.ErrorCode(err) == "" {
+			// the provider or the manga, not the server
+			err = &httpError{http.StatusUnprocessableEntity, err}
+		}
+		return err
+	}
+	a.Log.Infof("re-linked watch %d to %q from %s (%s)", got.ID, got.Title, got.Provider, got.MangaID)
 	a.changed()
 	writeJSON(w, http.StatusOK, got)
 	return nil

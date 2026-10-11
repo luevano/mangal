@@ -20,8 +20,9 @@ type fakeManager struct {
 	status   watch.Status
 	checkErr error
 
-	enabled map[int64]bool
-	checked [][]int64
+	enabled  map[int64]bool
+	checked  [][]int64
+	relinked map[int64]watch.RelinkOptions
 	// events is what Subscribe gives, nil for an error
 	events chan watch.LiveEvent
 }
@@ -55,6 +56,13 @@ func (f *fakeManager) SetEnabled(ctx context.Context, id int64, enabled bool) (w
 }
 func (f *fakeManager) Update(ctx context.Context, id int64, opts watch.UpdateOptions) (watch.Watch, error) {
 	return watch.Watch{}, nil
+}
+func (f *fakeManager) Relink(ctx context.Context, id int64, opts watch.RelinkOptions) (watch.Watch, error) {
+	if f.relinked == nil {
+		f.relinked = map[int64]watch.RelinkOptions{}
+	}
+	f.relinked[id] = opts
+	return f.Get(ctx, id)
 }
 func (f *fakeManager) Check(ctx context.Context, ids []int64, opts watch.CheckOptions) (watch.Report, error) {
 	f.checked = append(f.checked, ids)

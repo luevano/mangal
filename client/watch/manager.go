@@ -17,6 +17,8 @@ type Manager interface {
 	Remove(ctx context.Context, id int64) error
 	SetEnabled(ctx context.Context, id int64, enabled bool) (Watch, error)
 	Update(ctx context.Context, id int64, opts UpdateOptions) (Watch, error)
+	// Relink points the watch to another manga, keeping the watch.
+	Relink(ctx context.Context, id int64, opts RelinkOptions) (Watch, error)
 	// Check checks the watches now (every due one without ids). OnEvent may be dropped by
 	// a remote manager.
 	Check(ctx context.Context, ids []int64, opts CheckOptions) (Report, error)
@@ -89,7 +91,7 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		return st, err
 	}
 	for _, w := range all {
-		if w.Enabled && !w.ProviderMissing && (st.NextCheck.IsZero() || w.NextCheck.Before(st.NextCheck)) {
+		if w.Scheduled() && (st.NextCheck.IsZero() || w.NextCheck.Before(st.NextCheck)) {
 			st.NextCheck = w.NextCheck
 		}
 	}

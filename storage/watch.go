@@ -58,6 +58,26 @@ type Watch struct {
 	LastError string    `json:"last_error,omitempty"`
 	// Failures is how many checks in a row failed.
 	Failures int `json:"failures,omitempty"`
+	// NeedsRelink is a watch whose manga id may be wrong (moved from an old provider id,
+	// not found by a check, a placeholder id): the scheduler skips it until it's re-linked
+	// or a check finds the manga. RelinkReason says why.
+	NeedsRelink  bool   `json:"needs_relink,omitempty"`
+	RelinkReason string `json:"relink_reason,omitempty"`
+}
+
+// PlaceholderPrefix starts the manga id of a watch added without one (e.g. "title:Berserk"
+// from an offline add): it needs a re-link.
+const PlaceholderPrefix = "title:"
+
+// relinkColumn is what's stored: the reason, empty when no re-link is needed.
+func (w Watch) relinkColumn() string {
+	switch {
+	case !w.NeedsRelink:
+		return ""
+	case w.RelinkReason == "":
+		return "needs re-link"
+	}
+	return w.RelinkReason
 }
 
 // CheckRun is a pass over some watches.
@@ -247,14 +267,15 @@ func fromUnix(s int64) time.Time {
 }
 
 const watchColumns = `id, provider, manga_id, title, coalesce(library_manga, 0), enabled, schedule, gaps,
-	from_number, added, last_checked, last_gap_check, last_new, last_new_at, last_error, failures`
+	from_number, added, last_checked, last_gap_check, last_new, last_new_at, last_error, failures, relink`
 
 func scanWatch(rows *sql.Rows) (Watch, error) {
 	var w Watch
 	var added, checked, gapChecked, newAt int64
 	var from, lastNew sql.NullFloat64
 	err := rows.Scan(&w.ID, &w.Provider, &w.MangaID, &w.Title, &w.LibraryManga, &w.Enabled, &w.Schedule, &w.Gaps,
-		&from, &added, &checked, &gapChecked, &lastNew, &newAt, &w.LastError, &w.Failures)
+		&from, &added, &checked, &gapChecked, &lastNew, &newAt, &w.LastError, &w.Failures, &w.RelinkReason)
+	w.NeedsRelink = w.RelinkReason != ""
 	w.From, w.LastNew = floatPtr(from), floatPtr(lastNew)
 	w.Added, w.LastChecked, w.LastGapCheck, w.LastNewAt = fromUnix(added), fromUnix(checked), fromUnix(gapChecked), fromUnix(newAt)
 	return w, err
@@ -272,9 +293,9 @@ func (s Watches) Add(w Watch) (Watch, error) {
 	if exists != 0 {
 		return w, fmt.Errorf("add watch of %s %q: %w", w.Provider, w.MangaID, ErrWatchExists)
 	}
-	res, err := s.DB.Exec(`INSERT INTO watches (provider, manga_id, title, library_manga, enabled, schedule, gaps, from_number, added)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, w.Provider, w.MangaID, w.Title, nullID(w.LibraryManga), w.Enabled,
-		w.Schedule, w.Gaps, nullFloat(w.From), unix(w.Added))
+	res, err := s.DB.Exec(`INSERT INTO watches (provider, manga_id, title, library_manga, enabled, schedule, gaps, from_number, added, relink)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, w.Provider, w.MangaID, w.Title, nullID(w.LibraryManga), w.Enabled,
+		w.Schedule, w.Gaps, nullFloat(w.From), unix(w.Added), w.relinkColumn())
 	if err != nil {
 		return w, fmt.Errorf("add watch of %s %q: %w", w.Provider, w.MangaID, err)
 	}
@@ -327,14 +348,56 @@ func (s Watches) Remove(id int64) error {
 // Save writes every field of the watch but its provider, manga id and added time.
 func (s Watches) Save(w Watch) error {
 	res, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = ?, enabled = ?, schedule = ?, gaps = ?,
-	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?
+	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?
 WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, w.Schedule, w.Gaps,
-		nullFloat(w.From), unix(w.LastChecked), unix(w.LastGapCheck), nullFloat(w.LastNew), unix(w.LastNewAt), w.LastError, w.Failures, w.ID)
+		nullFloat(w.From), unix(w.LastChecked), unix(w.LastGapCheck), nullFloat(w.LastNew), unix(w.LastNewAt), w.LastError, w.Failures,
+		w.relinkColumn(), w.ID)
 	if err != nil {
 		return fmt.Errorf("save watch %d: %w", w.ID, err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("watch %d: %w", w.ID, ErrWatchNotFound)
+	}
+	return nil
+}
+
+// Relink points the watch to another manga (provider, manga id, title), keeping the rest:
+// its runs, schedule, settings and library manga (libraryManga replaces it when not 0). The
+// re-link flag and the failures are cleared, the metadata bindings move to the new manga
+// (a source the new manga has a binding of already keeps the watch's). A manga another
+// watch has is ErrWatchExists.
+func (s Watches) Relink(id int64, provider, mangaID, title string, libraryManga int64) error {
+	err := s.DB.InTx(func(tx *sql.Tx) error {
+		var oldProvider, oldManga string
+		if err := tx.QueryRow(`SELECT provider, manga_id FROM watches WHERE id = ?`, id).Scan(&oldProvider, &oldManga); errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("watch %d: %w", id, ErrWatchNotFound)
+		} else if err != nil {
+			return err
+		}
+		var other int
+		if err := tx.QueryRow(`SELECT count(*) FROM watches WHERE provider = ? AND manga_id = ? AND id != ?`, provider, mangaID, id).Scan(&other); err != nil {
+			return err
+		}
+		if other != 0 {
+			return fmt.Errorf("%s %q: %w", provider, mangaID, ErrWatchExists)
+		}
+		if _, err := tx.Exec(`UPDATE watches SET provider = ?, manga_id = ?, title = ?, library_manga = coalesce(?, library_manga),
+	relink = '', failures = 0, last_error = '' WHERE id = ?`, provider, mangaID, title, nullID(libraryManga), id); err != nil {
+			return err
+		}
+		if oldProvider == provider && oldManga == mangaID {
+			return nil
+		}
+		if _, err := tx.Exec(`DELETE FROM metadata_bindings WHERE provider = ?3 AND manga_id = ?4 AND source IN
+	(SELECT source FROM metadata_bindings WHERE provider = ?1 AND manga_id = ?2)`, oldProvider, oldManga, provider, mangaID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`UPDATE metadata_bindings SET provider = ?3, manga_id = ?4 WHERE provider = ?1 AND manga_id = ?2`,
+			oldProvider, oldManga, provider, mangaID)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("re-link watch %d to %s %q: %w", id, provider, mangaID, err)
 	}
 	return nil
 }
@@ -623,8 +686,21 @@ func (l *Lock) Unlock() error {
 	return nil
 }
 
+// relinkTable (migration 10): watches that need a re-link, with the reason; the
+// placeholder ids (offline watches added by title) need one.
+const relinkTable = `ALTER TABLE watches ADD COLUMN relink TEXT NOT NULL DEFAULT '';
+UPDATE watches SET relink = 'placeholder manga id' WHERE manga_id LIKE 'title:%'`
+
+// movedReason is the re-link reason of a watch moved from an old provider id: the site
+// may have changed, and its manga ids with it.
+func movedReason(oldID string) string {
+	return "moved from " + oldID + ", the manga id may have changed"
+}
+
 // migrateWatches moves the watches and their runs of an old provider id to the new one, a
-// manga watched under both keeps the new id's watch.
+// manga watched under both keeps the new id's watch. The moved watches need a re-link
+// (libmangal doesn't say whether the manga ids carried over): a check that finds the
+// manga clears it.
 func migrateWatches(tx *sql.Tx, oldID, newID string) error {
 	if _, err := tx.Exec(`UPDATE watch_runs SET watch = (SELECT n.id FROM watches n JOIN watches o ON o.manga_id = n.manga_id
 	WHERE o.id = watch_runs.watch AND n.provider = ?2)
@@ -634,7 +710,8 @@ WHERE watch IN (SELECT o.id FROM watches o JOIN watches n ON n.manga_id = o.mang
 	if _, err := tx.Exec(`DELETE FROM watches WHERE provider = ?1 AND manga_id IN (SELECT manga_id FROM watches WHERE provider = ?2)`, oldID, newID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE watches SET provider = ? WHERE provider = ?`, newID, oldID); err != nil {
+	if _, err := tx.Exec(`UPDATE watches SET provider = ?, relink = CASE WHEN relink = '' THEN ? ELSE relink END WHERE provider = ?`,
+		newID, movedReason(oldID), oldID); err != nil {
 		return err
 	}
 	_, err := tx.Exec(`UPDATE watch_runs SET provider = ? WHERE provider = ?`, newID, oldID)

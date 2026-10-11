@@ -267,6 +267,15 @@ func TestAPIWatches(t *testing.T) {
 	if code := s.call(t, "PATCH", path, `{"anilist_id":0}`, &unbound); code != http.StatusOK || unbound.AnilistID != 0 || len(unbound.Bindings) != 0 {
 		t.Errorf("patch anilist_id 0: %d %+v", code, unbound)
 	}
+	if code := s.call(t, "POST", path+"/relink", `{"manga_id":"dan"}`, &e); code != http.StatusConflict || e.Code != watch.CodeExists {
+		t.Errorf("re-link to a watched manga: %d %+v", code, e)
+	}
+	if code := s.call(t, "POST", path+"/relink", `{}`, &e); code != http.StatusBadRequest {
+		t.Errorf("empty re-link: %d %+v", code, e)
+	}
+	if code := s.call(t, "POST", path+"/relink", `{"provider":"fake","manga_id":"nope"}`, &e); code != http.StatusUnprocessableEntity {
+		t.Errorf("re-link to a missing manga: %d %+v", code, e)
+	}
 	var stale []watch.Watch
 	if code := s.call(t, "GET", "/api/watches/stale?since=0d", "", &stale); code != http.StatusOK || stale == nil {
 		t.Errorf("stale: %d %+v", code, stale)
@@ -412,6 +421,16 @@ func TestRemote(t *testing.T) {
 	if w, err = r.Update(ctx, w.ID, watch.UpdateOptions{Schedule: &schedule, Gaps: &gaps, AnilistID: &anilistID}); err != nil || w.Schedule != "" || !w.Gaps ||
 		w.AnilistID != 21087 || len(w.Bindings) != 1 {
 		t.Errorf("update: %+v, %v", w, err)
+	}
+	if _, err := r.Relink(ctx, w.ID, watch.RelinkOptions{MangaID: "nope"}); err == nil || errors.Is(err, watch.ErrExists) {
+		t.Errorf("re-link to a missing manga: %v", err)
+	}
+	if w, err = r.Relink(ctx, w.ID, watch.RelinkOptions{Query: "Dandadan"}); err != nil || w.MangaID != "dan" || w.Title != "Dandadan" ||
+		w.AnilistID != 21087 {
+		t.Errorf("re-link: %+v, %v", w, err)
+	}
+	if w, err = r.Relink(ctx, w.ID, watch.RelinkOptions{MangaID: "opm"}); err != nil || w.MangaID != "opm" {
+		t.Errorf("re-link back: %+v, %v", w, err)
 	}
 	if stale, err := r.Stale(ctx, 0); err != nil || len(stale) != 1 {
 		t.Errorf("stale: %+v, %v", stale, err)

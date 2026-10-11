@@ -193,6 +193,9 @@ func TestMigrateOldIDsWatches(t *testing.T) {
 	if len(list) != 2 || list[0].ID != kept.ID || list[1].ID != only.ID || list[1].Provider != "mango-weebcentral" {
 		t.Errorf("watches %+v", list)
 	}
+	if len(list) == 2 && (list[0].NeedsRelink || !list[1].NeedsRelink || list[1].RelinkReason != movedReason("mango-mangasee")) {
+		t.Errorf("re-link flags %+v", list)
+	}
 	r, _, _ := watches.Run(run.ID)
 	if len(r.Results) != 2 || r.Results[0].Watch != kept.ID || r.Results[0].Provider != "mango-weebcentral" || r.Results[1].Watch != only.ID {
 		t.Errorf("runs %+v", r.Results)
@@ -314,5 +317,72 @@ func TestMigrateWatchSchedules(t *testing.T) {
 		if list[i].Schedule != want {
 			t.Errorf("%s: schedule %q, want %q", list[i].Title, list[i].Schedule, want)
 		}
+	}
+}
+
+func TestWatchRelink(t *testing.T) {
+	data := openData(t)
+	watches := Watches{DB: data}
+	bindings := Bindings{DB: data}
+
+	w, _ := watches.Add(Watch{Provider: "mango-weebcentral", MangaID: "title:Berserk", Title: "Berserk", NeedsRelink: true, RelinkReason: "placeholder manga id"})
+	other, _ := watches.Add(Watch{Provider: "mango-weebcentral", MangaID: "01J76XY", Title: "Vagabond"})
+	if got, _ := watches.Get(w.ID); !got.NeedsRelink || got.RelinkReason != "placeholder manga id" {
+		t.Errorf("flag not stored: %+v", got)
+	}
+	_ = bindings.Set(Binding{Provider: w.Provider, MangaID: w.MangaID, Source: "al", ID: "30002"})
+	_ = bindings.Set(Binding{Provider: "mango-mangapill", MangaID: "1/berserk", Source: "al", ID: "1"})
+	_ = bindings.Set(Binding{Provider: "mango-mangapill", MangaID: "1/berserk", Source: "kt", ID: "2"})
+
+	if err := watches.Relink(w.ID, other.Provider, other.MangaID, "x", 0); !errors.Is(err, ErrWatchExists) {
+		t.Errorf("re-linked to another watch's manga: %v", err)
+	}
+	got, _ := watches.Get(w.ID)
+	got.Failures, got.LastError, got.From = 3, "manga not found", f32(10)
+	_ = watches.Save(got)
+	if err := watches.Relink(w.ID, "mango-mangapill", "1/berserk", "Berserk (pill)", 0); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = watches.Get(w.ID)
+	if got.Provider != "mango-mangapill" || got.MangaID != "1/berserk" || got.Title != "Berserk (pill)" || got.NeedsRelink ||
+		got.Failures != 0 || got.LastError != "" || got.From == nil || *got.From != 10 {
+		t.Errorf("re-linked: %+v", got)
+	}
+	list, _ := bindings.Get("mango-mangapill", "1/berserk")
+	if len(list) != 2 || list[0].ID != "30002" || list[1].ID != "2" {
+		t.Errorf("bindings %+v", list)
+	}
+	if old, _ := bindings.Get("mango-weebcentral", "title:Berserk"); len(old) != 0 {
+		t.Errorf("old bindings left %+v", old)
+	}
+	if err := watches.Relink(99, "p", "m", "t", 0); !errors.Is(err, ErrWatchNotFound) {
+		t.Errorf("missing watch: %v", err)
+	}
+}
+
+// TestMigrateRelink: placeholder ids (schema 9) need a re-link.
+func TestMigrateRelink(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FilenameData)
+	old, err := Open(path, dataMigrations[:9])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO watches (provider, manga_id, title, added) VALUES ('p', 'title:Berserk', 'Berserk', 10)`,
+		`INSERT INTO watches (provider, manga_id, title, added) VALUES ('p', '123', 'B', 10)`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old.Close()
+	data, err := OpenData(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	list, err := (Watches{DB: data}).List()
+	if err != nil || len(list) != 2 || !list[0].NeedsRelink || list[1].NeedsRelink {
+		t.Errorf("watches %+v, %v", list, err)
 	}
 }

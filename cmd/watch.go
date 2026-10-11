@@ -11,10 +11,12 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
+	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cron"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -205,6 +207,8 @@ ones after --from.`,
 		}
 		state := ""
 		switch {
+		case w.NeedsRelink:
+			state = ", needs re-link (mangal watch move)"
 		case !w.Enabled:
 			state = ", paused"
 		case w.ProviderMissing:
@@ -263,6 +267,8 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 	for _, w := range watches {
 		next := watch.FormatNext(w.NextCheck, now)
 		switch {
+		case w.NeedsRelink:
+			next = "needs re-link: " + firstLine(w.RelinkReason, 50)
 		case !w.Enabled && w.ProviderMissing:
 			next = "paused, provider missing"
 		case !w.Enabled:
@@ -387,6 +393,7 @@ func pauseCmd(resume bool) *cobra.Command {
 }
 
 var watchSetArgs = struct {
+	Manga     string
 	Schedule  string
 	Interval  time.Duration
 	Gaps      bool
@@ -402,6 +409,7 @@ func init() {
 	f.BoolVar(&watchSetArgs.Gaps, "gaps", false, "Gap filling (--gaps=false turns it off)")
 	f.IntVarP(&watchSetArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind as the default, 0 unbinds it (see mangal bind)")
 	f.Float32Var(&watchSetArgs.From, "from", 0, "Treat the chapters up to this number as downloaded")
+	f.StringVar(&watchSetArgs.Manga, "manga", "", `Re-link it to this manga of its provider ("mid:<id>" or an exact title), see mangal watch move`)
 }
 
 var watchSetCmd = &cobra.Command{
@@ -431,20 +439,119 @@ var watchSetCmd = &cobra.Command{
 		if f.Changed("from") {
 			opts.From = &watchSetArgs.From
 		}
-		if opts == (watch.UpdateOptions{}) {
+		relink := strings.TrimSpace(watchSetArgs.Manga)
+		if opts == (watch.UpdateOptions{}) && relink == "" {
 			return errors.New("nothing to change, see --help")
 		}
 		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
 		}
-		w, err := svc.Update(cmd.Context(), id, opts)
-		if err != nil {
+		var w watch.Watch
+		if relink != "" {
+			if w, err = svc.Relink(cmd.Context(), id, watch.RelinkOptions{Query: relink}); err != nil {
+				return err
+			}
+			successf(cmd, "re-linked watch %d to %q from %s (manga id %s)", w.ID, w.Title, w.Provider, w.MangaID)
+			if opts == (watch.UpdateOptions{}) {
+				return nil
+			}
+		}
+		if w, err = svc.Update(cmd.Context(), id, opts); err != nil {
 			return err
 		}
 		successf(cmd, "updated %q from %s, next check %s", w.Title, w.Provider, watch.FormatNext(w.NextCheck, time.Now()))
 		return nil
 	},
+}
+
+var watchMoveArgs = struct {
+	Selector  string
+	AnilistID int
+}{}
+
+func init() {
+	watchCmd.AddCommand(watchMoveCmd)
+	f := watchMoveCmd.Flags()
+	f.StringVarP(&watchMoveArgs.Selector, "manga-selector", "m", "exact", "Manga selector of the search (first|last|exact|closest|<index>)")
+	f.IntVarP(&watchMoveArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind as the default too (the bindings move with the watch anyway)")
+}
+
+var watchMoveCmd = &cobra.Command{
+	Use:     "move <id> [provider] [query|mid:id]",
+	Aliases: []string{"relink"},
+	Short:   "Point a watch to another manga, keeping the watch",
+	Long: `Point the watch to another manga: of another provider, or of the same one when the
+site changed its manga ids. The watch keeps its id, the history of its checks, its schedule
+and settings, its metadata bindings and its library manga, and no longer needs a re-link.
+
+The manga is picked like "mangal watch add" does: the one with the id ("mid:<id>"), or
+the one the manga selector picks from a search of the query. Without a provider it's the
+watch's; without a query, the watch's title (an exact match).`,
+	Example: `  mangal watch move 12
+  mangal watch move 12 mango-weebcentral
+  mangal watch move 12 mango-weebcentral "Berserk"
+  mangal watch move 12 mid:01J76XYCERW3TT8A0PSB0QUPZT`,
+	Args:              cobra.MinimumNArgs(1),
+	ValidArgsFunction: completionMoveArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := parseID(args[0])
+		if err != nil {
+			return err
+		}
+		provider, query := moveArgs(args[1:], isProvider())
+		svc, err := newWatchManager(cmd)
+		if err != nil {
+			return err
+		}
+		before, err := svc.Get(cmd.Context(), id)
+		if err != nil {
+			return err
+		}
+		if query == "" {
+			query = before.Title
+		}
+		w, err := svc.Relink(cmd.Context(), id, watch.RelinkOptions{Provider: provider, Query: query,
+			Selector: watchMoveArgs.Selector, AnilistID: watchMoveArgs.AnilistID})
+		if err != nil {
+			return err
+		}
+		successf(cmd, "watch %d: %q from %s (manga id %s), was %s %s, last downloaded %s", w.ID, w.Title, w.Provider, w.MangaID,
+			before.Provider, before.MangaID, formatLast(w.LastDownloaded))
+		if len(w.Bindings) != 0 {
+			cmd.Printf("metadata: %s\n", formatBindings(w.Bindings))
+		}
+		return nil
+	},
+}
+
+// moveArgs are the provider and query of "watch move": the first argument is the provider
+// when it's one (isProvider), the rest the query.
+func moveArgs(args []string, isProvider func(string) bool) (provider, query string) {
+	if len(args) > 0 && (len(args) > 1 || isProvider(args[0])) {
+		provider, args = args[0], args[1:]
+	}
+	return provider, strings.Join(args, " ")
+}
+
+// isProvider tells the installed providers' ids (old ids too); every id is one when the
+// providers can't be loaded (the error comes when the watch service needs them).
+func isProvider() func(string) bool {
+	loaders, err := manager.Loaders()
+	if err != nil {
+		return func(string) bool { return true }
+	}
+	return func(id string) bool {
+		_, _, ok := libmangal.FindLoader(loaders, id)
+		return ok
+	}
+}
+
+func completionMoveArgs(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) == 1 {
+		return completionProviderIDs(cmd, args, toComplete)
+	}
+	return nil, cobra.ShellCompDirectiveNoFileComp
 }
 
 var watchCheckArgs = struct {
@@ -469,8 +576,10 @@ func init() {
 var watchCheckCmd = &cobra.Command{
 	Use:   "check [id...] | --provider <id> [--due]",
 	Short: "Check the watches now",
-	Long: `Check the watches with the ids, or every one that isn't paused (--provider: of that
-provider; --due: only the due ones), and download what's new. A check counts as the
+	Long: `Check the watches with the ids, or every one that isn't paused or waiting for a
+re-link (--provider: of that provider; --due: only the due ones), and download what's new.
+A check that doesn't find the manga marks the watch as needing a re-link (mangal watch
+move), one that finds it clears that. A check counts as the
 scheduled one: the next check is the schedule's next tick.
 
 A provider is checked by one check at a time, also across processes (e.g. "mangal
@@ -549,7 +658,7 @@ func selectWatches(all []watch.Watch, ids []int64, provider string, due bool, no
 	for _, w := range all {
 		switch {
 		case len(ids) > 0 && !slices.Contains(ids, w.ID):
-		case len(ids) == 0 && (!w.Enabled || w.ProviderMissing):
+		case len(ids) == 0 && !w.Scheduled():
 		case provider != "" && w.Provider != provider:
 		case due && w.NextCheck.After(now):
 		default:

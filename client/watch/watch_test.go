@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -926,5 +927,83 @@ func TestNextCheckTicks(t *testing.T) {
 	w.LastGapCheck = at(10, 11, 3, 0, 5)
 	if next := svc.NextGapCheck(w); !next.Equal(at(10, 18, 3, 0, 0)) || svc.GapsDue(w, at(10, 18, 2, 59, 0)) || !svc.GapsDue(w, next) {
 		t.Errorf("gaps: next %s", next)
+	}
+}
+
+func TestRelink(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	old := &fakeManga{info: mangadata.MangaInfo{ID: "berserk", Title: "Berserk"}}
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "01J76XYBERSERK", Title: "Berserk"}}
+	vagabond := &fakeManga{info: mangadata.MangaInfo{ID: "01J76XYVAGABOND", Title: "Vagabond"}}
+	src := e.source("mango-weebcentral", m, vagabond)
+	src.chs[m.info.ID] = m.chapters(370, 371, 372)
+	pill := e.source("mango-mangapill", &fakeManga{info: mangadata.MangaInfo{ID: "1/berserk", Title: "Berserk"}})
+	pill.noByID = true
+	e.own(t, "mango-mangasee", old, 369, 370)
+
+	// a watch moved from mangasee by mangal migrate: its id is mangasee's slug
+	w, err := e.svc.Add(ctx, AddOptions{Offline: true, Provider: "mango-weebcentral", MangaID: "berserk", Title: "Berserk", Enabled: new(true), AnilistID: 30002})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _ := e.svc.Add(ctx, AddOptions{Provider: "mango-weebcentral", Query: "Vagabond"})
+	if _, err := e.svc.Watches.DB.Exec(`UPDATE watches SET relink = 'moved from mango-mangasee', library_manga = (SELECT manga FROM library_sources) WHERE id = ?`, w.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := e.svc.Get(ctx, w.ID); !got.NeedsRelink || got.Scheduled() {
+		t.Fatalf("not flagged: %+v", got)
+	}
+
+	// the scheduler and a check of every watch skip it, a check of it says not found
+	e.now = e.tick(e.now, 2)
+	if due, _ := e.svc.Due(ctx, e.now); len(due) != 1 || due[0].ID != other.ID {
+		t.Errorf("due %+v", due)
+	}
+	report, err := e.svc.Check(ctx, []int64{w.ID}, CheckOptions{})
+	if err != nil || len(report.Results) != 1 || report.Results[0].Relink == "" {
+		t.Fatalf("check %+v, %v", report, err)
+	}
+	got, _ := e.svc.Get(ctx, w.ID)
+	if !got.NeedsRelink || got.Failures != 0 || !strings.Contains(got.RelinkReason, "not found") || len(e.notifier.errs) != 0 {
+		t.Errorf("after not found: %+v, %d error notifications", got.Watch, len(e.notifier.errs))
+	}
+
+	if _, err := e.svc.Relink(ctx, w.ID, RelinkOptions{Query: "Vagabond"}); !errors.Is(err, ErrExists) {
+		t.Errorf("re-linked to another watch's manga: %v", err)
+	}
+	got, err = e.svc.Relink(ctx, w.ID, RelinkOptions{Query: "Berserk"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != w.ID || got.MangaID != m.info.ID || got.NeedsRelink || got.AnilistID != 30002 || got.LibraryManga == 0 ||
+		got.LastDownloaded == nil || *got.LastDownloaded != 370 {
+		t.Errorf("re-linked %+v", got)
+	}
+	report, _ = e.svc.Check(ctx, []int64{w.ID}, CheckOptions{})
+	if len(report.Results) != 1 || !slices.Equal(numbers(report.Results[0].Chapters), []float32{371, 372}) {
+		t.Errorf("check after the re-link %+v", report.Results)
+	}
+
+	// another provider, found by a search of the title; mid: on a provider without a lookup by id
+	if got, err = e.svc.Relink(ctx, w.ID, RelinkOptions{Provider: "mango-mangapill", Query: "Berserk"}); err != nil || got.Provider != "mango-mangapill" ||
+		got.MangaID != "1/berserk" || got.AnilistID != 30002 {
+		t.Errorf("to mangapill: %+v, %v", got, err)
+	}
+	if _, err = e.svc.Relink(ctx, w.ID, RelinkOptions{Provider: "mango-weebcentral", MangaID: "nope"}); err == nil {
+		t.Error("re-linked to a missing manga")
+	}
+
+	// a check that finds the manga clears the flag
+	_, _ = e.svc.Watches.DB.Exec(`UPDATE watches SET relink = 'moved' WHERE id = ?`, other.ID)
+	_, _ = e.svc.Check(ctx, []int64{other.ID}, CheckOptions{})
+	if got, _ := e.svc.Get(ctx, other.ID); got.NeedsRelink {
+		t.Errorf("still flagged after a good check: %+v", got.Watch)
+	}
+
+	// placeholders need one from the start
+	p, _ := e.svc.Add(ctx, AddOptions{Offline: true, Provider: "mango-weebcentral", Query: "mid:title:Vinland Saga", Title: "Vinland Saga"})
+	if !p.NeedsRelink {
+		t.Errorf("placeholder %+v", p.Watch)
 	}
 }

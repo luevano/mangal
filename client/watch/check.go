@@ -73,6 +73,9 @@ type Result struct {
 	Unavailable int `json:"unavailable,omitempty"`
 	// Failed is how many chapters failed to download.
 	Failed int `json:"failed,omitempty"`
+	// Relink is set when the provider doesn't have the manga (ErrMangaNotFound): the
+	// watch needs a re-link (not counted as a failure, not notified).
+	Relink string `json:"relink,omitempty"`
 }
 
 // Newest is the highest chapter number of the result, nil if none.
@@ -256,7 +259,7 @@ func (s *Service) toCheck(ids []int64) ([]storage.Watch, error) {
 			return nil, err
 		}
 		installed := s.installed()
-		return slices.DeleteFunc(all, func(w storage.Watch) bool { return !w.Enabled || !installed(w.Provider) }), nil
+		return slices.DeleteFunc(all, func(w storage.Watch) bool { return !w.Enabled || w.NeedsRelink || !installed(w.Provider) }), nil
 	}
 	var watches []storage.Watch
 	for _, id := range ids {
@@ -464,7 +467,11 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 	started := s.now()
 	manga, err := s.manga(ctx, src, w)
 	if err != nil {
-		return s.failed(w, started, err)
+		r := s.failed(w, started, err)
+		if errors.Is(err, ErrMangaNotFound) {
+			r.Relink = fmt.Sprintf("manga %q not found on %s", w.MangaID, src.Info().ID)
+		}
+		return r
 	}
 	if manga.Info().Title != "" {
 		w.Title = manga.Info().Title
@@ -566,13 +573,13 @@ func (s *Service) manga(ctx context.Context, src Source, w storage.Watch) (manga
 				return m, nil
 			}
 		}
-		return nil, fmt.Errorf("manga %q not found in a search of %q", w.MangaID, w.Title)
+		return nil, fmt.Errorf("manga %q in a search of %q: %w", w.MangaID, w.Title, ErrMangaNotFound)
 	}
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		return nil, fmt.Errorf("manga %q not found", w.MangaID)
+		return nil, fmt.Errorf("manga %q: %w", w.MangaID, ErrMangaNotFound)
 	}
 	return manga, nil
 }
@@ -622,10 +629,15 @@ func (s *Service) finish(ctx context.Context, w storage.Watch, r *Result) {
 	if newest := r.Newest(); newest != nil {
 		w.LastNew, w.LastNewAt = newest, r.Finished
 	}
-	if r.Status == storage.StatusError {
+	switch {
+	case r.Relink != "":
+		// the manga id is wrong: no backoff, it waits for a re-link
+		w.NeedsRelink, w.RelinkReason = true, r.Relink
+	case r.Status == storage.StatusError:
 		w.Failures++
-	} else {
+	default:
 		w.Failures = 0
+		w.NeedsRelink, w.RelinkReason = false, ""
 	}
 	w.LastError = r.Error
 	if w.LibraryManga == 0 {
@@ -659,7 +671,7 @@ func (s *Service) notify(ctx context.Context, r Result) {
 			s.warn(err)
 		}
 	}
-	if r.Error != "" && (mode == NotifyErrors || mode == NotifyBoth) {
+	if r.Error != "" && r.Relink == "" && (mode == NotifyErrors || mode == NotifyBoth) {
 		if err := s.Notifier.Error(ctx, r); err != nil {
 			s.warn(err)
 		}

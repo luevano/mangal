@@ -152,7 +152,7 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 		next[w.ID] = c.NextCheckSince(w.Watch, s.started)
 		nextGaps[w.ID] = c.NextGapCheckSince(w.Watch, s.started)
 		switch {
-		case !w.Enabled || w.ProviderMissing:
+		case !w.Scheduled():
 		case !next[w.ID].IsZero() && !next[w.ID].After(now):
 			add(w.Provider).due = append(add(w.Provider).due, w.ID)
 		case !nextGaps[w.ID].IsZero() && !nextGaps[w.ID].After(now):
@@ -183,7 +183,7 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 	full := len(s.running) >= parallel
 	sleep := s.MaxSleep
 	for _, w := range all {
-		if !w.Enabled || w.ProviderMissing || s.running[w.Provider] || (full && !next[w.ID].After(now)) {
+		if !w.Scheduled() || s.running[w.Provider] || (full && !next[w.ID].After(now)) {
 			continue
 		}
 		next := next[w.ID]

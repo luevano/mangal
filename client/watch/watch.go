@@ -6,6 +6,7 @@
 package watch
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -52,6 +53,9 @@ var (
 	ErrNotFound = storage.ErrWatchNotFound
 	// ErrExists is watching a manga that's already watched.
 	ErrExists = storage.ErrWatchExists
+	// ErrMangaNotFound is a watch whose manga the provider doesn't have (any more): its
+	// manga id is wrong, it needs a re-link.
+	ErrMangaNotFound = errors.New("manga not found")
 )
 
 type (
@@ -77,6 +81,12 @@ type Watch struct {
 	ProviderMissing bool `json:"provider_missing,omitempty"`
 	// Bindings are the manga's metadata bindings (source, id, default), the default first.
 	Bindings []storage.Binding `json:"bindings,omitempty"`
+}
+
+// Scheduled is true when the scheduler checks it: enabled, its provider installed, no
+// re-link needed.
+func (w Watch) Scheduled() bool {
+	return w.Enabled && !w.ProviderMissing && !w.NeedsRelink
 }
 
 // UnmarshalJSON fills AnilistID from the bindings (the API's watches, see Remote).
@@ -338,6 +348,9 @@ func (s *Service) addOffline(opts AddOptions) (Watch, error) {
 		From:     opts.From,
 		Added:    s.now(),
 	}
+	if strings.HasPrefix(id, storage.PlaceholderPrefix) {
+		w.NeedsRelink, w.RelinkReason = true, "placeholder manga id"
+	}
 	if opts.Enabled != nil {
 		w.Enabled = *opts.Enabled
 	}
@@ -577,6 +590,68 @@ func (s *Service) Update(ctx context.Context, id int64, opts UpdateOptions) (Wat
 	})
 }
 
+// RelinkOptions say which manga a watch moves to: the one with MangaID, or the one
+// Selector picks from a search of Query (a "mid:<id>" query is the id), as AddOptions.
+type RelinkOptions struct {
+	// Provider is the manga's provider, the watch's if empty.
+	Provider string `json:"provider,omitempty"`
+	MangaID  string `json:"manga_id,omitempty"`
+	Query    string `json:"query,omitempty"`
+	// Selector is a manga selector (client/selector), exact if empty.
+	Selector string `json:"selector,omitempty"`
+	// AnilistID binds an AniList manga too (the default binding), 0 keeps the bindings.
+	AnilistID int `json:"anilist_id,omitempty"`
+}
+
+// Relink points the watch to another manga (e.g. the site changed its ids, or the
+// provider moved), keeping the watch: its id, runs, schedule, settings and metadata
+// bindings (moved to the new manga). It clears the re-link flag and the failures. The
+// library manga is worked out again (Library.MangaFor), kept when none matches. A manga
+// another watch has is ErrExists.
+func (s *Service) Relink(ctx context.Context, id int64, opts RelinkOptions) (Watch, error) {
+	w, err := s.Watches.Get(id)
+	if err != nil {
+		return Watch{}, err
+	}
+	provider := cmp.Or(opts.Provider, w.Provider)
+	src, err := s.Source(ctx, provider)
+	if err != nil {
+		return Watch{}, err
+	}
+	manga, err := s.find(ctx, src, AddOptions{MangaID: opts.MangaID, Query: opts.Query, Selector: opts.Selector})
+	if err != nil {
+		return Watch{}, err
+	}
+	info := src.Info()
+	if other, found, err := s.Watches.Find(info.ID, manga.Info().ID); err != nil {
+		return Watch{}, err
+	} else if found && other.ID != id {
+		return Watch{}, fmt.Errorf("re-link watch %d to %q from %s: watch %d has it: %w", id, manga.Info().Title, info.ID, other.ID, ErrExists)
+	}
+	if opts.AnilistID != 0 {
+		if _, err := src.BoundMetadata(ctx, metadata.IDCodeAnilist, strconv.Itoa(opts.AnilistID)); err != nil {
+			return Watch{}, err
+		}
+	}
+	var libraryManga int64
+	if m, found, err := s.Library.MangaFor(info, manga, s.Options.ProviderDirs); err != nil {
+		return Watch{}, err
+	} else if found {
+		libraryManga = m.ID
+	}
+	title := cmp.Or(manga.Info().Title, w.Title)
+	if err := s.Watches.Relink(id, info.ID, manga.Info().ID, title, libraryManga); err != nil {
+		return Watch{}, err
+	}
+	if w, err = s.Watches.Get(id); err != nil {
+		return Watch{}, err
+	}
+	if err := s.bindAnilist(w, opts.AnilistID); err != nil {
+		return Watch{}, err
+	}
+	return s.Get(ctx, id)
+}
+
 func (s *Service) update(id int64, change func(*storage.Watch)) (Watch, error) {
 	w, err := s.Watches.Get(id)
 	if err != nil {
@@ -697,7 +772,7 @@ func (s *Service) Due(ctx context.Context, now time.Time) ([]Watch, error) {
 	}
 	var due []Watch
 	for _, w := range all {
-		if w.Enabled && !w.ProviderMissing && !w.NextCheck.After(now) {
+		if w.Scheduled() && !w.NextCheck.After(now) {
 			due = append(due, w)
 		}
 	}

@@ -130,6 +130,12 @@ func (r *Remote) Update(ctx context.Context, id int64, opts UpdateOptions) (Watc
 	return w, err
 }
 
+func (r *Remote) Relink(ctx context.Context, id int64, opts RelinkOptions) (Watch, error) {
+	var w Watch
+	err := r.do(ctx, http.MethodPost, watchPath(id)+"/relink", opts, &w)
+	return w, err
+}
+
 func (r *Remote) Stale(ctx context.Context, since time.Duration) ([]Watch, error) {
 	var list []Watch
 	err := r.do(ctx, http.MethodGet, "/api/watches/stale?since="+url.QueryEscape(since.String()), nil, &list)
