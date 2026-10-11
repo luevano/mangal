@@ -1,11 +1,12 @@
 openapi: "3.0.0"
 info:
-  version: 1.0.0
-  title: Mangal WEB UI
+  version: 1.1.0
+  title: Mangal web UI
+  description: Browse-only API of the mangal web UI (no downloads or library).
 paths:
   /image:
     get:
-      description: Get image from URL bypassing CORS policy
+      description: Get an image from an http(s) URL, bypassing the CORS policy
       operationId: getImage
       parameters:
         - name: url
@@ -24,9 +25,15 @@ paths:
         '200':
           description: image response
           content:
-            image/png:
+            image/*:
               schema:
                 $ref: '#/components/schemas/Image'
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /mangalInfo:
     get:
       description: Get information about installed Mangal app
@@ -47,7 +54,7 @@ paths:
   /providers:
     get:
       description: |
-        Get avaiable providers
+        Get available providers
       operationId: getProviders
       responses:
         '200':
@@ -66,9 +73,9 @@ paths:
                 $ref: '#/components/schemas/Error'
   /searchMangas:
     get:
-      description: search for mangas
+      description: Search for mangas
       operationId: searchMangas
-      parameters: 
+      parameters:
         - &providerParam
           name: provider
           in: query
@@ -92,7 +99,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Manga'
-
         default:
           description: unexpected error
           content:
@@ -101,7 +107,7 @@ paths:
                 $ref: '#/components/schemas/Error'
   /mangaVolumes:
     get:
-      description: get manga volumes
+      description: Get manga volumes
       operationId: getMangaVolumes
       parameters:
         - *providerParam
@@ -131,7 +137,7 @@ paths:
 
   /volumeChapters:
     get:
-      description: get volume chapters
+      description: Get volume chapters
       operationId: getVolumeChapters
       parameters:
         - *providerParam
@@ -160,51 +166,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /manga:
-    get:
-      description: Get manga
-      operationId: getManga
-      parameters:
-        - *providerParam
-        - *queryParam
-        - *mangaParam
-      responses:
-        '200':
-          description: manga response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Manga'
-        '404':
-          description: manga not found
-        default:
-          description: unexpected error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /chapter:
-    get:
-      description: Get chapter
-      operationId: getChapter
-      parameters:
-        - *providerParam
-        - *queryParam
-        - *mangaParam
-        - *volumeParam
-      responses:
-        '200':
-          description: chapter response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Chapter'
-
   /provider:
     get:
       description: Get provider
       operationId: getProvider
-      parameters: 
+      parameters:
         - name: id
           in: query
           description: provider id
@@ -218,8 +184,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Provider'
-        '404':
-            description: provider not found
+        default:
+          description: unexpected error (404 if the provider isn't found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /mangaPage:
     get:
@@ -245,7 +215,7 @@ paths:
 
   /formats:
     get:
-      description: Get avaiable formats
+      description: Get available formats
       operationId: getFormats
       responses:
         '200':
@@ -256,6 +226,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Format'
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     Image:
@@ -272,7 +248,7 @@ components:
         name:
           type: string
         id:
-          type: string    
+          type: string
         description:
           type: string
         version:

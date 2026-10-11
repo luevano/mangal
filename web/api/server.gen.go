@@ -25,17 +25,11 @@ import (
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
-	// (GET /chapter)
-	GetChapter(ctx echo.Context, params GetChapterParams) error
-
 	// (GET /formats)
 	GetFormats(ctx echo.Context) error
 
 	// (GET /image)
 	GetImage(ctx echo.Context, params GetImageParams) error
-
-	// (GET /manga)
-	GetManga(ctx echo.Context, params GetMangaParams) error
 
 	// (GET /mangaPage)
 	GetMangaPage(ctx echo.Context, params GetMangaPageParams) error
@@ -62,45 +56,6 @@ type ServerInterface interface {
 // ServerInterfaceWrapper converts echo contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler ServerInterface
-}
-
-// GetChapter converts echo context to params.
-func (w *ServerInterfaceWrapper) GetChapter(ctx echo.Context) error {
-	var err error
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetChapterParams
-	// ------------- Required query parameter "provider" -------------
-
-	err = runtime.BindQueryParameter("form", true, true, "provider", ctx.QueryParams(), &params.Provider)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter provider: %s", err))
-	}
-
-	// ------------- Required query parameter "query" -------------
-
-	err = runtime.BindQueryParameter("form", true, true, "query", ctx.QueryParams(), &params.Query)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter query: %s", err))
-	}
-
-	// ------------- Required query parameter "manga" -------------
-
-	err = runtime.BindQueryParameter("form", true, true, "manga", ctx.QueryParams(), &params.Manga)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter manga: %s", err))
-	}
-
-	// ------------- Required query parameter "volume" -------------
-
-	err = runtime.BindQueryParameter("form", true, true, "volume", ctx.QueryParams(), &params.Volume)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter volume: %s", err))
-	}
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetChapter(ctx, params)
-	return err
 }
 
 // GetFormats converts echo context to params.
@@ -134,38 +89,6 @@ func (w *ServerInterfaceWrapper) GetImage(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetImage(ctx, params)
-	return err
-}
-
-// GetManga converts echo context to params.
-func (w *ServerInterfaceWrapper) GetManga(ctx echo.Context) error {
-	var err error
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetMangaParams
-	// ------------- Required query parameter "provider" -------------
-
-	err = runtime.BindQueryParameter("form", true, true, "provider", ctx.QueryParams(), &params.Provider)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter provider: %s", err))
-	}
-
-	// ------------- Required query parameter "query" -------------
-
-	err = runtime.BindQueryParameter("form", true, true, "query", ctx.QueryParams(), &params.Query)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter query: %s", err))
-	}
-
-	// ------------- Required query parameter "manga" -------------
-
-	err = runtime.BindQueryParameter("form", true, true, "manga", ctx.QueryParams(), &params.Manga)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter manga: %s", err))
-	}
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetManga(ctx, params)
 	return err
 }
 
@@ -361,10 +284,8 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 		Handler: si,
 	}
 
-	router.GET(baseURL+"/chapter", wrapper.GetChapter)
 	router.GET(baseURL+"/formats", wrapper.GetFormats)
 	router.GET(baseURL+"/image", wrapper.GetImage)
-	router.GET(baseURL+"/manga", wrapper.GetManga)
 	router.GET(baseURL+"/mangaPage", wrapper.GetMangaPage)
 	router.GET(baseURL+"/mangaVolumes", wrapper.GetMangaVolumes)
 	router.GET(baseURL+"/mangalInfo", wrapper.GetMangalInfo)
@@ -373,23 +294,6 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/searchMangas", wrapper.SearchMangas)
 	router.GET(baseURL+"/volumeChapters", wrapper.GetVolumeChapters)
 
-}
-
-type GetChapterRequestObject struct {
-	Params GetChapterParams
-}
-
-type GetChapterResponseObject interface {
-	VisitGetChapterResponse(w http.ResponseWriter) error
-}
-
-type GetChapter200JSONResponse Chapter
-
-func (response GetChapter200JSONResponse) VisitGetChapterResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-
-	return json.NewEncoder(w).Encode(response)
 }
 
 type GetFormatsRequestObject struct {
@@ -408,6 +312,18 @@ func (response GetFormats200JSONResponse) VisitGetFormatsResponse(w http.Respons
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetFormatsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetFormatsdefaultJSONResponse) VisitGetFormatsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
 type GetImageRequestObject struct {
 	Params GetImageParams
 }
@@ -416,13 +332,14 @@ type GetImageResponseObject interface {
 	VisitGetImageResponse(w http.ResponseWriter) error
 }
 
-type GetImage200ImagepngResponse struct {
+type GetImage200ImageResponse struct {
 	Body          io.Reader
+	ContentType   string
 	ContentLength int64
 }
 
-func (response GetImage200ImagepngResponse) VisitGetImageResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "image/png")
+func (response GetImage200ImageResponse) VisitGetImageResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", response.ContentType)
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
 	}
@@ -435,37 +352,12 @@ func (response GetImage200ImagepngResponse) VisitGetImageResponse(w http.Respons
 	return err
 }
 
-type GetMangaRequestObject struct {
-	Params GetMangaParams
-}
-
-type GetMangaResponseObject interface {
-	VisitGetMangaResponse(w http.ResponseWriter) error
-}
-
-type GetManga200JSONResponse Manga
-
-func (response GetManga200JSONResponse) VisitGetMangaResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type GetManga404Response struct {
-}
-
-func (response GetManga404Response) VisitGetMangaResponse(w http.ResponseWriter) error {
-	w.WriteHeader(404)
-	return nil
-}
-
-type GetMangadefaultJSONResponse struct {
+type GetImagedefaultJSONResponse struct {
 	Body       Error
 	StatusCode int
 }
 
-func (response GetMangadefaultJSONResponse) VisitGetMangaResponse(w http.ResponseWriter) error {
+func (response GetImagedefaultJSONResponse) VisitGetImageResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(response.StatusCode)
 
@@ -575,12 +467,16 @@ func (response GetProvider200JSONResponse) VisitGetProviderResponse(w http.Respo
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetProvider404Response struct {
+type GetProviderdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
 }
 
-func (response GetProvider404Response) VisitGetProviderResponse(w http.ResponseWriter) error {
-	w.WriteHeader(404)
-	return nil
+func (response GetProviderdefaultJSONResponse) VisitGetProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
 }
 
 type GetProvidersRequestObject struct {
@@ -672,17 +568,11 @@ func (response GetVolumeChaptersdefaultJSONResponse) VisitGetVolumeChaptersRespo
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
-	// (GET /chapter)
-	GetChapter(ctx context.Context, request GetChapterRequestObject) (GetChapterResponseObject, error)
-
 	// (GET /formats)
 	GetFormats(ctx context.Context, request GetFormatsRequestObject) (GetFormatsResponseObject, error)
 
 	// (GET /image)
 	GetImage(ctx context.Context, request GetImageRequestObject) (GetImageResponseObject, error)
-
-	// (GET /manga)
-	GetManga(ctx context.Context, request GetMangaRequestObject) (GetMangaResponseObject, error)
 
 	// (GET /mangaPage)
 	GetMangaPage(ctx context.Context, request GetMangaPageRequestObject) (GetMangaPageResponseObject, error)
@@ -716,31 +606,6 @@ func NewStrictHandler(ssi StrictServerInterface, middlewares []StrictMiddlewareF
 type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
-}
-
-// GetChapter operation middleware
-func (sh *strictHandler) GetChapter(ctx echo.Context, params GetChapterParams) error {
-	var request GetChapterRequestObject
-
-	request.Params = params
-
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.GetChapter(ctx.Request().Context(), request.(GetChapterRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetChapter")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(GetChapterResponseObject); ok {
-		return validResponse.VisitGetChapterResponse(ctx.Response())
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
 }
 
 // GetFormats operation middleware
@@ -785,31 +650,6 @@ func (sh *strictHandler) GetImage(ctx echo.Context, params GetImageParams) error
 		return err
 	} else if validResponse, ok := response.(GetImageResponseObject); ok {
 		return validResponse.VisitGetImageResponse(ctx.Response())
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// GetManga operation middleware
-func (sh *strictHandler) GetManga(ctx echo.Context, params GetMangaParams) error {
-	var request GetMangaRequestObject
-
-	request.Params = params
-
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.GetManga(ctx.Request().Context(), request.(GetMangaRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetManga")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(GetMangaResponseObject); ok {
-		return validResponse.VisitGetMangaResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -990,26 +830,26 @@ func (sh *strictHandler) GetVolumeChapters(ctx echo.Context, params GetVolumeCha
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/+xY0Y/bqBP+VxC/36PV5No+5e1u1Z5WanVRq24fen0g9iShwkABpxtV+d9PBoydALGr",
-	"bHuRLk+78Yz5ZoZvPgZ/x6WopeDAjcaL71iXW6iJ/fd3ThnV5i3hG9L+lkpIUIaCta4I56Dua7KB9qfZ",
-	"S8ALrI2ifIMPBS7FbmD+v4I1XuD/zXq0mYea3fWehwJXoEtFpaGCJ9Y9FFjB14YqqPDi0xDkc9H5itUX",
-	"KE271t2WSAMqDp439co9XwtVE4MXeM0EMbjANeW0bmq8mIcFvfehwIYalk63UWw8XPd60S2YDPmobMdR",
-	"l4IJlUSHR6PIG6Iye8Gylhoq2iY7FvkAoFsuvFz4wFLpvFJKqFQmFRxVn3Lz4jkOC1BuYONKXoPWaY5F",
-	"XKhcUM4/Fc1rD3caDjwa4DrNuAJzUk+At14p0LCZIdkV5UTt+2x7qLO9lm+zpIVWycdPRGFaJZO1CSyT",
-	"7CUncnJOEo6kpyXBlJeC906wpnag1ECtx158sP4fqdl6wdC2UC43ohTZR2VwAfVQ2Vqwe74WcTF2oPQk",
-	"hescUwBLJXa0SunbeRHNciPD9GJ6uLTCvXeRbwpX8h8S5hMxPm2/vKQmtjcWpIFlEme6oyUiSseJaaSL",
-	"99s9LvqI4pTad6inlW9nTzb08dUf6MP9YA8W+Ldn82fzNi4hgRNJ8QK/sI8KLInZ2kxnZX9SbsBEFMJ/",
-	"gkGdj11JkdZyXznbXTBJokgNrpSfTleRnrCIVsgI1GirJK3lawNWER0DgyMeFseoBgo/oCSZeApnmxRp",
-	"IKrcog4hBdf9vBjL0j+F0OnFBQiOGcgTPQ0T2JPHGe2rz+3bWgquXWs8n8/dkc0NcEsNIiWjpSXA7It2",
-	"stADTOqaw+mk1/Eddditz6HAMxevPstMsiOUrBigzjlB0dfBdFF2k8TBzxnxIRJl7QOOsqbd0JDN2Xqg",
-	"tRI1+vDuDVrtJdGa8g26++vdeyQFo+U+VQc3jow0qlu8Uaxt00p840yQHLXbseEiYitYgwLlFaH9swGD",
-	"zBZcjhlY/xY+BzVOZYswk3wzncP+phLvpSva6U6G0SW7k502RFv11htumvpEmvozpc1PnzEtXBY9LQr8",
-	"cv4yZoJz48KgtWh45a7Ca9Iw82QhustYIsSGw6OE0kCFoPMJ3F2OKZGLXLbk/0bNFvmZGBFeoTDF5Oi9",
-	"nKBGN4pfEcWXGfUbsGDI9evg8EN/I0zSeBNo3F3ocnx9CPYbZa+Esj9wx58ykh3z4GooHD4k5CdC7qZJ",
-	"KjgiK9G0T7QhjEGF/PWQSJlltgP42fLhUHJlZzaJ6xIQOfjKkq39oI2j6i5721TNyPSWNVzHWRCSSlQy",
-	"JDI69ATPwdxzXPWJF7/g/jc/twW/5vrX12ZcbULg10V6d5TYjs3vgD9v1kK5wzM+Nd8Pl/nPHJm/5EAL",
-	"X7vHGOZTVKAbZq7jQHOH6/BrbHYq81+9zt0jHo5Xu01mt2+Ql33Cj4l8ysJ/vYkOh38CAAD//45ReEa5",
-	"HwAA",
+	"H4sIAAAAAAAC/+xYW2/bNhT+KwQ3YM2g2e7lyW9dsA4GOsxo0OyhywMtHdksKJIlKSdG4f8+iKQutkhL",
+	"QbpMwPpkSzzkdy7fuYhfcSoKKThwo/HyK9bpDgpi/77llFFt/iB8S6pnqYQEZSjY1Q3hHNSqIFuoHs1B",
+	"Al5ibRTlW3xMcCr2neUfFeR4iX+Yt2hzDzW/biWPCc5Ap4pKQwUPnHtMsIIvJVWQ4eWnLshdUsuKzWdI",
+	"TXXW9Y5IA6qvPC+LjXufC1UQg5c4Z4IYnOCCclqUBV4umgO99DHBhhoWNrdUbFhdtz2pDwyqfOK2U61T",
+	"wYQKosODUeQ9UZFYsOhKARmtjB3SvANQH9dsTrxiIXN+U0qokCUZnHifcvP6FW4OoNzA1rm8AK3DHOtx",
+	"IXNKOfmQNu883Lk68GCA6zDjEsxJMQLeSoVAm2A2xm4oJ+rQWttCXcy1eJoFV2gWfP2NKEyzoLHWgHWQ",
+	"veSsnFwqCSelpyLBmE2N9F6wsnCg1EChhzbeWvm/qNn5gqGto5xtRCly6LnBKdRCRX3BVjwXfWfsQelR",
+	"Fa4WDAGsldjTLFTfLhfRKDciTE/Gq0sz3Eon8aRwLn9UYT4rxufpFy+pgfD2C1JnZRRn6tbSI0rNiXGk",
+	"68fbvU5ajfomVXuop9VJpPGvStxr+EVwdkBv1yskcmR2gCxbGbqHDfq4Qi+4QJm450yQTCOhEKMbRdTh",
+	"aoab8uDJ67d0YrrEL2cvZ4vKTiGBE0nxEr+eLWYLnGBJzM56bu6iZ/9vwfQV/R0MIntCGdkwQLW0PVOR",
+	"SmaVOal3zZICLQXXLl6vFgvXR7gBbs8nUjKa2r3zz9px1fl6dEx9e+jn/vlY4smpUa2TG1xyUjLzKLUu",
+	"aeNaZwC85PAgITWQIahljgme07rRxD3OkRVCuRJF9bQzRr7QV+jjh/cJ2hwk0ZryreXM9Z8fbpAUjKaH",
+	"UFxcV6tCrkgBLnU+nWM6sFIxZFrKVc2jWvxSgm2CrujY7tNNBaNKSDqu6tWdczAFOShQFVSpofrZgrGm",
+	"UK9rCNbvwpeg7gbJZxHmP48Prh93+8F1LpsUr4puT49yy0ohWWl/T80O+c6ICM9QU8sCRGonhgEySd/t",
+	"EM18jCMhrQWfRidnjwai0h2qEUJw9eOTsWgsNephYzzC3RPL5eCYtY7Qt8OC6XH4tp0LB2hcj3Uxvt42",
+	"698pOxHKPmLSH9PhT3kwGQo3nxNRAleDYTWcUMER2YiyeqMNYQwy5Ic6ImWU2Q7g3y4fDiXmdmaNmFYB",
+	"kZ1vrajvO2nc8+66XRtbMyK5ZRem0QsaowKebAyZRBzRizeLN4i676HWx5r/ZFAuSp5dnUd67MdLI/83",
+	"vxT35/mEaQMyXOIaxaeVaa5/2TIRD8GNa3K5UK5j91v1TfeY/02ffpYu2ly0DTHMm6hAl8xMo4u6jt69",
+	"CIqmuBO9+PFye3ra93Hwm42DPQQfDX/PF4ZpLs/iOIPXis+SQdHbwz6Rz1n4nyfR8fhPAAAA//8fn4H/",
+	"NBwAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

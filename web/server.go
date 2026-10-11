@@ -1,280 +1,132 @@
 package web
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
 	"github.com/luevano/libmangal"
-	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/libmangal/metadata/anilist"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/meta"
-	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/web/api"
-	"github.com/philippgille/gokv"
-	"github.com/philippgille/gokv/bigcache"
-	"github.com/philippgille/gokv/encoding"
-	"github.com/samber/lo"
 )
 
 var _ api.StrictServerInterface = (*Server)(nil)
 
 type Server struct {
-	imageCache  gokv.Store
-	loaders     []libmangal.ProviderLoader
-	loadersByID map[string]libmangal.ProviderLoader
+	loaders    []libmangal.ProviderLoader
+	images     *imageCache
+	httpClient *http.Client
 }
 
+// findClosest is swapped in tests.
+var findClosest = anilist.FindClosest
+
+// GetMangaPage implements api.StrictServerInterface.
 func (s *Server) GetMangaPage(ctx context.Context, request api.GetMangaPageRequestObject) (api.GetMangaPageResponseObject, error) {
-	loader, ok := s.loadersByID[request.Params.Provider]
-	if !ok {
-		return api.GetMangaPagedefaultJSONResponse{
-			StatusCode: 404,
-			Body: api.Error{
-				Code:    404,
-				Message: fmt.Sprintf("Provider %q not found", request.Params.Provider),
-			},
-		}, nil
-	}
-
-	c, err := client.Acquire(ctx, loader)
-	if err != nil {
-		return nil, err
-	}
-
-	mangas, err := searchMangas(ctx, c, request.Params.Query)
-	if err != nil {
-		return nil, err
-	}
-
-	manga, ok := lo.Find(mangas, func(manga mangadata.Manga) bool {
-		return manga.Info().ID == request.Params.Manga
-	})
-	if !ok {
-		return nil, fmt.Errorf("manga with id %s not found", request.Params.Manga)
-	}
-
-	volumes, err := c.MangaVolumesContext(ctx, manga)
-	if err != nil {
-		return nil, err
-	}
-
-	v := make([]api.VolumeWithChapters, len(volumes))
-	for i, volume := range volumes {
-		chapters, err := c.VolumeChaptersContext(ctx, volume)
+	return withClient(ctx, s, request.Params.Provider, func(c *libmangal.Client) (api.GetMangaPageResponseObject, error) {
+		manga, err := findManga(ctx, c, request.Params.Query, request.Params.Manga)
+		if err != nil {
+			return nil, err
+		}
+		chapters, err := client.MangaChapters(ctx, c, manga)
 		if err != nil {
 			return nil, err
 		}
 
-		c := make([]api.Chapter, len(chapters))
-		for j, chapter := range chapters {
-			info := chapter.Info()
-			c[j] = api.Chapter{
-				Number: info.Number,
-				Title:  info.Title,
-				Url:    &info.URL,
+		response := api.GetMangaPage200JSONResponse{
+			Manga:   toAPIManga(manga),
+			Volumes: []api.VolumeWithChapters{},
+		}
+		for _, chapter := range chapters {
+			number := chapter.Volume().Info().Number
+			if n := len(response.Volumes); n == 0 || response.Volumes[n-1].Volume.Number != number {
+				response.Volumes = append(response.Volumes, api.VolumeWithChapters{
+					Volume:   api.Volume{Number: number},
+					Chapters: []api.Chapter{},
+				})
+			}
+			last := &response.Volumes[len(response.Volumes)-1]
+			last.Chapters = append(last.Chapters, toAPIChapter(chapter))
+		}
+
+		// the page works without it
+		if ani, _, found, err := findClosest(ctx, manga.Info().Title); err == nil && found {
+			response.AnilistManga = &api.AnilistManga{
+				BannerImage: &ani.BannerImage,
+				CoverImage: api.CoverImage{
+					Color:      ani.CoverImage.Color,
+					ExtraLarge: ani.CoverImage.ExtraLarge,
+					Large:      ani.CoverImage.Large,
+					Medium:     ani.CoverImage.Medium,
+				},
+				Description: &ani.Summary,
 			}
 		}
 
-		v[i] = api.VolumeWithChapters{
-			Chapters: c,
-			Volume: api.Volume{
-				Number: volume.Info().Number,
-			},
-		}
-	}
-
-	info := manga.Info()
-	response := api.GetMangaPage200JSONResponse{
-		Manga: api.Manga{
-			Banner: &info.Banner,
-			Cover:  &info.Cover,
-			Id:     info.ID,
-			Title:  info.Title,
-			Url:    &info.URL,
-		},
-		Volumes: v,
-	}
-
-	// TODO: refactor to use generic metadata
-	//
-	// guaranteed to exist
-	ani, _ := c.GetMetadataProvider(metadata.IDSourceAnilist)
-	match, found, _ := ani.FindClosestContext(ctx, metadata.Query{Titles: []string{info.Title}})
-	if anilistManga, ok := match.Metadata.(*anilist.Manga); found && !match.Bad() && ok {
-		response.AnilistManga = &api.AnilistManga{
-			BannerImage: &anilistManga.BannerImage,
-			CoverImage: api.CoverImage{
-				Color:      anilistManga.CoverImage.Color,
-				ExtraLarge: anilistManga.CoverImage.ExtraLarge,
-				Large:      anilistManga.CoverImage.Large,
-				Medium:     anilistManga.CoverImage.Medium,
-			},
-			Description: &anilistManga.Summary,
-		}
-	}
-
-	return response, nil
-}
-
-// GetChapter implements api.StrictServerInterface.
-func (*Server) GetChapter(ctx context.Context, request api.GetChapterRequestObject) (api.GetChapterResponseObject, error) {
-	panic("unimplemented")
-}
-
-// GetManga implements api.StrictServerInterface.
-func (*Server) GetManga(ctx context.Context, request api.GetMangaRequestObject) (api.GetMangaResponseObject, error) {
-	panic("unimplemented")
+		return response, nil
+	})
 }
 
 // GetFormats implements api.StrictServerInterface.
 func (*Server) GetFormats(ctx context.Context, request api.GetFormatsRequestObject) (api.GetFormatsResponseObject, error) {
-	return api.GetFormats200JSONResponse(
-		lo.Map(libmangal.FormatValues(), func(format libmangal.Format, _ int) api.Format {
-			f := api.Format{
-				Name: format.String(),
-			}
-
-			if extension := format.Extension(); extension != "" {
-				f.Extension = &extension
-			}
-
-			return f
-		}),
-	), nil
+	return api.GetFormats200JSONResponse(mapSlice(libmangal.FormatValues(), func(format libmangal.Format) api.Format {
+		f := api.Format{Name: format.String()}
+		if extension := format.Extension(); extension != "" {
+			f.Extension = &extension
+		}
+		return f
+	})), nil
 }
 
 // GetProvider implements api.StrictServerInterface.
 func (s *Server) GetProvider(ctx context.Context, request api.GetProviderRequestObject) (api.GetProviderResponseObject, error) {
-	loader, ok := s.loadersByID[request.Params.Id]
-	if !ok {
-		return api.GetProvider404Response{}, nil
+	loader, err := s.findLoader(request.Params.Id)
+	if err != nil {
+		return nil, err
 	}
+	return api.GetProvider200JSONResponse(toAPIProvider(loader)), nil
+}
 
-	info := loader.Info()
-
-	return api.GetProvider200JSONResponse{
-		Description: &info.Description,
-		Id:          info.ID,
-		Name:        info.Name,
-		Version:     info.Version,
-	}, nil
+// GetProviders implements api.StrictServerInterface.
+func (s *Server) GetProviders(ctx context.Context, _ api.GetProvidersRequestObject) (api.GetProvidersResponseObject, error) {
+	return api.GetProviders200JSONResponse(mapSlice(s.loaders, toAPIProvider)), nil
 }
 
 // GetMangaVolumes implements api.StrictServerInterface.
 func (s *Server) GetMangaVolumes(ctx context.Context, request api.GetMangaVolumesRequestObject) (api.GetMangaVolumesResponseObject, error) {
-	loader, ok := s.loadersByID[request.Params.Provider]
-	if !ok {
-		return api.GetMangaVolumesdefaultJSONResponse{
-			StatusCode: 404,
-			Body: api.Error{
-				Code:    404,
-				Message: fmt.Sprintf("Provider %q not found", request.Params.Provider),
-			},
-		}, nil
-	}
-
-	c, err := client.Acquire(ctx, loader)
-	if err != nil {
-		return nil, err
-	}
-
-	volumes, err := mangaVolumes(ctx, c, request.Params.Query, request.Params.Manga)
-	if err != nil {
-		return nil, err
-	}
-
-	return api.GetMangaVolumes200JSONResponse(
-		lo.Map(volumes, func(volume mangadata.Volume, _ int) api.Volume {
-			return api.Volume{
-				Number: volume.Info().Number,
-			}
-		}),
-	), nil
+	return withClient(ctx, s, request.Params.Provider, func(c *libmangal.Client) (api.GetMangaVolumesResponseObject, error) {
+		manga, err := findManga(ctx, c, request.Params.Query, request.Params.Manga)
+		if err != nil {
+			return nil, err
+		}
+		volumes, err := c.MangaVolumesContext(ctx, manga)
+		if err != nil {
+			return nil, fmt.Errorf("get volumes of %q: %w", manga, err)
+		}
+		return api.GetMangaVolumes200JSONResponse(mapSlice(volumes, toAPIVolume)), nil
+	})
 }
 
 // GetVolumeChapters implements api.StrictServerInterface.
 func (s *Server) GetVolumeChapters(ctx context.Context, request api.GetVolumeChaptersRequestObject) (api.GetVolumeChaptersResponseObject, error) {
-	loader, ok := s.loadersByID[request.Params.Provider]
-	if !ok {
-		return api.GetVolumeChaptersdefaultJSONResponse{
-			StatusCode: 404,
-			Body: api.Error{
-				Code:    404,
-				Message: fmt.Sprintf("Provider %q not found", request.Params.Provider),
-			},
-		}, nil
-	}
-
-	c, err := client.Acquire(ctx, loader)
-	if err != nil {
-		return nil, err
-	}
-
-	chapters, err := volumeChapters(ctx, c, request.Params.Query, request.Params.Manga, request.Params.Volume)
-	if err != nil {
-		return nil, err
-	}
-
-	return api.GetVolumeChapters200JSONResponse(
-		lo.Map(chapters, func(chapter mangadata.Chapter, _ int) api.Chapter {
-			info := chapter.Info()
-			return api.Chapter{
-				Number: info.Number,
-				Title:  info.Title,
-				Url:    &info.URL,
-			}
-		}),
-	), nil
-}
-
-// GetImage implements api.StrictServerInterface.
-func (s *Server) GetImage(ctx context.Context, request api.GetImageRequestObject) (api.GetImageResponseObject, error) {
-	var image []byte
-	found, err := s.imageCache.Get(request.Params.Url, &image)
-	if err != nil {
-		s.imageCache.Delete(request.Params.Url)
-	}
-
-	if found {
-		return api.GetImage200ImagepngResponse{
-			Body:          bytes.NewReader(image),
-			ContentLength: int64(len(image)),
-		}, nil
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, request.Params.Url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
-	if referer := request.Params.Referer; referer != nil {
-		req.Header.Set("Referer", *referer)
-	}
-
-	response, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-
-	image, err = io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	_ = s.imageCache.Set(request.Params.Url, image)
-
-	return api.GetImage200ImagepngResponse{
-		Body:          bytes.NewReader(image),
-		ContentLength: int64(len(image)),
-	}, nil
+	return withClient(ctx, s, request.Params.Provider, func(c *libmangal.Client) (api.GetVolumeChaptersResponseObject, error) {
+		manga, err := findManga(ctx, c, request.Params.Query, request.Params.Manga)
+		if err != nil {
+			return nil, err
+		}
+		volume, err := findVolume(ctx, c, manga, request.Params.Volume)
+		if err != nil {
+			return nil, err
+		}
+		chapters, err := c.VolumeChaptersContext(ctx, volume)
+		if err != nil {
+			return nil, fmt.Errorf("get chapters of %q: %w", volume, err)
+		}
+		return api.GetVolumeChapters200JSONResponse(mapSlice(chapters, toAPIChapter)), nil
+	})
 }
 
 // GetMangalInfo implements api.StrictServerInterface.
@@ -286,97 +138,27 @@ func (*Server) GetMangalInfo(ctx context.Context, request api.GetMangalInfoReque
 
 // SearchMangas implements api.StrictServerInterface.
 func (s *Server) SearchMangas(ctx context.Context, request api.SearchMangasRequestObject) (api.SearchMangasResponseObject, error) {
-	loader, ok := s.loadersByID[request.Params.Provider]
-
-	if !ok {
-		return api.SearchMangasdefaultJSONResponse{
-			StatusCode: 404,
-			Body: api.Error{
-				Code:    404,
-				Message: fmt.Sprintf("Provider %q not found", request.Params.Provider),
-			},
-		}, nil
-	}
-
-	c, err := client.Acquire(ctx, loader)
-	if err != nil {
-		return api.SearchMangasdefaultJSONResponse{
-			StatusCode: 400,
-			Body: api.Error{
-				Message: err.Error(),
-			},
-		}, nil
-	}
-
-	mangas, err := searchMangas(ctx, c, request.Params.Query)
-	if err != nil {
-		return api.SearchMangasdefaultJSONResponse{
-			StatusCode: 400,
-			Body: api.Error{
-				Message: err.Error(),
-			},
-		}, nil
-	}
-
-	return api.SearchMangas200JSONResponse(lo.Map(mangas, func(manga mangadata.Manga, _ int) api.Manga {
-		info := manga.Info()
-		return api.Manga{
-			Banner: &info.Banner,
-			Cover:  &info.Cover,
-			Id:     info.ID,
-			Title:  info.Title,
-			Url:    &info.URL,
+	return withClient(ctx, s, request.Params.Provider, func(c *libmangal.Client) (api.SearchMangasResponseObject, error) {
+		mangas, err := c.SearchMangasContext(ctx, request.Params.Query)
+		if err != nil {
+			return nil, fmt.Errorf("search %q: %w", request.Params.Query, err)
 		}
-	})), nil
+		return api.SearchMangas200JSONResponse(mapSlice(mangas, toAPIManga)), nil
+	})
 }
 
-func (s *Server) GetProviders(ctx context.Context, _ api.GetProvidersRequestObject) (api.GetProvidersResponseObject, error) {
-	providers := lo.Map(s.loaders, func(loader libmangal.ProviderLoader, _ int) api.Provider {
-		info := loader.Info()
-		return api.Provider{
-			Description: &info.Description,
-			Id:          info.ID,
-			Name:        info.Name,
-			Version:     info.Version,
-		}
-	})
-
-	return api.GetProviders200JSONResponse(providers), nil
-}
-
-func NewServer() (*echo.Echo, error) {
-	sub, err := frontend()
+// newHandler is the API under /api and the UI.
+func newHandler(server *Server) (*echo.Echo, error) {
+	ui, err := frontend()
 	if err != nil {
 		return nil, err
 	}
 
-	server := &Server{}
-	store, err := bigcache.NewStore(bigcache.Options{
-		HardMaxCacheSize: 0,
-		Eviction:         0,
-		Codec:            encoding.Gob,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	server.imageCache = store
-	server.loaders, err = manager.Loaders()
-	if err != nil {
-		return nil, err
-	}
-
-	server.loadersByID = make(map[string]libmangal.ProviderLoader, len(server.loaders))
-	for _, loader := range server.loaders {
-		server.loadersByID[loader.Info().ID] = loader
-	}
-
-	handler := api.NewStrictHandler(server, nil)
 	e := echo.New()
-	api.RegisterHandlersWithBaseURL(e, handler, "api")
-
-	e.StaticFS("/", sub)
 	e.HideBanner = true
-
+	e.HidePort = true
+	e.HTTPErrorHandler = apiError
+	api.RegisterHandlersWithBaseURL(e, api.NewStrictHandler(server, nil), "api")
+	e.StaticFS("/", ui)
 	return e, nil
 }

@@ -6,7 +6,7 @@
 
 export interface paths {
   "/image": {
-    /** @description Get image from URL bypassing CORS policy */
+    /** @description Get an image from an http(s) URL, bypassing the CORS policy */
     get: operations["getImage"];
   };
   "/mangalInfo": {
@@ -14,7 +14,7 @@ export interface paths {
     get: operations["getMangalInfo"];
   };
   "/providers": {
-    /** @description Get avaiable providers */
+    /** @description Get available providers */
     get: operations["getProviders"];
   };
   "/searchMangas": {
@@ -29,14 +29,6 @@ export interface paths {
     /** @description get volume chapters */
     get: operations["getVolumeChapters"];
   };
-  "/manga": {
-    /** @description Get manga */
-    get: operations["getManga"];
-  };
-  "/chapter": {
-    /** @description Get chapter */
-    get: operations["getChapter"];
-  };
   "/provider": {
     /** @description Get provider */
     get: operations["getProvider"];
@@ -46,7 +38,7 @@ export interface paths {
     get: operations["getMangaPage"];
   };
   "/formats": {
-    /** @description Get avaiable formats */
+    /** @description Get available formats */
     get: operations["getFormats"];
   };
 }
@@ -126,7 +118,7 @@ export type external = Record<string, never>;
 
 export interface operations {
 
-  /** @description Get image from URL bypassing CORS policy */
+  /** @description Get an image from an http(s) URL, bypassing the CORS policy */
   getImage: {
     parameters: {
       query: {
@@ -140,7 +132,13 @@ export interface operations {
       /** @description image response */
       200: {
         content: {
-          "image/png": components["schemas"]["Image"];
+          "image/*": components["schemas"]["Image"];
+        };
+      };
+      /** @description unexpected error */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
         };
       };
     };
@@ -162,7 +160,7 @@ export interface operations {
       };
     };
   };
-  /** @description Get avaiable providers */
+  /** @description Get available providers */
   getProviders: {
     responses: {
       /** @description providers response */
@@ -260,60 +258,6 @@ export interface operations {
       };
     };
   };
-  /** @description Get manga */
-  getManga: {
-    parameters: {
-      query: {
-        /** @description provider id to use */
-        provider: string;
-        /** @description manga search query */
-        query: string;
-        /** @description manga id */
-        manga: string;
-      };
-    };
-    responses: {
-      /** @description manga response */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Manga"];
-        };
-      };
-      /** @description manga not found */
-      404: {
-        content: never;
-      };
-      /** @description unexpected error */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** @description Get chapter */
-  getChapter: {
-    parameters: {
-      query: {
-        /** @description provider id to use */
-        provider: string;
-        /** @description manga search query */
-        query: string;
-        /** @description manga id */
-        manga: string;
-        /** @description volume number */
-        volume: number;
-      };
-    };
-    responses: {
-      /** @description chapter response */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Chapter"];
-        };
-      };
-    };
-  };
   /** @description Get provider */
   getProvider: {
     parameters: {
@@ -329,9 +273,11 @@ export interface operations {
           "application/json": components["schemas"]["Provider"];
         };
       };
-      /** @description provider not found */
-      404: {
-        content: never;
+      /** @description unexpected error (404 if the provider isn't found) */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
       };
     };
   };
@@ -362,13 +308,19 @@ export interface operations {
       };
     };
   };
-  /** @description Get avaiable formats */
+  /** @description Get available formats */
   getFormats: {
     responses: {
       /** @description formats response */
       200: {
         content: {
           "application/json": components["schemas"]["Format"][];
+        };
+      };
+      /** @description unexpected error */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
         };
       };
     };

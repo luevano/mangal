@@ -84,21 +84,6 @@ type VolumeWithChapters struct {
 	Volume   Volume    `json:"volume"`
 }
 
-// GetChapterParams defines parameters for GetChapter.
-type GetChapterParams struct {
-	// Provider provider id to use
-	Provider string `form:"provider" json:"provider"`
-
-	// Query manga search query
-	Query string `form:"query" json:"query"`
-
-	// Manga manga id
-	Manga string `form:"manga" json:"manga"`
-
-	// Volume volume number
-	Volume float32 `form:"volume" json:"volume"`
-}
-
 // GetImageParams defines parameters for GetImage.
 type GetImageParams struct {
 	// Url image url to download
@@ -106,18 +91,6 @@ type GetImageParams struct {
 
 	// Referer referer to use to get the image
 	Referer *string `form:"referer,omitempty" json:"referer,omitempty"`
-}
-
-// GetMangaParams defines parameters for GetManga.
-type GetMangaParams struct {
-	// Provider provider id to use
-	Provider string `form:"provider" json:"provider"`
-
-	// Query manga search query
-	Query string `form:"query" json:"query"`
-
-	// Manga manga id
-	Manga string `form:"manga" json:"manga"`
 }
 
 // GetMangaPageParams defines parameters for GetMangaPage.

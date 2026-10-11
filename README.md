@@ -221,7 +221,8 @@ For more, use the `-h` flag.
 
 #### Web
 
-Serves a web UI:
+Serves a browse-only web UI (search providers, see mangas and chapters; no downloads or library),
+on `127.0.0.1:6969` by default. `--host 0.0.0.0` serves it to the network, without any authentication.
 
 ```sh
 mangal web --open
