@@ -12,6 +12,9 @@ import (
 
 // AddRequest is POST /api/watches, AddOptions in JSON.
 type AddRequest struct {
+	Offline   bool             `json:"offline,omitempty"`
+	Title     string           `json:"title,omitempty"`
+	Enabled   *bool            `json:"enabled,omitempty"`
 	Provider  string           `json:"provider"`
 	MangaID   string           `json:"manga_id,omitempty"`
 	Query     string           `json:"query,omitempty"`
@@ -23,12 +26,14 @@ type AddRequest struct {
 }
 
 func (r AddRequest) Options() AddOptions {
-	return AddOptions{Provider: r.Provider, MangaID: r.MangaID, Query: r.Query, Selector: r.Selector,
+	return AddOptions{Offline: r.Offline, Title: r.Title, Enabled: r.Enabled,
+		Provider: r.Provider, MangaID: r.MangaID, Query: r.Query, Selector: r.Selector,
 		AnilistID: r.AnilistID, From: r.From, Gaps: r.Gaps, Interval: time.Duration(r.Interval)}
 }
 
 func addRequest(o AddOptions) AddRequest {
-	return AddRequest{Provider: o.Provider, MangaID: o.MangaID, Query: o.Query, Selector: o.Selector,
+	return AddRequest{Offline: o.Offline, Title: o.Title, Enabled: o.Enabled,
+		Provider: o.Provider, MangaID: o.MangaID, Query: o.Query, Selector: o.Selector,
 		AnilistID: o.AnilistID, From: o.From, Gaps: o.Gaps, Interval: storage.Duration(o.Interval)}
 }
 

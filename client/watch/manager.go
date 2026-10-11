@@ -57,7 +57,7 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		return st, err
 	}
 	for _, w := range all {
-		if w.Enabled && (st.NextCheck.IsZero() || w.NextCheck.Before(st.NextCheck)) {
+		if w.Enabled && !w.ProviderMissing && (st.NextCheck.IsZero() || w.NextCheck.Before(st.NextCheck)) {
 			st.NextCheck = w.NextCheck
 		}
 	}

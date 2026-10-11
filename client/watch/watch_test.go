@@ -568,3 +568,55 @@ func TestDueAndPaused(t *testing.T) {
 		t.Errorf("stale %+v", stale)
 	}
 }
+
+func TestOfflineAndMissingProvider(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "dandadan", Title: "Dandadan"}}
+	src := e.source("mango-mangaplus", m)
+	src.chs["dandadan"] = m.chapters(1, 2)
+	e.svc.Installed = func() (func(string) bool, error) {
+		return func(p string) bool { _, ok := e.sources[p]; return ok }, nil
+	}
+
+	// a provider that's gone: added as given, paused, nothing asked
+	gone, err := e.svc.Add(ctx, AddOptions{Offline: true, Provider: "mango-mangasee", Query: "mid:Gachiakuta", Title: "Gachiakuta", AnilistID: 144946})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gone.Enabled || gone.MangaID != "Gachiakuta" || gone.Title != "Gachiakuta" || !gone.ProviderMissing {
+		t.Fatalf("offline watch %+v", gone)
+	}
+	if _, err := e.svc.Add(ctx, AddOptions{Offline: true, Provider: "mango-mangasee", MangaID: "Gachiakuta"}); !errors.Is(err, ErrExists) {
+		t.Errorf("added twice: %v", err)
+	}
+
+	// enabled, its provider still missing: not due, left out of the checks, no error
+	enabled := true
+	if _, err := e.svc.SetEnabled(ctx, gone.ID, enabled); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", MangaID: "dandadan"}); err != nil {
+		t.Fatal(err)
+	}
+	due, err := e.svc.Due(ctx, e.now)
+	if err != nil || len(due) != 1 || due[0].Provider != "mango-mangaplus" {
+		t.Fatalf("due %v, %v", due, err)
+	}
+	report, err := e.svc.Check(ctx, nil, CheckOptions{})
+	if err != nil || len(report.Results) != 1 || report.Errors != 0 {
+		t.Fatalf("check all %+v, %v", report, err)
+	}
+
+	// asked for explicitly: skipped, not a failure, no notification
+	report, err = e.svc.Check(ctx, []int64{gone.ID}, CheckOptions{})
+	if err != nil || len(report.Results) != 1 || report.Results[0].Status != storage.StatusSkipped || report.Errors != 0 {
+		t.Fatalf("check the missing one %+v, %v", report, err)
+	}
+	if got, _ := e.svc.Get(ctx, gone.ID); got.Failures != 0 {
+		t.Errorf("failures %d", got.Failures)
+	}
+	if len(e.notifier.errs) != 0 {
+		t.Errorf("notified %v", e.notifier.errs)
+	}
+}

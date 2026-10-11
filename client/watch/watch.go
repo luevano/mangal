@@ -18,6 +18,7 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -65,6 +66,9 @@ type Watch struct {
 	LastDownloaded *float32 `json:"last_downloaded,omitempty"`
 	// NextCheck is when it's due, see Service.NextCheck.
 	NextCheck time.Time `json:"next_check"`
+	// ProviderMissing is a provider that isn't installed: the checks skip it (without an
+	// error) until it is again.
+	ProviderMissing bool `json:"provider_missing,omitempty"`
 }
 
 // Options are the watch.* settings.
@@ -143,6 +147,8 @@ type Service struct {
 	Options Options
 	// Source gets the provider with the id (an old id works too).
 	Source func(ctx context.Context, provider string) (Source, error)
+	// Installed tells which providers are installed (old ids too); nil = every one is.
+	Installed func() (func(provider string) bool, error)
 	// Notifier may be nil.
 	Notifier Notifier
 	// Now is time.Now, swapped in tests.
@@ -160,12 +166,13 @@ func New(notifier Notifier) (*Service, error) {
 		return nil, err
 	}
 	return &Service{
-		Watches:  st.Watches(),
-		Library:  st.Library(),
-		Options:  ConfigOptions(),
-		Source:   ClientSource,
-		Notifier: notifier,
-		Now:      time.Now,
+		Watches:   st.Watches(),
+		Library:   st.Library(),
+		Options:   ConfigOptions(),
+		Source:    ClientSource,
+		Installed: installedProviders,
+		Notifier:  notifier,
+		Now:       time.Now,
 	}, nil
 }
 
@@ -179,6 +186,13 @@ func (s *Service) now() time.Time {
 // AddOptions say what to watch: the manga with MangaID, or the one Selector picks from a
 // search of Query (a "mid:<id>" query is the id).
 type AddOptions struct {
+	// Offline adds the watch as given (MangaID or a "mid:" Query, Title) without asking the
+	// provider, which needn't be installed (e.g. to keep the watches of a provider that's
+	// gone); it's paused unless Enabled says otherwise.
+	Offline bool
+	Title   string
+	Enabled *bool
+
 	Provider string
 	MangaID  string
 	Query    string
@@ -196,6 +210,9 @@ type AddOptions struct {
 
 // Add watches a manga. A manga already watched is ErrExists.
 func (s *Service) Add(ctx context.Context, opts AddOptions) (Watch, error) {
+	if opts.Offline {
+		return s.addOffline(opts)
+	}
 	src, err := s.Source(ctx, opts.Provider)
 	if err != nil {
 		return Watch{}, err
@@ -238,6 +255,73 @@ func (s *Service) Add(ctx context.Context, opts AddOptions) (Watch, error) {
 		return Watch{}, err
 	}
 	return s.complete(w)
+}
+
+// addOffline adds the watch as AddOptions say, the provider isn't asked.
+func (s *Service) addOffline(opts AddOptions) (Watch, error) {
+	id := opts.MangaID
+	if id == "" {
+		id, _ = selector.IDQuery(opts.Query)
+	}
+	if opts.Provider == "" || id == "" {
+		return Watch{}, errors.New("an offline watch needs the provider and the manga id (mid:<id>)")
+	}
+	title := opts.Title
+	if title == "" {
+		title = id
+	}
+	if _, found, err := s.Watches.Find(opts.Provider, id); err != nil {
+		return Watch{}, err
+	} else if found {
+		return Watch{}, fmt.Errorf("watch %q from %s: %w", title, opts.Provider, ErrExists)
+	}
+	w := storage.Watch{
+		Provider:  opts.Provider,
+		MangaID:   id,
+		Title:     title,
+		AnilistID: opts.AnilistID,
+		Interval:  storage.Duration(opts.Interval),
+		Gaps:      s.Options.Gaps,
+		From:      opts.From,
+		Added:     s.now(),
+	}
+	if opts.Enabled != nil {
+		w.Enabled = *opts.Enabled
+	}
+	if opts.Gaps != nil {
+		w.Gaps = *opts.Gaps
+	}
+	w, err := s.Watches.Add(w)
+	if err != nil {
+		return Watch{}, err
+	}
+	full, err := s.complete(w)
+	full.ProviderMissing = err == nil && !s.installed()(w.Provider)
+	return full, err
+}
+
+// installedProviders is the installed providers (old ids too), for Service.Installed.
+func installedProviders() (func(string) bool, error) {
+	loaders, err := manager.Loaders()
+	if err != nil {
+		return nil, err
+	}
+	return func(provider string) bool {
+		_, _, ok := libmangal.FindLoader(loaders, provider)
+		return ok
+	}, nil
+}
+
+// installed is Installed, or every provider when there's none.
+func (s *Service) installed() func(string) bool {
+	if s.Installed != nil {
+		if is, err := s.Installed(); err == nil {
+			return is
+		} else {
+			s.warn(fmt.Errorf("installed providers: %w", err))
+		}
+	}
+	return func(string) bool { return true }
 }
 
 // find is the manga AddOptions name.
@@ -301,11 +385,13 @@ func (s *Service) List(ctx context.Context) ([]Watch, error) {
 	if err != nil {
 		return nil, err
 	}
+	installed := s.installed()
 	watches := make([]Watch, len(list))
 	for i, w := range list {
 		if watches[i], err = s.complete(w); err != nil {
 			return nil, err
 		}
+		watches[i].ProviderMissing = !installed(w.Provider)
 	}
 	return watches, nil
 }
@@ -316,7 +402,9 @@ func (s *Service) Get(ctx context.Context, id int64) (Watch, error) {
 	if err != nil {
 		return Watch{}, err
 	}
-	return s.complete(w)
+	full, err := s.complete(w)
+	full.ProviderMissing = err == nil && !s.installed()(w.Provider)
+	return full, err
 }
 
 // complete adds what's worked out to the stored watch.
@@ -453,7 +541,7 @@ func (s *Service) Due(ctx context.Context, now time.Time) ([]Watch, error) {
 	}
 	var due []Watch
 	for _, w := range all {
-		if w.Enabled && !w.NextCheck.After(now) {
+		if w.Enabled && !w.ProviderMissing && !w.NextCheck.After(now) {
 			due = append(due, w)
 		}
 	}

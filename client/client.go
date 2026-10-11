@@ -37,6 +37,10 @@ var (
 )
 
 // Get returns the provider's client if it's already created, nil otherwise.
+
+// ErrProviderNotFound is a provider id that isn't installed (nor an old id of one).
+var ErrProviderNotFound = errors.New("provider not installed")
+
 func Get(loader libmangal.ProviderLoader) *libmangal.Client {
 	clientsMu.Lock()
 	e, ok := clients[loader.Info().ID]
@@ -111,7 +115,7 @@ func AcquireByID(ctx context.Context, id string) (*libmangal.Client, []string, e
 
 	loader, alias, ok := libmangal.FindLoader(loaders, id)
 	if !ok {
-		return nil, warnings, fmt.Errorf("provider with id %q not found", id)
+		return nil, warnings, fmt.Errorf("provider with id %q: %w", id, ErrProviderNotFound)
 	}
 	if alias != nil {
 		info := loader.Info()

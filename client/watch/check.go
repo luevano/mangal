@@ -192,7 +192,8 @@ func (s *Service) toCheck(ids []int64) ([]storage.Watch, error) {
 		if err != nil {
 			return nil, err
 		}
-		return slices.DeleteFunc(all, func(w storage.Watch) bool { return !w.Enabled }), nil
+		installed := s.installed()
+		return slices.DeleteFunc(all, func(w storage.Watch) bool { return !w.Enabled || !installed(w.Provider) }), nil
 	}
 	var watches []storage.Watch
 	for _, id := range ids {
@@ -254,6 +255,7 @@ func (s *Service) warn(err error) {
 func (s *Service) checkProvider(ctx context.Context, provider string, watches []storage.Watch, indexes []int, report *Report, opts CheckOptions, onEvent func(Event)) {
 	var src Source
 	var srcErr error
+	missing := !s.installed()(provider)
 	for _, i := range indexes {
 		w := watches[i]
 		if ctx.Err() != nil {
@@ -261,11 +263,14 @@ func (s *Service) checkProvider(ctx context.Context, provider string, watches []
 			continue
 		}
 		onEvent(Event{Kind: EventStart, Watch: w})
-		if src == nil && srcErr == nil {
+		if src == nil && srcErr == nil && !missing {
 			src, srcErr = s.Source(ctx, provider)
 		}
 		var r Result
-		if srcErr != nil {
+		if missing || errors.Is(srcErr, client.ErrProviderNotFound) {
+			// not a failure: the provider was removed, it may come back
+			r = s.skipped(w, "provider not installed")
+		} else if srcErr != nil {
 			r = s.failed(w, s.now(), fmt.Errorf("load %s: %w", provider, srcErr))
 		} else {
 			gaps := opts.Gaps || s.GapsDue(w, s.now())
