@@ -1,0 +1,464 @@
+// Package config is the TUI's config window: every config key, changed in place.
+package config
+
+import (
+	"context"
+	"fmt"
+	"maps"
+	"slices"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
+	_list "github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	mconfig "github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/theme/color"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/theme/style"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/list"
+	"github.com/luevano/mangal/v5/tui/util"
+)
+
+var _ base.ConfigWindow = (*state)(nil)
+
+type mode int
+
+const (
+	browsing mode = iota
+	// a text input for the selected key
+	editing
+	// the entries of a map key
+	mapping
+)
+
+// detailsHeight is the lines under the list: the selected key's description, hint and
+// input or error.
+const detailsHeight = 7
+
+type state struct {
+	list *list.Model
+	mode mode
+	// key being edited or mapped
+	key   string
+	input textinput.Model
+	// err is the last change's error, shown inline
+	err  string
+	maps mapEditor
+	size base.Size
+	// confirmReset is the map key whose reset (removing every entry) waits for a second r
+	confirmReset string
+
+	keys keyMap
+
+	// write saves the change to the config file, reload marks the loaded providers stale
+	write  func(key string, raw any) error
+	reload func()
+}
+
+// mapEditor edits the entries of a map key.
+type mapEditor struct {
+	ids    []string
+	cursor int
+	// inputting the url of id, or the id of a new entry when adding
+	inputting, adding bool
+	id                string
+}
+
+// New is the config window, filtered to filter if not empty.
+func New(filter string) base.State {
+	keys := mconfig.Keys()
+	l := list.New(2, 0, "key", "keys", sortedItems(keys), func(i item) _list.DefaultItem { return i })
+	l.KeyMap.Reverse.SetEnabled(false)
+	input := textinput.New()
+	input.Prompt = icon.Item.Raw() + " "
+	input.PromptStyle = style.Bold.Accent
+	s := &state{
+		list:   l,
+		input:  input,
+		keys:   newKeyMap(),
+		write:  writeKey,
+		reload: base.ReloadProviders,
+	}
+	s.Filter(filter)
+	return s
+}
+
+func writeKey(key string, raw any) error {
+	if err := mconfig.CreateFile(); err != nil {
+		return err
+	}
+	return mconfig.WriteKey(key, raw)
+}
+
+// Filter implements base.ConfigWindow.
+func (s *state) Filter(filter string) tea.Cmd {
+	s.mode = browsing
+	s.err = ""
+	if filter == "" {
+		s.list.ResetFilter()
+		return nil
+	}
+	s.list.SetFilterText(filter)
+	// the key itself first, the fuzzy matches after it
+	for n, i := range s.list.VisibleItems() {
+		if i.(item).key == filter {
+			s.list.Select(n)
+		}
+	}
+	return nil
+}
+
+func (s *state) Title() base.Title { return base.Title{Text: "Config"} }
+
+func (s *state) Subtitle() string {
+	return s.list.Subtitle() + " in " + mconfig.Path
+}
+
+func (s *state) Status() string { return s.list.Status() }
+
+func (s *state) Backable() bool { return s.mode == browsing && s.list.Unfiltered() }
+
+func (s *state) Inputting() bool {
+	return s.list.Filtering() || s.mode == editing || (s.mode == mapping && s.maps.inputting)
+}
+
+func (s *state) KeyMap() help.KeyMap {
+	switch s.mode {
+	case editing:
+		return util.KeyMap{Short: []key.Binding{s.keys.save, s.keys.cancel}}
+	case mapping:
+		if s.maps.inputting {
+			return util.KeyMap{Short: []key.Binding{s.keys.save, s.keys.cancel}}
+		}
+		return util.KeyMap{Short: []key.Binding{s.keys.add, s.keys.editEntry, s.keys.remove, s.keys.up, s.keys.down, s.keys.close}}
+	}
+	return base.CombinedKeyMap(util.KeyMap{Short: []key.Binding{s.keys.change, s.keys.reset}}, s.list.KeyMap)
+}
+
+func (s *state) Resize(size base.Size) tea.Cmd {
+	s.size = size
+	s.input.Width = max(10, size.Width-4)
+	return s.list.Resize(base.Size{Width: size.Width, Height: max(2, size.Height-detailsHeight)})
+}
+
+func (s *state) Init(context.Context) tea.Cmd { return nil }
+
+func (s *state) selected() (string, bool) {
+	i, ok := s.list.SelectedItem().(item)
+	return i.key, ok
+}
+
+func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
+	switch s.mode {
+	case editing:
+		return s.updateEditing(msg)
+	case mapping:
+		return s.updateMapping(msg)
+	}
+	if msg, ok := msg.(tea.KeyMsg); ok && !s.list.Filtering() {
+		k, ok := s.selected()
+		confirmed := s.confirmReset == k
+		s.confirmReset = ""
+		switch {
+		case !ok:
+		case key.Matches(msg, s.keys.change):
+			return s.change(k)
+		case key.Matches(msg, s.keys.reset):
+			if mconfig.KindOf(k) == mconfig.KindMap && !confirmed {
+				s.confirmReset = k
+				return base.Notify("Press r again to remove every entry")
+			}
+			def, _ := mconfig.Default(k)
+			cmd, _ := s.set(k, def)
+			return cmd
+		}
+	}
+	return s.list.Update(msg)
+}
+
+// change toggles a bool, cycles an enum, or opens the editor of the key.
+func (s *state) change(key string) tea.Cmd {
+	s.err = ""
+	raw, err := mconfig.Get(key)
+	if err != nil {
+		def, _ := mconfig.Default(key)
+		raw = def
+	}
+	switch mconfig.KindOf(key) {
+	case mconfig.KindBool:
+		b, _ := raw.(bool)
+		cmd, _ := s.set(key, !b)
+		return cmd
+	case mconfig.KindMap:
+		m, _ := raw.(map[string]any)
+		s.mode = mapping
+		s.key = key
+		s.maps = mapEditor{ids: slices.Sorted(maps.Keys(m))}
+		return nil
+	}
+	if values := mconfig.Values(key); values != nil {
+		current := fmt.Sprint(raw)
+		next := values[0]
+		for n, v := range values {
+			if strings.EqualFold(v, current) {
+				next = values[(n+1)%len(values)]
+			}
+		}
+		cmd, _ := s.set(key, next)
+		return cmd
+	}
+	s.mode = editing
+	s.key = key
+	return s.openInput(fmt.Sprint(raw), "", mconfig.IsSecret(key))
+}
+
+func (s *state) openInput(value, placeholder string, secret bool) tea.Cmd {
+	s.input.SetValue(value)
+	s.input.CursorEnd()
+	s.input.Placeholder = placeholder
+	s.input.EchoMode = textinput.EchoNormal
+	if secret {
+		s.input.EchoMode = textinput.EchoPassword
+	}
+	return s.input.Focus()
+}
+
+// set validates the value, sets it for this run and writes it to the config file. ok is
+// false for an invalid value, nothing changes then.
+func (s *state) set(key string, value any) (cmd tea.Cmd, ok bool) {
+	raw, err := mconfig.Parse(key, value)
+	if err != nil {
+		s.err = errorText(key, err)
+		return nil, false
+	}
+	// in Update: viper isn't safe for concurrent use, and the screens read it to render
+	if err := mconfig.Set(key, raw); err != nil {
+		s.err = errorText(key, err)
+		return nil, false
+	}
+	s.err = ""
+	notice := key + " saved"
+	if err := s.write(key, raw); err != nil {
+		s.err = "set for this run but not saved: " + err.Error()
+		notice = key + " set"
+	}
+	switch effectOf(key) {
+	case applyReload:
+		s.reload()
+	case applyIcons:
+		icon.SetType(mconfig.Icons.Get())
+	}
+	return base.Notify(notice), true
+}
+
+// errorText is the error without the key, shown next to it.
+func errorText(key string, err error) string {
+	return strings.TrimPrefix(err.Error(), fmt.Sprintf("config key %q: ", key))
+}
+
+func (s *state) updateEditing(msg tea.Msg) tea.Cmd {
+	if msg, ok := msg.(tea.KeyMsg); ok {
+		switch {
+		case key.Matches(msg, s.keys.save):
+			cmd, ok := s.set(s.key, s.input.Value())
+			if ok {
+				s.closeInput()
+			}
+			return cmd
+		case key.Matches(msg, s.keys.cancel):
+			s.closeInput()
+			s.err = ""
+			return nil
+		}
+	}
+	var cmd tea.Cmd
+	s.input, cmd = s.input.Update(msg)
+	return cmd
+}
+
+func (s *state) closeInput() {
+	s.input.Blur()
+	s.input.SetValue("")
+	if s.mode == editing {
+		s.mode = browsing
+	}
+	s.maps.inputting = false
+}
+
+func (s *state) updateMapping(msg tea.Msg) tea.Cmd {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if s.maps.inputting {
+		if ok && key.Matches(keyMsg, s.keys.save) {
+			return s.saveEntry()
+		}
+		if ok && key.Matches(keyMsg, s.keys.cancel) {
+			s.closeInput()
+			s.err = ""
+			return nil
+		}
+		var cmd tea.Cmd
+		s.input, cmd = s.input.Update(msg)
+		return cmd
+	}
+	if !ok {
+		return nil
+	}
+	m := &s.maps
+	switch {
+	case key.Matches(keyMsg, s.keys.close):
+		s.mode = browsing
+		s.err = ""
+	case key.Matches(keyMsg, s.keys.up):
+		if len(m.ids) > 0 {
+			m.cursor = (m.cursor - 1 + len(m.ids)) % len(m.ids)
+		}
+	case key.Matches(keyMsg, s.keys.down):
+		if len(m.ids) > 0 {
+			m.cursor = (m.cursor + 1) % len(m.ids)
+		}
+	case key.Matches(keyMsg, s.keys.add):
+		m.inputting, m.adding, m.id = true, true, ""
+		s.err = ""
+		return s.openInput("", "provider id", false)
+	case key.Matches(keyMsg, s.keys.editEntry):
+		if len(m.ids) == 0 {
+			return nil
+		}
+		m.inputting, m.adding, m.id = true, false, m.ids[m.cursor]
+		s.err = ""
+		return s.openInput(s.entries()[m.id].(string), "url", false)
+	case key.Matches(keyMsg, s.keys.remove):
+		if len(m.ids) == 0 {
+			return nil
+		}
+		entries := s.entries()
+		delete(entries, m.ids[m.cursor])
+		cmd, ok := s.set(s.key, entries)
+		if ok {
+			s.syncIDs()
+		}
+		return cmd
+	}
+	return nil
+}
+
+// saveEntry takes the id of a new entry, or sets the url of the entry.
+func (s *state) saveEntry() tea.Cmd {
+	m := &s.maps
+	value := strings.TrimSpace(s.input.Value())
+	if m.adding && m.id == "" {
+		if value == "" {
+			s.err = "the id is empty"
+			return nil
+		}
+		m.id = value
+		url := ""
+		if v, ok := s.entries()[value].(string); ok {
+			url = v
+		}
+		return s.openInput(url, "url", false)
+	}
+	entries := s.entries()
+	entries[m.id] = value
+	cmd, ok := s.set(s.key, entries)
+	if ok {
+		id := m.id
+		s.closeInput()
+		s.syncIDs()
+		m.cursor = max(0, slices.Index(m.ids, id))
+	}
+	return cmd
+}
+
+// entries is a copy of the map key's entries.
+func (s *state) entries() map[string]any {
+	raw, _ := mconfig.Get(s.key)
+	m, _ := raw.(map[string]any)
+	return maps.Clone(m)
+}
+
+func (s *state) syncIDs() {
+	s.maps.ids = slices.Sorted(maps.Keys(s.entries()))
+	s.maps.cursor = min(s.maps.cursor, max(0, len(s.maps.ids)-1))
+}
+
+func (s *state) View() string {
+	if s.mode == mapping {
+		return s.viewMap()
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, s.list.View(), s.viewDetails())
+}
+
+func (s *state) viewDetails() string {
+	key, ok := s.selected()
+	if s.mode == editing {
+		key, ok = s.key, true
+	}
+	if !ok {
+		return ""
+	}
+	width := max(20, s.size.Width)
+	lines := []string{style.Bold.Accent.Render(key)}
+	description, _ := mconfig.Description(key)
+	desc := lipgloss.NewStyle().Width(width).Render(description)
+	lines = append(lines, strings.Split(desc, "\n")...)
+	if len(lines) > 4 {
+		lines = append(lines[:3], lines[3]+"…")
+	}
+
+	var extra []string
+	if !mconfig.IsSecret(key) && mconfig.KindOf(key) != mconfig.KindMap {
+		if def, _ := mconfig.Default(key); def != nil {
+			extra = append(extra, fmt.Sprintf("default %v", def))
+		}
+	}
+	if hint := effectOf(key).hint(); hint != "" {
+		extra = append(extra, hint)
+	}
+	if name, set := mconfig.EnvVar(key); set {
+		extra = append(extra, style.Normal.Warning.Render(name+" overrides the file"))
+	}
+	if len(extra) > 0 {
+		lines = append(lines, style.Normal.Secondary.Width(width).Render(strings.Join(extra, " · ")))
+	}
+	if s.mode == editing {
+		lines = append(lines, s.input.View())
+	}
+	if s.err != "" {
+		lines = append(lines, style.Normal.Error.Width(width).Render(s.err))
+	}
+	return lipgloss.NewStyle().Height(detailsHeight).MaxHeight(detailsHeight).Render(strings.Join(lines, "\n"))
+}
+
+func (s *state) viewMap() string {
+	m := s.maps
+	lines := []string{style.Bold.Accent.Render(s.key), ""}
+	entries := s.entries()
+	if len(m.ids) == 0 {
+		lines = append(lines, style.Normal.Secondary.Render("no entries, a adds one"))
+	}
+	for n, id := range m.ids {
+		cursor := "  "
+		line := fmt.Sprintf("%s = %v", id, entries[id])
+		if n == m.cursor {
+			cursor = style.Bold.Accent.Render(icon.Item.Raw()) + " "
+			line = style.Bold.Base.Render(line)
+		}
+		lines = append(lines, cursor+line)
+	}
+	if m.inputting {
+		label := "url of " + m.id
+		if m.adding && m.id == "" {
+			label = "new entry: provider id"
+		}
+		lines = append(lines, "", style.Normal.Secondary.Render(label), s.input.View())
+	}
+	if s.err != "" {
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(color.Error).Width(max(20, s.size.Width)).Render(s.err))
+	}
+	return strings.Join(lines, "\n")
+}

@@ -50,6 +50,13 @@ func setup() {
 	}
 }
 
+// Reset forgets the loaded file and the values set at runtime, for tests.
+func Reset() {
+	viper.Reset()
+	setup()
+	unsupported = nil
+}
+
 func lookup(key string) (field, error) {
 	f, ok := fields[key]
 	if !ok {

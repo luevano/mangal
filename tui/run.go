@@ -5,6 +5,7 @@ import (
 
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/tui/base"
+	configwindow "github.com/luevano/mangal/v5/tui/state/config"
 	"github.com/luevano/mangal/v5/tui/state/home"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -15,5 +16,6 @@ func Run(ctx context.Context) error {
 	if notice := anilist.LoginNotice(); notice != "" {
 		notices = append(notices, notice)
 	}
+	base.NewConfigWindow = configwindow.New
 	return base.Run(ctx, home.New(), notices...)
 }
