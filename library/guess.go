@@ -58,9 +58,14 @@ func (s Scanner) guessInfo(folder string, files []chapterFile) libmangal.MangaDi
 		info.Manga.Title = f.series
 	}
 	if info.Manga.Title == "" {
-		info.Manga.Title = strings.TrimSpace(yearTag.ReplaceAllString(idTag.ReplaceAllString(name, ""), ""))
+		info.Manga.Title = titleFromName(name)
 	}
 	return info
+}
+
+// titleFromName is a manga folder's name without its id tags and year.
+func titleFromName(name string) string {
+	return strings.TrimSpace(yearTag.ReplaceAllString(idTag.ReplaceAllString(name, ""), ""))
 }
 
 // holdsMangas is true for a folder with manga folders in it (e.g. a provider directory
