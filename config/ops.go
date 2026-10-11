@@ -206,7 +206,7 @@ func Validate() error {
 	for _, key := range Keys() {
 		if _, err := fields[key].toRaw(viper.Get(key)); err != nil {
 			if _, ok := os.LookupEnv(envName(key)); ok {
-				err = fmt.Errorf("%w (from %s)", err, envName(key))
+				err = fmt.Errorf("from %s: %w", envName(key), err)
 			}
 			errs = append(errs, fmt.Errorf("%s: %w", key, err))
 		}
