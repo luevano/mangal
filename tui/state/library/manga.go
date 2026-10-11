@@ -106,7 +106,8 @@ func (s *mangaState) onScanned(msg mangaScannedMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (s *mangaState) Backable() bool { return s.list.Unfiltered() && !s.confirm.active }
+func (s *mangaState) Backable() bool  { return s.list.Unfiltered() && !s.confirm.active }
+func (s *mangaState) Inputting() bool { return s.list.Filtering() || s.confirm.active }
 func (s *mangaState) KeyMap() help.KeyMap {
 	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)
 }

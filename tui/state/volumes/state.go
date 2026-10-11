@@ -35,6 +35,11 @@ func (s *state) Backable() bool {
 	return s.list.FilterState() == _list.Unfiltered
 }
 
+// Inputting implements base.State.
+func (s *state) Inputting() bool {
+	return s.list.Filtering()
+}
+
 // KeyMap implements base.State.
 func (s *state) KeyMap() help.KeyMap {
 	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)

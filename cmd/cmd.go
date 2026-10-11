@@ -59,7 +59,7 @@ var rootCmd = &cobra.Command{
 	SilenceUsage:      true,
 	PersistentPreRunE: setup,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		return tui.Run()
+		return tui.Run(cmd.Context())
 	},
 }
 

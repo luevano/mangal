@@ -61,6 +61,11 @@ func (s *state) Backable() bool {
 	return true
 }
 
+// Inputting implements base.State.
+func (s *state) Inputting() bool {
+	return false
+}
+
 // KeyMap implements base.State.
 func (s *state) KeyMap() help.KeyMap {
 	return s.keyMap
@@ -115,7 +120,7 @@ func (s *state) Resize(size base.Size) tea.Cmd {
 	if s.downloading != dSDownloaded {
 		h = lipgloss.Height(s.viewDownloading())
 	}
-	return s.viewport.Resize(s.size.Width, s.size.Height-h)
+	return s.viewport.Resize(base.Size{Width: s.size.Width, Height: s.size.Height - h})
 }
 
 // Init implements base.State.
@@ -130,7 +135,6 @@ func (s *state) Init(ctx context.Context) tea.Cmd {
 
 	s.updateKeybinds()
 	return tea.Sequence(
-		s.viewport.Init(),
 		s.spinner.Tick,
 		s.startDownloadCmd,
 	)

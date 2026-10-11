@@ -9,7 +9,9 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/theme/color"
+	mhelp "github.com/luevano/mangal/v5/tui/model/help"
 	"github.com/luevano/mangal/v5/tui/model/viewport"
 )
 
@@ -26,8 +28,16 @@ type model struct {
 	viewport *viewport.Model
 	history  *history
 
-	ctx       context.Context
-	ctxCancel context.CancelFunc
+	// root is cancelled on quit, ctx (the shown State's) when the State changes
+	root       context.Context
+	rootCancel context.CancelFunc
+	ctx        context.Context
+	ctxCancel  context.CancelFunc
+	work       *tracker
+
+	// standalone runs a single State (and what it pushes) inline, for mangal path etc.
+	standalone bool
+	quitting   bool
 
 	size Size
 
@@ -36,16 +46,63 @@ type model struct {
 	help    help.Model
 	spinner spinner.Model
 
-	loadingMessage string
+	// loads are the running loads, the last one is shown
+	loads []loadStartMsg
 
 	notification                string
+	notificationID              int
 	notificationDefaultDuration time.Duration
 
-	showBreadcrumbs    bool
-	showLoadingMessage bool
-	showSubtitle       bool
+	showBreadcrumbs bool
 
 	inViewport bool
+}
+
+func newModel(ctx context.Context, state State, standalone bool, notices []string) *model {
+	_styles := defaultStyles()
+	_spinner := spinner.New(
+		spinner.WithSpinner(_styles.loading.spinner),
+		spinner.WithStyle(_styles.loading.spinnerStyle),
+	)
+
+	m := &model{
+		state:                       state,
+		viewport:                    viewport.New(),
+		history:                     &history{},
+		work:                        &tracker{},
+		standalone:                  standalone,
+		styles:                      _styles,
+		keyMap:                      newKeyMap(),
+		help:                        mhelp.New(),
+		spinner:                     _spinner,
+		notificationDefaultDuration: time.Second,
+		showBreadcrumbs:             !standalone && config.TUI.ShowBreadcrumbs.Get(),
+		notices:                     notices,
+	}
+	m.root, m.rootCancel = context.WithCancel(ctx)
+	m.newCtx()
+	m.updateKeybinds()
+	return m
+}
+
+// newCtx cancels the ctx of the shown State and makes the next one.
+func (m *model) newCtx() {
+	if m.ctxCancel != nil {
+		m.ctxCancel()
+	}
+	ctx := context.WithValue(m.root, scopeKey{}, &scope{work: m.work})
+	m.ctx, m.ctxCancel = context.WithCancel(ctx)
+}
+
+// shutdown cancels everything, tears the States down and waits a moment for the
+// background work to stop.
+func (m *model) shutdown(timeout time.Duration) {
+	m.rootCancel()
+	destroy(m.state)
+	for m.history.Size() > 0 {
+		destroy(m.history.Pop())
+	}
+	m.work.wait(timeout)
 }
 
 // Init implements tea.Model.
@@ -68,9 +125,4 @@ func (m *model) stateSize() Size {
 	size.Width -= left + right
 
 	return size
-}
-
-func (m *model) cancel() {
-	m.ctxCancel()
-	m.ctx, m.ctxCancel = context.WithCancel(context.Background())
 }

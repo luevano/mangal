@@ -34,6 +34,11 @@ func (s *state) Backable() bool {
 	return false
 }
 
+// Inputting implements base.State.
+func (s *state) Inputting() bool {
+	return false
+}
+
 // KeyMap implements base.State.
 func (s *state) KeyMap() help.KeyMap {
 	return s.keyMap

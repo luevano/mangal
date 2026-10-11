@@ -21,8 +21,13 @@ type NotificationWithDurationMsg struct {
 	Duration time.Duration
 }
 
-type NotificationTimeoutMsg struct{}
+type notificationTimeoutMsg struct {
+	id int
+}
 
+// LoadingMsg shows a loading message, an empty one hides it.
+//
+// Deprecated: use Load.
 type LoadingMsg struct {
 	Message string
 }

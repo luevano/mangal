@@ -15,7 +15,7 @@ func newKeyMap(vieportKeyMap *viewport.KeyMap) KeyMap {
 		Copy:     util.Bind("copy content", "c"),
 		GoTop:    util.BindNamedKey("g/home", "go to start", "g", "home"),
 		GoBottom: util.BindNamedKey("G/end", "go to end", "G", "end"),
-		Back:     util.Bind("back", "esc"),
+		Back:     util.Bind("close", "esc"),
 	}
 }
 
@@ -33,6 +33,7 @@ type KeyMap struct {
 // ShortHelp implements help.keyMap.
 func (k KeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
+		k.Back,
 		k.Copy,
 		k.Viewport.Up,
 		k.Viewport.Down,
@@ -43,6 +44,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{
+			k.Back,
 			k.Copy,
 		},
 		{

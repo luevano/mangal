@@ -22,6 +22,7 @@ func newAnilistLogin(ctx context.Context) base.State {
 }
 
 func (s *anilistState) Backable() bool      { return s.model.Backable() }
+func (s *anilistState) Inputting() bool     { return !s.model.Backable() }
 func (s *anilistState) KeyMap() help.KeyMap { return s.model.KeyMap() }
 func (s *anilistState) Title() base.Title {
 	return base.Title{Text: "Anilist login", Background: color.Anilist}

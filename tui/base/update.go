@@ -2,7 +2,7 @@ package base
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -13,75 +13,129 @@ import (
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/model/viewport"
 	"github.com/luevano/mangal/v5/util"
-	"github.com/pkg/errors"
 )
 
 // Update implements tea.Model.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m.updateKeybinds()
+	cmd := m.update(msg)
+	m.updateKeybinds()
+	return m, cmd
+}
+
+func (m *model) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		return m, m.resize(Size{Width: msg.Width, Height: msg.Height})
+		return m.resize(Size{Width: msg.Width, Height: msg.Height})
 	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, m.keyMap.quit):
-			return m, tea.Quit
-		case key.Matches(msg, m.keyMap.back) && m.state.Backable():
-			return m, Back
-		case key.Matches(msg, m.keyMap.home):
-			return m, BackToHome
-		case key.Matches(msg, m.keyMap.help):
-			return m, m.toggleHelp()
-		case key.Matches(msg, m.keyMap.log):
-			return m, Viewport("Logs", log.Aggregate.String(), color.Viewport)
+		return m.updateKey(msg)
+	case tea.MouseMsg:
+		if m.inViewport {
+			return m.viewport.Update(msg)
 		}
 	// receiving any of these msgs override the behavior of the keybinds;
 	// even if the keybinds are disabled, these messages will work.
 	case ShowViewportMsg:
-		return m, m.showViewport(msg.Title, msg.Content, msg.Color)
+		return m.showViewport(msg.Title, msg.Content, msg.Color)
 	case viewport.NotificationMsg:
-		return m, Notify(msg.Message)
+		return m.notify(msg.Message, m.notificationDefaultDuration)
 	case viewport.BackMsg:
-		return m, m.hideViewport()
+		return m.hideViewport()
 	case BackMsg:
 		if m.inViewport {
-			return m, m.hideViewport()
+			return m.hideViewport()
 		}
-		return m, m.back(msg.Steps)
+		return m.back(msg.Steps)
 	case BackToHomeMsg:
 		if m.inViewport {
-			return m, m.hideViewport()
+			return m.hideViewport()
 		}
-		return m, m.back(m.history.Size())
+		return m.back(m.history.Size())
 	case State:
-		return m, m.pushState(msg)
+		return m.pushState(msg)
 	case spinner.TickMsg:
 		// nil if the spinner is not the correct spinner (the spinner.Tick method handles this)
 		// or if trying to spin it too fast, in which case don't hold the spinner.TickMsg hostage
 		// and let the state handle it if it needs it (else the state spinner will stay static)
 		if cmd := m.updateSpinner(msg); cmd != nil {
-			return m, cmd
+			return cmd
 		}
-		return m, m.state.Update(m.ctx, msg)
+	case loadStartMsg:
+		return m.startLoad(msg)
+	case loadDoneMsg:
+		m.stopLoad(msg.id)
+		if sc := scopeOf(msg.ctx); sc != nil {
+			sc.busy.Add(-1)
+		}
+		if msg.msg == nil {
+			return nil
+		}
+		if msg.ctx.Err() != nil {
+			log.Debug("tui: dropped the result of a left state: %T", msg.msg)
+			return nil
+		}
+		return m.update(msg.msg)
 	case LoadingMsg:
-		return m, m.loading(msg.Message)
-	case NotificationMsg:
-		return m, m.notify(msg.Message, m.notificationDefaultDuration)
-	case NotificationWithDurationMsg:
-		return m, m.notify(msg.Message, msg.Duration)
-	case NotificationTimeoutMsg:
-		return m, m.hideNotification()
-	case error:
-		if errors.Is(msg, context.Canceled) || strings.Contains(msg.Error(), context.Canceled.Error()) {
-			return m, nil
+		if msg.Message == "" {
+			m.stopLoad(legacyLoadID)
+			return nil
 		}
-		log.L.Err(msg).Msg("")
-		return m, Viewport("Error", util.ErrorTree(msg), color.Error)
+		return m.startLoad(loadStartMsg{id: legacyLoadID, label: msg.Message})
+	case NotificationMsg:
+		return m.notify(msg.Message, m.notificationDefaultDuration)
+	case NotificationWithDurationMsg:
+		return m.notify(msg.Message, msg.Duration)
+	case notificationTimeoutMsg:
+		if msg.id == m.notificationID {
+			m.notification = ""
+		}
+		return nil
+	case error:
+		if errors.Is(msg, context.Canceled) {
+			return nil
+		}
+		log.Error("%s", msg)
+		return Viewport("Error", util.ErrorTree(msg), color.Error)
+	}
+
+	// everything else is the State's, even while the viewport is shown
+	return m.state.Update(m.ctx, msg)
+}
+
+func (m *model) updateKey(msg tea.KeyMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, m.keyMap.quit), key.Matches(msg, m.keyMap.quitQ):
+		m.quitting = true
+		return tea.Quit
+	case key.Matches(msg, m.keyMap.help):
+		return m.toggleHelp()
 	}
 
 	if m.inViewport {
-		return m, m.viewport.Update(msg)
+		return m.viewport.Update(msg)
 	}
-	return m, m.state.Update(m.ctx, msg)
+
+	switch {
+	case key.Matches(msg, m.keyMap.back) && m.state.Backable():
+		return Back
+	case key.Matches(msg, m.keyMap.home):
+		return BackToHome
+	case key.Matches(msg, m.keyMap.log):
+		return Viewport("Logs", log.Lines(), color.Viewport)
+	}
+	return m.state.Update(m.ctx, msg)
+}
+
+// updateKeybinds enables the global keys that apply now.
+func (m *model) updateKeybinds() {
+	inputting := !m.inViewport && m.state.Inputting()
+	hasHistory := m.history.Size() > 0
+
+	m.keyMap.quitQ.SetEnabled(m.standalone && !inputting)
+	m.keyMap.back.SetEnabled(!m.inViewport && hasHistory)
+	m.keyMap.home.SetEnabled(!m.inViewport && !m.standalone && !inputting && hasHistory)
+	m.keyMap.help.SetEnabled(!inputting)
+	m.keyMap.log.SetEnabled(!m.inViewport)
 }
 
 // resize the program
@@ -95,7 +149,7 @@ func (m *model) resize(size Size) tea.Cmd {
 func (m *model) resizeState() tea.Cmd {
 	s := m.stateSize()
 	if m.inViewport {
-		return m.viewport.Resize(s.Width, s.Height)
+		return m.viewport.Resize(s)
 	}
 	return m.state.Resize(s)
 }
@@ -107,13 +161,12 @@ func (m *model) back(steps int) tea.Cmd {
 		return nil
 	}
 
-	log.L.Info().Str("state", m.history.Peek().Title().Text).Int("steps", steps).Msg("going back to previous state")
-
-	m.cancel()
 	for i := 0; i < steps && m.history.Size() > 0; i++ {
-		// TODO: perform m.state.Destroy() once implemented?
+		destroy(m.state)
 		m.state = m.history.Pop()
 	}
+	log.Debug("tui: back to %q", m.state.Title().Text)
+	m.newCtx()
 
 	return tea.Sequence(
 		m.resizeState(),
@@ -123,9 +176,10 @@ func (m *model) back(steps int) tea.Cmd {
 
 // pushState initializes a new state and pushes previous one into history
 func (m *model) pushState(state State) tea.Cmd {
-	log.L.Info().Str("state", state.Title().Text).Msg("new state")
+	log.Debug("tui: show %q", state.Title().Text)
 	m.history.Push(m.state)
 	m.state = state
+	m.newCtx()
 
 	return tea.Sequence(
 		m.state.Init(m.ctx),
@@ -141,7 +195,7 @@ func (m *model) toggleHelp() tea.Cmd {
 
 // updateSpinner updates the spinner to the next frame
 func (m *model) updateSpinner(msg spinner.TickMsg) tea.Cmd {
-	if m.loadingMessage == "" {
+	if len(m.loads) == 0 {
 		return nil
 	}
 
@@ -150,57 +204,53 @@ func (m *model) updateSpinner(msg spinner.TickMsg) tea.Cmd {
 	return cmd
 }
 
-// loading sets the loading message and sends a spinner.Tick msg
-func (m *model) loading(message string) tea.Cmd {
-	// this check saves one m.resizeState call
-	// when calling loading on the same message,
-	// which could happen if Loaded cmd is called consecutively
-	if m.loadingMessage == message {
+// startLoad shows the label of a load (a running one keeps its place).
+func (m *model) startLoad(load loadStartMsg) tea.Cmd {
+	if load.label == "" && load.id != legacyLoadID {
 		return nil
 	}
-	m.loadingMessage = message
-	if message == "" {
-		return m.resizeState()
+	wasIdle := len(m.loads) == 0
+	m.stopLoad(load.id)
+	m.loads = append(m.loads, load)
+	if wasIdle {
+		return m.spinner.Tick
 	}
-	return m.spinner.Tick
+	return nil
+}
+
+func (m *model) stopLoad(id int64) {
+	for i, l := range m.loads {
+		if l.id == id {
+			m.loads = append(m.loads[:i], m.loads[i+1:]...)
+			return
+		}
+	}
+}
+
+func (m *model) loadingLabel() string {
+	if len(m.loads) == 0 {
+		return ""
+	}
+	return m.loads[len(m.loads)-1].label
 }
 
 // notify will show a message to the right of the title and status.
 func (m *model) notify(message string, duration time.Duration) tea.Cmd {
 	m.notification = message
-	return tea.Tick(duration, func(t time.Time) tea.Msg {
-		return NotificationTimeoutMsg{}
+	m.notificationID++
+	id := m.notificationID
+	return tea.Tick(duration, func(time.Time) tea.Msg {
+		return notificationTimeoutMsg{id: id}
 	})
-}
-
-// hideNotification removes the notification
-func (m *model) hideNotification() tea.Cmd {
-	m.notification = ""
-	return nil
 }
 
 func (m *model) showViewport(title, content string, color lipgloss.Color) tea.Cmd {
 	m.inViewport = true
-	m.showLoadingMessage = false
-	m.showSubtitle = false
 	m.viewport.SetData(title, content, color)
-	m.updateKeybinds()
-	s := m.stateSize()
-	return m.viewport.Resize(s.Width, s.Height)
+	return m.viewport.Resize(m.stateSize())
 }
 
 func (m *model) hideViewport() tea.Cmd {
 	m.inViewport = false
-	m.showLoadingMessage = true
-	m.showSubtitle = true
-	m.updateKeybinds()
-	return nil
-}
-
-// updateKeybinds will enable/disable keybinds depending on availability
-func (m *model) updateKeybinds() {
-	enable := !m.inViewport
-	m.keyMap.back.SetEnabled(enable)
-	m.keyMap.home.SetEnabled(enable)
-	m.keyMap.log.SetEnabled(enable)
+	return m.resizeState()
 }

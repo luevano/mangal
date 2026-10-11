@@ -22,6 +22,7 @@ func New(ctx context.Context) base.State {
 }
 
 func (s *state) Backable() bool                { return !s.model.Inputting() }
+func (s *state) Inputting() bool               { return s.model.Inputting() }
 func (s *state) KeyMap() help.KeyMap           { return s.model.KeyMap() }
 func (s *state) Title() base.Title             { return base.Title{Text: "Accounts"} }
 func (s *state) Subtitle() string              { return "cached for 12 hours, r fetches them now" }

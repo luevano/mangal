@@ -54,7 +54,8 @@ func (s *trashState) reload() tea.Cmd {
 	return s.list.SetItems(items)
 }
 
-func (s *trashState) Backable() bool { return s.list.Unfiltered() && !s.confirm.active }
+func (s *trashState) Backable() bool  { return s.list.Unfiltered() && !s.confirm.active }
+func (s *trashState) Inputting() bool { return s.list.Filtering() || s.confirm.active }
 func (s *trashState) KeyMap() help.KeyMap {
 	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)
 }

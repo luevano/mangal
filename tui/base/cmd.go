@@ -39,6 +39,8 @@ func NotifyWithDuration(message string, duration time.Duration) tea.Cmd {
 }
 
 // Loading will display a loading message with a spinner.
+//
+// Deprecated: use Load.
 func Loading(message string) tea.Cmd {
 	return func() tea.Msg {
 		return LoadingMsg{
@@ -48,12 +50,15 @@ func Loading(message string) tea.Cmd {
 }
 
 // Loaded will stop the loading message.
+//
+// Deprecated: use Load.
 func Loaded() tea.Msg {
 	return LoadingMsg{
 		Message: "",
 	}
 }
 
+// Viewport shows content in a scrollable box over the State, esc closes it.
 func Viewport(title, content string, color lipgloss.Color) tea.Cmd {
 	return func() tea.Msg {
 		return ShowViewportMsg{

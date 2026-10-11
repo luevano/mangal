@@ -13,17 +13,19 @@ var (
 
 func newKeyMap() *keyMap {
 	return &keyMap{
-		quit: util.Bind("quit", "ctrl+c"),
-		back: util.Bind("back", "esc"),
-		home: util.Bind("home", "H"),
-		help: util.Bind("help", "?"),
-		log:  util.Bind("log", "ctrl+l"),
+		quit:  util.Bind("quit", "ctrl+c"),
+		quitQ: util.Bind("quit", "q"),
+		back:  util.Bind("back", "esc"),
+		home:  util.Bind("home", "H"),
+		help:  util.Bind("help", "?"),
+		log:   util.Bind("log", "ctrl+l"),
 	}
 }
 
 // keyMap implements help.KeyMap.
 type keyMap struct {
 	quit,
+	quitQ,
 	back,
 	home,
 	help,
@@ -34,6 +36,7 @@ type keyMap struct {
 func (k keyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
 		k.back,
+		k.quitQ,
 		k.help,
 	}
 }
@@ -53,7 +56,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 // CombinedKeyMap is a convenience function to create a combined KeyMap that
 // implements help.KeyMap, useful for concatenating them.
 //
-// The resulting keybind is not ment to be be modified in-place.
+// The resulting keybind is not ment to be modified in-place.
 func CombinedKeyMap(first, second help.KeyMap) combinedKeyMap {
 	return combinedKeyMap{
 		first:  first,

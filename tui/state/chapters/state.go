@@ -80,6 +80,11 @@ func (s *state) Backable() bool {
 	return s.list.Unfiltered() && !s.inFormats && !s.inConfirm
 }
 
+// Inputting implements base.State.
+func (s *state) Inputting() bool {
+	return s.list.Filtering() || s.inFormats || s.inConfirm
+}
+
 // KeyMap implements base.State.
 func (s *state) KeyMap() help.KeyMap {
 	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)

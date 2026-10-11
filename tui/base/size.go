@@ -1,7 +1,6 @@
 package base
 
-// Size holds width and Height information.
-type Size struct {
-	Width,
-	Height int
-}
+import "github.com/luevano/mangal/v5/tui/util"
+
+// Size holds width and height information.
+type Size = util.Size

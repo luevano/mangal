@@ -8,6 +8,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/luevano/mangal/v5/tui/util"
 )
 
 type Model struct {
@@ -51,15 +53,17 @@ func (m *Model) SetData(title, content string, color lipgloss.Color) {
 	m.color = color
 	m.style = m.style.BorderForeground(color)
 	m.SetContent(content)
+	m.GotoTop()
 }
 
-func (s *Model) Status() string {
-	return fmt.Sprintf("%3.f%%", s.ScrollPercent()*100)
+func (m *Model) Status() string {
+	return fmt.Sprintf("%3.f%%", m.ScrollPercent()*100)
 }
 
-func (m *Model) Resize(width, height int) tea.Cmd {
-	m.Width = width - m.borderHorizontalSize
-	m.Height = height - m.borderVerticalSize
+// Resize fits the viewport, with its border, in size.
+func (m *Model) Resize(size util.Size) tea.Cmd {
+	m.Width = size.Width - m.borderHorizontalSize
+	m.Height = size.Height - m.borderVerticalSize
 	if m.content != "" {
 		m.Model.SetContent(m.wrap(m.content))
 		m.updateKeybinds()
@@ -67,26 +71,18 @@ func (m *Model) Resize(width, height int) tea.Cmd {
 	return nil
 }
 
-func (m *Model) Init() tea.Cmd {
-	return m.Model.Init()
-}
-
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.KeyMap.Copy):
-			return tea.Sequence(
-				func() tea.Msg {
-					// TODO: sanitize copied text (ansi codes)
-					return clipboard.WriteAll(m.content)
-				},
-				notificationCmd("Copied content to clipboard"),
-			)
+			return copyCmd(ansi.Strip(m.content))
 		case key.Matches(msg, m.KeyMap.GoTop):
 			m.GotoTop()
+			return nil
 		case key.Matches(msg, m.KeyMap.GoBottom):
 			m.GotoBottom()
+			return nil
 		case key.Matches(msg, m.KeyMap.Back):
 			return backCmd
 		}
@@ -94,6 +90,15 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	viewport, cmd := m.Model.Update(msg)
 	m.Model = viewport
 	return cmd
+}
+
+func copyCmd(content string) tea.Cmd {
+	return func() tea.Msg {
+		if err := clipboard.WriteAll(content); err != nil {
+			return NotificationMsg{Message: "Copy: " + err.Error()}
+		}
+		return NotificationMsg{Message: "Copied content to clipboard"}
+	}
 }
 
 func (m *Model) View() string {

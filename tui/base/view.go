@@ -10,6 +10,10 @@ const newline = "\n"
 
 // View implements tea.Model.
 func (m *model) View() string {
+	// clears the inline standalone view
+	if m.quitting && m.standalone {
+		return ""
+	}
 	header := m.viewHeader()
 	state := m.viewState()
 	footer := m.viewFooter()
@@ -67,23 +71,19 @@ func (m *model) viewHeader() string {
 		header.WriteString(m.styles.notification.MaxWidth(width).Render(m.notification))
 	}
 
-	if m.showLoadingMessage {
-		header.WriteString(newline)
-		if m.loadingMessage != "" {
-			header.WriteString(m.spinner.View())
-		}
-		header.WriteString(m.styles.loading.message.Render(m.loadingMessage))
-	}
-
-	if m.showSubtitle {
-		header.WriteString(newline)
-		if subtitle := m.state.Subtitle(); subtitle != "" {
-			header.WriteString(m.styles.subtitle.Render(subtitle))
-		}
-	}
-
-	if !m.showLoadingMessage || !m.showSubtitle {
+	if m.inViewport {
 		return m.styles.header.PaddingBottom(0).Render(header.String())
+	}
+
+	header.WriteString(newline)
+	if label := m.loadingLabel(); label != "" {
+		header.WriteString(m.spinner.View())
+		header.WriteString(m.styles.loading.message.Render(label))
+	}
+
+	header.WriteString(newline)
+	if subtitle := m.state.Subtitle(); subtitle != "" {
+		header.WriteString(m.styles.subtitle.Render(subtitle))
 	}
 
 	return m.styles.header.Render(header.String())
@@ -92,6 +92,9 @@ func (m *model) viewHeader() string {
 func (m *model) viewState() string {
 	if m.inViewport {
 		return m.styles.state.Render(m.viewport.View())
+	}
+	if m.standalone {
+		return m.styles.state.Render(m.state.View())
 	}
 	size := m.stateSize()
 	return lipgloss.Place(

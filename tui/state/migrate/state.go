@@ -36,6 +36,7 @@ func New() base.State {
 }
 
 func (s *state) Backable() bool                { return true }
+func (s *state) Inputting() bool               { return false }
 func (s *state) KeyMap() help.KeyMap           { return s.keyMap }
 func (s *state) Title() base.Title             { return base.Title{Text: "Migrate"} }
 func (s *state) Status() string                { return "" }
