@@ -1,18 +1,12 @@
 package oauth
 
-// Error is used for generic OAuth errors.
-type Error string
-
-func (e Error) Error() string {
-	return "oauth: " + string(e)
-}
-
-// Some specific errors
+import "errors"
 
 var (
-	EmptyClientIDError        = Error("ClientID is empty")
-	EmptyCodeError            = Error("Access Code/Token is empty")
-	NilTokenError             = Error("Token is nil")
-	TooManyCallbacksError     = Error("Too many callback requests")
-	InvalidCallbackStateError = Error("Invalid callback state received")
+	ErrEmptyClientID    = errors.New("oauth: empty client id")
+	ErrEmptyCode        = errors.New("oauth: empty access code or token")
+	ErrNilToken         = errors.New("oauth: no token")
+	ErrTooManyCallbacks = errors.New("oauth: too many callback requests")
+	ErrInvalidState     = errors.New("oauth: invalid callback state")
+	ErrTimeout          = errors.New("oauth: timed out waiting for the login")
 )

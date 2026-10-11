@@ -1,12 +1,17 @@
+// Package oauth logs in to AniList with OAuth2, through a local callback server.
 package oauth
 
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/luevano/libmangal/metadata/anilist"
@@ -18,10 +23,18 @@ import (
 // https://anilist.gitbook.io/anilist-apiv2-docs/overview/oauth/getting-started
 
 const (
-	// TODO: make configurable (and used in the oauth handlers)
-	AnilistServerBaseRUL     = "http://localhost:6969/oauth/al/"
-	AnilistServerLoginURL    = AnilistServerBaseRUL + "login"
-	AnilistServerCallbackURL = AnilistServerBaseRUL + "callback"
+	// AnilistServerAddr is where the callback server listens, only reachable from this
+	// machine. The AniList API client must have AnilistServerCallbackURL as redirect URL.
+	AnilistServerAddr        = "127.0.0.1:6969"
+	AnilistServerBaseURL     = "http://localhost:6969/oauth/al/"
+	AnilistServerLoginURL    = AnilistServerBaseURL + "login"
+	AnilistServerCallbackURL = AnilistServerBaseURL + "callback"
+
+	anilistLoginPath    = "/oauth/al/login"
+	anilistCallbackPath = "/oauth/al/callback"
+
+	// loginTimeout is how long the callback server waits for the login.
+	loginTimeout = time.Minute
 )
 
 var AnilistEndpoint = oauth2.Endpoint{
@@ -30,13 +43,12 @@ var AnilistEndpoint = oauth2.Endpoint{
 	AuthStyle: oauth2.AuthStyleInParams,
 }
 
-// WARN: the implicit grant (empty ClientSecret) should be used
-// with caution and only if completely needed, due to the access
-// token being resent (to the same callback URL) on the URL params.
-// Anilist api was designed to send it as part of the URL fragment,
-// specifically so that servers didn't have access to the token directly.
+// AnilistLoginOption logs in to AniList with OAuth2.
 //
-// AnilistLoginOption handles the OAuth2 login.
+// WARN: the implicit grant (empty ClientSecret) should be used with caution and only if
+// completely needed, due to the access token being resent (to the same callback URL) on
+// the URL params. AniList sends it in the URL fragment specifically so that servers
+// don't see the token.
 type AnilistLoginOption struct {
 	// ClientID is the application's ID.
 	//
@@ -48,15 +60,16 @@ type AnilistLoginOption struct {
 	// When empty, the OAuth is an implicit grant.
 	ClientSecret string
 
-	// code is the access code; when the ClientSecret
-	// is empty, this is the access token.
-	code  string
 	token *oauth2.Token
+
+	// listen and openURL are replaced in tests.
+	listen  func() (net.Listener, error)
+	openURL func(string) error
 }
 
 func NewAnilistLoginOption(clientID, clientSecret string) (*AnilistLoginOption, error) {
 	if clientID == "" {
-		return nil, EmptyClientIDError
+		return nil, ErrEmptyClientID
 	}
 
 	return &AnilistLoginOption{
@@ -65,27 +78,24 @@ func NewAnilistLoginOption(clientID, clientSecret string) (*AnilistLoginOption, 
 	}, nil
 }
 
-// getOAuthConfig is a convenience method to get the oauth2 Config for
-// this OAuthLoginOption.
 func (o *AnilistLoginOption) getOAuthConfig() *oauth2.Config {
 	return &oauth2.Config{
 		ClientID:     o.ClientID,
 		ClientSecret: o.ClientSecret,
 		Endpoint:     AnilistEndpoint,
-		RedirectURL:  AnilistServerCallbackURL, // TODO: make configurable?
+		RedirectURL:  AnilistServerCallbackURL,
 	}
 }
 
-// getImplicitGrantURL is a convenience method to get the implicit grant
-// oauth url, as it requires the response_type to be 'token' and not include
-// the redirect uri.
-func (o *AnilistLoginOption) getImplicitGrantURL() string {
+// getImplicitGrantURL is the implicit grant url: response_type token and no redirect uri.
+func (o *AnilistLoginOption) getImplicitGrantURL(state string) string {
 	var buf bytes.Buffer
 	c := o.getOAuthConfig()
 	buf.WriteString(c.Endpoint.AuthURL)
 	v := url.Values{
-		"response_type": {"token"}, // for implicit, needs to be token
+		"response_type": {"token"},
 		"client_id":     {o.ClientID},
+		"state":         {state},
 	}
 	if strings.Contains(c.Endpoint.AuthURL, "?") {
 		buf.WriteByte('&')
@@ -101,167 +111,200 @@ func (o *AnilistLoginOption) String() string {
 	return "Anilist OAuth2"
 }
 
-// Authorize will perform the authorization steps to obtain the oauth2 Token.
-//
-// Anilist Oauth2 steps performed are:
-//
-// 1. Starting an http server to handle anilist callbacks with the
-// access code/token. For more:
-// https://anilist.gitbook.io/anilist-apiv2-docs/overview/oauth/getting-started#auth-pin
-//
-// 2. If doing a code grant (ClientSecret is not empty), converting
-// the acces code to an access token. For more:
-// https://anilist.gitbook.io/anilist-apiv2-docs/overview/oauth/authorization-code-grant#converting-authorization-codes-to-access-tokens
-//
-// 3. Retrieving (or generating in case of implicit grant) the oauth2 Token.
-//
-// The http server lives for a max duration of 1 minute or until the access
-// token is successfully retrieved/built.
-func (o *AnilistLoginOption) Authorize(ctx context.Context) (tokenErr error) {
-	if o.ClientID == "" {
-		return EmptyClientIDError
-	}
-
-	// TODO: make timeout duration configurable?
-	//
-	// a new ctx is required to close the http server
-	// after some time or after receiving the code
-	srvCtx, srvCtxCancel := context.WithTimeout(ctx, time.Minute)
-
-	// get the correct handler depending on the grant type
-	var handler http.Handler
-	if o.ClientSecret != "" {
-		handler = o.codeGrantHandler(srvCtxCancel, &tokenErr)
-	} else {
-		handler = o.implicitGrantHandler(srvCtxCancel, &tokenErr)
-	}
-	if tokenErr != nil {
-		return tokenErr
-	}
-
-	// start a new http server
-	s := &http.Server{
-		Addr:    ":6969", // TODO: make configurable
-		Handler: handler,
-	}
-	go func() {
-		s.ListenAndServe()
-	}()
-
-	// open the web browser on the login url
-	if err := open.Start(AnilistServerLoginURL); err != nil {
-		return err
-	}
-
-	// wait until the server ctx timeout runs out or
-	// the access code is retrieved to close the server
-	<-srvCtx.Done()
-	if err := s.Shutdown(ctx); err != nil {
-		return err
-	}
-
-	// check if there was an error during
-	// the token retrieval or if nil
-	if tokenErr != nil {
-		return tokenErr
-	}
-	if o.token == nil {
-		return NilTokenError
-	}
-	return nil
+// result is the outcome of the login, sent once by the callback handler.
+type result struct {
+	token *oauth2.Token
+	err   error
 }
 
-// codeGrantHandler provides the http handlers when
-// using a code grant oauth (ClientSecret is non-empty)
-func (o *AnilistLoginOption) codeGrantHandler(ctxCancel context.CancelFunc, tokenErr *error) http.Handler {
-	callbackCount := 0
-	closeMsg := "; this window can now be closed"
+// Authorize obtains the oauth2 Token:
+//
+// 1. It starts an http server on AnilistServerAddr to get AniList's callback with the
+// access code (or token), and opens the login page in the browser. For more:
+// https://anilist.gitbook.io/anilist-apiv2-docs/overview/oauth/getting-started#auth-pin
+//
+// 2. On a code grant (ClientSecret not empty), it converts the access code to an access
+// token. For more:
+// https://anilist.gitbook.io/anilist-apiv2-docs/overview/oauth/authorization-code-grant#converting-authorization-codes-to-access-tokens
+//
+// The server lives until the token is retrieved, ctx is done or a minute passes.
+func (o *AnilistLoginOption) Authorize(ctx context.Context) error {
+	if o.ClientID == "" {
+		return ErrEmptyClientID
+	}
+	state, err := randomState()
+	if err != nil {
+		return err
+	}
 
+	listen := o.listen
+	if listen == nil {
+		listen = func() (net.Listener, error) { return net.Listen("tcp", AnilistServerAddr) }
+	}
+	ln, err := listen()
+	if err != nil {
+		return fmt.Errorf("start the oauth callback server: %w", err)
+	}
+
+	results := make(chan result, 1)
+	var once sync.Once
+	done := func(r result) {
+		once.Do(func() { results <- r })
+	}
+	var handler http.Handler
+	if o.ClientSecret != "" {
+		handler = o.codeGrantHandler(state, done)
+	} else {
+		handler = o.implicitGrantHandler(state, done)
+	}
+
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.Serve(ln) }()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+
+	openURL := o.openURL
+	if openURL == nil {
+		openURL = open.Start
+	}
+	if err := openURL(AnilistServerLoginURL); err != nil {
+		return fmt.Errorf("open %s: %w", AnilistServerLoginURL, err)
+	}
+
+	timeout := time.NewTimer(loginTimeout)
+	defer timeout.Stop()
+	select {
+	case r := <-results:
+		if r.err != nil {
+			return r.err
+		}
+		if r.token == nil {
+			return ErrNilToken
+		}
+		o.token = r.token
+		return nil
+	case err := <-serveErr:
+		return fmt.Errorf("oauth callback server: %w", err)
+	case <-timeout.C:
+		return ErrTimeout
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func randomState() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("oauth state: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}
+
+const closeMsg = "; this window can now be closed"
+
+// fail answers the browser and ends the login with the error.
+func fail(w http.ResponseWriter, done func(result), err error) {
+	http.Error(w, "error: "+err.Error()+closeMsg, http.StatusBadRequest)
+	done(result{err: err})
+}
+
+// codeGrantHandler handles the login and callback of a code grant (ClientSecret not empty).
+func (o *AnilistLoginOption) codeGrantHandler(state string, done func(result)) http.Handler {
 	oAuthConfig := o.getOAuthConfig()
+	var mu sync.Mutex
+	called := false
 
-	// TODO: don't hardcode the server paths
 	mux := http.NewServeMux()
-	mux.HandleFunc("/oauth/al/login", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, oAuthConfig.AuthCodeURL(""), http.StatusTemporaryRedirect)
+	mux.HandleFunc(anilistLoginPath, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, oAuthConfig.AuthCodeURL(state), http.StatusTemporaryRedirect)
 	})
-	mux.HandleFunc("/oauth/al/callback", func(w http.ResponseWriter, r *http.Request) {
-		callbackCount++
-		if callbackCount > 1 {
-			*tokenErr = TooManyCallbacksError
-			w.Write([]byte("error: " + (*tokenErr).Error() + closeMsg))
-			ctxCancel()
+	mux.HandleFunc(anilistCallbackPath, func(w http.ResponseWriter, r *http.Request) {
+		// a request that isn't AniList's answer to this login doesn't end it
+		if r.FormValue("state") != state {
+			http.Error(w, "error: "+ErrInvalidState.Error(), http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		again := called
+		called = true
+		mu.Unlock()
+		if again {
+			http.Error(w, "error: "+ErrTooManyCallbacks.Error()+closeMsg, http.StatusBadRequest)
 			return
 		}
 
-		o.code = r.FormValue("code")
-		if o.code == "" {
-			*tokenErr = EmptyCodeError
-			w.Write([]byte("error: " + (*tokenErr).Error() + closeMsg))
-			ctxCancel()
+		if e := r.FormValue("error"); e != "" {
+			fail(w, done, fmt.Errorf("oauth: %s", e))
 			return
 		}
-
-		token, err := oAuthConfig.Exchange(r.Context(), o.code)
+		code := r.FormValue("code")
+		if code == "" {
+			fail(w, done, ErrEmptyCode)
+			return
+		}
+		token, err := oAuthConfig.Exchange(r.Context(), code)
 		if err != nil {
-			*tokenErr = err
-			w.Write([]byte("error: " + (*tokenErr).Error() + closeMsg))
-			ctxCancel()
+			fail(w, done, fmt.Errorf("exchange the access code: %w", err))
 			return
 		}
-		o.token = token
-
-		w.Write([]byte("successfully got access token (code grant)" + closeMsg))
-		ctxCancel()
+		_, _ = w.Write([]byte("successfully got access token (code grant)" + closeMsg))
+		done(result{token: token})
 	})
 	return mux
 }
 
-// implicitGrantHandler provides the http handlers when
-// using an implicit grant oauth (ClientSecret is empty)
-func (o *AnilistLoginOption) implicitGrantHandler(ctxCancel context.CancelFunc, tokenErr *error) http.Handler {
-	callbackCount := 0
-	closeMsg := "; this window can now be closed"
-	// TODO: don't hardcode the server paths
+// implicitGrantHandler handles the login and callback of an implicit grant (ClientSecret
+// empty).
+func (o *AnilistLoginOption) implicitGrantHandler(state string, done func(result)) http.Handler {
+	var mu sync.Mutex
+	called := false
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/oauth/al/login", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, o.getImplicitGrantURL(), http.StatusTemporaryRedirect)
+	mux.HandleFunc(anilistLoginPath, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, o.getImplicitGrantURL(state), http.StatusTemporaryRedirect)
 	})
-	mux.HandleFunc("/oauth/al/callback", func(w http.ResponseWriter, r *http.Request) {
-		// WARN: the token is sent from anilist as part of the url fragment,
-		// so to be able to get the access token, the fragment needs to be
-		// "intercepted" with javascript, and then resent as part of the url
-		// params; this handles that part, it should only run once
+	mux.HandleFunc(anilistCallbackPath, func(w http.ResponseWriter, r *http.Request) {
+		// the token comes in the url fragment, which only the browser sees: a page resends
+		// it as url params
 		if r.URL.RawQuery == "" {
-			callbackCount++
-			if callbackCount > 1 {
-				*tokenErr = TooManyCallbacksError
-				w.Write([]byte("error: " + (*tokenErr).Error() + closeMsg))
-				ctxCancel()
-				return
-			}
-
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			fmt.Fprint(w, resendFragmentAsParam)
+			_, _ = fmt.Fprint(w, resendFragmentAsParam)
+			return
+		}
+		if r.FormValue("state") != state {
+			http.Error(w, "error: "+ErrInvalidState.Error(), http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		again := called
+		called = true
+		mu.Unlock()
+		if again {
+			http.Error(w, "error: "+ErrTooManyCallbacks.Error()+closeMsg, http.StatusBadRequest)
 			return
 		}
 
-		o.code = r.FormValue("access_token")
-		if o.code == "" {
-			*tokenErr = EmptyCodeError
-			w.Write([]byte("error: " + (*tokenErr).Error() + closeMsg))
-			ctxCancel()
+		if e := r.FormValue("error"); e != "" {
+			fail(w, done, fmt.Errorf("oauth: %s", e))
 			return
 		}
-
-		// build the default token with the year expiry
-		o.token = &oauth2.Token{
-			AccessToken: o.code,
+		accessToken := r.FormValue("access_token")
+		if accessToken == "" {
+			fail(w, done, ErrEmptyCode)
+			return
+		}
+		// AniList's implicit grant tokens last a year
+		token := &oauth2.Token{
+			AccessToken: accessToken,
 			TokenType:   "Bearer",
-			Expiry:      time.Now().Add(31536000 * time.Second),
+			Expiry:      time.Now().Add(365 * 24 * time.Hour),
 		}
-		w.Write([]byte("successfully got access token (implicit grant)" + closeMsg))
-		ctxCancel()
-		return
+		_, _ = w.Write([]byte("successfully got access token (implicit grant)" + closeMsg))
+		done(result{token: token})
 	})
 	return mux
 }
