@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"modernc.org/sqlite"
@@ -134,7 +135,7 @@ func open(path string, migrations []Migration, synchronous string) (*DB, error) 
 	}
 	// immediate transactions take the write lock when they start, so two processes can't both
 	// read a version (or row) and then write based on it
-	dsn := "file:" + path + "?_txlock=immediate&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=synchronous(" + synchronous + ")&_pragma=foreign_keys(1)"
+	dsn := "file:" + escapeURIPath(path) + "?_txlock=immediate&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=synchronous(" + synchronous + ")&_pragma=foreign_keys(1)"
 	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
@@ -148,6 +149,12 @@ func open(path string, migrations []Migration, synchronous string) (*DB, error) 
 		return nil, fmt.Errorf("migrate %s: %w", path, err)
 	}
 	return db, nil
+}
+
+// escapeURIPath escapes what SQLite's URI file names would read as the query, the fragment
+// or an escape.
+func escapeURIPath(path string) string {
+	return strings.NewReplacer("%", "%25", "?", "%3f", "#", "%23").Replace(path)
 }
 
 func (db *DB) migrate(migrations []Migration) error {

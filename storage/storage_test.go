@@ -172,3 +172,15 @@ func TestSynchronous(t *testing.T) {
 		db.Close()
 	}
 }
+
+func TestOpenEscapedPath(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "a?b#c%20d")
+	db, err := OpenCache(filepath.Join(dir, FilenameCache))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if _, err := os.Stat(filepath.Join(dir, FilenameCache)); err != nil {
+		t.Errorf("not created where asked: %v", err)
+	}
+}
