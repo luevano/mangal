@@ -178,14 +178,15 @@ func TestMergeAndTrash(t *testing.T) {
 
 	keep, _, _ := library.MangaByFolder(root, "Berserk")
 	other, _, _ := library.MangaByFolder(root, "Berserk B")
-	plan, err := PlanMerge(fsys, library, keep, other)
+	files := Files{FS: fsys, Library: library, Root: root, Modes: DefaultModes}
+	plan, err := files.PlanMerge(keep, other)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(plan.Trashed) != 1 || len(plan.Moves) != 1 || plan.Moves[0].To != filepath.Join(root, "Berserk", "Ch 3.cbz") {
 		t.Fatalf("plan %+v", plan)
 	}
-	if err := ApplyMerge(fsys, library, root, plan); err != nil {
+	if err := files.ApplyMerge(plan); err != nil {
 		t.Fatal(err)
 	}
 

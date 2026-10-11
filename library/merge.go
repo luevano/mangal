@@ -19,13 +19,6 @@ type MergePlan struct {
 	Trashed []string
 }
 
-// PlanMerge plans merging the manga other into keep, see Files.PlanMerge.
-//
-// Deprecated: use Files.PlanMerge.
-func PlanMerge(fsys afero.Fs, library storage.Library, keep, other storage.Manga) (MergePlan, error) {
-	return Files{FS: fsys, Library: library, Modes: DefaultModes}.PlanMerge(keep, other)
-}
-
 // PlanMerge plans merging the manga other into keep: keep gets every chapter, keeping
 // its own file when both have it.
 func (f Files) PlanMerge(keep, other storage.Manga) (MergePlan, error) {
@@ -91,13 +84,6 @@ func (f Files) PlanMerge(keep, other storage.Manga) (MergePlan, error) {
 func isInside(dir, path string) bool {
 	rel, err := filepath.Rel(dir, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-// ApplyMerge does the plan, see Files.ApplyMerge.
-//
-// Deprecated: use Files.ApplyMerge.
-func ApplyMerge(fsys afero.Fs, library storage.Library, root string, plan MergePlan) error {
-	return Files{FS: fsys, Library: library, Root: root, Modes: DefaultModes}.ApplyMerge(plan)
 }
 
 // ApplyMerge does the plan: moves and trashes the files, updates the library and

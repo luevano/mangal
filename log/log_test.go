@@ -25,13 +25,12 @@ func TestLevelsAndFile(t *testing.T) {
 	Debug("hidden %d", 1)
 	Info("100%% done: %s", "x")
 	Warn("careful")
-	Log("old %s", "api")
 
 	lines := Lines()
 	if strings.Contains(lines, "hidden") {
 		t.Errorf("debug line at info:\n%s", lines)
 	}
-	for _, want := range []string{"100% done: x", "WARN careful", "old api"} {
+	for _, want := range []string{"100% done: x", "WARN careful"} {
 		if !strings.Contains(lines, want) {
 			t.Errorf("no %q in:\n%s", want, lines)
 		}
@@ -101,14 +100,5 @@ func TestProviderHook(t *testing.T) {
 	}
 	if !strings.Contains(lines, `mango-x: searching "one piece"`) {
 		t.Errorf("lines:\n%s", lines)
-	}
-}
-
-func TestDeprecatedL(t *testing.T) {
-	reset(t, Options{Level: LevelInfo})
-	L.Warn().Msg("from zerolog")
-	L.Err(errors.New("boom")).Msg("")
-	if got := Aggregate.String(); !strings.Contains(got, "WARN from zerolog") || !strings.Contains(got, "ERROR") {
-		t.Errorf("lines:\n%s", got)
 	}
 }

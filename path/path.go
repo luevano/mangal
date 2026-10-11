@@ -11,11 +11,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"sync"
 
 	"github.com/adrg/xdg"
 	"github.com/luevano/mangal/v5/config"
-	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/util/afs"
 )
@@ -126,63 +124,3 @@ func EnsureTemp() (string, error) {
 	}
 	return dir, nil
 }
-
-// ensure is for the deprecated getters, which used to create the dirs.
-func ensure(dir string, err error) string {
-	if err != nil {
-		log.Warn("%s: %s", dir, err)
-	}
-	return dir
-}
-
-// fallbackTemp is a private temp dir for this run, if Temp can't be used.
-var fallbackTemp = sync.OnceValues(func() (string, error) {
-	return os.MkdirTemp("", meta.AppName+"-")
-})
-
-// CacheDir returns and creates Cache.
-//
-// Deprecated: use Cache and Ensure.
-func CacheDir() string { return ensure(Ensure(Cache())) }
-
-// DataDir returns and creates Data.
-//
-// Deprecated: use Data and Ensure.
-func DataDir() string { return ensure(Ensure(Data())) }
-
-// ConfigDir returns and creates Config.
-//
-// Deprecated: use Config and Ensure.
-func ConfigDir() string { return ensure(Ensure(Config())) }
-
-// DownloadsDir returns and creates Downloads.
-//
-// Deprecated: use Downloads and Ensure.
-func DownloadsDir() string { return ensure(Ensure(Downloads())) }
-
-// ProvidersDir returns and creates Providers.
-//
-// Deprecated: use Providers and Ensure.
-func ProvidersDir() string { return ensure(Ensure(Providers())) }
-
-// TempDir returns and creates Temp.
-//
-// Deprecated: use EnsureTemp.
-func TempDir() string {
-	dir, err := EnsureTemp()
-	if err == nil {
-		return dir
-	}
-	log.Warn("%s", err)
-	return ensure(fallbackTemp())
-}
-
-// LogDir returns Logs, the log package creates it.
-//
-// Deprecated: use Logs.
-func LogDir() string { return Logs() }
-
-// AllPaths returns every path.
-//
-// Deprecated: use All.
-func AllPaths() Paths { return All() }

@@ -21,7 +21,8 @@ func TestDelete(t *testing.T) {
 	downloads, _ := lib.Downloads(m.ID)
 
 	// a chapter: to the trash, and its now empty volume folder goes
-	if err := DeleteDownload(fsys, lib, root, m, downloads[0]); err != nil {
+	files := Files{FS: fsys, Library: lib, Root: root, Modes: DefaultModes}
+	if err := files.DeleteDownload(m, downloads[0]); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(berserk, "Vol. 1")); !os.IsNotExist(err) {
@@ -32,7 +33,7 @@ func TestDelete(t *testing.T) {
 	}
 
 	// the manga: its folder to the trash, gone from the library
-	if err := DeleteManga(fsys, lib, root, m); err != nil {
+	if err := files.DeleteManga(m); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(berserk); !os.IsNotExist(err) {
@@ -45,11 +46,11 @@ func TestDelete(t *testing.T) {
 	if err != nil || len(batches) == 0 {
 		t.Fatalf("trash: %v, %v", batches, err)
 	}
-	files := 0
+	trashed := 0
 	for _, b := range batches {
-		files += b.Files
+		trashed += b.Files
 	}
-	if files != 2 {
-		t.Errorf("%d files in the trash, want 2", files)
+	if trashed != 2 {
+		t.Errorf("%d files in the trash, want 2", trashed)
 	}
 }

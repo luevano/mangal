@@ -85,13 +85,6 @@ func Info(format string, a ...any)  { logf(LevelInfo, format, a...) }
 func Warn(format string, a ...any)  { logf(LevelWarn, format, a...) }
 func Error(format string, a ...any) { logf(LevelError, format, a...) }
 
-// Enabled is true if lines of the level are logged.
-func Enabled(level Level) bool {
-	mu.Lock()
-	defer mu.Unlock()
-	return level >= options.Level
-}
-
 func logf(level Level, format string, a ...any) {
 	msg := strings.TrimRight(fmt.Sprintf(format, a...), "\n")
 	now := time.Now()

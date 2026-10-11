@@ -3,27 +3,7 @@ package util
 import (
 	"errors"
 	"strings"
-	"time"
 )
-
-// RateLimited is implemented by provider errors that say how long to wait,
-// e.g. mangodex's RateLimitError.
-//
-// Deprecated: use client.RateLimited.
-type RateLimited interface {
-	RetryAfterDuration() time.Duration
-}
-
-// RetryAfter returns how long to wait if err (or one it wraps) is RateLimited.
-//
-// Deprecated: use client.RetryAfter.
-func RetryAfter(err error) (time.Duration, bool) {
-	var rateLimit RateLimited
-	if errors.As(err, &rateLimit) {
-		return rateLimit.RetryAfterDuration(), true
-	}
-	return 0, false
-}
 
 // ErrorTree shows the chain of wrapped errors one layer per line, each layer with only
 // what it adds: what every step was doing, down to the cause. Joined errors are branches.

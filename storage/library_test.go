@@ -209,7 +209,7 @@ type fakeMeta struct {
 	id metadata.ID
 }
 
-func (m fakeMeta) ID() metadata.ID          { return m.id }
+func (m fakeMeta) ID() metadata.ID         { return m.id }
 func (m fakeMeta) ExtraIDs() []metadata.ID { return nil }
 
 func TestMangaFor(t *testing.T) {

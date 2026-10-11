@@ -28,13 +28,6 @@ type Download struct {
 	Downloaded time.Time
 }
 
-// Downloads are the downloaded chapters.
-//
-// Deprecated: use Library.ListDownloads.
-type Downloads struct {
-	DB *DB
-}
-
 func recordDownload(tx *sql.Tx, dl Download) error {
 	_, err := tx.Exec(`INSERT INTO downloads (path, chapter_id, provider, manga_id, manga_title, volume, chapter, chapter_title, chapter_url, format, pages, downloaded)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -45,13 +38,6 @@ ON CONFLICT (path) DO UPDATE SET chapter_id = excluded.chapter_id, provider = ex
 		dl.Path, dl.ChapterID, dl.Provider, dl.MangaID, dl.MangaTitle, dl.Volume, dl.Chapter, dl.ChapterTitle, dl.ChapterURL,
 		dl.Format, dl.Pages, dl.Downloaded.Unix())
 	return err
-}
-
-// List lists the downloads of a provider and manga, see Library.ListDownloads.
-//
-// Deprecated: use Library.ListDownloads.
-func (d Downloads) List(provider, mangaID string) ([]Download, error) {
-	return Library{DB: d.DB}.ListDownloads(provider, mangaID)
 }
 
 // ListDownloads lists the downloads of a provider and manga, empty for any, ordered by manga

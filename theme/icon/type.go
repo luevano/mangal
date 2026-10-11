@@ -13,7 +13,3 @@ var currentType Type = TypeASCII
 func SetType(iconType Type) {
 	currentType = iconType
 }
-
-func GetType() Type {
-	return currentType
-}

@@ -82,14 +82,6 @@ func AccountsStore(ttl time.Duration) (storage.KV, error) {
 	return s.AccountsStore(ttl), err
 }
 
-// DBs returns the cache and data databases.
-//
-// Deprecated: use Storage, Library or AccountsStore.
-func DBs() (cache, data *storage.DB, err error) {
-	s, err := Storage()
-	return s.Cache, s.Data, err
-}
-
 // OldIDsNotice tells about data still under old provider ids, short for a one line
 // warning and long to explain what migrating does. Both are empty if there's none.
 func OldIDsNotice(loaders []libmangal.ProviderLoader) (short, long string, err error) {

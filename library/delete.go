@@ -8,13 +8,6 @@ import (
 	"github.com/spf13/afero"
 )
 
-// DeleteManga moves the manga's folder to the trash and forgets it, see Files.DeleteManga.
-//
-// Deprecated: use Files.DeleteManga.
-func DeleteManga(fsys afero.Fs, library storage.Library, root string, m storage.Manga) error {
-	return Files{FS: fsys, Library: library, Root: root, Modes: DefaultModes}.DeleteManga(m)
-}
-
 // DeleteManga moves the manga's folder to the trash (only its recorded downloads when it
 // shares the folder) and forgets it.
 func (f Files) DeleteManga(m storage.Manga) error {
@@ -33,13 +26,6 @@ func (f Files) DeleteManga(m storage.Manga) error {
 		return err
 	}
 	return f.Library.RemoveManga(m.ID)
-}
-
-// DeleteDownload moves a chapter file to the trash and forgets it, see Files.DeleteDownload.
-//
-// Deprecated: use Files.DeleteDownload.
-func DeleteDownload(fsys afero.Fs, library storage.Library, root string, m storage.Manga, dl storage.Download) error {
-	return Files{FS: fsys, Library: library, Root: root, Modes: DefaultModes}.DeleteDownload(m, dl)
 }
 
 // DeleteDownload moves a chapter file to the trash and forgets it, and removes the volume

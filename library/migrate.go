@@ -50,13 +50,6 @@ type Migration struct {
 	Markers []OldMarker
 }
 
-// PlanMigration finds the data under old provider ids, see FindMigration.
-//
-// Deprecated: use FindMigration.
-func PlanMigration(fsys afero.Fs, cacheDB, dataDB *storage.DB, root string, providerDirs bool, loaders []libmangal.ProviderLoader) (Migration, error) {
-	return FindMigration(fsys, storage.Storage{Cache: cacheDB, Data: dataDB}, root, providerDirs, loaders)
-}
-
 // FindMigration finds the data under old provider ids: library entries, downloads and
 // cache in the databases, and the .libmangal.json files under root.
 func FindMigration(fsys afero.Fs, st storage.Storage, root string, providerDirs bool, loaders []libmangal.ProviderLoader) (Migration, error) {
@@ -86,13 +79,6 @@ func (m Migration) Lines() []string {
 		lines = append(lines, fmt.Sprintf("%s: %s -> %s", marker.Dir, marker.Old, marker.New))
 	}
 	return lines
-}
-
-// Apply moves the data to the current ids, see ApplyTo.
-//
-// Deprecated: use ApplyTo.
-func (m Migration) Apply(fsys afero.Fs, cacheDB, dataDB *storage.DB) error {
-	return m.ApplyTo(fsys, storage.Storage{Cache: cacheDB, Data: dataDB}, DefaultModes)
 }
 
 // ApplyTo moves the data to the current ids.

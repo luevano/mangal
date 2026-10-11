@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -109,4 +110,14 @@ func withInstantWaits(t *testing.T, f func() Results) Results {
 	newTimer = func(time.Duration) *time.Timer { return time.NewTimer(0) }
 	defer func() { newTimer = old }()
 	return f()
+}
+
+func TestRetryAfter(t *testing.T) {
+	err := fmt.Errorf("download chapter: %w", fmt.Errorf("list chapters: %w", rateLimitError{wait: 30 * time.Second}))
+	if wait, ok := RetryAfter(err); !ok || wait != 30*time.Second {
+		t.Errorf("wanted 30s through the wrapping, got %s, %v", wait, ok)
+	}
+	if _, ok := RetryAfter(errors.New("some other error")); ok {
+		t.Error("other errors aren't rate limits")
+	}
 }
