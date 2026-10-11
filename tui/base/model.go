@@ -94,7 +94,7 @@ func (m *model) newCtx() {
 	if m.ctxCancel != nil {
 		m.ctxCancel()
 	}
-	ctx := context.WithValue(m.root, scopeKey{}, &scope{work: m.work})
+	ctx := context.WithValue(m.root, scopeKey{}, &scope{work: m.work, root: m.root})
 	m.ctx, m.ctxCancel = context.WithCancel(ctx)
 }
 

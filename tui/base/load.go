@@ -75,6 +75,17 @@ func Track(ctx context.Context) (release func(), ok bool) {
 	return sc.work.add()
 }
 
+// Background is a ctx for work that outlives the State that starts it (e.g. a watch
+// check left running while another screen is shown): cancelled only when the TUI quits.
+// Track it as any other work.
+func Background(ctx context.Context) context.Context {
+	sc := scopeOf(ctx)
+	if sc == nil || sc.root == nil {
+		return context.WithoutCancel(ctx)
+	}
+	return context.WithValue(sc.root, scopeKey{}, &scope{work: sc.work, root: sc.root})
+}
+
 type scopeKey struct{}
 
 // scope is what base puts in the ctx of each State.
@@ -82,6 +93,8 @@ type scope struct {
 	// busy counts the running loads
 	busy atomic.Int32
 	work *tracker
+	// root is cancelled on quit
+	root context.Context
 }
 
 func scopeOf(ctx context.Context) *scope {
