@@ -3,6 +3,7 @@ package cache
 import (
 	"time"
 
+	"github.com/luevano/libmangal/metadata/kitsu"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/storage/legacy"
 	"golang.org/x/oauth2"
@@ -77,5 +78,55 @@ func SetAnilistLoggedOut(out bool) error {
 func AnilistLoggedOut() (bool, error) {
 	var out bool
 	_, err := get(CacheDBNameMangalAuth, BucketNameAuthHistory, anilistLoggedOut, &out)
+	return out, err
+}
+
+// KitsuAuthHistory is the auth history of Kitsu, and the owner of its logins.
+const KitsuAuthHistory = "kitsu"
+
+// SetKitsuAuthData stores the Kitsu token of the username (never the password).
+func SetKitsuAuthData(username string, token kitsu.Token) error {
+	return set(CacheDBNameMangalAuth, KitsuAuthHistory, username, token)
+}
+
+// GetKitsuAuthData populates the Kitsu token of the username.
+func GetKitsuAuthData(username string, token *kitsu.Token) (bool, error) {
+	return get(CacheDBNameMangalAuth, KitsuAuthHistory, username, token)
+}
+
+// DeleteKitsuAuthData deletes the Kitsu token of the username, no error if not found.
+func DeleteKitsuAuthData(username string) error {
+	store, err := CacheStore(CacheDBNameMangalAuth, KitsuAuthHistory)
+	if err != nil {
+		return err
+	}
+	return store.Delete(username)
+}
+
+// ExpireKitsuAuthData marks the username's Kitsu token as expired (Kitsu rejected it, or its
+// refresh): it isn't tried again and can't be refreshed.
+func ExpireKitsuAuthData(username string) error {
+	var token kitsu.Token
+	found, err := GetKitsuAuthData(username, &token)
+	if err != nil || !found {
+		return err
+	}
+	token.RefreshToken = ""
+	token.ExpiresIn = max(token.ExpiresIn, 1)
+	token.CreatedAt = time.Now().Unix() - int64(token.ExpiresIn)
+	return SetKitsuAuthData(username, token)
+}
+
+const kitsuLoggedOut = KitsuAuthHistory + "/logged_out"
+
+// SetKitsuLoggedOut saves whether the user logged out of Kitsu.
+func SetKitsuLoggedOut(out bool) error {
+	return set(CacheDBNameMangalAuth, BucketNameAuthHistory, kitsuLoggedOut, out)
+}
+
+// KitsuLoggedOut is true if the user logged out of Kitsu (and didn't log in since).
+func KitsuLoggedOut() (bool, error) {
+	var out bool
+	_, err := get(CacheDBNameMangalAuth, BucketNameAuthHistory, kitsuLoggedOut, &out)
 	return out, err
 }
