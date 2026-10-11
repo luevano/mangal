@@ -28,9 +28,10 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Check the watches on a schedule, with an API to manage them",
 	Long: `Run until stopped (SIGTERM, ctrl+c), checking each watch when it's due (watch.interval,
-or its own) and the gaps when watch.gap_interval says, one check at a time (a "mangal watch
-check" running elsewhere postpones it). The watch.* settings are re-read from the config
-file every minute. Logs go to stderr and the log file.
+or its own) and the gaps when watch.gap_interval says, each provider in its own run
+(watch.parallel_providers at once; a "mangal watch check" of a provider running elsewhere
+postpones that provider). The watch.* settings are re-read from the config file every
+minute. Logs go to stderr and the log file; GET /api/events streams the live progress.
 
 The JSON API (serve.host:serve.port, 127.0.0.1 by default) is what the TUI and the "mangal
 watch" commands use while it runs. On an address that isn't loopback it needs serve.token

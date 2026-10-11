@@ -174,13 +174,14 @@ the library has up (and, with gap filling, the missing ones below it).
 mangal watch add mango-mangapill "One-Punch Man" --from 240   # chapters up to 240 count as read
 mangal watch add mango-mangaplus mid:100171 --anilist-id 132029
 mangal watch ls                  # last check, next check, errors
-mangal watch check [--dry-run]   # check now
+mangal watch check [--dry-run]   # check now (--provider <id>, --due)
 mangal watch log --since 7d      # what each check got
 mangal notify webhook            # Discord message per manga with new chapters (watch.notify)
 ```
 
 `mangal serve` keeps running and checks each watch when it's due (`watch.interval`, 4h by default,
-or the watch's own), one check at a time; the `watch.*` settings are re-read from the config file
+or the watch's own), each provider in its own run (`watch.parallel_providers` at once, a provider
+never twice, also against a `mangal watch check` elsewhere); the `watch.*` settings are re-read from the config file
 every minute. It serves a JSON API on `127.0.0.1:6977` (`serve.host`, `serve.port`) that the TUI
 and the `mangal watch` commands use while it runs; `--web` (`serve.web`) also serves the web UI
 there. On an address that isn't loopback the API needs a token: set `serve.token` (or
@@ -189,8 +190,9 @@ there. On an address that isn't loopback the API needs a token: set `serve.token
 ```sh
 curl 127.0.0.1:6977/api/status
 curl 127.0.0.1:6977/api/watches
-curl -X POST 127.0.0.1:6977/api/check -d '{"ids": [1]}'     # 202 {"run": N}, 409 when one runs
+curl -X POST 127.0.0.1:6977/api/check -d '{"ids": [1]}'     # 202 {"run": N}, 409 when its provider is busy
 curl 127.0.0.1:6977/api/runs/N
+curl -N 127.0.0.1:6977/api/events                         # live progress (server-sent events)
 ```
 
 As a systemd service: [`mangal.service`](mangal.service) (copy it to `/etc/systemd/system/`, set
