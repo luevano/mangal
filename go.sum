@@ -227,8 +227,8 @@ github.com/luevano/mangodex v0.5.0 h1:Infr5+wIQsHVVDyO16gzRlSTcdIMrAAIEedUHBYkxs
 github.com/luevano/mangodex v0.5.0/go.mod h1:bwW0qRsuLCaOzYRd5yf1sHy5ymO+nG6/R2+qsYjRIGA=
 github.com/luevano/mangoplus v0.7.1 h1:Oyvmb4g+udrX26QtRRaLZyaNa0/4ABlZhpfs1Sis1R8=
 github.com/luevano/mangoplus v0.7.1/go.mod h1:nb1H+VU1AJBsgNbI97vWtNXT595YkIyQ41w1+xlaeP0=
-github.com/luevano/mangoprovider v0.18.0 h1:gspn57otxUVnltb7YKzjGWOkR4CPsaU9edzivjxUolA=
-github.com/luevano/mangoprovider v0.18.0/go.mod h1:Me/GeT96UEKe64/aIWtpLkRb1PSbPInzE2qNJCDt7nI=
+github.com/luevano/mangoprovider v0.18.1 h1:rxiuUMfLx66DhP8gfLcYUiDaLEjcMY86gKKHF7KXQUQ=
+github.com/luevano/mangoprovider v0.18.1/go.mod h1:Me/GeT96UEKe64/aIWtpLkRb1PSbPInzE2qNJCDt7nI=
 github.com/mailru/easyjson v0.9.1 h1:LbtsOm5WAswyWbvTEOqhypdPeZzHavpZx96/n553mR8=
 github.com/mailru/easyjson v0.9.1/go.mod h1:1+xMtQp2MRNVL/V1bOzuP3aP8VNwRW55fQUto+XFtTU=
 github.com/mattn/go-colorable v0.1.9/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
