@@ -307,7 +307,7 @@ func (s *state) logout(ctx context.Context) tea.Cmd {
 			return statusMsg{}, fmt.Errorf("anilist logout: %w", err)
 		}
 		msg, err := status(ctx)
-		msg.notice = "Logged out until mangal exits"
+		msg.notice = "Logged out (until the next login)"
 		return msg, err
 	}, toMsg)
 }
