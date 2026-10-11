@@ -58,7 +58,10 @@ templates give them. Only lists the renames unless --apply is set.`,
 			Metadata:     anilist.MetadataByIDs,
 		}
 
-		dir := path.DownloadsDir()
+		dir, err := path.Ensure(path.Downloads())
+		if err != nil {
+			return err
+		}
 		renames, err := namer.Plan(cmd.Context(), dir, config.Download.Provider.CreateDir.Get())
 		if err != nil {
 			return err
@@ -212,7 +215,7 @@ var libraryLsCmd = &cobra.Command{
 
 // printTrash tells about files waiting in the trash.
 func printTrash(cmd *cobra.Command) {
-	batches, err := library.Trash(afs.Afero, path.DownloadsDir())
+	batches, err := library.Trash(afs.Afero, path.Downloads())
 	if err != nil || len(batches) == 0 {
 		return
 	}
@@ -237,7 +240,10 @@ and manga folders with a .libmangal.json that aren't in the library yet are adde
 		if err != nil {
 			return err
 		}
-		root := path.DownloadsDir()
+		root, err := path.Ensure(path.Downloads())
+		if err != nil {
+			return err
+		}
 		providerDirs := config.Download.Provider.CreateDir.Get()
 		scanner := library.Scanner{FS: afs.Afero, Library: lib}
 		res, err := scanner.Scan(root, providerDirs)
@@ -332,7 +338,7 @@ Only lists what would happen unless --apply is set.`,
 			cmd.Println("run with --apply to merge")
 			return nil
 		}
-		if err := library.ApplyMerge(afs.Afero, lib, path.DownloadsDir(), plan); err != nil {
+		if err := library.ApplyMerge(afs.Afero, lib, path.Downloads(), plan); err != nil {
 			return err
 		}
 		cmd.Println("merged")
@@ -346,7 +352,7 @@ var libraryTrashCmd = &cobra.Command{
 	Short: "List what's in the trash",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		batches, err := library.Trash(afs.Afero, path.DownloadsDir())
+		batches, err := library.Trash(afs.Afero, path.Downloads())
 		if err != nil {
 			return err
 		}
@@ -366,7 +372,7 @@ var libraryTrashEmptyCmd = &cobra.Command{
 	Short: "Delete what's in the trash",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		root := path.DownloadsDir()
+		root := path.Downloads()
 		batches, err := library.Trash(afs.Afero, root)
 		if err != nil {
 			return err
