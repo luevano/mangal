@@ -85,15 +85,12 @@ end:
 	return cmd
 }
 
+// SetItems replaces the items and selects the first one.
 func (m *Model) SetItems(items []list.Item) tea.Cmd {
 	m.ResetSelected()
-	return tea.Sequence(
-		m.Model.SetItems(items),
-		func() tea.Msg {
-			m.updateKeybinds()
-			return nil
-		},
-	)
+	cmd := m.Model.SetItems(items)
+	m.updateKeybinds()
+	return cmd
 }
 
 // SetItemHeight sets the height of the delegate, which translates to the items' height.
