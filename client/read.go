@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -22,8 +23,21 @@ import (
 // (read.history.local).
 // A chapter that opened is recorded even if the sync failed.
 func ReadChapter(ctx context.Context, c *libmangal.Client, path string, chapter mangadata.Chapter) error {
-	err := c.ReadChapterContext(ctx, path, chapter, readOptions(ctx))
-	if openFailed(err, path) || !config.Read.History.Local.Get() {
+	bindings, err := cache.Bindings()
+	if err != nil {
+		return err
+	}
+	// the bound sources are synced here, with their ids, once it opened
+	bound, options, err := boundSyncs(bindings, c.Info().ID, chapter, readOptions(ctx))
+	if err != nil {
+		return err
+	}
+	err = c.ReadChapterContext(ctx, path, chapter, options)
+	if openFailed(err, path) {
+		return err
+	}
+	err = errors.Join(err, syncBound(ctx, c, chapter, bound))
+	if !config.Read.History.Local.Get() {
 		return err
 	}
 	// the chapter was opened either way, a failed record is only logged

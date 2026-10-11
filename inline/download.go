@@ -52,8 +52,9 @@ func runDownload(ctx context.Context, args Args) (client.Results, error) {
 	// Take the download options from the config and apply necessary changes
 	downloadOptions := config.DownloadOptions()
 	if useMangaMetadata || args.AnilistID != 0 {
-		// Re-searching would replace the set metadata here
+		// Re-searching would replace the set metadata here, and so would a bound one
 		downloadOptions.SearchMetadata = false
+		ctx = client.WithoutBinding(ctx)
 	}
 	if downloadOptions.SearchMetadata || (!useMangaMetadata && args.AnilistID != 0) {
 		_ = anilist.EnsureLogin(ctx)

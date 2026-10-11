@@ -99,7 +99,8 @@ func download(ctx context.Context, chapters []mangadata.Chapter, onEvent func(Ev
 }
 
 // DownloadChapter downloads the chapter and records it in the library, unless it went to
-// the temp dir (read without download_on_read). A chapter that's already there (maybe
+// the temp dir (read without download_on_read). The manga's default metadata binding (if
+// any, see WithoutBinding) is its metadata. A chapter that's already there (maybe
 // from another provider, see DownloadedChapter.Skipped) isn't downloaded again. A rate
 // limit is waited out (onWait may be nil) up to 10 times.
 func DownloadChapter(ctx context.Context, client *libmangal.Client, chapter mangadata.Chapter, options libmangal.DownloadOptions, onWait func(attempt int, wait time.Duration)) (*metadata.DownloadedChapter, error) {
@@ -139,9 +140,19 @@ func retry(ctx context.Context, chapter mangadata.Chapter, get getFunc, onWait f
 }
 
 func downloadChapter(ctx context.Context, client *libmangal.Client, chapter mangadata.Chapter, options libmangal.DownloadOptions) (*metadata.DownloadedChapter, error) {
+	if !bindingsOff(ctx) {
+		bound, err := ApplyBinding(ctx, client, chapter.Volume().Manga())
+		if err != nil {
+			return nil, err
+		}
+		if bound {
+			// a search would replace it
+			options.SearchMetadata = false
+		}
+	}
 	down, err := client.DownloadChapterContext(ctx, chapter, options)
 	if err != nil && options.Strict && metadata.Validate(chapter.Volume().Manga().Metadata()) != nil {
-		return nil, fmt.Errorf("no valid metadata, bind an AniList manga (--anilist-id, or the TUI's AniList screen) or set download.metadata.strict = false: %w", err)
+		return nil, fmt.Errorf("no valid metadata, bind the manga (mangal bind, or A in the TUI) or set download.metadata.strict = false: %w", err)
 	}
 	if err != nil || options.Directory == path.Temp() {
 		return down, err
