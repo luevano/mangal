@@ -3,7 +3,7 @@ package mangas
 import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/mangal/tui/model/metadata"
+	"github.com/luevano/mangal/v5/tui/model/metadata"
 )
 
 var (

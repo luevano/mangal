@@ -5,7 +5,7 @@ import (
 
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/metadata/anilist"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/util/cache"
 	"golang.org/x/oauth2"
 )
 

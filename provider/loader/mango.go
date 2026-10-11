@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/log"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangoplus"
 	mango "github.com/luevano/mangoprovider"
 	"github.com/luevano/mangoprovider/apis"

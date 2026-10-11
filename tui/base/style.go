@@ -5,8 +5,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luevano/mangal/theme/color"
-	"github.com/luevano/mangal/theme/style"
+	"github.com/luevano/mangal/v5/theme/color"
+	"github.com/luevano/mangal/v5/theme/style"
 )
 
 var DotSpinner = spinner.Spinner{

@@ -9,10 +9,10 @@ import (
 	"github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/disgo/webhook"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/log"
-	"github.com/luevano/mangal/util/chapter"
-	stringutil "github.com/luevano/mangal/util/string"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/util/chapter"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 const (

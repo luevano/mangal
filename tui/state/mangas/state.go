@@ -9,13 +9,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/model/list"
-	"github.com/luevano/mangal/tui/model/search"
-	"github.com/luevano/mangal/tui/state/anilist"
-	"github.com/luevano/mangal/tui/util"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/list"
+	"github.com/luevano/mangal/v5/tui/model/search"
+	"github.com/luevano/mangal/v5/tui/state/anilist"
+	"github.com/luevano/mangal/v5/tui/util"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 var _ base.State = (*state)(nil)

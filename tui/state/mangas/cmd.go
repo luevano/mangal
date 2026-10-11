@@ -9,12 +9,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/log"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/state/chapters"
-	"github.com/luevano/mangal/tui/state/volumes"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/state/chapters"
+	"github.com/luevano/mangal/v5/tui/state/volumes"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 func (s *state) getHistoryCmd() tea.Msg {

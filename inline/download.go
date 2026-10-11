@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/client"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/log"
-	"github.com/luevano/mangal/notify"
-	"github.com/luevano/mangal/util"
-	"github.com/luevano/mangal/util/chapter"
+	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/notify"
+	"github.com/luevano/mangal/v5/util"
+	"github.com/luevano/mangal/v5/util/chapter"
 )
 
 func RunDownload(ctx context.Context, args Args) error {

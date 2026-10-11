@@ -3,8 +3,8 @@ package path
 import (
 	"log"
 
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/util/afs"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/util/afs"
 )
 
 func createDirIfAbsent(path string) {

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/storage"
+	"github.com/luevano/mangal/v5/storage"
 	bolt "go.etcd.io/bbolt"
 )
 

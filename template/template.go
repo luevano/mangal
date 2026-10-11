@@ -7,9 +7,9 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/template/funcs"
-	"github.com/luevano/mangal/util"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/template/funcs"
+	"github.com/luevano/mangal/v5/util"
 )
 
 type mangaTemplateData struct {

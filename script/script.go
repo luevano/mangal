@@ -5,8 +5,8 @@ import (
 	"io"
 
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/client"
-	"github.com/luevano/mangal/script/lib"
+	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/script/lib"
 	lua "github.com/yuin/gopher-lua"
 )
 

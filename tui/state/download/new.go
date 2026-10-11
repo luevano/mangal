@@ -8,11 +8,11 @@ import (
 	"github.com/charmbracelet/bubbles/timer"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/mangal/theme/icon"
-	"github.com/luevano/mangal/theme/style"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/model/viewport"
-	"github.com/luevano/mangal/util/chapter"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/theme/style"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/viewport"
+	"github.com/luevano/mangal/v5/util/chapter"
 )
 
 func New(client *libmangal.Client, chaptersToDownload []mangadata.Chapter, options libmangal.DownloadOptions) *state {

@@ -4,8 +4,8 @@ import (
 	_list "github.com/charmbracelet/bubbles/list"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/tui/model/list"
-	"github.com/luevano/mangal/tui/model/search"
+	"github.com/luevano/mangal/v5/tui/model/list"
+	"github.com/luevano/mangal/v5/tui/model/search"
 )
 
 func New(anilist *metadata.ProviderWithCache, manga mangadata.Manga) *state {

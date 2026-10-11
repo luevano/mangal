@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal/metadata/anilist"
-	"github.com/luevano/mangal/auth"
+	"github.com/luevano/mangal/v5/auth"
 	"github.com/skratchdot/open-golang/open"
 	"golang.org/x/oauth2"
 )

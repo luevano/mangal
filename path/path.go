@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/meta"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/meta"
 )
 
 type PathName string

@@ -1,9 +1,9 @@
 package notify
 
 import (
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/notify/discord"
-	"github.com/luevano/mangal/util/chapter"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/notify/discord"
+	"github.com/luevano/mangal/v5/util/chapter"
 )
 
 // Send will send a notification to the configured services.

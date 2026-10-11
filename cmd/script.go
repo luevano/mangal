@@ -2,16 +2,16 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/luevano/mangal/util"
+	"github.com/luevano/mangal/v5/util"
 	"io"
 	"os"
 	"strings"
 
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/meta"
-	"github.com/luevano/mangal/script"
-	"github.com/luevano/mangal/script/lib"
-	"github.com/luevano/mangal/util/afs"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/meta"
+	"github.com/luevano/mangal/v5/script"
+	"github.com/luevano/mangal/v5/script/lib"
+	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/spf13/cobra"
 )
 

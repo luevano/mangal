@@ -3,7 +3,7 @@ package providers
 import (
 	_list "github.com/charmbracelet/bubbles/list"
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/tui/model/list"
+	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/zyedidia/generic/set"
 )
 

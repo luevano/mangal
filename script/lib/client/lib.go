@@ -4,8 +4,8 @@ import (
 	luadoc "github.com/luevano/gopher-luadoc"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/script/lib/util"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/script/lib/util"
 	lua "github.com/yuin/gopher-lua"
 )
 

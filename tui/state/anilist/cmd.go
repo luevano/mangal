@@ -7,9 +7,9 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/log"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 func (s *state) getHistoryCmd() tea.Msg {

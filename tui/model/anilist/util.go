@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 func (m *Model) updateCurrent() {

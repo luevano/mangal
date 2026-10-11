@@ -2,7 +2,7 @@ package download
 
 import (
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luevano/mangal/theme/style"
+	"github.com/luevano/mangal/v5/theme/style"
 )
 
 type styles struct {

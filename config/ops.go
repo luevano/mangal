@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/adrg/xdg"
-	"github.com/luevano/mangal/meta"
-	"github.com/luevano/mangal/util/afs"
+	"github.com/luevano/mangal/v5/meta"
+	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )

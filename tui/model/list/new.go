@@ -4,9 +4,9 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/paginator"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luevano/mangal/theme/color"
-	"github.com/luevano/mangal/theme/icon"
-	"github.com/luevano/mangal/tui/base"
+	"github.com/luevano/mangal/v5/theme/color"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/tui/base"
 )
 
 func New[T any](

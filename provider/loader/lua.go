@@ -9,11 +9,11 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/luaprovider"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/path"
-	"github.com/luevano/mangal/provider/info"
-	"github.com/luevano/mangal/util/afs"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/provider/info"
+	"github.com/luevano/mangal/v5/util/afs"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 const mainLua = "main.lua"

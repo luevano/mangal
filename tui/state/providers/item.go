@@ -9,8 +9,8 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/theme/icon"
-	"github.com/luevano/mangal/theme/style"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/zyedidia/generic/set"
 )
 

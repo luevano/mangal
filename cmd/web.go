@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/luevano/mangal/util"
+	"github.com/luevano/mangal/v5/util"
 
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/web"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/web"
 	"github.com/spf13/cobra"
 )
 

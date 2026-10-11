@@ -5,8 +5,8 @@ import (
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/model/list"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/list"
 )
 
 type forWhat string

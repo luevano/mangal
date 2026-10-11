@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luevano/mangal/tui/base"
-	stringutil "github.com/luevano/mangal/util/string"
+	"github.com/luevano/mangal/v5/tui/base"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 type Model struct {

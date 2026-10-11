@@ -4,11 +4,11 @@ import (
 	_list "github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/theme/icon"
-	"github.com/luevano/mangal/theme/style"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/model/help"
-	"github.com/luevano/mangal/tui/model/list"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/theme/style"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/help"
+	"github.com/luevano/mangal/v5/tui/model/list"
 )
 
 func New(accentColor lipgloss.Color) *Model {

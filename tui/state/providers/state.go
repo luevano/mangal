@@ -6,9 +6,9 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/client"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/model/list"
+	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/zyedidia/generic/set"
 )
 

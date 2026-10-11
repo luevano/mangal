@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/util"
+	"github.com/luevano/mangal/v5/util"
 	"github.com/skratchdot/open-golang/open"
 )
 

@@ -7,12 +7,12 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/log"
-	"github.com/luevano/mangal/path"
-	"github.com/luevano/mangal/theme/icon"
-	"github.com/luevano/mangal/theme/style"
-	"github.com/luevano/mangal/util/afs"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/theme/style"
+	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/zyedidia/generic/set"
 )
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/luevano/mangal/util/string/path"
+	"github.com/luevano/mangal/v5/util/string/path"
 	"github.com/spf13/viper"
 )
 

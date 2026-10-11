@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/provider/manager"
-	"github.com/luevano/mangal/theme/icon"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/provider/manager"
+	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )

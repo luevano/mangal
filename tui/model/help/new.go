@@ -2,8 +2,8 @@ package help
 
 import (
 	"github.com/charmbracelet/bubbles/help"
-	"github.com/luevano/mangal/theme/icon"
-	"github.com/luevano/mangal/theme/style"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/theme/style"
 )
 
 func New() help.Model {

@@ -2,10 +2,10 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/program"
-	"github.com/luevano/mangal/tui/state/home"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/program"
+	"github.com/luevano/mangal/v5/tui/state/home"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 func Run() error {

@@ -2,9 +2,9 @@ package cmd
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/client/anilist"
-	anilistViewer "github.com/luevano/mangal/tui/model/anilist"
-	"github.com/luevano/mangal/util"
+	"github.com/luevano/mangal/v5/client/anilist"
+	anilistViewer "github.com/luevano/mangal/v5/tui/model/anilist"
+	"github.com/luevano/mangal/v5/util"
 	"github.com/spf13/cobra"
 )
 

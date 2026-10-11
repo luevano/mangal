@@ -1,7 +1,7 @@
 package chapters
 
 import (
-	"github.com/luevano/mangal/config"
+	"github.com/luevano/mangal/v5/config"
 )
 
 func (s *state) actionRunningNow(action string) {

@@ -7,7 +7,7 @@ import (
 	"text/template"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luevano/mangal/theme/style"
+	"github.com/luevano/mangal/v5/theme/style"
 )
 
 type versioned struct {

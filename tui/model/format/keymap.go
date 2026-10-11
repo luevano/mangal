@@ -3,7 +3,7 @@ package format
 import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/luevano/mangal/tui/util"
+	"github.com/luevano/mangal/v5/tui/util"
 )
 
 var _ help.KeyMap = (*keyMap)(nil)

@@ -5,11 +5,11 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
 	sdk "github.com/luevano/luaprovider/lib"
-	"github.com/luevano/mangal/meta"
-	"github.com/luevano/mangal/script/lib/anilist"
-	"github.com/luevano/mangal/script/lib/client"
-	"github.com/luevano/mangal/script/lib/json"
-	"github.com/luevano/mangal/script/lib/prompt"
+	"github.com/luevano/mangal/v5/meta"
+	"github.com/luevano/mangal/v5/script/lib/anilist"
+	"github.com/luevano/mangal/v5/script/lib/client"
+	"github.com/luevano/mangal/v5/script/lib/json"
+	"github.com/luevano/mangal/v5/script/lib/prompt"
 	lua "github.com/yuin/gopher-lua"
 )
 

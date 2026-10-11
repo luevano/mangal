@@ -5,10 +5,10 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luevano/mangal/theme/icon"
-	"github.com/luevano/mangal/theme/style"
-	"github.com/luevano/mangal/util/chapter"
-	stringutil "github.com/luevano/mangal/util/string"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/theme/style"
+	"github.com/luevano/mangal/v5/util/chapter"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 // updateKeybinds enables open/retry keybinds if necessary

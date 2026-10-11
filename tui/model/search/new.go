@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/luevano/mangal/theme/icon"
-	"github.com/luevano/mangal/tui/base"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/tui/base"
 )
 
 func New(placeholder, initialQuery string, width, maxSuggestions int) *Model {

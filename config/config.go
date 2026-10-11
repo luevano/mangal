@@ -11,9 +11,9 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/disgoorg/disgo/webhook"
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/meta"
-	"github.com/luevano/mangal/template/funcs"
-	"github.com/luevano/mangal/theme/icon"
+	"github.com/luevano/mangal/v5/meta"
+	"github.com/luevano/mangal/v5/template/funcs"
+	"github.com/luevano/mangal/v5/theme/icon"
 )
 
 // TODO: cleanup the config setup, register each config directly into

@@ -5,8 +5,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/auth/oauth"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/auth/oauth"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/skratchdot/open-golang/open"
 	"golang.org/x/oauth2"
 )

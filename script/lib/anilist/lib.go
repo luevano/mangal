@@ -4,7 +4,7 @@ import (
 	luadoc "github.com/luevano/gopher-luadoc"
 	"github.com/luevano/libmangal/metadata"
 	lmanilist "github.com/luevano/libmangal/metadata/anilist"
-	"github.com/luevano/mangal/script/lib/util"
+	"github.com/luevano/mangal/v5/script/lib/util"
 	lua "github.com/yuin/gopher-lua"
 )
 

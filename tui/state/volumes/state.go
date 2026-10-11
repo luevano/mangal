@@ -10,10 +10,10 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/model/list"
-	"github.com/luevano/mangal/tui/model/metadata"
-	"github.com/luevano/mangal/tui/state/anilist"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/list"
+	"github.com/luevano/mangal/v5/tui/model/metadata"
+	"github.com/luevano/mangal/v5/tui/state/anilist"
 )
 
 var _ base.State = (*state)(nil)

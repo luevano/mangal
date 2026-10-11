@@ -1,14 +1,14 @@
 package cmd
 
 import (
-	"github.com/luevano/mangal/util"
+	"github.com/luevano/mangal/v5/util"
 	"net/url"
 
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/path"
-	"github.com/luevano/mangal/provider/info"
-	"github.com/luevano/mangal/provider/manager"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/provider/info"
+	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/spf13/cobra"
 )
 

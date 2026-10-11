@@ -4,8 +4,8 @@ import (
 	_list "github.com/charmbracelet/bubbles/list"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/mangal/tui/model/list"
-	"github.com/luevano/mangal/tui/model/metadata"
+	"github.com/luevano/mangal/v5/tui/model/list"
+	"github.com/luevano/mangal/v5/tui/model/metadata"
 )
 
 func New(client *libmangal.Client, manga mangadata.Manga, volumes []mangadata.Volume) *state {

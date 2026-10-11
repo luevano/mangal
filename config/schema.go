@@ -4,7 +4,7 @@ import (
 	"io/fs"
 
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/theme/icon"
+	"github.com/luevano/mangal/v5/theme/icon"
 )
 
 type config struct {

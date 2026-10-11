@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fatih/camelcase"
-	"github.com/luevano/mangal/theme/style"
+	"github.com/luevano/mangal/v5/theme/style"
 	"golang.org/x/exp/constraints"
 )
 

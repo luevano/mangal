@@ -3,17 +3,17 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/luevano/mangal/util"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/util"
+	"github.com/luevano/mangal/v5/util/cache"
 	"os"
 	"os/signal"
 	"syscall"
 
 	cc "github.com/ivanpirog/coloredcobra"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/meta"
-	"github.com/luevano/mangal/theme/icon"
-	"github.com/luevano/mangal/tui"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/meta"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/tui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

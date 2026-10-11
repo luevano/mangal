@@ -3,11 +3,11 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/luevano/mangal/util"
+	"github.com/luevano/mangal/v5/util"
 	"strconv"
 
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/theme/style"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/spf13/cobra"
 )
 

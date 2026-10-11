@@ -2,7 +2,7 @@ package metadata
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/tui/base"
+	"github.com/luevano/mangal/v5/tui/base"
 )
 
 func (m *Model) ShowMetadataCmd() tea.Cmd {

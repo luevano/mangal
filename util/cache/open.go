@@ -8,8 +8,8 @@ import (
 
 	"github.com/luevano/libmangal"
 
-	"github.com/luevano/mangal/path"
-	"github.com/luevano/mangal/storage"
+	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/storage"
 )
 
 var (

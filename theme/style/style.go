@@ -2,7 +2,7 @@ package style
 
 import (
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luevano/mangal/theme/color"
+	"github.com/luevano/mangal/v5/theme/color"
 )
 
 type styles struct {

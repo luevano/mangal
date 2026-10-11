@@ -7,12 +7,12 @@ import (
 	_list "github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/log"
-	"github.com/luevano/mangal/theme/color"
-	"github.com/luevano/mangal/theme/icon"
-	"github.com/luevano/mangal/tui/model/help"
-	"github.com/luevano/mangal/tui/model/list"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/theme/color"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/tui/model/help"
+	"github.com/luevano/mangal/v5/tui/model/list"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 func New(ctx context.Context, anilist *metadata.ProviderWithCache, standalone bool) *Model {

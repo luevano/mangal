@@ -7,10 +7,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/client"
-	"github.com/luevano/mangal/log"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/state/mangas"
+	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/state/mangas"
 )
 
 func (s *state) loadProviderCmd(ctx context.Context, item *item) tea.Cmd {

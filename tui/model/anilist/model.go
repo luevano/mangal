@@ -10,9 +10,9 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/model/list"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/list"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 var authURL = "https://anilist.co/api/v2/oauth/authorize?client_id=%s&response_type=%s"

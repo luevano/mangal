@@ -3,7 +3,7 @@ package format
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/config"
+	"github.com/luevano/mangal/v5/config"
 )
 
 func backCmd() tea.Msg {

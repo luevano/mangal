@@ -1,16 +1,9 @@
-module github.com/luevano/mangal
+module github.com/luevano/mangal/v5
 
 go 1.27.0
 
 // https://github.com/go-rod/rod/issues/1203
 replace github.com/ysmood/fetchup => github.com/ysmood/fetchup v0.3.0
-
-// Mistakenly "uploaded" when importing in a separate package...
-retract (
-	v0.0.0-20240707233308-9adbbbc770e1
-	v0.0.0-20240517101323-1d20eb78430f
-	v0.0.0-20240514061342-bf49b6004548
-)
 
 require (
 	github.com/adrg/xdg v0.5.3

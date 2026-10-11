@@ -11,6 +11,14 @@ Version 5 is now based on metafates' [mangalorg](https://github.com/mangalorg) s
 - [luaprovider](https://github.com/luevano/luaprovider): Lua script providers, using [gopher-luadoc](https://github.com/luevano/gopher-luadoc)
 - [saturno](https://github.com/luevano/saturno): Lua providers
 
+## Install
+
+Download a binary from the [releases](https://github.com/luevano/mangal/releases), or with Go:
+
+```sh
+go install github.com/luevano/mangal/v5@latest
+```
+
 ## Development
 
 For now, just notes for myself while I work on this.

@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/state/chapters"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/state/chapters"
 )
 
 func (s *state) searchVolumeChapters(ctx context.Context, item *item) tea.Cmd {

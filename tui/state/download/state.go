@@ -13,11 +13,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/log"
-	"github.com/luevano/mangal/tui/base"
-	"github.com/luevano/mangal/tui/model/viewport"
-	"github.com/luevano/mangal/util/chapter"
-	stringutil "github.com/luevano/mangal/util/string"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/viewport"
+	"github.com/luevano/mangal/v5/util/chapter"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 var _ base.State = (*state)(nil)

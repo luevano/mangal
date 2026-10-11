@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/luevano/mangal/storage"
-	"github.com/luevano/mangal/util/cache"
+	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 )
 

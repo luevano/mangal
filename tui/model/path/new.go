@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/table"
-	"github.com/luevano/mangal/path"
-	"github.com/luevano/mangal/tui/model/help"
+	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/tui/model/help"
 )
 
 func New(standalone bool) *Model {

@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luevano/mangal/tui/base"
+	"github.com/luevano/mangal/v5/tui/base"
 )
 
 // viewStandalone is the standalone rendered, which includes the title,

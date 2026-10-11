@@ -4,9 +4,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/list"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/theme/color"
-	"github.com/luevano/mangal/theme/icon"
-	_style "github.com/luevano/mangal/theme/style"
+	"github.com/luevano/mangal/v5/theme/color"
+	"github.com/luevano/mangal/v5/theme/icon"
+	_style "github.com/luevano/mangal/v5/theme/style"
 )
 
 type styles struct {

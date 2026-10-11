@@ -6,7 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/tui/base"
+	"github.com/luevano/mangal/v5/tui/base"
 )
 
 type State int

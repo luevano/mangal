@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/luevano/mangal/config"
-	"github.com/luevano/mangal/tui/model/help"
-	"github.com/luevano/mangal/tui/model/viewport"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/tui/model/help"
+	"github.com/luevano/mangal/v5/tui/model/viewport"
 )
 
 // New creates the model, the notices are shown when it starts.

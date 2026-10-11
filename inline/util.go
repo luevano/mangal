@@ -14,7 +14,7 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	lmanilist "github.com/luevano/libmangal/metadata/anilist"
-	"github.com/luevano/mangal/log"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/samber/lo"
 )
 

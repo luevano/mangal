@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/luevano/libmangal/metadata/myanimelist"
-	"github.com/luevano/mangal/auth"
+	"github.com/luevano/mangal/v5/auth"
 	"github.com/skratchdot/open-golang/open"
 	"golang.org/x/oauth2"
 )

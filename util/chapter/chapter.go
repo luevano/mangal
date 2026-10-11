@@ -4,7 +4,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
-	stringutil "github.com/luevano/mangal/util/string"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 // Chapter represents a manga chapter with possible

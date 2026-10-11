@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/storage"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/philippgille/gokv/encoding"
 	bolt "go.etcd.io/bbolt"
 	"golang.org/x/oauth2"

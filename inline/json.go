@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/luevano/mangal/client"
+	"github.com/luevano/mangal/v5/client"
 )
 
 func RunJSON(ctx context.Context, args Args) error {
