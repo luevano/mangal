@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -14,10 +16,129 @@ import (
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
+const (
+	// maxRetries is how many times a rate limited chapter is tried again.
+	maxRetries = 10
+	// maxWait caps how long a rate limit is waited out.
+	maxWait = 10 * time.Second
+)
+
+// RateLimited is implemented by provider errors that say how long to wait,
+// e.g. mangodex's RateLimitError.
+type RateLimited interface {
+	RetryAfterDuration() time.Duration
+}
+
+// RetryAfter returns how long to wait if err (or one it wraps) is RateLimited.
+func RetryAfter(err error) (time.Duration, bool) {
+	var rateLimit RateLimited
+	if errors.As(err, &rateLimit) {
+		return rateLimit.RetryAfterDuration(), true
+	}
+	return 0, false
+}
+
+// EventKind is what happened to a chapter of Download.
+type EventKind int
+
+const (
+	// EventStart is sent before the chapter is downloaded.
+	EventStart EventKind = iota
+	// EventWait is a rate limit being waited out before trying again.
+	EventWait
+	// EventDone is sent once the chapter is done: downloaded, failed or unavailable.
+	EventDone
+)
+
+// Event is the progress of Download.
+type Event struct {
+	Kind EventKind
+	// Index is the chapter's index in the results.
+	Index  int
+	Result *Result
+	// Attempt (from 1) and Wait are set for EventWait.
+	Attempt int
+	Wait    time.Duration
+}
+
+// Download downloads the chapters one by one (see DownloadChapter), skipping the
+// unavailable ones. onEvent may be nil. A cancelled ctx stops it: the rest of the
+// chapters stay to download.
+func Download(ctx context.Context, client *libmangal.Client, chapters []mangadata.Chapter, options libmangal.DownloadOptions, onEvent func(Event)) Results {
+	return download(ctx, chapters, onEvent, func(ctx context.Context, ch mangadata.Chapter) (*metadata.DownloadedChapter, error) {
+		return downloadChapter(ctx, client, ch, options)
+	})
+}
+
+func download(ctx context.Context, chapters []mangadata.Chapter, onEvent func(Event), get getFunc) Results {
+	if onEvent == nil {
+		onEvent = func(Event) {}
+	}
+	results := NewResults(chapters)
+	for i, r := range results {
+		if ctx.Err() != nil {
+			break
+		}
+		if reason := r.Chapter.Info().Unavailable; reason != "" {
+			r.Unavailable = reason
+			onEvent(Event{Kind: EventDone, Index: i, Result: r})
+			continue
+		}
+		onEvent(Event{Kind: EventStart, Index: i, Result: r})
+		r.Down, r.Err = retry(ctx, r.Chapter, get, func(attempt int, wait time.Duration) {
+			onEvent(Event{Kind: EventWait, Index: i, Result: r, Attempt: attempt, Wait: wait})
+		})
+		if r.Err != nil && ctx.Err() != nil {
+			// cancelled, not failed
+			r.Err = nil
+			break
+		}
+		onEvent(Event{Kind: EventDone, Index: i, Result: r})
+	}
+	return results
+}
+
 // DownloadChapter downloads the chapter and records it in the library, unless it went to
 // the temp dir (read without download_on_read). A chapter that's already there (maybe
-// from another provider, see DownloadedChapter.Skipped) isn't downloaded again.
-func DownloadChapter(ctx context.Context, client *libmangal.Client, chapter mangadata.Chapter, options libmangal.DownloadOptions) (*metadata.DownloadedChapter, error) {
+// from another provider, see DownloadedChapter.Skipped) isn't downloaded again. A rate
+// limit is waited out (onWait may be nil) up to 10 times.
+func DownloadChapter(ctx context.Context, client *libmangal.Client, chapter mangadata.Chapter, options libmangal.DownloadOptions, onWait func(attempt int, wait time.Duration)) (*metadata.DownloadedChapter, error) {
+	return retry(ctx, chapter, func(ctx context.Context, ch mangadata.Chapter) (*metadata.DownloadedChapter, error) {
+		return downloadChapter(ctx, client, ch, options)
+	}, onWait)
+}
+
+// newTimer is swapped in tests
+var newTimer = time.NewTimer
+
+type getFunc func(context.Context, mangadata.Chapter) (*metadata.DownloadedChapter, error)
+
+func retry(ctx context.Context, chapter mangadata.Chapter, get getFunc, onWait func(attempt int, wait time.Duration)) (*metadata.DownloadedChapter, error) {
+	for attempt := 1; ; attempt++ {
+		down, err := get(ctx, chapter)
+		wait, limited := RetryAfter(err)
+		if !limited || ctx.Err() != nil {
+			return down, err
+		}
+		if attempt > maxRetries {
+			return nil, fmt.Errorf("rate limited %d times: %w", maxRetries, err)
+		}
+		// no hot loop when the provider doesn't say how long
+		wait = max(time.Second, min(maxWait, wait))
+		if onWait != nil {
+			onWait(attempt, wait)
+		}
+		timer := newTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func downloadChapter(ctx context.Context, client *libmangal.Client, chapter mangadata.Chapter, options libmangal.DownloadOptions) (*metadata.DownloadedChapter, error) {
 	down, err := client.DownloadChapterContext(ctx, chapter, options)
 	if err != nil || options.Directory == path.TempDir() {
 		return down, err

@@ -27,7 +27,7 @@ func (s *state) downloadChapterCmd(ctx context.Context) tea.Cmd {
 			err      error
 		)
 
-		downChap, err = client.DownloadChapter(ctx, s.client, ch.Chapter, s.options)
+		downChap, err = client.DownloadChapter(ctx, s.client, ch.Chapter, s.options, nil)
 		if err != nil {
 			// on too many requests error
 			if wait, ok := util.RetryAfter(err); ok {

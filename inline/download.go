@@ -98,7 +98,7 @@ func RunDownload(ctx context.Context, args Args) error {
 		retry := true
 		for retry {
 			retry = false
-			ch.Down, ch.Err = mangalclient.DownloadChapter(ctx, client, ch.Chapter, downloadOptions)
+			ch.Down, ch.Err = mangalclient.DownloadChapter(ctx, client, ch.Chapter, downloadOptions, nil)
 			if ch.Err != nil {
 				// cancelled (e.g. ctrl+c), don't keep trying the rest of the chapters
 				if ctx.Err() != nil {

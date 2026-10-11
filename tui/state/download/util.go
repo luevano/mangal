@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/util/chapter"
@@ -90,11 +91,37 @@ func (s *state) viewChapterList(header string, headerStyle lipgloss.Style, chaps
 			sb.WriteByte('\n')
 		}
 		sb.WriteString(subItm)
-		sb.WriteString(ch.Render(style.Normal.Base, s.styles.toDownload, s.styles.succeed, s.styles.failed, s.styles.warning))
+		sb.WriteString(renderChapter(ch, style.Normal.Base, s.styles.toDownload, s.styles.succeed, s.styles.failed, s.styles.warning))
 		if i < len(chaps) {
 			sb.WriteByte('\n')
 		}
 	}
 
 	return sb.String()
+}
+
+// renderChapter is the chapter with its download status and file.
+func renderChapter(c *chapter.Chapter, normal, toDownload, succeed, failed, warning lipgloss.Style) string {
+	str := stringutil.FormatFloa32(c.Chapter.Info().Number) + " - " + c.Chapter.Info().Title
+	if c.Down == nil {
+		return toDownload.Render(str)
+	}
+
+	s := toDownload
+	status := "s: " + string(c.Down.ChapterStatus)
+	switch c.Down.ChapterStatus {
+	case metadata.DownloadStatusNew:
+		s = normal
+		status = succeed.Render(status)
+	case metadata.DownloadStatusMissingMetadata, metadata.DownloadStatusOverwritten, metadata.DownloadStatusSkip:
+		status = warning.Render(status)
+	case metadata.DownloadStatusFailed:
+		status = failed.Render(status)
+	default: // exists or other
+		status = toDownload.Render(status)
+	}
+	if c.Down.Skipped != "" {
+		status = warning.Render("s: skipped, " + c.Down.Skipped)
+	}
+	return s.Render(str+" - ") + status + s.Render(" - f: "+c.Down.Filename)
 }
