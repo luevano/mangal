@@ -78,7 +78,7 @@ func New(client *libmangal.Client) base.State {
 		keys: keyMap{
 			confirm:        util.Bind("confirm", "enter"),
 			search:         util.Bind("search", "s"),
-			anilist:        util.Bind("anilist", "A"),
+			anilist:        util.Bind("metadata", "A"),
 			metadata:       util.Bind("metadata", "m"),
 			info:           util.Bind("info", "i"),
 			watch:          util.Bind("watch", "w"),

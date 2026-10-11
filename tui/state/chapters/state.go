@@ -113,7 +113,7 @@ func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volum
 			read:                util.Bind("read", "r"),
 			download:            util.Bind("download", "d"),
 			info:                util.Bind("info", "i"),
-			anilist:             util.Bind("anilist", "A"),
+			anilist:             util.Bind("metadata", "A"),
 			metadata:            util.Bind("metadata", "m"),
 			changeFormat:        util.Bind("change format", "f"),
 			openURL:             util.Bind("open url", "o"),
