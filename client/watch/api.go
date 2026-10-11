@@ -67,8 +67,8 @@ func patchRequest(o UpdateOptions) PatchRequest {
 }
 
 // CheckRequest is POST /api/check: the watches with the IDs (every enabled one if none).
-// A dry run answers 200 with the Report, a check 202 with a CheckResponse (409 when one
-// is running) and runs in the server: GET /api/runs/{run} has it, finished once its
+// A dry run answers 200 with the Report, a check 202 with a CheckResponse (409 when every
+// provider is being checked by another run) and runs in the server: GET /api/runs/{run} has it, finished once its
 // finished time is set.
 type CheckRequest struct {
 	IDs    []int64 `json:"ids,omitempty"`
@@ -76,9 +76,11 @@ type CheckRequest struct {
 	DryRun bool    `json:"dry_run,omitempty"`
 }
 
-// CheckResponse is the check run a CheckRequest started.
+// CheckResponse is the check run a CheckRequest started, and the providers it skipped
+// because another check has them.
 type CheckResponse struct {
-	Run int64 `json:"run"`
+	Run  int64    `json:"run"`
+	Busy []string `json:"busy,omitempty"`
 }
 
 // Error codes of an ErrorResponse, for the errors callers match.

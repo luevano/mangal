@@ -2,6 +2,7 @@ package watch
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -21,6 +22,10 @@ type Manager interface {
 	Runs(ctx context.Context, filter RunFilter) ([]CheckRun, error)
 	RunDetails(ctx context.Context, id int64) (CheckRun, error)
 	Status(ctx context.Context) (Status, error)
+	// Subscribe is the live progress of the checks until ctx is done (the channel is
+	// closed then): the recent events of the running checks first, then each one as it
+	// happens. Locally only the checks of this process are seen.
+	Subscribe(ctx context.Context) (<-chan LiveEvent, error)
 }
 
 // Status is what the manager is doing.
@@ -31,12 +36,15 @@ type Status struct {
 	Version string `json:"version,omitempty"`
 	// Started is when the server started.
 	Started time.Time `json:"started,omitzero"`
-	// Checking is true while a check runs (from any process), since Since.
+	// Checking is true while a check runs (from any process), since Since (the earliest).
 	Checking bool      `json:"checking"`
 	Since    time.Time `json:"since,omitzero"`
-	// Run is the check run the server is doing (scheduled or asked through its API), 0
-	// when none or not known.
-	Run int64 `json:"run,omitempty"`
+	// Providers are the ones being checked (from any process), by provider.
+	Providers []ProviderStatus `json:"providers,omitempty"`
+	// Run is a check run the server is doing (scheduled or asked through its API), 0
+	// when none or not known; Runs are all of them.
+	Run  int64   `json:"run,omitempty"`
+	Runs []int64 `json:"runs,omitempty"`
 	// NextCheck is the next scheduled check (the earliest due watch), zero without
 	// enabled watches or a scheduler.
 	NextCheck time.Time `json:"next_check,omitzero"`
@@ -44,14 +52,32 @@ type Status struct {
 
 var _ Manager = (*Service)(nil)
 
-// Status of the local service: no server, checking when any process holds the check lock.
+// Status of the local service: no server, the providers any process checks (what they do
+// for this process's checks).
 func (s *Service) Status(ctx context.Context) (Status, error) {
 	var st Status
-	h, held, err := s.Watches.Holder(lockName, s.Options.LockStale)
+	held, err := s.Watches.Holders(lockPrefix, s.lockStale())
 	if err != nil {
 		return st, err
 	}
-	st.Checking, st.Since = held, h.Acquired
+	active := map[string]ProviderStatus{}
+	if s.Events != nil {
+		for _, ps := range s.Events.Active() {
+			active[ps.Provider] = ps
+		}
+	}
+	for _, h := range held {
+		provider := strings.TrimPrefix(h.Name, lockPrefix)
+		ps, ok := active[provider]
+		if !ok || ps.PID != h.PID || ps.Host != h.Host {
+			ps = ProviderStatus{Provider: provider, PID: h.PID, Host: h.Host}
+		}
+		ps.Since = h.Acquired
+		st.Providers = append(st.Providers, ps)
+		if !st.Checking || h.Acquired.Before(st.Since) {
+			st.Checking, st.Since = true, h.Acquired
+		}
+	}
 	all, err := s.List(ctx)
 	if err != nil {
 		return st, err
@@ -62,4 +88,14 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		}
 	}
 	return st, nil
+}
+
+// Provider is the status of the provider, false when it's not being checked.
+func (st Status) Provider(provider string) (ProviderStatus, bool) {
+	for _, ps := range st.Providers {
+		if ps.Provider == provider {
+			return ps, true
+		}
+	}
+	return ProviderStatus{}, false
 }

@@ -22,6 +22,15 @@ type fakeManager struct {
 
 	enabled map[int64]bool
 	checked [][]int64
+	// events is what Subscribe gives, nil for an error
+	events chan watch.LiveEvent
+}
+
+func (f *fakeManager) Subscribe(ctx context.Context) (<-chan watch.LiveEvent, error) {
+	if f.events == nil {
+		return nil, errors.New("no events")
+	}
+	return f.events, nil
 }
 
 func (f *fakeManager) Add(ctx context.Context, opts watch.AddOptions) (watch.Watch, error) {

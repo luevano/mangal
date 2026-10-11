@@ -473,13 +473,17 @@ FROM watch_runs w WHERE check_run = ?1 AND `+runFilterWhere+` ORDER BY id`, chec
 // once (e.g. check the watches). It's kept alive with Heartbeat; a lock whose heartbeat is
 // older than its staleness is taken over.
 type Lock struct {
-	Name  string
-	token string
-	db    *DB
+	Name string
+	// Acquired is when it was taken.
+	Acquired time.Time
+	token    string
+	db       *DB
 }
 
 // LockHolder is who holds a lock.
 type LockHolder struct {
+	// Name is the lock's, set by Holders.
+	Name      string
 	PID       int
 	Host      string
 	Acquired  time.Time
@@ -533,7 +537,7 @@ ON CONFLICT (name) DO UPDATE SET token = excluded.token, pid = excluded.pid, hos
 		}
 		return nil, fmt.Errorf("lock %s: %w", name, err)
 	}
-	return &Lock{Name: name, token: token, db: s.DB}, nil
+	return &Lock{Name: name, Acquired: time.Unix(now.Unix(), 0), token: token, db: s.DB}, nil
 }
 
 // Holder is who holds the named lock, false when nobody does (or its heartbeat is older
@@ -550,6 +554,34 @@ func (s Watches) Holder(name string, stale time.Duration) (LockHolder, bool, err
 	}
 	h.Acquired, h.Heartbeat = time.Unix(acquired, 0), time.Unix(heartbeat, 0)
 	return h, time.Since(h.Heartbeat) < stale, nil
+}
+
+// Holders are the held locks whose name starts with prefix, by name: heartbeat newer than
+// stale and, on this host, a holder that runs.
+func (s Watches) Holders(prefix string, stale time.Duration) ([]LockHolder, error) {
+	rows, err := s.DB.Query(`SELECT name, pid, host, acquired, heartbeat FROM locks WHERE substr(name, 1, length(?1)) = ?1 ORDER BY name`, prefix)
+	if err != nil {
+		return nil, fmt.Errorf("locks %s: %w", prefix, err)
+	}
+	defer rows.Close()
+	host, _ := os.Hostname()
+	var held []LockHolder
+	for rows.Next() {
+		var h LockHolder
+		var acquired, heartbeat int64
+		if err := rows.Scan(&h.Name, &h.PID, &h.Host, &acquired, &heartbeat); err != nil {
+			return nil, fmt.Errorf("locks %s: %w", prefix, err)
+		}
+		h.Acquired, h.Heartbeat = time.Unix(acquired, 0), time.Unix(heartbeat, 0)
+		if time.Since(h.Heartbeat) >= stale || (h.Host == host && !proc.Alive(h.PID)) {
+			continue
+		}
+		held = append(held, h)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("locks %s: %w", prefix, err)
+	}
+	return held, nil
 }
 
 // Heartbeat keeps the lock alive, an error if it was lost (taken over as stale).

@@ -81,6 +81,9 @@ type fakeSource struct {
 	// fail are the chapter numbers that fail to download
 	fail map[float32]bool
 	err  error
+	// gate, when set, makes Chapters say so on entered and wait for it (or the ctx)
+	gate    chan struct{}
+	entered chan struct{}
 
 	mu         sync.Mutex
 	downloaded []float32
@@ -114,7 +117,15 @@ func (s *fakeSource) SearchMangas(_ context.Context, query string) ([]mangadata.
 	return found, nil
 }
 
-func (s *fakeSource) Chapters(_ context.Context, manga mangadata.Manga) ([]mangadata.Chapter, error) {
+func (s *fakeSource) Chapters(ctx context.Context, manga mangadata.Manga) ([]mangadata.Chapter, error) {
+	if s.gate != nil {
+		s.entered <- struct{}{}
+		select {
+		case <-s.gate:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -344,7 +355,7 @@ func TestCheck(t *testing.T) {
 	if !slices.Equal(src.downloaded, []float32{65.5, 66}) {
 		t.Errorf("downloaded %v", src.downloaded)
 	}
-	if !slices.Equal(events, []EventKind{EventStart, EventChapter, EventChapter, EventDone}) {
+	if !slices.Equal(events, []EventKind{EventStart, EventFound, EventChapter, EventChapter, EventDone}) {
 		t.Errorf("events %v", events)
 	}
 	// one notification for the manga
@@ -497,29 +508,138 @@ func TestCheckBusy(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
 	m := &fakeManga{info: mangadata.MangaInfo{ID: "m", Title: "M"}}
+	n := &fakeManga{info: mangadata.MangaInfo{ID: "n", Title: "N"}}
 	e.source("p", m).chs["m"] = m.chapters(1)
-	if _, err := e.svc.Add(ctx, AddOptions{Provider: "p", MangaID: "m"}); err != nil {
-		t.Fatal(err)
-	}
-	lock, err := e.svc.Watches.Lock(lockName, time.Minute)
+	e.source("q", n).chs["n"] = n.chapters(1)
+	wp, err := e.svc.Add(ctx, AddOptions{Provider: "p", MangaID: "m"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.svc.Check(ctx, nil, CheckOptions{}); !errors.Is(err, ErrBusy) {
-		t.Errorf("checked while locked: %v", err)
+	wq, err := e.svc.Add(ctx, AddOptions{Provider: "q", MangaID: "n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// another process checks p: q goes on, p's watch is skipped (not recorded)
+	lock, err := e.svc.Watches.Lock(lockName("p"), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var busy []string
+	report, err := e.svc.Check(ctx, nil, CheckOptions{OnBusy: func(p []string) { busy = p }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(report.Busy, []string{"p"}) || !slices.Equal(busy, []string{"p"}) || report.Watches != 1 ||
+		report.Results[0].Status != storage.StatusSkipped || report.Results[0].Error != "provider busy" || report.Results[1].Status != storage.StatusNew {
+		t.Errorf("one provider busy: %+v", report)
+	}
+	run, _ := e.svc.RunDetails(ctx, report.ID)
+	if len(run.Results) != 1 || run.Results[0].Watch != wq.ID {
+		t.Errorf("recorded %+v", run.Results)
+	}
+	if _, err := e.svc.Check(ctx, []int64{wp.ID}, CheckOptions{}); !errors.Is(err, ErrBusy) {
+		t.Errorf("every provider busy: %v", err)
 	}
 	if _, err := e.svc.Check(ctx, nil, CheckOptions{DryRun: true}); err != nil {
-		t.Errorf("a dry run doesn't need the lock: %v", err)
+		t.Errorf("a dry run doesn't need the locks: %v", err)
 	}
 	_ = lock.Unlock()
-	if _, err := e.svc.Check(ctx, nil, CheckOptions{}); err != nil {
+	if _, err := e.svc.Check(ctx, []int64{wp.ID}, CheckOptions{}); err != nil {
 		t.Errorf("after unlock: %v", err)
 	}
-	// the check released it
-	if l, err := e.svc.Watches.Lock(lockName, time.Minute); err != nil {
-		t.Errorf("lock kept: %v", err)
-	} else {
-		_ = l.Unlock()
+	// the check released them
+	for _, p := range []string{"p", "q"} {
+		if l, err := e.svc.Watches.Lock(lockName(p), time.Minute); err != nil {
+			t.Errorf("lock kept: %v", err)
+		} else {
+			_ = l.Unlock()
+		}
+	}
+}
+
+// TestCheckParallel: checks of different providers run at once, never two of the same.
+func TestCheckParallel(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.svc.Events = NewHub()
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "m", Title: "M"}}
+	n := &fakeManga{info: mangadata.MangaInfo{ID: "n", Title: "N"}}
+	p := e.source("p", m)
+	p.chs["m"] = m.chapters(1, 2)
+	q := e.source("q", n)
+	q.chs["n"] = n.chapters(5)
+	wp, _ := e.svc.Add(ctx, AddOptions{Provider: "p", MangaID: "m"})
+	wq, _ := e.svc.Add(ctx, AddOptions{Provider: "q", MangaID: "n"})
+	p.gate, p.entered = make(chan struct{}), make(chan struct{}, 1)
+	q.gate, q.entered = make(chan struct{}), make(chan struct{}, 1)
+
+	events := e.svc.Events.Subscribe(t.Context())
+	type result struct {
+		report Report
+		err    error
+	}
+	check := func(id int64) chan result {
+		done := make(chan result, 1)
+		go func() {
+			r, err := e.svc.Check(ctx, []int64{id}, CheckOptions{})
+			done <- result{r, err}
+		}()
+		return done
+	}
+	donep := check(wp.ID)
+	<-p.entered
+	doneq := check(wq.ID)
+	<-q.entered
+
+	// both running: the status says what each one does, p can't be checked twice
+	st, err := e.svc.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps, ok := st.Provider("p")
+	if !st.Checking || len(st.Providers) != 2 || !ok || ps.Watch != wp.ID || ps.Title != "M" || ps.Run == 0 || ps.State != "checking" {
+		t.Errorf("status %+v", st)
+	}
+	if _, err := e.svc.Check(ctx, []int64{wp.ID}, CheckOptions{}); !errors.Is(err, ErrBusy) {
+		t.Errorf("p checked twice: %v", err)
+	}
+	// a subscriber that comes now sees what happened
+	var kinds []string
+	for _, ev := range e.svc.Events.Recent() {
+		if ev.Provider == "p" {
+			kinds = append(kinds, ev.Kind)
+		}
+	}
+	if !slices.Equal(kinds, []string{LiveProviderStart, LiveStart}) {
+		t.Errorf("recent of p %v", kinds)
+	}
+
+	close(p.gate)
+	close(q.gate)
+	runs := map[int64]string{}
+	for name, done := range map[string]chan result{"p": donep, "q": doneq} {
+		r := <-done
+		if r.err != nil || r.report.NewChapters == 0 {
+			t.Errorf("check %+v %v", r.report, r.err)
+		}
+		runs[r.report.ID] = name
+	}
+	if st, _ := e.svc.Status(ctx); st.Checking || len(st.Providers) != 0 {
+		t.Errorf("status after %+v", st)
+	}
+
+	byRun := map[string][]string{}
+	for len(byRun["p"]) == 0 || byRun["p"][len(byRun["p"])-1] != LiveRunDone || len(byRun["q"]) == 0 || byRun["q"][len(byRun["q"])-1] != LiveRunDone {
+		select {
+		case ev := <-events:
+			byRun[runs[ev.Run]] = append(byRun[runs[ev.Run]], ev.Kind)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("events %v", byRun)
+		}
+	}
+	want := []string{LiveRunStart, LiveProviderStart, LiveStart, LiveFound, LiveChapterDone, LiveChapterDone, LiveDone, LiveProviderDone, LiveRunDone}
+	if !slices.Equal(byRun["p"], want) {
+		t.Errorf("events of p\n got %v\nwant %v", byRun["p"], want)
 	}
 }
 

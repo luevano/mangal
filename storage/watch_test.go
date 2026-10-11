@@ -258,3 +258,23 @@ func TestLock(t *testing.T) {
 	}
 	_ = dead.Unlock()
 }
+
+func TestLockHolders(t *testing.T) {
+	data := openData(t)
+	watches := Watches{DB: data}
+	for _, name := range []string{"watch-check:b", "watch-check:a", "serve", "watch-check:dead"} {
+		if _, err := watches.Lock(name, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := data.Exec(`UPDATE locks SET pid = 0 WHERE name = 'watch-check:dead'`); err != nil {
+		t.Fatal(err)
+	}
+	held, err := watches.Holders("watch-check:", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(held) != 2 || held[0].Name != "watch-check:a" || held[1].Name != "watch-check:b" || held[0].PID == 0 {
+		t.Errorf("holders %+v", held)
+	}
+}

@@ -479,7 +479,7 @@ func TestErrorBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	writeError(rec, fmt.Errorf("check: %w", watch.ErrBusy))
 	var e watch.ErrorResponse
-	if err := json.NewDecoder(bytes.NewReader(rec.Body.Bytes())).Decode(&e); err != nil || rec.Code != http.StatusConflict || e.Code != watch.CodeBusy || !strings.Contains(e.Error, "running") {
+	if err := json.NewDecoder(bytes.NewReader(rec.Body.Bytes())).Decode(&e); err != nil || rec.Code != http.StatusConflict || e.Code != watch.CodeBusy || !strings.Contains(e.Error, "busy") {
 		t.Errorf("%d %+v %v", rec.Code, e, err)
 	}
 }

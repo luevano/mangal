@@ -43,8 +43,8 @@ const (
 )
 
 var (
-	// ErrBusy is a check while another one runs (in this or another process).
-	ErrBusy = errors.New("another watch check is running")
+	// ErrBusy is a check of providers another check has (in this or another process).
+	ErrBusy = errors.New("providers busy with another check")
 	// ErrNotFound is a watch id that doesn't exist.
 	ErrNotFound = storage.ErrWatchNotFound
 	// ErrExists is watching a manga that's already watched.
@@ -57,9 +57,6 @@ type (
 	RunChapter = storage.RunChapter
 	RunFilter  = storage.RunFilter
 )
-
-// lockName is the data db lock of the checks.
-const lockName = "watch-check"
 
 // Watch is a watched manga, with what's worked out from the library and the config.
 type Watch struct {
@@ -184,6 +181,8 @@ type Service struct {
 	// OnError is told about errors that don't fail anything (a notification that couldn't
 	// be sent), may be nil.
 	OnError func(error)
+	// Events broadcasts the progress of the checks (Subscribe), may be nil.
+	Events *Hub
 }
 
 // New is the Service over mangal's databases, with the config's options and the
@@ -201,6 +200,7 @@ func New(notifier Notifier) (*Service, error) {
 		Installed: installedProviders,
 		Notifier:  notifier,
 		Now:       time.Now,
+		Events:    NewHub(),
 	}, nil
 }
 

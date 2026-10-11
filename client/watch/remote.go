@@ -1,6 +1,7 @@
 package watch
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -16,7 +17,7 @@ import (
 
 // Remote is the Manager of a running `mangal serve`, through its API.
 //
-// Check runs in the server: OnEvent and OnRun aren't called, the Report has what the
+// Check runs in the server: OnEvent and OnRun aren't called (Subscribe has the progress), the Report has what the
 // server recorded (the Result's Gaps, Unavailable and Failed aren't). A cancelled ctx
 // cancels the check in the server.
 type Remote struct {
@@ -199,7 +200,9 @@ func (r *Remote) Check(ctx context.Context, ids []int64, opts CheckOptions) (Rep
 	if err != nil {
 		return Report{}, err
 	}
-	return reportOf(run), nil
+	report := reportOf(run)
+	report.Busy = started.Busy
+	return report, nil
 }
 
 // wait polls the check run until it's finished.
@@ -233,4 +236,99 @@ func reportOf(run CheckRun) Report {
 	}
 	report.CheckRun.Results = nil
 	return report
+}
+
+// Subscribe streams `GET /api/events` (server-sent events). The first connection is made
+// here (its error returned); when it drops it's made again (from the last event seen)
+// until ctx is done.
+func (r *Remote) Subscribe(ctx context.Context) (<-chan LiveEvent, error) {
+	resp, err := r.events(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan LiveEvent, 64)
+	go func() {
+		defer close(out)
+		var last uint64
+		for {
+			last = readEvents(ctx, resp.Body, out, last)
+			resp.Body.Close()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(2 * time.Second):
+				}
+				if resp, err = r.events(ctx, last); err == nil {
+					break
+				}
+				var apiErr *APIError
+				if errors.As(err, &apiErr) && apiErr.Status < 500 {
+					// a token that's not accepted anymore, a server without events
+					return
+				}
+			}
+		}
+	}()
+	return out, nil
+}
+
+// events opens the event stream, the events after the Seq since.
+func (r *Remote) events(ctx context.Context, since uint64) (*http.Response, error) {
+	path := "/api/events"
+	if since > 0 {
+		path += "?since=" + strconv.FormatUint(since, 10)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.Address+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	if r.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+r.Token)
+	}
+	// no timeout: the stream stays open
+	client := &http.Client{}
+	if r.Client != nil {
+		client.Transport = r.Client.Transport
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("mangal serve: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		var e ErrorResponse
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		if json.Unmarshal(b, &e) != nil || e.Error == "" {
+			e.Error = resp.Status
+		}
+		return nil, &APIError{Status: resp.StatusCode, Message: e.Error, Code: e.Code}
+	}
+	return resp, nil
+}
+
+// readEvents sends the events of the stream to out until it ends, returns the last Seq
+// (the server replays what came after it on a reconnection).
+func readEvents(ctx context.Context, body io.Reader, out chan<- LiveEvent, last uint64) uint64 {
+	sc := bufio.NewScanner(body)
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	for sc.Scan() {
+		data, ok := strings.CutPrefix(sc.Text(), "data:")
+		if !ok {
+			// id:, comments (keep-alives) and the blank line between events
+			continue
+		}
+		var e LiveEvent
+		if err := json.Unmarshal([]byte(strings.TrimSpace(data)), &e); err != nil {
+			continue
+		}
+		last = e.Seq
+		select {
+		case out <- e:
+		case <-ctx.Done():
+			return last
+		}
+	}
+	return last
 }

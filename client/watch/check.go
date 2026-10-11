@@ -1,6 +1,7 @@
 package watch
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -27,9 +28,12 @@ type CheckOptions struct {
 	Gaps bool
 	// OnEvent is told the progress, may be nil. It's never called concurrently.
 	OnEvent func(Event)
-	// OnRun is told the check run once it's recorded (it got the lock), may be nil. Not
+	// OnRun is told the check run once it's recorded (it got the locks), may be nil. Not
 	// called on a dry run.
 	OnRun func(storage.CheckRun)
+	// OnBusy is told the providers skipped because another run has them (before OnRun),
+	// may be nil.
+	OnBusy func(providers []string)
 }
 
 // EventKind is what an Event is about.
@@ -42,6 +46,8 @@ const (
 	EventChapter
 	// EventDone is a watch checked (Result is set).
 	EventDone
+	// EventFound is a watch's chapters listed, before downloading (Found is set).
+	EventFound
 )
 
 // Event is the progress of Check.
@@ -50,6 +56,7 @@ type Event struct {
 	Watch   storage.Watch
 	Chapter *client.Event
 	Result  *Result
+	Found   *Found
 }
 
 // Result is the check of a watch: the recorded run (Chapters are the downloaded ones, or
@@ -93,12 +100,17 @@ type Report struct {
 	storage.CheckRun
 	DryRun  bool     `json:"dry_run,omitempty"`
 	Results []Result `json:"results"`
+	// Busy are the providers another run had: their watches were skipped.
+	Busy []string `json:"busy,omitempty"`
 }
 
 // Check checks the watches with the ids, every enabled one if none (paused ones only when
 // given). Providers are checked in parallel (watch.parallel_providers), the mangas of one
-// provider one at a time; a failing one doesn't stop the others. Only one check runs at a
-// time across processes (ErrBusy), dry runs aside.
+// provider one at a time; a failing one doesn't stop the others.
+//
+// A provider is checked by one run at a time across processes (its lock): the watches of
+// the providers another run has are skipped ("provider busy", not recorded, Report.Busy);
+// when every provider is busy it's ErrBusy. Dry runs take no lock.
 //
 // A cancelled ctx stops it: the chapter being downloaded is finished or dropped, what was
 // done is recorded, the watches not checked yet are skipped.
@@ -111,34 +123,6 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 		return Report{}, err
 	}
 
-	if !opts.DryRun {
-		unlock, err := s.lock(ctx)
-		if err != nil {
-			return Report{}, err
-		}
-		defer unlock()
-	}
-
-	report := Report{CheckRun: storage.CheckRun{Kind: opts.Kind, Started: s.now()}, DryRun: opts.DryRun}
-	if !opts.DryRun {
-		if report.CheckRun, err = s.Watches.StartRun(report.CheckRun); err != nil {
-			return Report{}, err
-		}
-		if opts.OnRun != nil {
-			opts.OnRun(report.CheckRun)
-		}
-	}
-
-	var eventMu sync.Mutex
-	onEvent := func(e Event) {
-		if opts.OnEvent == nil {
-			return
-		}
-		eventMu.Lock()
-		defer eventMu.Unlock()
-		opts.OnEvent(e)
-	}
-
 	// by provider, in the order of the watches
 	var providers []string
 	byProvider := map[string][]int{}
@@ -149,19 +133,88 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 		byProvider[w.Provider] = append(byProvider[w.Provider], i)
 	}
 
+	report := Report{CheckRun: storage.CheckRun{Kind: opts.Kind, Started: s.now()}, DryRun: opts.DryRun}
 	report.Results = make([]Result, len(watches))
+	var locks *providerLocks
+	if !opts.DryRun {
+		var busy []string
+		locks, busy, err = s.lockProviders(providers)
+		if err != nil {
+			return Report{}, err
+		}
+		defer locks.unlockAll()
+		if len(busy) > 0 {
+			report.Busy = busy
+			providers = slices.DeleteFunc(providers, func(p string) bool { return slices.Contains(busy, p) })
+			for _, p := range busy {
+				for _, i := range byProvider[p] {
+					report.Results[i] = s.skipped(watches[i], "provider busy")
+				}
+			}
+			if opts.OnBusy != nil {
+				opts.OnBusy(busy)
+			}
+		}
+		if report.CheckRun, err = s.Watches.StartRun(report.CheckRun); err != nil {
+			return Report{}, err
+		}
+		if opts.OnRun != nil {
+			opts.OnRun(report.CheckRun)
+		}
+	}
+
+	hub := s.Events
+	if opts.DryRun {
+		hub = nil
+	}
+	if hub != nil {
+		n := 0
+		for _, p := range providers {
+			hub.begin(p, report.ID, locks.since(p))
+			n += len(byProvider[p])
+		}
+		hub.publish(LiveEvent{Run: report.ID, Kind: LiveRunStart, Message: runStartMessage(report.CheckRun, providers, n, report.Busy)})
+	}
+
+	var eventMu sync.Mutex
+	onEvent := func(e Event) {
+		if hub != nil {
+			if le, ok := liveEvent(report.ID, e); ok {
+				hub.publish(le)
+			}
+		}
+		if opts.OnEvent == nil {
+			return
+		}
+		eventMu.Lock()
+		defer eventMu.Unlock()
+		opts.OnEvent(e)
+	}
+
 	sem := make(chan struct{}, max(1, s.Options.ParallelProviders))
 	var wg sync.WaitGroup
 	for _, provider := range providers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// the provider is free for other runs as soon as it's done
+			defer locks.unlock(provider)
+			if hub != nil {
+				defer hub.end(provider)
+			}
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
 			case <-ctx.Done():
 			}
+			if hub != nil {
+				hub.publish(LiveEvent{Run: report.ID, Kind: LiveProviderStart, Provider: provider,
+					Message: fmt.Sprintf("checking %s: %s", provider, stringutil.Quantify(len(byProvider[provider]), "watch", "watches"))})
+			}
 			s.checkProvider(ctx, provider, watches, byProvider[provider], &report, opts, onEvent)
+			if hub != nil {
+				hub.publish(LiveEvent{Run: report.ID, Kind: LiveProviderDone, Provider: provider, Message: provider + " done"})
+			}
 		}()
 	}
 	wg.Wait()
@@ -176,6 +229,12 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 		if r.Status == storage.StatusError {
 			report.Errors++
 		}
+	}
+	if hub != nil {
+		took := report.Finished.Sub(report.Started).Round(time.Second)
+		hub.publish(LiveEvent{Run: report.ID, Kind: LiveRunDone, Message: fmt.Sprintf("%s check %d done in %s: %s, %s, %s", report.Kind, report.ID, took,
+			stringutil.Quantify(report.Watches, "watch", "watches"), stringutil.Quantify(report.NewChapters, "new chapter", "new chapters"),
+			stringutil.Quantify(report.Errors, "error", "errors"))})
 	}
 	if !opts.DryRun {
 		if err := s.Watches.FinishRun(report.CheckRun); err != nil {
@@ -206,43 +265,122 @@ func (s *Service) toCheck(ids []int64) ([]storage.Watch, error) {
 	return watches, nil
 }
 
-// lock takes the check lock and keeps it alive until unlocked.
-func (s *Service) lock(ctx context.Context) (unlock func(), err error) {
-	stale := s.Options.LockStale
-	if stale <= 0 {
-		stale = 10 * time.Minute
+// lockPrefix starts the data db lock of each provider's checks: watch-check:<provider>.
+const lockPrefix = "watch-check:"
+
+func lockName(provider string) string { return lockPrefix + provider }
+
+func (s *Service) lockStale() time.Duration {
+	if s.Options.LockStale <= 0 {
+		return 10 * time.Minute
 	}
-	l, err := s.Watches.Lock(lockName, stale)
-	if errors.Is(err, storage.ErrLocked) {
-		return nil, fmt.Errorf("%w: %w", ErrBusy, err)
+	return s.Options.LockStale
+}
+
+// providerLocks are the locks a check holds, kept alive until unlocked.
+type providerLocks struct {
+	s       *Service
+	mu      sync.Mutex
+	held    map[string]*storage.Lock
+	stop    chan struct{}
+	stopped chan struct{}
+}
+
+// lockProviders takes the providers' locks, busy are the ones held by others. Every one
+// busy is ErrBusy.
+func (s *Service) lockProviders(providers []string) (*providerLocks, []string, error) {
+	stale := s.lockStale()
+	l := &providerLocks{s: s, held: map[string]*storage.Lock{}, stop: make(chan struct{}), stopped: make(chan struct{})}
+	var busy []string
+	var busyErr error
+	for _, p := range providers {
+		lock, err := s.Watches.Lock(lockName(p), stale)
+		if errors.Is(err, storage.ErrLocked) {
+			busy = append(busy, p)
+			busyErr = cmp.Or(busyErr, err)
+			continue
+		}
+		if err != nil {
+			close(l.stopped)
+			l.unlockAll()
+			return nil, nil, err
+		}
+		l.held[p] = lock
 	}
-	if err != nil {
-		return nil, err
+	if len(providers) > 0 && len(busy) == len(providers) {
+		close(l.stopped)
+		return nil, nil, fmt.Errorf("%w (%s): %w", ErrBusy, strings.Join(busy, ", "), busyErr)
 	}
-	done := make(chan struct{})
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		ticker := time.NewTicker(stale / 5)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				if err := l.Heartbeat(); err != nil {
-					s.warn(err)
+	go l.beat(stale / 5)
+	return l, busy, nil
+}
+
+func (l *providerLocks) beat(every time.Duration) {
+	defer close(l.stopped)
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-l.stop:
+			return
+		case <-ticker.C:
+			l.mu.Lock()
+			for _, lock := range l.held {
+				if err := lock.Heartbeat(); err != nil {
+					l.s.warn(err)
 				}
 			}
+			l.mu.Unlock()
 		}
-	}()
-	return func() {
-		close(done)
-		<-stopped
-		if err := l.Unlock(); err != nil {
-			s.warn(err)
+	}
+}
+
+// since is when the provider's lock was taken.
+func (l *providerLocks) since(provider string) time.Time {
+	if l == nil {
+		return time.Time{}
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if lock, ok := l.held[provider]; ok {
+		return lock.Acquired
+	}
+	return time.Time{}
+}
+
+func (l *providerLocks) unlock(provider string) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if lock, ok := l.held[provider]; ok {
+		delete(l.held, provider)
+		if err := lock.Unlock(); err != nil {
+			l.s.warn(err)
 		}
-	}, nil
+	}
+}
+
+// unlockAll releases what's still held and stops the heartbeat.
+func (l *providerLocks) unlockAll() {
+	if l == nil {
+		return
+	}
+	select {
+	case <-l.stop:
+	default:
+		close(l.stop)
+	}
+	<-l.stopped
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for p, lock := range l.held {
+		delete(l.held, p)
+		if err := lock.Unlock(); err != nil {
+			l.s.warn(err)
+		}
+	}
 }
 
 func (s *Service) warn(err error) {
@@ -274,7 +412,9 @@ func (s *Service) checkProvider(ctx context.Context, provider string, watches []
 			r = s.failed(w, s.now(), fmt.Errorf("load %s: %w", provider, srcErr))
 		} else {
 			gaps := opts.Gaps || s.GapsDue(w, s.now())
-			r = s.checkOne(ctx, src, w, gaps, opts.DryRun, func(e client.Event) {
+			r = s.checkOne(ctx, src, w, gaps, opts.DryRun, func(f Found) {
+				onEvent(Event{Kind: EventFound, Watch: w, Found: &f})
+			}, func(e client.Event) {
 				onEvent(Event{Kind: EventChapter, Watch: w, Chapter: &e})
 			})
 		}
@@ -304,7 +444,7 @@ func (s *Service) failed(w storage.Watch, started time.Time, err error) Result {
 
 // checkOne checks a watch: gets the manga and its chapters, picks the ones to download and
 // downloads them (unless dryRun). Nothing is saved here.
-func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gaps, dryRun bool, onChapter func(client.Event)) Result {
+func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gaps, dryRun bool, onFound func(Found), onChapter func(client.Event)) Result {
 	started := s.now()
 	manga, err := s.manga(ctx, src, w)
 	if err != nil {
@@ -342,6 +482,13 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 	}
 	picked, unavailable := Pick(chapters, have, highest(have), w.From, gaps)
 	r.Unavailable = unavailable
+	if onFound != nil {
+		found := Found{Chapters: len(chapters), From: r.From, Unavailable: unavailable}
+		for _, ch := range picked {
+			found.Picked = append(found.Picked, ch.Info().Number)
+		}
+		onFound(found)
+	}
 
 	if dryRun {
 		for _, ch := range picked {
