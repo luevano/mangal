@@ -1,10 +1,12 @@
 package discord
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
+	"github.com/disgoorg/disgo/discord"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
 )
@@ -28,5 +30,26 @@ func TestWatchEmbed(t *testing.T) {
 	}
 	if e := watchErrorEmbed(watch.Result{WatchRun: storage.WatchRun{Provider: "p", Title: "X", Error: strings.Repeat("e", 5000)}}); utf8.RuneCountInString(e.Description) > maxDescription || e.Color != ColorRed {
 		t.Errorf("error embed too long or not red: %d", len(e.Description))
+	}
+}
+
+func TestSendWithoutMessageBack(t *testing.T) {
+	// Discord answers 204 without wait: no message, and that's not an error
+	saved := createMessage
+	t.Cleanup(func() { createMessage = saved })
+	var got discord.WebhookMessageCreate
+	createMessage = func(_ context.Context, _ string, m discord.WebhookMessageCreate) (*discord.Message, error) {
+		got = m
+		return nil, nil
+	}
+	r := watch.Result{WatchRun: storage.WatchRun{Provider: "p", Title: "X", Status: storage.StatusNew, Chapters: []storage.RunChapter{{Number: 1}}}}
+	if err := SendWatch(context.Background(), "https://discord.com/api/webhooks/1/x", r, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := SendWatchError(context.Background(), "https://discord.com/api/webhooks/1/x", r); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Embeds) != 1 || got.Embeds[0].Timestamp == nil {
+		t.Errorf("sent %+v", got)
 	}
 }

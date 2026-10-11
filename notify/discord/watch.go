@@ -7,7 +7,6 @@ import (
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/luevano/mangal/v5/client/watch"
-	"github.com/luevano/mangal/v5/log"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
@@ -79,20 +78,16 @@ func watchErrorEmbed(r watch.Result) discord.Embed {
 
 // SendWatch sends the chapters a watch downloaded to the webhook.
 func SendWatch(ctx context.Context, url string, r watch.Result, includeDirs bool) error {
-	message, err := send(ctx, url, watchEmbed(r, includeDirs))
-	if err != nil {
+	if err := send(ctx, url, watchEmbed(r, includeDirs), "message"); err != nil {
 		return fmt.Errorf("notify discord: %w", err)
 	}
-	log.Info("sent discord message with id %d", message.ID)
 	return nil
 }
 
 // SendWatchError sends a watch's failed check to the webhook.
 func SendWatchError(ctx context.Context, url string, r watch.Result) error {
-	message, err := send(ctx, url, watchErrorEmbed(r))
-	if err != nil {
+	if err := send(ctx, url, watchErrorEmbed(r), "error message"); err != nil {
 		return fmt.Errorf("notify discord: %w", err)
 	}
-	log.Info("sent discord error message with id %d", message.ID)
 	return nil
 }

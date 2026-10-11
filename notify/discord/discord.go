@@ -141,17 +141,33 @@ func embed(results client.Results, opts listOptions) (discord.Embed, bool) {
 	}, true
 }
 
-func send(ctx context.Context, url string, e discord.Embed) (*discord.Message, error) {
+// createMessage posts the message to the webhook, swapped in tests. Wait makes Discord
+// answer with the message (without it there's no body, the message is nil).
+var createMessage = func(ctx context.Context, url string, m discord.WebhookMessageCreate) (*discord.Message, error) {
 	c, err := webhook.NewWithURL(url)
 	if err != nil {
 		return nil, err
 	}
+	return c.CreateMessage(m, rest.CreateWebhookMessageParams{Wait: true}, rest.WithCtx(ctx))
+}
+
+// send posts the embed to the webhook and logs it, what says what it was.
+func send(ctx context.Context, url string, e discord.Embed, what string) error {
 	t := time.Now()
 	e.Timestamp = &t
-	return c.CreateMessage(discord.WebhookMessageCreate{
+	m, err := createMessage(ctx, url, discord.WebhookMessageCreate{
 		Username: config.Notification.Discord.Username.Get(),
 		Embeds:   []discord.Embed{e},
-	}, rest.CreateWebhookMessageParams{}, rest.WithCtx(ctx))
+	})
+	if err != nil {
+		return err
+	}
+	if m != nil {
+		log.Info("sent discord %s with id %d", what, m.ID)
+	} else {
+		log.Info("sent discord %s", what)
+	}
+	return nil
 }
 
 // Send sends a summary of the download to the webhook.
@@ -163,25 +179,22 @@ func Send(ctx context.Context, url string, results client.Results) error {
 	if !ok {
 		return nil
 	}
-	message, err := send(ctx, url, e)
-	if err != nil {
+	if err := send(ctx, url, e, "message"); err != nil {
 		return fmt.Errorf("notify discord: %w", err)
 	}
-	log.Info("sent discord message with id %d", message.ID)
 	return nil
 }
 
 // SendError sends the error to the webhook and returns it, joined with the error sending
 // it if any.
 func SendError(ctx context.Context, url string, toSend error) error {
-	message, err := send(ctx, url, discord.Embed{
+	err := send(ctx, url, discord.Embed{
 		Title:       "Error",
 		Description: truncate("General error found when downloading chapters:\n```"+toSend.Error(), maxDescription-3) + "```",
 		Color:       ColorRed,
-	})
+	}, "error message")
 	if err != nil {
 		return errors.Join(toSend, fmt.Errorf("notify discord: %w", err))
 	}
-	log.Info("sent discord error message with id %d", message.ID)
 	return toSend
 }
