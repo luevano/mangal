@@ -123,6 +123,20 @@ func loggedIn(u metadata.User) error {
 // LoginNew authorizes mangal with the AniList API client (in the browser), logs in and
 // saves the login. An empty secret is an implicit grant.
 func LoginNew(ctx context.Context, id, secret string) (metadata.User, error) {
+	return loginNew(ctx, id, secret, func(o *oauth.AnilistLoginOption) error {
+		return o.Authorize(ctx)
+	})
+}
+
+// LoginManual is LoginNew showing the authorize url instead of opening it, the redirected
+// address (or code, or token) can be pasted, see oauth.Manual.
+func LoginManual(ctx context.Context, id, secret string, manual oauth.Manual) (metadata.User, error) {
+	return loginNew(ctx, id, secret, func(o *oauth.AnilistLoginOption) error {
+		return o.AuthorizeManual(ctx, manual)
+	})
+}
+
+func loginNew(ctx context.Context, id, secret string, authorize func(*oauth.AnilistLoginOption) error) (metadata.User, error) {
 	id, secret = clean(id), clean(secret)
 	if id == "" {
 		return nil, errors.New("empty client id")
@@ -131,7 +145,7 @@ func LoginNew(ctx context.Context, id, secret string) (metadata.User, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := option.Authorize(ctx); err != nil {
+	if err := authorize(option); err != nil {
 		return nil, fmt.Errorf("authorize: %w", err)
 	}
 	token := option.Token()
