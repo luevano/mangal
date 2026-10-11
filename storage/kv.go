@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/philippgille/gokv"
@@ -82,8 +83,13 @@ func (s KV) Get(k string, v any) (bool, error) {
 			return false, s.Delete(k)
 		}
 	}
+	// gob leaves the fields it has no value for (zero values aren't encoded) as they were
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && !rv.IsNil() {
+		rv.Elem().SetZero()
+	}
 	if err := codec.Unmarshal(data, v); err != nil {
-		return false, fmt.Errorf("decode %s %q: %w", s.Table, k, err)
+		// e.g. the type changed since it was stored: a miss, the next Set replaces it
+		return false, nil
 	}
 	return true, nil
 }
@@ -94,7 +100,13 @@ func (s KV) Delete(k string) error {
 	}
 	var data []byte
 	err := s.DB.QueryRow(`SELECT value FROM `+s.Table+` WHERE owner = ? AND key = ?`, s.Owner, k).Scan(&data)
-	if err == nil && bytes.Equal(data, inKeyring) {
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("delete %s %q: %w", s.Table, k, err)
+	}
+	if bytes.Equal(data, inKeyring) {
 		if err := keyringDelete(s.Table, s.Owner, k); err != nil {
 			return fmt.Errorf("delete %s %q: %w", s.Table, k, err)
 		}
