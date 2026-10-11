@@ -1,6 +1,7 @@
 package info
 
 import (
+	"fmt"
 	"io"
 	"net/url"
 	"strings"
@@ -8,7 +9,6 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/pelletier/go-toml"
-	"github.com/samber/lo"
 )
 
 //go:generate enumer -type=Type -trimprefix=Type -json -text
@@ -37,13 +37,15 @@ func New(r io.Reader) (info Info, err error) {
 	return
 }
 
-func (i Info) Markdown() string {
-	tmpl := template.Must(template.New("markdown").Funcs(map[string]any{
-		"domain": func(URLString string) string {
-			URL := lo.Must(url.Parse(URLString))
-			return URL.Hostname()
-		},
-	}).Parse(`
+var markdown = template.Must(template.New("markdown").Funcs(template.FuncMap{
+	"domain": func(rawURL string) string {
+		u, err := url.Parse(rawURL)
+		if err != nil || u.Hostname() == "" {
+			return rawURL
+		}
+		return u.Hostname()
+	},
+}).Parse(`
 {{ with .ProviderInfo }}
 # {{ .Name }} v{{ .Version }}
 
@@ -55,8 +57,11 @@ Mangal provider for the [{{ domain .Website }}]({{ .Website }})
 {{ end }}
 `))
 
+// Markdown is the provider's README.
+func (i Info) Markdown() (string, error) {
 	var sb strings.Builder
-	lo.Must0(tmpl.Execute(&sb, i))
-
-	return strings.TrimSpace(sb.String())
+	if err := markdown.Execute(&sb, i); err != nil {
+		return "", fmt.Errorf("render readme: %w", err)
+	}
+	return strings.TrimSpace(sb.String()), nil
 }

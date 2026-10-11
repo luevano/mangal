@@ -1,0 +1,214 @@
+// Package install installs, updates, removes and scaffolds the providers' git repositories.
+package install
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+
+	"github.com/go-git/go-git/v5"
+	"github.com/luevano/libmangal"
+	"github.com/luevano/luaprovider"
+	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/provider/info"
+	"github.com/luevano/mangal/v5/provider/manager"
+	"github.com/pelletier/go-toml"
+	"github.com/samber/lo"
+	"github.com/spf13/afero"
+)
+
+// Add clones the provider repository at url into dir (the providers dir), in a dir named
+// after the provider id. The git progress goes to progress.
+func Add(ctx context.Context, dir, url string, progress io.Writer) (info.Info, error) {
+	tempDir, err := os.MkdirTemp(path.TempDir(), "")
+	if err != nil {
+		return info.Info{}, err
+	}
+
+	_, err = git.PlainCloneContext(ctx, tempDir, false, &git.CloneOptions{
+		URL:      url,
+		Progress: progress,
+	})
+	if err != nil {
+		return info.Info{}, fmt.Errorf("clone %s: %w", url, err)
+	}
+
+	infoFile, err := os.Open(filepath.Join(tempDir, info.Filename))
+	if err != nil {
+		return info.Info{}, err
+	}
+	defer infoFile.Close()
+
+	providerInfo, err := info.New(infoFile)
+	if err != nil {
+		return info.Info{}, fmt.Errorf("read %s: %w", info.Filename, err)
+	}
+
+	id := providerInfo.ID
+	if id == "" {
+		return info.Info{}, fmt.Errorf("%s has no id", info.Filename)
+	}
+
+	loaders, err := manager.Loaders()
+	if err != nil {
+		return info.Info{}, err
+	}
+
+	_, exists := lo.Find(loaders, func(loader libmangal.ProviderLoader) bool {
+		return loader.Info().ID == id
+	})
+	if exists {
+		return info.Info{}, fmt.Errorf("provider with id %q already exists", id)
+	}
+
+	if err := os.Rename(tempDir, filepath.Join(dir, id)); err != nil {
+		return info.Info{}, err
+	}
+	return providerInfo, nil
+}
+
+// Update pulls every provider repository in dir. The git progress goes to progress.
+func Update(ctx context.Context, dir string, progress io.Writer) error {
+	dirEntries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("read providers dir: %w", err)
+	}
+
+	for _, dirEntry := range dirEntries {
+		repo, err := git.PlainOpen(filepath.Join(dir, dirEntry.Name()))
+		if errors.Is(err, git.ErrRepositoryNotExists) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("open %s: %w", dirEntry.Name(), err)
+		}
+
+		worktree, err := repo.Worktree()
+		if err != nil {
+			return fmt.Errorf("open %s: %w", dirEntry.Name(), err)
+		}
+
+		err = worktree.PullContext(ctx, &git.PullOptions{
+			Progress: progress,
+			Force:    true,
+		})
+
+		if !(errors.Is(err, git.NoErrAlreadyUpToDate) || errors.Is(err, git.ErrRemoteNotFound)) {
+			return fmt.Errorf("pull %s: %w", dirEntry.Name(), err)
+		}
+	}
+
+	return nil
+}
+
+// Remove removes the provider dir named tag from dir.
+func Remove(dir, tag string) error {
+	return os.RemoveAll(filepath.Join(dir, tag))
+}
+
+// New scaffolds a new provider repository in dir, in a dir named after its id.
+func New(dir string, providerInfo info.Info) error {
+	files := afero.Afero{Fs: afero.NewMemMapFs()}
+	switch providerInfo.Type {
+	case info.TypeLua:
+		if err := newLua(files, providerInfo); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported provider type %v", providerInfo.Type)
+	}
+
+	readme, err := providerInfo.Markdown()
+	if err != nil {
+		return err
+	}
+	if err := files.WriteFile("README.md", []byte(readme), modeFile); err != nil {
+		return err
+	}
+
+	return createRepo(filepath.Join(dir, providerInfo.ID), files)
+}
+
+// modeFile is the mode of the scaffold files, like git checks them out.
+const modeFile = 0o644
+
+func newLua(af afero.Afero, information info.Info) error {
+	err := af.WriteFile(".gitignore", []byte("sdk.lua"), modeFile)
+	if err != nil {
+		return err
+	}
+
+	infoFile, err := af.Create(info.Filename)
+	if err != nil {
+		return err
+	}
+	defer infoFile.Close()
+
+	encoder := toml.NewEncoder(infoFile)
+	encoder.SetTagName("json")
+
+	err = encoder.Encode(information)
+	if err != nil {
+		return fmt.Errorf("write %s: %w", info.Filename, err)
+	}
+
+	err = af.WriteFile("main.lua", []byte(luaprovider.LuaTemplate()), modeFile)
+	if err != nil {
+		return err
+	}
+
+	return af.WriteFile("sdk.lua", []byte(luaprovider.LuaDoc()), modeFile)
+}
+
+func createRepo(dir string, files afero.Fs) error {
+	err := afero.Walk(files, ".", func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if path == "" {
+			return nil
+		}
+
+		dstPath := filepath.Join(dir, path)
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, 0o755)
+		}
+		src, err := files.Open(path)
+		if err != nil {
+			return err
+		}
+		defer src.Close()
+
+		dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
+		if err != nil {
+			return err
+		}
+		defer dst.Close()
+
+		_, err = io.Copy(dst, src)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("write %s: %w", dir, err)
+	}
+
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		return fmt.Errorf("init repo: %w", err)
+	}
+
+	tree, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("init repo: %w", err)
+	}
+
+	if err := tree.AddWithOptions(&git.AddOptions{All: true}); err != nil {
+		return fmt.Errorf("add files: %w", err)
+	}
+	return nil
+}

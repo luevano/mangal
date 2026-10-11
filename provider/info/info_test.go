@@ -75,3 +75,16 @@ website = "https://mangasee123.com/"
 		t.Error("doesn't match its old id")
 	}
 }
+
+func TestMarkdown(t *testing.T) {
+	for _, website := range []string{"https://example.com/x", "example.com", "%zz", ""} {
+		i := Info{ProviderInfo: libmangal.ProviderInfo{Name: "x", Version: "0.1.0", Website: website}}
+		md, err := i.Markdown()
+		if err != nil {
+			t.Fatalf("%q: %s", website, err)
+		}
+		if website != "" && !strings.Contains(md, "]("+website+")") {
+			t.Errorf("%q: %s", website, md)
+		}
+	}
+}

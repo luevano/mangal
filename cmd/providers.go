@@ -1,12 +1,11 @@
 package cmd
 
 import (
-	"net/url"
-
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/info"
+	"github.com/luevano/mangal/v5/provider/install"
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/spf13/cobra"
 )
@@ -30,14 +29,16 @@ var providersAddCmd = &cobra.Command{
 	Short: "Install provider",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		URL, err := url.Parse(args[0])
+		dir, err := path.Ensure(path.Providers())
 		if err != nil {
 			return err
 		}
-
-		return manager.Add(cmd.Context(), manager.AddOptions{
-			URL: URL,
-		})
+		providerInfo, err := install.Add(cmd.Context(), dir, args[0], cmd.ErrOrStderr())
+		if err != nil {
+			return err
+		}
+		successf(cmd, "Installed %s (%s)", providerInfo.Name, providerInfo.ID)
+		return nil
 	},
 }
 
@@ -50,7 +51,11 @@ var providersUpCmd = &cobra.Command{
 	Short: "Update providers",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return manager.Update(cmd.Context(), manager.UpdateOptions{})
+		dir, err := path.Ensure(path.Providers())
+		if err != nil {
+			return err
+		}
+		return install.Update(cmd.Context(), dir, cmd.ErrOrStderr())
 	},
 }
 
@@ -102,7 +107,7 @@ var providersRmCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		for _, tag := range args {
-			if err := manager.Remove(tag); err != nil {
+			if err := install.Remove(path.Providers(), tag); err != nil {
 				return err
 			}
 		}
@@ -130,20 +135,15 @@ var providersNewCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		options := manager.NewOptions{
-			Dir: dir,
-			Info: info.Info{
-				ProviderInfo: libmangal.ProviderInfo{
-					ID:          "test",
-					Name:        "test",
-					Version:     "0.1.0",
-					Description: "Lorem ipsum",
-					Website:     "example.com",
-				},
-				Type: info.TypeLua,
+		return install.New(dir, info.Info{
+			ProviderInfo: libmangal.ProviderInfo{
+				ID:          "test",
+				Name:        "test",
+				Version:     "0.1.0",
+				Description: "Lorem ipsum",
+				Website:     "example.com",
 			},
-		}
-
-		return manager.New(options)
+			Type: info.TypeLua,
+		})
 	},
 }
