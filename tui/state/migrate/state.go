@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
@@ -30,6 +31,8 @@ type plannedMsg struct {
 	migration library.Migration
 }
 
+type migratedMsg struct{}
+
 // New lists what would be migrated, enter does it.
 func New() base.State {
 	return &state{keyMap: keyMap{apply: util.Bind("migrate", "enter")}}
@@ -37,7 +40,7 @@ func New() base.State {
 
 func (s *state) Backable() bool                { return true }
 func (s *state) Inputting() bool               { return false }
-func (s *state) KeyMap() help.KeyMap           { return s.keyMap }
+func (s *state) KeyMap() help.KeyMap           { return util.KeyMap{Short: []key.Binding{s.keyMap.apply}} }
 func (s *state) Title() base.Title             { return base.Title{Text: "Migrate"} }
 func (s *state) Status() string                { return "" }
 func (s *state) Resize(size base.Size) tea.Cmd { return nil }
@@ -46,25 +49,23 @@ func (s *state) Subtitle() string {
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	return tea.Sequence(
-		base.Loading("Looking for old provider ids"),
-		func() tea.Msg {
-			loaders, err := manager.Loaders()
-			if err != nil {
-				return err
-			}
-			cacheDB, dataDB, err := cache.DBs()
-			if err != nil {
-				return err
-			}
-			migration, err := library.PlanMigration(afs.Afero, cacheDB, dataDB, path.DownloadsDir(), config.Download.Provider.CreateDir.Get(), loaders)
-			if err != nil {
-				return err
-			}
-			return plannedMsg{migration: migration}
-		},
-		base.Loaded,
-	)
+	root := path.Downloads()
+	providerDirs := config.Download.Provider.CreateDir.Get()
+	return base.Load(ctx, "Looking for old provider ids", func(context.Context) (plannedMsg, error) {
+		loaders, err := manager.Loaders()
+		if err != nil {
+			return plannedMsg{}, err
+		}
+		st, err := cache.Storage()
+		if err != nil {
+			return plannedMsg{}, err
+		}
+		migration, err := library.FindMigration(afs.Afero, st, root, providerDirs, loaders)
+		if err != nil {
+			return plannedMsg{}, err
+		}
+		return plannedMsg{migration: migration}, nil
+	}, func(msg plannedMsg) tea.Msg { return msg })
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
@@ -72,26 +73,21 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case plannedMsg:
 		s.migration = &msg.migration
 		s.keyMap.apply.SetEnabled(!msg.migration.Empty())
+	case migratedMsg:
+		return tea.Sequence(base.Back, base.Notify("Migrated, folders keep their names (mangal library rename renames them)"))
 	case tea.KeyMsg:
-		if s.migration == nil || s.migration.Empty() || !key.Matches(msg, s.keyMap.apply) {
+		if s.migration == nil || s.migration.Empty() || !key.Matches(msg, s.keyMap.apply) || base.Busy(ctx) {
 			return nil
 		}
 		migration := *s.migration
-		return tea.Sequence(
-			base.Loading("Migrating"),
-			func() tea.Msg {
-				cacheDB, dataDB, err := cache.DBs()
-				if err != nil {
-					return err
-				}
-				if err := migration.Apply(afs.Afero, cacheDB, dataDB); err != nil {
-					return err
-				}
-				return base.Back()
-			},
-			base.Loaded,
-			base.Notify("Migrated, folders keep their names (mangal library rename renames them)"),
-		)
+		modes := client.LibraryModes()
+		return base.Load(ctx, "Migrating", func(context.Context) (migratedMsg, error) {
+			st, err := cache.Storage()
+			if err != nil {
+				return migratedMsg{}, err
+			}
+			return migratedMsg{}, migration.ApplyTo(afs.Afero, st, modes)
+		}, func(msg migratedMsg) tea.Msg { return msg })
 	}
 	return nil
 }
@@ -109,6 +105,3 @@ func (s *state) View() string {
 type keyMap struct {
 	apply key.Binding
 }
-
-func (k keyMap) ShortHelp() []key.Binding  { return []key.Binding{k.apply} }
-func (k keyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
