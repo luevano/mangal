@@ -265,7 +265,7 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 	fmt.Fprintln(tw, "ID\tPROVIDER\tTITLE\tLAST\tCHECKED\tNEXT\tERRORS")
 	now := time.Now()
 	for _, w := range watches {
-		next := watch.FormatNext(w.NextCheck, now)
+		next := watch.FormatNext(w.NextScheduled, now)
 		switch {
 		case w.NeedsRelink:
 			next = "needs re-link: " + firstLine(w.RelinkReason, 50)
@@ -460,7 +460,7 @@ var watchSetCmd = &cobra.Command{
 		if w, err = svc.Update(cmd.Context(), id, opts); err != nil {
 			return err
 		}
-		successf(cmd, "updated %q from %s, next check %s", w.Title, w.Provider, watch.FormatNext(w.NextCheck, time.Now()))
+		successf(cmd, "updated %q from %s, next check %s", w.Title, w.Provider, watch.FormatNext(w.NextScheduled, time.Now()))
 		return nil
 	},
 }

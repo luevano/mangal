@@ -76,7 +76,7 @@ func TestMangaWatches(t *testing.T) {
 	if n, ok := s.Update(ctx, press("W"))().(base.NotificationMsg); !ok || n.Message != "Not watched" {
 		t.Errorf("W not watched: %#v", n)
 	}
-	w := watch.Watch{Watch: storage.Watch{ID: 3, Title: "Berserk", Provider: "mango-mangapill", Enabled: true}, NextCheck: time.Now().Add(3*time.Hour + time.Minute)}
+	w := watch.Watch{Watch: storage.Watch{ID: 3, Title: "Berserk", Provider: "mango-mangapill", Enabled: true}, NextCheck: time.Now().Add(3*time.Hour + time.Minute), NextScheduled: time.Now().Add(3*time.Hour + time.Minute)}
 	paused := watch.Watch{Watch: storage.Watch{ID: 4, Title: "Berserk", Provider: "mango-mangadex"}, ProviderMissing: true}
 	s.Update(ctx, mangaWatchesMsg{paused, w})
 	view := s.View()

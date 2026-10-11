@@ -60,10 +60,10 @@ func nextCheck(w watch.Watch, backoff int, now time.Time) string {
 		return "paused"
 	case w.ProviderMissing:
 		return "provider missing"
-	case !w.NextCheck.After(now):
+	case !w.NextScheduled.After(now):
 		return "due"
 	}
-	next := watch.FormatNext(w.NextCheck, now)
+	next := watch.FormatNext(w.NextScheduled, now)
 	if backoff > 0 && w.Failures >= backoff {
 		next += " (backing off)"
 	}

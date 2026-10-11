@@ -36,11 +36,11 @@ type Args struct {
 }
 
 // lockName is the data db lock of the server, one per data db.
-const lockName = "serve"
+const lockName = watch.ServeLock
 
 // lockStale is when the lock of a server that stopped beating (another host, or frozen)
 // is taken over; a server of this host that doesn't run anymore loses it at once.
-const lockStale = 2 * time.Minute
+const lockStale = watch.ServeLockStale
 
 // logger logs to the log file and out.
 type logger struct {

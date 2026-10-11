@@ -1007,3 +1007,41 @@ func TestRelink(t *testing.T) {
 		t.Errorf("placeholder %+v", p.Watch)
 	}
 }
+
+func TestNextScheduled(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "dandadan", Title: "Dandadan"}}
+	e.source("mango-mangaplus", m)
+	added := e.now
+	if _, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", MangaID: "dandadan"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// ticks missed while nothing ran: due for a manual check, the scheduler waits
+	e.now = e.tick(added, 3).Add(time.Minute)
+	w, err := e.svc.Get(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !w.NextCheck.Equal(e.tick(added, 1)) || !w.NextScheduled.Equal(e.tick(added, 4)) {
+		t.Errorf("no server: next check %s, scheduled %s", w.NextCheck, w.NextScheduled)
+	}
+
+	// a running server counts from when it started
+	lock, err := e.svc.Watches.Lock(ServeLock, ServeLockStale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lock.Unlock() }()
+	all, err := e.svc.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := e.svc.Options.Schedule.Next(lock.Acquired); len(all) != 1 || !all[0].NextScheduled.Equal(want) {
+		t.Errorf("server running: scheduled %v, want %s", all, want)
+	}
+	if st, err := e.svc.Status(ctx); err != nil || !st.NextCheck.Equal(e.svc.Options.Schedule.Next(lock.Acquired)) {
+		t.Errorf("status next check %s (%v)", st.NextCheck, err)
+	}
+}

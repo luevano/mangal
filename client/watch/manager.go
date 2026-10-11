@@ -91,8 +91,8 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		return st, err
 	}
 	for _, w := range all {
-		if w.Scheduled() && (st.NextCheck.IsZero() || w.NextCheck.Before(st.NextCheck)) {
-			st.NextCheck = w.NextCheck
+		if w.Scheduled() && (st.NextCheck.IsZero() || w.NextScheduled.Before(st.NextCheck)) {
+			st.NextCheck = w.NextScheduled
 		}
 	}
 	return st, nil

@@ -73,6 +73,10 @@ type Watch struct {
 	LastDownloaded *float32 `json:"last_downloaded,omitempty"`
 	// NextCheck is when it's due, see Service.NextCheck.
 	NextCheck time.Time `json:"next_check"`
+	// NextScheduled is when the scheduler checks it: NextCheck, or when that's past, the
+	// first tick after mangal serve started (after now without a server), missed ticks
+	// aren't caught up.
+	NextScheduled time.Time `json:"next_scheduled"`
 	// NextGapCheck is when its gap filling is due, see Service.NextGapCheck; zero when it
 	// has none or watch.gap_schedule is off.
 	NextGapCheck time.Time `json:"next_gap_check,omitzero"`
@@ -455,9 +459,10 @@ func (s *Service) List(ctx context.Context) ([]Watch, error) {
 		return nil, err
 	}
 	installed := s.installed()
+	since := s.scheduledSince()
 	watches := make([]Watch, len(list))
 	for i, w := range list {
-		if watches[i], err = s.complete(w); err != nil {
+		if watches[i], err = s.completeSince(w, since); err != nil {
 			return nil, err
 		}
 		watches[i].ProviderMissing = !installed(w.Provider)
@@ -493,7 +498,12 @@ func (s *Service) bindAnilist(w storage.Watch, anilistID int) error {
 }
 
 func (s *Service) complete(w storage.Watch) (Watch, error) {
-	full := Watch{Watch: w, NextCheck: s.NextCheck(w), NextGapCheck: s.NextGapCheck(w)}
+	return s.completeSince(w, s.scheduledSince())
+}
+
+// completeSince is complete for a scheduler started at since (see scheduledSince).
+func (s *Service) completeSince(w storage.Watch, since time.Time) (Watch, error) {
+	full := Watch{Watch: w, NextCheck: s.NextCheck(w), NextScheduled: s.NextCheckSince(w, since), NextGapCheck: s.NextGapCheck(w)}
 	bindings, err := s.bindings().Get(w.Provider, w.MangaID)
 	if err != nil {
 		return Watch{}, err
@@ -740,6 +750,22 @@ func (s *Service) NextGapCheck(w storage.Watch) time.Time {
 // mangal was down), the watch waits for its next tick.
 func (s *Service) NextCheckSince(w storage.Watch, since time.Time) time.Time {
 	return s.notBefore(s.NextCheck(w), s.Schedule(w), w.Provider, since)
+}
+
+// ServeLock is the data db lock mangal serve holds while it runs, taken over after
+// ServeLockStale without a heartbeat.
+const (
+	ServeLock      = "serve"
+	ServeLockStale = 2 * time.Minute
+)
+
+// scheduledSince is when the running mangal serve started, now when none runs: what
+// NextScheduled counts from.
+func (s *Service) scheduledSince() time.Time {
+	if h, ok, err := s.Watches.Holder(ServeLock, ServeLockStale); err == nil && ok {
+		return h.Acquired
+	}
+	return s.now()
 }
 
 // NextGapCheckSince is NextGapCheck as NextCheckSince is NextCheck.

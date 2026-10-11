@@ -113,11 +113,11 @@ func testManager() *fakeManager {
 	return &fakeManager{
 		watches: []watch.Watch{
 			{Watch: storage.Watch{ID: 1, Title: "Berserk", Provider: "mango-mangapill", Enabled: true, LastChecked: now.Add(-2 * time.Hour)},
-				LastDownloaded: ptr(380), NextCheck: now.Add(2 * time.Hour)},
+				LastDownloaded: ptr(380), NextCheck: now.Add(2 * time.Hour), NextScheduled: now.Add(2 * time.Hour)},
 			{Watch: storage.Watch{ID: 2, Title: "Dandadan", Provider: "mango-mangaplus", Enabled: false, Failures: 2, LastError: "boom"},
-				NextCheck: now.Add(-time.Hour)},
+				NextCheck: now.Add(-time.Hour), NextScheduled: now.Add(-time.Hour)},
 			{Watch: storage.Watch{ID: 3, Title: "Frieren", Provider: "mango-mangaplus", Enabled: true},
-				NextCheck: now.Add(-time.Minute)},
+				NextCheck: now.Add(-time.Minute), NextScheduled: now.Add(-time.Minute)},
 		},
 		runs: []watch.CheckRun{
 			{ID: 2, Kind: watch.KindManual, Started: now.Add(-2 * time.Hour), Results: []storage.WatchRun{
@@ -168,7 +168,7 @@ func TestRows(t *testing.T) {
 }
 
 func TestBackingOff(t *testing.T) {
-	w := watch.Watch{Watch: storage.Watch{Enabled: true, Failures: 3}, NextCheck: now.Add(5 * time.Hour)}
+	w := watch.Watch{Watch: storage.Watch{Enabled: true, Failures: 3}, NextCheck: now.Add(5 * time.Hour), NextScheduled: now.Add(5 * time.Hour)}
 	if got := nextCheck(w, 2, now); got != "in 5h (17:00) (backing off)" {
 		t.Errorf("got %q", got)
 	}
