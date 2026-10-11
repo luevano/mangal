@@ -116,7 +116,7 @@ func (m *model) updateKey(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	switch {
-	case key.Matches(msg, m.keyMap.back) && m.state.Backable():
+	case key.Matches(msg, m.keyMap.back):
 		return Back
 	case key.Matches(msg, m.keyMap.home):
 		return BackToHome
@@ -132,7 +132,7 @@ func (m *model) updateKeybinds() {
 	hasHistory := m.history.Size() > 0
 
 	m.keyMap.quitQ.SetEnabled(m.standalone && !inputting)
-	m.keyMap.back.SetEnabled(!m.inViewport && hasHistory)
+	m.keyMap.back.SetEnabled(!m.inViewport && hasHistory && m.state.Backable())
 	m.keyMap.home.SetEnabled(!m.inViewport && !m.standalone && !inputting && hasHistory)
 	m.keyMap.help.SetEnabled(!inputting)
 	m.keyMap.log.SetEnabled(!m.inViewport)
