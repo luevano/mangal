@@ -28,7 +28,7 @@ type historyState struct {
 	// shown is the provider of the items, for a refresh to keep the selection
 	shown *string
 
-	open, next, refresh, library key.Binding
+	open, next, refresh, library, check key.Binding
 }
 
 type historyMsg struct {
@@ -45,13 +45,15 @@ func newHistoryState(m watch.Manager, provider string) *historyState {
 		next:     util.Bind("next provider", "tab"),
 		refresh:  util.Bind("refresh", "r"),
 		library:  util.Bind("library manga", "L"),
+		check:    util.Bind("check the provider", "c"),
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
 	return s
 }
 
 func (s *historyState) keyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.open, s.next, s.library, s.refresh}}
+	s.check.SetEnabled(s.provider != "")
+	return util.KeyMap{Short: []key.Binding{s.open, s.next, s.check, s.library, s.refresh}}
 }
 
 func (s *historyState) Title() base.Title { return base.Title{Text: "History"} }
@@ -150,6 +152,9 @@ func (s *historyState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		case key.Matches(msg, s.next):
 			s.provider = nextProvider(s.providers, s.provider)
 			return s.reload(ctx, "Loading the history of "+providerName(s.provider))
+		case key.Matches(msg, s.check) && s.provider != "":
+			// a busy provider is refused by the check itself
+			return checkProviderCmd(ctx, s.manager, s.provider)
 		}
 		// no provider history key, it's this screen
 		if cmd, ok := runItemKey(ctx, msg, s.List, s.manager, s.open, s.library, key.Binding{}); ok {

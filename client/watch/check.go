@@ -209,11 +209,11 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 			}
 			if hub != nil {
 				hub.publish(LiveEvent{Run: report.ID, Kind: LiveProviderStart, Provider: provider,
-					Message: fmt.Sprintf("checking %s: %s", provider, stringutil.Quantify(len(byProvider[provider]), "watch", "watches"))})
+					Message: "checking " + stringutil.Quantify(len(byProvider[provider]), "watch", "watches")})
 			}
 			s.checkProvider(ctx, provider, watches, byProvider[provider], &report, opts, onEvent)
 			if hub != nil {
-				hub.publish(LiveEvent{Run: report.ID, Kind: LiveProviderDone, Provider: provider, Message: provider + " done"})
+				hub.publish(LiveEvent{Run: report.ID, Kind: LiveProviderDone, Provider: provider, Message: "done"})
 			}
 		}()
 	}

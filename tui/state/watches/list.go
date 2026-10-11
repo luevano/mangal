@@ -17,6 +17,7 @@ import (
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
+	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
@@ -38,6 +39,7 @@ const (
 var _ base.State = (*listState)(nil)
 
 type item struct {
+	s *listState
 	w watch.Watch
 	// last is its latest check, nil if none in the recent runs
 	last    *storage.WatchRun
@@ -48,14 +50,36 @@ type item struct {
 func (i *item) FilterValue() string { return i.w.Title + " " + i.w.Provider }
 
 func (i *item) Title() string {
+	title := i.w.Title
 	if !i.w.Enabled {
-		return i.w.Title + " (paused)"
+		title += " (paused)"
 	}
-	return i.w.Title
+	if _, ok := i.checking(); ok {
+		title = style.Normal.Accent.Render(spinnerFrames[i.s.frame%len(spinnerFrames)]) + " " + title
+	}
+	return title
+}
+
+// checking is what the watch's check does now, false when it isn't being checked.
+func (i *item) checking() (liveWatch, bool) {
+	if i.s == nil {
+		return liveWatch{}, false
+	}
+	return i.s.liveOf(i.w)
 }
 
 func (i *item) Description() string {
 	w := i.w
+	if lw, ok := i.checking(); ok {
+		state := "checking"
+		if lw.state != "" && lw.state != "checking" {
+			state += ": " + lw.state
+		}
+		if !lw.since.IsZero() {
+			state += " (" + short(max(0, i.now.Sub(lw.since))) + ")"
+		}
+		return w.Provider + " · last " + formatNumber(w.LastDownloaded) + " · " + state
+	}
 	parts := []string{
 		w.Provider,
 		"last " + formatNumber(w.LastDownloaded),
@@ -96,12 +120,21 @@ type listState struct {
 	provider   string
 	byProvider bool
 
+	// feed are the live events; live the watches being checked and liveProviders the
+	// providers, as the events tell (the status, polled, has the rest)
+	feed          *feed
+	live          map[int64]liveWatch
+	liveProviders map[string]bool
+	// frame is the spinner's, spinning while its tick loop runs
+	frame    int
+	spinning bool
+
 	keys listKeyMap
 }
 
 type listKeyMap struct {
-	details, check, checkDue, pause, pauseProvider, delete, edit, gaps, refresh, runs,
-	library, history, nextProvider, group key.Binding
+	details, check, checkDue, checkProvider, pause, pauseProvider, delete, edit, gaps, refresh, runs,
+	library, history, nextProvider, group, live, running key.Binding
 }
 
 type loadedMsg struct {
@@ -137,6 +170,7 @@ func newListState(connect connector) *listState {
 			details:       util.Bind("details", "enter"),
 			check:         util.Bind("check now", "c"),
 			checkDue:      util.Bind("check due", "C"),
+			checkProvider: util.Bind("check its provider", "alt+c"),
 			pause:         util.Bind("pause/resume", "p"),
 			pauseProvider: util.Bind("pause/resume its provider", "P"),
 			delete:        util.Bind("delete", "d"),
@@ -148,7 +182,11 @@ func newListState(connect connector) *listState {
 			history:       util.Bind("provider history", "v"),
 			nextProvider:  util.Bind("next provider", "tab"),
 			group:         util.Bind("group by provider", "o"),
+			live:          util.Bind("live log", "l"),
+			running:       util.Bind("every live check", "alt+l"),
 		},
+		live:          map[int64]liveWatch{},
+		liveProviders: map[string]bool{},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "watch", "watches", []*item{}, func(i *item) _list.DefaultItem { return i }), s.keyMap)
 	s.updateKeys()
@@ -164,11 +202,11 @@ func (s *listState) KeyMap() help.KeyMap {
 
 func (s *listState) keyMap() help.KeyMap {
 	k := s.keys
-	short := []key.Binding{k.details, k.check, k.pause, k.edit, k.runs}
+	short := []key.Binding{k.details, k.check, k.live, k.pause, k.edit, k.runs}
 	return util.KeyMap{Short: short, Full: [][]key.Binding{
 		short,
-		{k.checkDue, k.gaps, k.pauseProvider, k.delete, k.refresh},
-		{k.library, k.history, k.nextProvider, k.group},
+		{k.checkDue, k.checkProvider, k.gaps, k.pauseProvider, k.delete, k.refresh},
+		{k.library, k.history, k.nextProvider, k.group, k.running},
 	}}
 }
 
@@ -190,9 +228,9 @@ func (s *listState) Subtitle() string {
 		parts = append(parts, managerName(s.status))
 	}
 	now := s.now()
-	switch {
-	case s.status.Checking:
-		parts = append(parts, "checking since "+ago(s.status.Since, now))
+	switch n := len(s.runningProviders()); {
+	case n > 0:
+		parts = append(parts, stringutil.Quantify(n, "provider", "providers")+" checking")
 	case s.checking():
 		parts = append(parts, "checking")
 	case !s.status.NextCheck.IsZero() && !s.status.NextCheck.After(now):
@@ -217,7 +255,92 @@ func (s *listState) Init(ctx context.Context) tea.Cmd {
 
 // checking is true while a check runs, or one was just started here.
 func (s *listState) checking() bool {
-	return s.status.Checking || (!s.started.IsZero() && s.now().Sub(s.started) < startGrace)
+	return len(s.runningProviders()) > 0 || (!s.started.IsZero() && s.now().Sub(s.started) < startGrace)
+}
+
+// runningProviders are the providers being checked, sorted.
+func (s *listState) runningProviders() []string {
+	var running []string
+	for _, ps := range s.status.Providers {
+		running = append(running, ps.Provider)
+	}
+	for p := range s.liveProviders {
+		running = append(running, p)
+	}
+	slices.Sort(running)
+	return slices.Compact(running)
+}
+
+// liveOf is what the watch's check does now, false when it isn't being checked.
+func (s *listState) liveOf(w watch.Watch) (liveWatch, bool) {
+	if lw, ok := s.live[w.ID]; ok {
+		return lw, true
+	}
+	if ps, ok := s.status.Provider(w.Provider); ok && ps.Watch == w.ID {
+		return liveWatch{provider: ps.Provider, state: ps.State, chapter: ps.Chapter, since: ps.WatchSince}, true
+	}
+	return liveWatch{}, false
+}
+
+// busy says the provider is being checked, so it can't be checked now.
+func (s *listState) busy(provider string) (string, bool) {
+	if ps, ok := s.status.Provider(provider); ok {
+		return fmt.Sprintf("%s is being checked (since %s), try again when it's done", provider, ago(ps.Since, s.now())), true
+	}
+	if s.liveProviders[provider] {
+		return provider + " is being checked, try again when it's done", true
+	}
+	return "", false
+}
+
+// onEvent keeps what the watches being checked do.
+func (s *listState) onEvent(e watch.LiveEvent) {
+	switch e.Kind {
+	case watch.LiveProviderStart:
+		s.liveProviders[e.Provider] = true
+	case watch.LiveProviderDone:
+		delete(s.liveProviders, e.Provider)
+		s.status.Providers = slices.DeleteFunc(s.status.Providers, func(ps watch.ProviderStatus) bool { return ps.Provider == e.Provider })
+	case watch.LiveStart:
+		s.live[e.Watch] = liveWatch{provider: e.Provider, state: "checking", since: e.Time}
+	case watch.LiveFound, watch.LiveChapter, watch.LiveWait:
+		if lw, ok := s.live[e.Watch]; ok {
+			lw.state = e.Message
+			if e.Chapter != nil {
+				lw.chapter = e.Chapter
+			}
+			s.live[e.Watch] = lw
+		}
+	case watch.LiveDone:
+		delete(s.live, e.Watch)
+		for i, ps := range s.status.Providers {
+			if ps.Watch == e.Watch {
+				s.status.Providers[i].Watch = 0
+			}
+		}
+	}
+}
+
+// spin starts the spinner's tick loop if something is being checked.
+func (s *listState) spin() tea.Cmd {
+	if s.spinning || !s.anyChecking() {
+		return nil
+	}
+	s.spinning = true
+	gen := s.gen
+	return tea.Tick(spinEvery, func(time.Time) tea.Msg { return spinMsg{gen: gen} })
+}
+
+func (s *listState) anyChecking() bool {
+	if len(s.live) > 0 {
+		return true
+	}
+	for _, ps := range s.status.Providers {
+		if ps.Watch != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *listState) tick(d time.Duration) tea.Cmd {
@@ -272,7 +395,30 @@ func (s *listState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	}
 	switch msg := msg.(type) {
 	case loadedMsg:
-		return s.onLoaded(msg)
+		return s.onLoaded(ctx, msg)
+	case feedMsg:
+		s.feed = msg.feed
+		clear(s.live)
+		clear(s.liveProviders)
+		return msg.feed.next()
+	case liveMsg:
+		if msg.feed != s.feed || msg.closed {
+			return nil
+		}
+		s.onEvent(msg.e)
+		cmds := []tea.Cmd{s.feed.next(), s.spin()}
+		if msg.e.Kind == watch.LiveRunDone {
+			// the last results changed
+			cmds = append(cmds, s.reload(ctx, ""))
+		}
+		return tea.Batch(cmds...)
+	case spinMsg:
+		if msg.gen != s.gen || s.closed {
+			return nil
+		}
+		s.frame++
+		s.spinning = false
+		return s.spin()
 	case tickMsg:
 		if msg.gen != s.gen || s.closed {
 			return nil
@@ -288,7 +434,13 @@ func (s *listState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return tea.Batch(s.reload(ctx, ""), s.tick(next))
 	case base.RestoredMsg:
 		s.gen++
-		return tea.Batch(s.reload(ctx, ""), s.tick(pollChecking))
+		s.spinning = false
+		var sub tea.Cmd
+		if s.manager != nil {
+			s.feed = nil
+			sub = subscribe(ctx, s.manager)
+		}
+		return tea.Batch(s.reload(ctx, ""), s.tick(pollChecking), sub)
 	case actionMsg:
 		return base.Load(ctx, msg.label, msg.do, func(notify string) tea.Msg { return changedMsg{notify: notify} })
 	case changedMsg:
@@ -304,10 +456,15 @@ func (s *listState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return s.List.Update(msg)
 }
 
-func (s *listState) onLoaded(msg loadedMsg) tea.Cmd {
+func (s *listState) onLoaded(ctx context.Context, msg loadedMsg) tea.Cmd {
+	first := s.manager == nil
 	s.manager, s.status = msg.manager, msg.status
 	s.watches, s.last = msg.watches, msg.last
-	return s.setItems()
+	cmds := []tea.Cmd{s.setItems(), s.spin()}
+	if first {
+		cmds = append(cmds, subscribe(ctx, s.manager))
+	}
+	return tea.Batch(cmds...)
 }
 
 // shown are the watches of the provider filter, in the order chosen.
@@ -337,7 +494,7 @@ func (s *listState) setItems() tea.Cmd {
 	items := make([]_list.Item, len(shown))
 	index := 0
 	for i, w := range shown {
-		it := &item{w: w, backoff: s.backoff, now: now}
+		it := &item{s: s, w: w, backoff: s.backoff, now: now}
 		if r, ok := s.last[w.ID]; ok {
 			it.last = &r
 		}
@@ -364,7 +521,8 @@ func (s *listState) providers() []string {
 
 func (s *listState) updateKeys() {
 	enable := len(s.List.Items()) != 0
-	for _, k := range []*key.Binding{&s.keys.details, &s.keys.check, &s.keys.checkDue, &s.keys.pause, &s.keys.pauseProvider, &s.keys.delete, &s.keys.edit, &s.keys.gaps, &s.keys.library, &s.keys.history} {
+	for _, k := range []*key.Binding{&s.keys.details, &s.keys.check, &s.keys.checkDue, &s.keys.checkProvider, &s.keys.pause, &s.keys.pauseProvider,
+		&s.keys.delete, &s.keys.edit, &s.keys.gaps, &s.keys.library, &s.keys.history, &s.keys.live} {
 		k.SetEnabled(enable)
 	}
 }
@@ -382,15 +540,27 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 	case key.Matches(msg, s.keys.group):
 		s.byProvider = !s.byProvider
 		return s.setItems(), true
+	case key.Matches(msg, s.keys.running):
+		return func() tea.Msg { return newLiveState(m, nil) }, true
 	case key.Matches(msg, s.keys.checkDue):
 		var due []int64
+		busy := 0
 		now := s.now()
 		for _, i := range s.List.Items() {
-			if w := i.(*item).w; w.Enabled && !w.NextCheck.After(now) {
-				due = append(due, w.ID)
+			w := i.(*item).w
+			if !w.Enabled || w.ProviderMissing || w.NextCheck.After(now) {
+				continue
 			}
+			if _, ok := s.busy(w.Provider); ok {
+				busy++
+				continue
+			}
+			due = append(due, w.ID)
 		}
-		if len(due) == 0 {
+		switch {
+		case len(due) == 0 && busy > 0:
+			return base.Notify("The providers of the due watches are being checked, try again when they're done"), true
+		case len(due) == 0:
 			return base.Notify("No watch is due"), true
 		}
 		return s.check(ctx, due, watch.CheckOptions{}, stringutil.Quantify(len(due), "due watch", "due watches")), true
@@ -410,10 +580,21 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		return libraryCmd(ctx, w), true
 	case key.Matches(msg, s.keys.history):
 		return func() tea.Msg { return newHistoryState(m, w.Provider) }, true
-	case key.Matches(msg, s.keys.check):
-		return s.check(ctx, []int64{w.ID}, watch.CheckOptions{}, w.Title), true
-	case key.Matches(msg, s.keys.gaps):
-		return s.check(ctx, []int64{w.ID}, watch.CheckOptions{Gaps: true, Kind: watch.KindGaps}, w.Title+" (gaps)"), true
+	case key.Matches(msg, s.keys.live):
+		return func() tea.Msg { return newLiveState(m, &w) }, true
+	case key.Matches(msg, s.keys.check), key.Matches(msg, s.keys.gaps), key.Matches(msg, s.keys.checkProvider):
+		if busy, ok := s.busy(w.Provider); ok {
+			return base.Notify(busy), true
+		}
+		switch {
+		case key.Matches(msg, s.keys.check):
+			return s.check(ctx, []int64{w.ID}, watch.CheckOptions{}, w.Title), true
+		case key.Matches(msg, s.keys.gaps):
+			return s.check(ctx, []int64{w.ID}, watch.CheckOptions{Gaps: true, Kind: watch.KindGaps}, w.Title+" (gaps)"), true
+		}
+		s.started = s.now()
+		s.gen++
+		return tea.Batch(checkProviderCmd(ctx, m, w.Provider), s.tick(pollChecking)), true
 	case key.Matches(msg, s.keys.pause):
 		return pauseCmd(m, w), true
 	case key.Matches(msg, s.keys.pauseProvider):
@@ -476,21 +657,15 @@ func pauseProviderCmd(m watch.Manager, w watch.Watch) tea.Cmd {
 // check starts a check of the watches. It keeps running on other screens (until the TUI
 // quits), its summary is a notification wherever the user is.
 func (s *listState) check(ctx context.Context, ids []int64, opts watch.CheckOptions, what string) tea.Cmd {
-	if s.checking() {
-		return base.Notify(busyMessage(s.status, s.now()))
-	}
 	s.started = s.now()
 	// polls faster from now, the loop in place could be waiting its slow tick
 	s.gen++
-	return tea.Batch(base.Notify("Checking "+what), checkCmd(base.Background(ctx), s.manager, ids, opts), s.tick(pollChecking))
+	s.spinning = false
+	return tea.Batch(base.Notify("Checking "+what), checkCmd(base.Background(ctx), s.manager, ids, opts), s.tick(pollChecking), s.spin())
 }
 
-func busyMessage(st watch.Status, now time.Time) string {
-	if st.Checking && !st.Since.IsZero() {
-		return "A check is running (since " + ago(st.Since, now) + "), try again when it's done"
-	}
-	return "A check is running, try again when it's done"
-}
+// busyMessage is a check refused because another check has its providers.
+const busyMessage = "Another check has those providers, try again when it's done"
 
 func checkCmd(ctx context.Context, m watch.Manager, ids []int64, opts watch.CheckOptions) tea.Cmd {
 	return func() tea.Msg {
@@ -499,15 +674,45 @@ func checkCmd(ctx context.Context, m watch.Manager, ids []int64, opts watch.Chec
 			return nil
 		}
 		defer release()
-		report, err := m.Check(ctx, ids, opts)
-		switch {
-		case errors.Is(err, watch.ErrBusy):
-			return base.NotificationMsg{Message: "Another watch check is running, try again when it's done"}
-		case err != nil:
-			return fmt.Errorf("check watches: %w", err)
-		}
-		return base.NotificationWithDurationMsg{NotificationMsg: base.NotificationMsg{Message: summary(report)}, Duration: 5 * time.Second}
+		return checkResult(m.Check(ctx, ids, opts))
 	}
+}
+
+func checkResult(report watch.Report, err error) tea.Msg {
+	switch {
+	case errors.Is(err, watch.ErrBusy):
+		return base.NotificationMsg{Message: busyMessage}
+	case err != nil:
+		return fmt.Errorf("check watches: %w", err)
+	}
+	return base.NotificationWithDurationMsg{NotificationMsg: base.NotificationMsg{Message: summary(report)}, Duration: 5 * time.Second}
+}
+
+// checkProviderCmd checks every enabled watch of the provider now, in the background (it
+// outlives the screen).
+func checkProviderCmd(ctx context.Context, m watch.Manager, provider string) tea.Cmd {
+	ctx = base.Background(ctx)
+	return tea.Batch(base.Notify("Checking every watch of "+provider), func() tea.Msg {
+		release, ok := base.Track(ctx)
+		if !ok {
+			return nil
+		}
+		defer release()
+		all, err := m.List(ctx)
+		if err != nil {
+			return fmt.Errorf("check %s: %w", provider, err)
+		}
+		var ids []int64
+		for _, w := range all {
+			if w.Provider == provider && w.Enabled && !w.ProviderMissing {
+				ids = append(ids, w.ID)
+			}
+		}
+		if len(ids) == 0 {
+			return base.NotificationMsg{Message: provider + " has no enabled watches"}
+		}
+		return checkResult(m.Check(ctx, ids, watch.CheckOptions{}))
+	})
 }
 
 // summary is a check's report in one line.
@@ -515,6 +720,9 @@ func summary(r watch.Report) string {
 	s := fmt.Sprintf("Checked %s: %s", stringutil.Quantify(r.Watches, "watch", "watches"), stringutil.Quantify(r.NewChapters, "new chapter", "new chapters"))
 	if r.Errors > 0 {
 		s += ", " + stringutil.Quantify(r.Errors, "error", "errors")
+	}
+	if len(r.Busy) > 0 {
+		s += " (busy, skipped: " + strings.Join(r.Busy, ", ") + ")"
 	}
 	return s
 }

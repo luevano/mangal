@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/util"
@@ -25,17 +26,19 @@ type detailsState struct {
 	manager watch.Manager
 	connect connector
 	w       watch.Watch
+	status  watch.Status
 	backoff int
 	size    base.Size
 	now     func() time.Time
 
-	open, edit, pause, refresh, library, history key.Binding
+	open, edit, pause, refresh, library, history, live key.Binding
 }
 
 type detailsMsg struct {
 	manager watch.Manager
 	w       watch.Watch
 	runs    []watch.CheckRun
+	status  watch.Status
 }
 
 func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState {
@@ -51,20 +54,33 @@ func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState 
 		refresh: util.Bind("refresh", "r"),
 		library: util.Bind("library manga", "L"),
 		history: util.Bind("provider history", "v"),
+		live:    util.Bind("live log", "l"),
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
 	return s
 }
 
 func (s *detailsState) keyMap() help.KeyMap {
-	short := []key.Binding{s.open, s.edit, s.pause, s.library, s.history}
+	short := []key.Binding{s.open, s.live, s.edit, s.pause, s.library, s.history}
 	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, s.refresh)}}
 }
 
 func (s *detailsState) Title() base.Title { return base.Title{Text: s.w.Title} }
 
 func (s *detailsState) header() string {
-	return settings(s.w, s.backoff, s.now()) + "\n"
+	header := settings(s.w, s.backoff, s.now())
+	if ps, ok := s.status.Provider(s.w.Provider); ok {
+		line := s.w.Provider + " is being checked (since " + ago(ps.Since, s.now()) + ")"
+		if ps.Watch == s.w.ID {
+			line = "checking now"
+			if ps.State != "" && ps.State != "checking" {
+				line += ": " + ps.State
+			}
+			line += " (l: live log)"
+		}
+		header += "\n" + style.Normal.Accent.Render(line)
+	}
+	return header + "\n"
 }
 
 func (s *detailsState) Resize(size base.Size) tea.Cmd {
@@ -89,7 +105,11 @@ func (s *detailsState) reload(ctx context.Context, label string) tea.Cmd {
 			return detailsMsg{}, err
 		}
 		runs, err := m.Runs(ctx, watch.RunFilter{Watch: id, Limit: maxRuns})
-		return detailsMsg{manager: m, w: w, runs: runs}, err
+		if err != nil {
+			return detailsMsg{}, err
+		}
+		st, err := m.Status(ctx)
+		return detailsMsg{manager: m, w: w, runs: runs, status: st}, err
 	}, func(msg detailsMsg) tea.Msg { return msg })
 }
 
@@ -109,7 +129,7 @@ func historyItems(id int64, runs []watch.CheckRun) []_list.Item {
 func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case detailsMsg:
-		s.manager, s.w = msg.manager, msg.w
+		s.manager, s.w, s.status = msg.manager, msg.w, msg.status
 		return tea.Batch(s.List.SetItems(historyItems(s.w.ID, msg.runs)), s.Resize(s.size))
 	case base.RestoredMsg:
 		return s.reload(ctx, "")
@@ -131,6 +151,8 @@ func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			// still connecting, the keys below need the manager
 		case key.Matches(msg, s.history):
 			return func() tea.Msg { return newHistoryState(m, w.Provider) }
+		case key.Matches(msg, s.live):
+			return func() tea.Msg { return newLiveState(m, &w) }
 		case key.Matches(msg, s.edit):
 			return func() tea.Msg { return newEditState(m, w) }
 		case key.Matches(msg, s.pause):

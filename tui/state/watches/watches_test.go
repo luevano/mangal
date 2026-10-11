@@ -192,26 +192,169 @@ func TestPauseToggles(t *testing.T) {
 
 func TestCheckBusy(t *testing.T) {
 	m := testManager()
-	m.status = watch.Status{Checking: true, Since: now.Add(-3 * time.Minute)}
+	m.status = watch.Status{Checking: true, Since: now.Add(-3 * time.Minute),
+		Providers: []watch.ProviderStatus{{Provider: "mango-mangapill", Since: now.Add(-3 * time.Minute)}}}
 	s := loaded(t, m)
+	ctx := context.Background()
 
-	cmd := s.Update(context.Background(), press("c"))
+	// Berserk's provider is being checked
+	cmd := s.Update(ctx, press("c"))
 	msg, ok := cmd().(base.NotificationMsg)
-	if !ok || !strings.Contains(msg.Message, "running (since 3m ago)") {
-		t.Errorf("c while checking: got %#v", cmd())
+	if !ok || !strings.Contains(msg.Message, "mango-mangapill is being checked (since 3m ago)") {
+		t.Errorf("c while its provider is checked: got %#v", cmd())
 	}
 	if len(m.checked) != 0 {
 		t.Error("checked while busy")
 	}
-	if !strings.Contains(s.Subtitle(), "checking since 3m ago") {
+	if !strings.Contains(s.Subtitle(), "1 provider checking") {
 		t.Errorf("subtitle %q", s.Subtitle())
+	}
+	// another provider's watch goes
+	s.List.Select(2)
+	if cmd := s.Update(ctx, press("c")); cmd == nil {
+		t.Fatal("c on another provider")
+	} else {
+		runBatch(cmd)
+	}
+	if len(m.checked) != 1 || m.checked[0][0] != 3 {
+		t.Errorf("checked %v", m.checked)
 	}
 
 	// another process took the lock meanwhile
 	m.checkErr = watch.ErrBusy
-	got := checkCmd(context.Background(), m, []int64{1}, watch.CheckOptions{})()
-	if n, ok := got.(base.NotificationMsg); !ok || !strings.Contains(n.Message, "running") {
+	got := checkCmd(ctx, m, []int64{1}, watch.CheckOptions{})()
+	if n, ok := got.(base.NotificationMsg); !ok || n.Message != busyMessage {
 		t.Errorf("busy check: got %#v", got)
+	}
+}
+
+// runBatch runs the cmds of a batch (not the ticks).
+func runBatch(cmd tea.Cmd) []tea.Msg {
+	var msgs []tea.Msg
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok {
+		return nil
+	}
+	for _, c := range batch {
+		if c == nil {
+			continue
+		}
+		done := make(chan tea.Msg, 1)
+		go func() { done <- c() }()
+		select {
+		case msg := <-done:
+			msgs = append(msgs, msg)
+		case <-time.After(100 * time.Millisecond):
+			// a tick
+		}
+	}
+	return msgs
+}
+
+func TestCheckProvider(t *testing.T) {
+	m := testManager()
+	s := loaded(t, m)
+	s.List.Select(2)
+	var summary string
+	for _, msg := range runBatch(s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c"), Alt: true})) {
+		if batch, ok := msg.(tea.BatchMsg); ok {
+			for _, c := range batch {
+				if n, ok := c().(base.NotificationWithDurationMsg); ok {
+					summary = n.Message
+				}
+			}
+		}
+	}
+	// the enabled watches of mangaplus: Frieren, not the paused Dandadan
+	if len(m.checked) != 1 || !slices.Equal(m.checked[0], []int64{3}) || !strings.Contains(summary, "Checked 1 watch") {
+		t.Errorf("checked %v, summary %q", m.checked, summary)
+	}
+}
+
+func TestLiveMarks(t *testing.T) {
+	m := testManager()
+	m.events = make(chan watch.LiveEvent, 10)
+	s := loaded(t, m)
+	ctx := context.Background()
+	f := &feed{ch: m.events}
+	s.Update(ctx, feedMsg{feed: f})
+	send := func(e watch.LiveEvent) {
+		e.Time = now.Add(-time.Minute)
+		s.Update(ctx, liveMsg{feed: f, e: e})
+	}
+	send(watch.LiveEvent{Run: 5, Kind: watch.LiveProviderStart, Provider: "mango-mangapill"})
+	send(watch.LiveEvent{Run: 5, Kind: watch.LiveStart, Provider: "mango-mangapill", Watch: 1, Title: "Berserk"})
+	n := float32(381)
+	send(watch.LiveEvent{Run: 5, Kind: watch.LiveChapter, Provider: "mango-mangapill", Watch: 1, Chapter: &n, Message: "downloading chapter 381"})
+	berserk := s.List.Items()[0].(*item)
+	if !strings.Contains(berserk.Title(), "Berserk") || berserk.Title() == "Berserk" ||
+		berserk.Description() != "mango-mangapill · last 380 · checking: downloading chapter 381 (1m)" {
+		t.Errorf("checking row: %q / %q", berserk.Title(), berserk.Description())
+	}
+	if !strings.Contains(s.Subtitle(), "1 provider checking") || !s.spinning {
+		t.Errorf("subtitle %q, spinning %v", s.Subtitle(), s.spinning)
+	}
+	// an event of an old subscription is dropped
+	s.Update(ctx, liveMsg{feed: &feed{}, e: watch.LiveEvent{Kind: watch.LiveDone, Watch: 1}})
+	if _, ok := berserk.checking(); !ok {
+		t.Error("an old feed's event counted")
+	}
+	send(watch.LiveEvent{Run: 5, Kind: watch.LiveDone, Provider: "mango-mangapill", Watch: 1, Status: storage.StatusNew})
+	send(watch.LiveEvent{Run: 5, Kind: watch.LiveProviderDone, Provider: "mango-mangapill"})
+	if _, ok := berserk.checking(); ok || strings.Contains(s.Subtitle(), "checking") {
+		t.Errorf("done: %q, %q", berserk.Title(), s.Subtitle())
+	}
+
+	// the status of a server's check, connected mid-run
+	m.status = watch.Status{Providers: []watch.ProviderStatus{{Provider: "mango-mangaplus", Watch: 3, State: "found 12 chapters, nothing new"}}}
+	s.Update(ctx, loadedMsg{manager: m, status: m.status, watches: m.watches})
+	if d := s.List.Items()[2].(*item).Description(); !strings.Contains(d, "checking: found 12 chapters, nothing new") {
+		t.Errorf("from the status: %q", d)
+	}
+}
+
+func TestLiveLog(t *testing.T) {
+	m := testManager()
+	w := m.watches[0]
+	s := newLiveState(m, &w)
+	s.Resize(base.Size{Width: 80, Height: 3})
+	ctx := context.Background()
+	if !strings.Contains(s.View(), "isn't being checked") {
+		t.Errorf("empty: %q", s.View())
+	}
+	f := &feed{ch: make(chan watch.LiveEvent)}
+	s.Update(ctx, feedMsg{feed: f})
+	for i, e := range []watch.LiveEvent{
+		{Kind: watch.LiveStart, Watch: 1, Title: "Berserk", Message: "checking Berserk"},
+		{Kind: watch.LiveStart, Watch: 3, Title: "Frieren", Message: "checking Frieren"},
+		{Kind: watch.LiveFound, Watch: 1, Message: "found 381 chapters, 1 to download (381)"},
+		{Kind: watch.LiveWait, Watch: 1, Message: "chapter 381 rate limited (retry #1), waiting 10s"},
+		{Kind: watch.LiveChapterDone, Watch: 1, Message: "downloaded chapter 381"},
+		{Kind: watch.LiveDone, Watch: 1, Message: "downloaded 1 (380 → 381)", Status: storage.StatusNew},
+	} {
+		e.Seq, e.Time = uint64(i+1), now
+		s.Update(ctx, liveMsg{feed: f, e: e})
+	}
+	view := s.View()
+	if strings.Contains(view, "Frieren") || !strings.Contains(view, "downloaded 1 (380 → 381)") || strings.Contains(view, "found 381") {
+		t.Errorf("following, 3 lines:\n%s", view)
+	}
+	s.Update(ctx, press("k"))
+	s.Update(ctx, press("k"))
+	if view := s.View(); !strings.Contains(view, "found 381") || strings.Contains(view, "downloaded 1 (") {
+		t.Errorf("scrolled up:\n%s", view)
+	}
+	s.Update(ctx, press("G"))
+	if !strings.Contains(s.View(), "downloaded 1 (") {
+		t.Error("G doesn't follow")
+	}
+
+	all := newLiveState(m, nil)
+	all.Resize(base.Size{Width: 80, Height: 10})
+	all.Update(ctx, feedMsg{feed: f})
+	all.Update(ctx, liveMsg{feed: f, e: watch.LiveEvent{Kind: watch.LiveFound, Watch: 3, Title: "Frieren", Message: "found 12 chapters, nothing new", Time: now}})
+	if !strings.Contains(all.View(), "Frieren: found 12 chapters") {
+		t.Errorf("every check:\n%s", all.View())
 	}
 }
 
