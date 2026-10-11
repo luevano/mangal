@@ -35,7 +35,6 @@ func New() base.State {
 	return &state{keyMap: keyMap{apply: util.Bind("migrate", "enter")}}
 }
 
-func (s *state) Intermediate() bool            { return false }
 func (s *state) Backable() bool                { return true }
 func (s *state) KeyMap() help.KeyMap           { return s.keyMap }
 func (s *state) Title() base.Title             { return base.Title{Text: "Migrate"} }

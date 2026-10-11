@@ -61,8 +61,7 @@ func newMirrors(info libmangal.ProviderInfo, closeAll func() error) *mirrorsStat
 	}
 }
 
-func (s *mirrorsState) Intermediate() bool { return false }
-func (s *mirrorsState) Backable() bool     { return s.list.Unfiltered() }
+func (s *mirrorsState) Backable() bool { return s.list.Unfiltered() }
 func (s *mirrorsState) KeyMap() help.KeyMap {
 	return base.CombinedKeyMap(mirrorsKeyMap{s.choose}, s.list.KeyMap)
 }

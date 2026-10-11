@@ -124,9 +124,7 @@ func (m *model) back(steps int) tea.Cmd {
 // pushState initializes a new state and pushes previous one into history
 func (m *model) pushState(state State) tea.Cmd {
 	log.L.Info().Str("state", state.Title().Text).Msg("new state")
-	if !m.state.Intermediate() {
-		m.history.Push(m.state)
-	}
+	m.history.Push(m.state)
 	m.state = state
 
 	return tea.Sequence(

@@ -9,7 +9,6 @@ import (
 var (
 	_ help.KeyMap = (*keyMap)(nil)
 	_ help.KeyMap = (*combinedKeyMap)(nil)
-	_ help.KeyMap = (*NoKeyMap)(nil)
 )
 
 func newKeyMap() *keyMap {
@@ -76,17 +75,4 @@ func (c combinedKeyMap) ShortHelp() []key.Binding {
 // FullHelp implements help.KeyMap.
 func (c combinedKeyMap) FullHelp() [][]key.Binding {
 	return append(c.first.FullHelp(), c.second.FullHelp()...)
-}
-
-// NoKeyMap implements help.keyMap.
-type NoKeyMap struct{}
-
-// ShortHelp implements help.keyMap.
-func (k NoKeyMap) ShortHelp() []key.Binding {
-	return nil
-}
-
-// FullHelp implements help.keyMap.
-func (k NoKeyMap) FullHelp() [][]key.Binding {
-	return nil
 }

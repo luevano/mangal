@@ -22,11 +22,6 @@ type state struct {
 	keyMap    keyMap
 }
 
-// Intermediate implements base.State.
-func (s *state) Intermediate() bool {
-	return false
-}
-
 // Backable implements base.State.
 func (s *state) Backable() bool {
 	return s.list.Unfiltered()

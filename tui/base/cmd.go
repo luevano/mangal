@@ -14,17 +14,6 @@ func Back() tea.Msg {
 	}
 }
 
-// BackN goes back N states back or up to the initial State (home).
-func BackN(steps int) tea.Cmd {
-	if steps < 0 {
-		panic("steps < 0 in BackN")
-	}
-
-	return func() tea.Msg {
-		return BackMsg{Steps: steps}
-	}
-}
-
 // BackToHome goes back to the initial State (home).
 func BackToHome() tea.Msg {
 	return BackToHomeMsg{}

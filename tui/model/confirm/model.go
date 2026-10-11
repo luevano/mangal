@@ -39,12 +39,6 @@ func (m *Model) SetYesKeys(keys ...string) {
 	m.preRender()
 }
 
-func (m *Model) Resize(width int) {
-	m.width = width
-	m.styles.updateWidth(width)
-	m.preRender()
-}
-
 func (m *Model) preRender() {
 	title := m.styles.title.Render(m.title)
 	message := m.styles.message.Render(m.message)

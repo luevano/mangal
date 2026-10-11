@@ -211,14 +211,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// UpdateI is a convenience method to update the model in-place,
-// to make it easier to handle.
-func (m *Model) UpdateI(msg tea.Msg) tea.Cmd {
-	self, cmd := m.Update(msg)
-	m = self.(*Model)
-	return cmd
-}
-
 // View implements tea.Model.
 func (m *Model) View() string {
 	if m.quitting {

@@ -9,18 +9,18 @@ import (
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
-type State int
+type state int
 
 const (
-	Unsearched State = iota
-	Searching
-	Searched
-	SearchCanceled
+	unsearched state = iota
+	searching
+	searched
+	searchCanceled
 )
 
 type Model struct {
 	input textinput.Model
-	state State
+	state state
 	query string
 
 	maxWidth int
@@ -41,34 +41,24 @@ func (m *Model) SetSuggestions(suggestions []string) {
 	m.input.SetSuggestions(suggestions)
 }
 
-// State returns the current state of the search.
-func (m *Model) State() State {
-	return m.state
-}
-
 // Unsearched is a convenience method to check if there hasn't been a search done.
 func (m *Model) Unsearched() bool {
-	return m.state == Unsearched
+	return m.state == unsearched
 }
 
 // Searching is a convenience method to check if a search is being performed.
 func (m *Model) Searching() bool {
-	return m.state == Searching
-}
-
-// Searched is a convenience method to check if a search was performed.
-func (m *Model) Searched() bool {
-	return m.state == Unsearched
+	return m.state == searching
 }
 
 // SearchCanceled is a convenience method to check if the search was canceled.
 func (m *Model) SearchCanceled() bool {
-	return m.state == SearchCanceled
+	return m.state == searchCanceled
 }
 
-// Focus sets the sate to Searching and enables the input.
+// Focus sets the state to Searching and enables the input.
 func (m *Model) Focus() tea.Cmd {
-	m.state = Searching
+	m.state = searching
 	m.input.CursorEnd()
 	m.updateKeybinds()
 
@@ -98,7 +88,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 				return base.Notify("Can't search whitespace only")
 			}
 
-			m.state = Searched
+			m.state = searched
 			m.input.Blur()
 			m.updateKeybinds()
 
@@ -108,7 +98,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			m.query = q
 			return SearchCmd(q)
 		case key.Matches(msg, m.keyMap.cancel):
-			m.state = SearchCanceled
+			m.state = searchCanceled
 			m.input.Blur()
 			m.input.Reset()
 			m.updateKeybinds()

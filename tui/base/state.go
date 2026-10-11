@@ -11,11 +11,6 @@ import (
 //
 // State could be thought of as a "Window".
 type State interface {
-	// Intermediate if the State should be saved to history.
-	//
-	// For example when loading states.
-	Intermediate() bool
-
 	// Backable if can back out of the State to previous states.
 	//
 	// For example when filtering a list, this can avoid to go back

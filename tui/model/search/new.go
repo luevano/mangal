@@ -19,11 +19,11 @@ func New(placeholder, initialQuery string, width, maxSuggestions int) *Model {
 	input.Width = width
 	input.Prompt = icon.Search.Colored() + " "
 
-	initState := Unsearched
+	initState := unsearched
 	query := strings.TrimSpace(initialQuery)
 	if query != "" {
 		input.SetValue(query)
-		initState = Searched
+		initState = searched
 	}
 
 	return &Model{

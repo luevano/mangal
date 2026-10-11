@@ -21,7 +21,6 @@ func New(ctx context.Context) base.State {
 	return &state{model: accounts.New(ctx, false)}
 }
 
-func (s *state) Intermediate() bool            { return false }
 func (s *state) Backable() bool                { return !s.model.Inputting() }
 func (s *state) KeyMap() help.KeyMap           { return s.model.KeyMap() }
 func (s *state) Title() base.Title             { return base.Title{Text: "Accounts"} }

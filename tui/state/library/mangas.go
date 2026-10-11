@@ -111,8 +111,7 @@ func trashSummary() string {
 	return fmt.Sprintf("%d files in the trash", files)
 }
 
-func (s *mangasState) Intermediate() bool { return false }
-func (s *mangasState) Backable() bool     { return s.list.Unfiltered() && !s.confirm.active }
+func (s *mangasState) Backable() bool { return s.list.Unfiltered() && !s.confirm.active }
 func (s *mangasState) KeyMap() help.KeyMap {
 	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)
 }

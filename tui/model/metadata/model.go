@@ -3,7 +3,6 @@ package metadata
 import (
 	"strconv"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal/metadata"
 )
@@ -38,14 +37,6 @@ func (m *Model) Title() string {
 
 func (m *Model) Color() lipgloss.Color {
 	return m.metaStyle.Color
-}
-
-func (m *Model) Init() tea.Cmd {
-	return nil
-}
-
-func (m *Model) Update(msg tea.Msg) tea.Cmd {
-	return nil
 }
 
 func (m *Model) View() string {

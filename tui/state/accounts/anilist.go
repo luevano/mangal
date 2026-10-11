@@ -21,7 +21,6 @@ func newAnilistLogin(ctx context.Context) base.State {
 	return &anilistState{model: anilistLogin.New(ctx, false)}
 }
 
-func (s *anilistState) Intermediate() bool  { return false }
 func (s *anilistState) Backable() bool      { return s.model.Backable() }
 func (s *anilistState) KeyMap() help.KeyMap { return s.model.KeyMap() }
 func (s *anilistState) Title() base.Title {

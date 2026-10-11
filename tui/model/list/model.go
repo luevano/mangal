@@ -28,11 +28,6 @@ func (m *Model) Filtering() bool {
 	return m.FilterState() == list.Filtering
 }
 
-// FilterApplied is a convenience method to check if the list has a filter applied.
-func (m *Model) FilterApplied() bool {
-	return m.FilterState() == list.FilterApplied
-}
-
 // Subtitle returns the quantified amount of items.
 // For example: "1 manga", "10 chapters", "0 pages".
 func (m *Model) Subtitle() string {
@@ -114,11 +109,6 @@ func (m *Model) SetItemHeight(height int) {
 		m.delegate.ShowDescription = true
 	}
 	m.delegate.SetHeight(height)
-	m.SetDelegate(m.delegate)
-}
-
-func (m *Model) SetItemSpacing(spacing int) {
-	m.delegate.SetSpacing(spacing)
 	m.SetDelegate(m.delegate)
 }
 
