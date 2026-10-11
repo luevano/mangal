@@ -90,29 +90,21 @@ func migrateLibrary(tx *sql.Tx) error {
 		return err
 	}
 
-	rows, err := tx.Query(`SELECT parent, name, info FROM manga_dirs`)
-	if err != nil {
-		return err
-	}
 	type dir struct {
 		parent, name string
 		info         libmangal.MangaDirInfo
 	}
-	var dirs []dir
-	for rows.Next() {
+	dirs, err := queryAll(tx, func(rows *sql.Rows) (dir, error) {
 		var d dir
 		var raw []byte
 		if err := rows.Scan(&d.parent, &d.name, &raw); err != nil {
-			rows.Close()
-			return err
+			return d, err
 		}
-		if err := json.Unmarshal(raw, &d.info); err != nil {
-			rows.Close()
-			return err
-		}
-		dirs = append(dirs, d)
+		return d, json.Unmarshal(raw, &d.info)
+	}, `SELECT parent, name, info FROM manga_dirs`)
+	if err != nil {
+		return err
 	}
-	rows.Close()
 	for _, d := range dirs {
 		if err := rememberDir(tx, d.parent, d.name, d.info); err != nil {
 			return err
@@ -122,20 +114,14 @@ func migrateLibrary(tx *sql.Tx) error {
 		return err
 	}
 
-	rows, err = tx.Query(`SELECT path, provider, manga_id, manga_title, volume, chapter, chapter_title FROM downloads`)
+	downloads, err := queryAll(tx, func(rows *sql.Rows) (Download, error) {
+		var dl Download
+		err := rows.Scan(&dl.Path, &dl.Provider, &dl.MangaID, &dl.MangaTitle, &dl.Volume, &dl.Chapter, &dl.ChapterTitle)
+		return dl, err
+	}, `SELECT path, provider, manga_id, manga_title, volume, chapter, chapter_title FROM downloads`)
 	if err != nil {
 		return err
 	}
-	var downloads []Download
-	for rows.Next() {
-		var dl Download
-		if err := rows.Scan(&dl.Path, &dl.Provider, &dl.MangaID, &dl.MangaTitle, &dl.Volume, &dl.Chapter, &dl.ChapterTitle); err != nil {
-			rows.Close()
-			return err
-		}
-		downloads = append(downloads, dl)
-	}
-	rows.Close()
 	for _, dl := range downloads {
 		// the chapter's folder is (usually) the manga's
 		folder := filepath.Dir(dl.Path)
@@ -178,7 +164,7 @@ func (l Library) FindMangaDir(parent string, provider libmangal.ProviderInfo, in
 
 // RememberMangaDir implements libmangal.MangaDirIndex.
 func (l Library) RememberMangaDir(parent, name string, info libmangal.MangaDirInfo) error {
-	return l.inTx(func(tx *sql.Tx) error {
+	return l.DB.InTx(func(tx *sql.Tx) error {
 		return rememberDir(tx, parent, name, info)
 	})
 }
@@ -271,7 +257,7 @@ LIMIT 1`, filepath.Dir(mangaDir), filepath.Base(mangaDir), mangaDir, chapter.Inf
 
 // RecordDownload records a downloaded chapter of the manga folder.
 func (l Library) RecordDownload(parent, dir string, dl Download) error {
-	err := l.inTx(func(tx *sql.Tx) error {
+	err := l.DB.InTx(func(tx *sql.Tx) error {
 		manga, err := mangaFor(tx, parent, dir, Source{Provider: dl.Provider, MangaID: dl.MangaID, Title: dl.MangaTitle})
 		if err != nil {
 			return err
@@ -309,53 +295,47 @@ func (l Library) MangaByID(id int64) (Manga, bool, error) {
 }
 
 func (l Library) mangas(where string, args ...any) ([]Manga, error) {
-	rows, err := l.DB.Query(`SELECT m.id, m.title, m.parent, m.dir, m.metadata_ids,
-	(SELECT count(*) FROM library_chapters c WHERE c.manga = m.id AND EXISTS (SELECT 1 FROM downloads d WHERE d.chapter_id = c.id))
-FROM library_mangas m `+where, args...)
-	if err != nil {
-		return nil, err
-	}
-	var mangas []Manga
-	for rows.Next() {
+	mangas, err := queryAll(l.DB, func(rows *sql.Rows) (Manga, error) {
 		var m Manga
 		var ids string
 		if err := rows.Scan(&m.ID, &m.Title, &m.Parent, &m.Dir, &ids, &m.Chapters); err != nil {
-			rows.Close()
-			return nil, err
+			return m, err
 		}
-		if err := json.Unmarshal([]byte(ids), &m.MetadataIDs); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		mangas = append(mangas, m)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+		return m, json.Unmarshal([]byte(ids), &m.MetadataIDs)
+	}, `SELECT m.id, m.title, m.parent, m.dir, m.metadata_ids,
+	(SELECT count(*) FROM library_chapters c WHERE c.manga = m.id AND EXISTS (SELECT 1 FROM downloads d WHERE d.chapter_id = c.id))
+FROM library_mangas m `+where, args...)
+	if err != nil || len(mangas) == 0 {
 		return nil, err
 	}
-	for i := range mangas {
-		if mangas[i].Sources, err = l.sources(mangas[i].ID); err != nil {
-			return nil, err
-		}
-	}
-	return mangas, nil
-}
 
-func (l Library) sources(manga int64) ([]Source, error) {
-	rows, err := l.DB.Query(`SELECT provider, manga_id, title FROM library_sources WHERE manga = ? ORDER BY provider`, manga)
+	byID := make(map[int64]*Manga, len(mangas))
+	ids := make([]int64, len(mangas))
+	for i := range mangas {
+		byID[mangas[i].ID] = &mangas[i]
+		ids[i] = mangas[i].ID
+	}
+	idsJSON, err := json.Marshal(ids)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var sources []Source
-	for rows.Next() {
-		var s Source
-		if err := rows.Scan(&s.Provider, &s.MangaID, &s.Title); err != nil {
-			return nil, err
-		}
-		sources = append(sources, s)
+	type source struct {
+		manga int64
+		Source
 	}
-	return sources, rows.Err()
+	sources, err := queryAll(l.DB, func(rows *sql.Rows) (source, error) {
+		var s source
+		err := rows.Scan(&s.manga, &s.Provider, &s.MangaID, &s.Title)
+		return s, err
+	}, `SELECT manga, provider, manga_id, title FROM library_sources WHERE manga IN (SELECT value FROM json_each(?)) ORDER BY manga, provider`, string(idsJSON))
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range sources {
+		m := byID[s.manga]
+		m.Sources = append(m.Sources, s.Source)
+	}
+	return mangas, nil
 }
 
 // Downloads lists the downloads of a library manga, by chapter.
@@ -366,7 +346,7 @@ func (l Library) Downloads(manga int64) ([]Download, error) {
 // Moved updates the library after a directory was renamed from one path to another:
 // a manga folder, or a directory with manga folders (e.g. a provider's).
 func (l Library) Moved(from, to string) error {
-	err := l.inTx(func(tx *sql.Tx) error {
+	err := l.DB.InTx(func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`UPDATE library_mangas SET parent = ?, dir = ? WHERE parent = ? AND dir = ?`,
 			filepath.Dir(to), filepath.Base(to), filepath.Dir(from), filepath.Base(from)); err != nil {
 			return err
@@ -413,7 +393,7 @@ func (l Library) SetDownloadPath(from, to string) error {
 
 // RemoveDownload forgets a recorded file, and its chapter if it has no other file.
 func (l Library) RemoveDownload(path string) error {
-	err := l.inTx(func(tx *sql.Tx) error {
+	err := l.DB.InTx(func(tx *sql.Tx) error {
 		var chapter sql.NullInt64
 		if err := tx.QueryRow(`SELECT chapter_id FROM downloads WHERE path = ?`, path).Scan(&chapter); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -438,7 +418,7 @@ func (l Library) RemoveDownload(path string) error {
 
 // RemoveManga forgets a library manga, with its sources, chapters and downloads.
 func (l Library) RemoveManga(id int64) error {
-	err := l.inTx(func(tx *sql.Tx) error {
+	err := l.DB.InTx(func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM downloads WHERE chapter_id IN (SELECT id FROM library_chapters WHERE manga = ?)`, id); err != nil {
 			return err
 		}
@@ -460,7 +440,7 @@ type MergeMove struct {
 // (chapters keep already had) are forgotten, other's sources and metadata ids go to keep
 // and other is removed.
 func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) error {
-	err := l.inTx(func(tx *sql.Tx) error {
+	err := l.DB.InTx(func(tx *sql.Tx) error {
 		for _, path := range trashed {
 			if _, err := tx.Exec(`DELETE FROM downloads WHERE path = ?`, path); err != nil {
 				return err
@@ -502,16 +482,4 @@ func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) e
 		return fmt.Errorf("merge manga %d into %d: %w", other, keep, err)
 	}
 	return nil
-}
-
-func (l Library) inTx(f func(*sql.Tx) error) error {
-	tx, err := l.DB.Begin()
-	if err != nil {
-		return err
-	}
-	if err := f(tx); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	return tx.Commit()
 }

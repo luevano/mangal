@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -61,25 +62,16 @@ func keyringDelete(table, owner, key string) error {
 // MoveToKeyring moves the values of a kv table into the OS keyring (toKeyring) or back
 // into the table, returns how many moved.
 func MoveToKeyring(db *DB, table string, toKeyring bool) (int, error) {
-	rows, err := db.Query(`SELECT owner, key, value FROM ` + table)
-	if err != nil {
-		return 0, err
-	}
 	type row struct {
 		owner, key string
 		value      []byte
 	}
-	var all []row
-	for rows.Next() {
+	all, err := queryAll(db, func(rows *sql.Rows) (row, error) {
 		var r row
-		if err := rows.Scan(&r.owner, &r.key, &r.value); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		all = append(all, r)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+		err := rows.Scan(&r.owner, &r.key, &r.value)
+		return r, err
+	}, `SELECT owner, key, value FROM `+table)
+	if err != nil {
 		return 0, err
 	}
 

@@ -157,6 +157,42 @@ func escapeURIPath(path string) string {
 	return strings.NewReplacer("%", "%25", "?", "%3f", "#", "%23").Replace(path)
 }
 
+// InTx runs f in a transaction, committed when f returns nil, rolled back otherwise.
+func (db *DB) InTx(f func(*sql.Tx) error) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	if err := f(tx); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+// querier is a *DB or a *sql.Tx.
+type querier interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+// queryAll runs the query and scans every row.
+func queryAll[T any](q querier, scan func(*sql.Rows) (T, error), query string, args ...any) ([]T, error) {
+	rows, err := q.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var all []T
+	for rows.Next() {
+		v, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, v)
+	}
+	return all, rows.Err()
+}
+
 func (db *DB) migrate(migrations []Migration) error {
 	busy := 0
 	for {
@@ -213,11 +249,17 @@ func OpenCache(path string) (*DB, error) {
 		return nil, err
 	}
 	now := time.Now().Unix()
-	for _, table := range CacheTables {
-		if _, err := db.Exec(`DELETE FROM `+table+` WHERE expires != 0 AND expires < ?`, now); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("prune %s: %w", table, err)
+	err = db.InTx(func(tx *sql.Tx) error {
+		for _, table := range CacheTables {
+			if _, err := tx.Exec(`DELETE FROM `+table+` WHERE expires != 0 AND expires < ?`, now); err != nil {
+				return fmt.Errorf("prune %s: %w", table, err)
+			}
 		}
+		return nil
+	})
+	if err != nil {
+		_ = db.Close()
+		return nil, err
 	}
 	return db, nil
 }

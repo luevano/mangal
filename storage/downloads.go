@@ -29,6 +29,8 @@ type Download struct {
 }
 
 // Downloads are the downloaded chapters.
+//
+// Deprecated: use Library.ListDownloads.
 type Downloads struct {
 	DB *DB
 }
@@ -45,31 +47,33 @@ ON CONFLICT (path) DO UPDATE SET chapter_id = excluded.chapter_id, provider = ex
 	return err
 }
 
-// List lists the downloads of a provider and manga, empty for any, ordered by manga and chapter.
+// List lists the downloads of a provider and manga, see Library.ListDownloads.
+//
+// Deprecated: use Library.ListDownloads.
 func (d Downloads) List(provider, mangaID string) ([]Download, error) {
-	return queryDownloads(d.DB, `WHERE (? = '' OR d.provider = ?) AND (? = '' OR d.manga_id = ?)
-ORDER BY d.manga_title, d.provider, d.manga_id, d.volume, d.chapter, d.format`, provider, provider, mangaID, mangaID)
+	return Library{DB: d.DB}.ListDownloads(provider, mangaID)
+}
+
+// ListDownloads lists the downloads of a provider and manga, empty for any, ordered by manga
+// and chapter.
+func (l Library) ListDownloads(provider, mangaID string) ([]Download, error) {
+	return queryDownloads(l.DB, `WHERE (?1 = '' OR d.provider = ?1) AND (?2 = '' OR d.manga_id = ?2)
+ORDER BY d.manga_title, d.provider, d.manga_id, d.volume, d.chapter, d.format`, provider, mangaID)
 }
 
 func queryDownloads(db *DB, where string, args ...any) ([]Download, error) {
-	rows, err := db.Query(`SELECT d.path, coalesce(d.chapter_id, 0), d.provider, d.manga_id, d.manga_title, d.volume, d.chapter,
+	downloads, err := queryAll(db, func(rows *sql.Rows) (Download, error) {
+		var dl Download
+		var downloaded int64
+		err := rows.Scan(&dl.Path, &dl.ChapterID, &dl.Provider, &dl.MangaID, &dl.MangaTitle, &dl.Volume, &dl.Chapter,
+			&dl.ChapterTitle, &dl.ChapterURL, &dl.Format, &dl.Pages, &downloaded)
+		dl.Downloaded = time.Unix(downloaded, 0)
+		return dl, err
+	}, `SELECT d.path, coalesce(d.chapter_id, 0), d.provider, d.manga_id, d.manga_title, d.volume, d.chapter,
 	d.chapter_title, d.chapter_url, d.format, d.pages, d.downloaded
 FROM downloads d LEFT JOIN library_chapters c ON c.id = d.chapter_id `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list downloads: %w", err)
 	}
-	defer rows.Close()
-
-	var downloads []Download
-	for rows.Next() {
-		var dl Download
-		var downloaded int64
-		if err := rows.Scan(&dl.Path, &dl.ChapterID, &dl.Provider, &dl.MangaID, &dl.MangaTitle, &dl.Volume, &dl.Chapter,
-			&dl.ChapterTitle, &dl.ChapterURL, &dl.Format, &dl.Pages, &downloaded); err != nil {
-			return nil, err
-		}
-		dl.Downloaded = time.Unix(downloaded, 0)
-		downloads = append(downloads, dl)
-	}
-	return downloads, rows.Err()
+	return downloads, nil
 }
