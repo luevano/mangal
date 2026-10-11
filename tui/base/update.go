@@ -2,7 +2,6 @@ package base
 
 import (
 	"context"
-	"github.com/luevano/mangal/v5/util"
 	"strings"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/model/viewport"
+	"github.com/luevano/mangal/v5/util"
 	"github.com/pkg/errors"
 )
 

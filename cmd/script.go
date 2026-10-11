@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/luevano/mangal/v5/util"
 	"io"
 	"os"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/script"
 	"github.com/luevano/mangal/v5/script/lib"
+	"github.com/luevano/mangal/v5/util"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/spf13/cobra"
 )

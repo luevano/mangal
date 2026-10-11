@@ -2,7 +2,6 @@ package base
 
 import (
 	"context"
-	"github.com/luevano/mangal/v5/theme/color"
 	"strings"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/model/viewport"
 )
 

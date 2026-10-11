@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/luevano/mangal/v5/util"
 	"net/url"
 
 	"github.com/luevano/libmangal"
@@ -9,6 +8,7 @@ import (
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/info"
 	"github.com/luevano/mangal/v5/provider/manager"
+	"github.com/luevano/mangal/v5/util"
 	"github.com/spf13/cobra"
 )
 

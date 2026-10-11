@@ -1,10 +1,10 @@
 package path
 
 import (
-	"github.com/adrg/xdg"
 	"os"
 	"path/filepath"
 
+	"github.com/adrg/xdg"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/meta"
 )

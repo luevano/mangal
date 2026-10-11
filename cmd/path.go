@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"encoding/json"
-	"github.com/luevano/mangal/v5/util"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/path"
 	pathViewer "github.com/luevano/mangal/v5/tui/model/path"
+	"github.com/luevano/mangal/v5/util"
 	"github.com/spf13/cobra"
 )
 

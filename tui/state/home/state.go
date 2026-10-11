@@ -2,18 +2,18 @@ package home
 
 import (
 	"context"
-	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/v5/theme/color"
-	"github.com/luevano/mangal/v5/util/cache"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/provider/manager"
+	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/state/providers"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 var _ base.State = (*state)(nil)

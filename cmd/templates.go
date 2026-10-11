@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"encoding/json"
-	"github.com/luevano/mangal/v5/util"
 	"strings"
 	"text/template"
 
 	"github.com/luevano/mangal/v5/template/funcs"
 	"github.com/luevano/mangal/v5/theme/style"
+	"github.com/luevano/mangal/v5/util"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )

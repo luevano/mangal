@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/util/cache"
 	"path/filepath"
 
 	"github.com/luevano/libmangal/metadata"
@@ -12,8 +10,10 @@ import (
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/manager"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/template"
 	"github.com/luevano/mangal/v5/util/afs"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 )
 

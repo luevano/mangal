@@ -3,8 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/luevano/mangal/v5/util"
-	"github.com/luevano/mangal/v5/util/cache"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,6 +12,8 @@ import (
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui"
+	"github.com/luevano/mangal/v5/util"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

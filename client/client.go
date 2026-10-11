@@ -3,8 +3,6 @@ package client
 import (
 	"context"
 	"fmt"
-	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/util/cache"
 	"net/http"
 	"os"
 	"sync"
@@ -15,8 +13,10 @@ import (
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/provider/manager"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/template"
 	"github.com/luevano/mangal/v5/util/afs"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/zyedidia/generic/queue"
 )
 
