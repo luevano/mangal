@@ -3,7 +3,6 @@ package cache
 import (
 	"time"
 
-	"github.com/philippgille/gokv"
 	"golang.org/x/oauth2"
 )
 
@@ -20,85 +19,35 @@ const (
 	MyAnimeListAuthHistory = "myanimelist"
 )
 
-var authStore_ = store{
-	openStore: func(bucketName string) (gokv.Store, error) {
-		return CacheStore(CacheDBNameMangalAuth, bucketName)
-	},
-}
-
 // SetAuthHistory will store the user history for the provider.
 func SetAuthHistory(provider string, userHistory UserHistory) error {
-	err := authStore_.open(BucketNameAuthHistory)
-	if err != nil {
-		return err
-	}
-	defer authStore_.close()
-
-	return authStore_.store.Set(provider, userHistory)
+	return set(CacheDBNameMangalAuth, BucketNameAuthHistory, provider, userHistory)
 }
 
 // GetAuthHistory will populate the given user history for the provider.
 func GetAuthHistory(provider string, userHistory *UserHistory) (bool, error) {
-	err := authStore_.open(BucketNameAuthHistory)
-	if err != nil {
-		return false, err
-	}
-	defer authStore_.close()
-
-	found, err := authStore_.store.Get(provider, userHistory)
-	if err != nil {
-		return false, err
-	}
-	if found {
-		return true, nil
-	}
-	return false, nil
+	return get(CacheDBNameMangalAuth, BucketNameAuthHistory, provider, userHistory)
 }
 
 // SetAnilistAuthData will store the oauth2 Token for the username.
 func SetAnilistAuthData(username string, token *oauth2.Token) error {
-	err := authStore_.open(BucketNameAnilistAuthData)
-	if err != nil {
-		return err
-	}
-	defer authStore_.close()
-
-	return authStore_.store.Set(username, *token)
+	return set(CacheDBNameMangalAuth, BucketNameAnilistAuthData, username, *token)
 }
 
 // GetAnilistAuthData will populate the given oauth2 Token for the username.
 func GetAnilistAuthData(username string, token *oauth2.Token) (bool, error) {
-	err := authStore_.open(BucketNameAnilistAuthData)
-	if err != nil {
-		return false, err
-	}
-	defer authStore_.close()
-
-	found, err := authStore_.store.Get(username, token)
-	if err != nil {
-		return false, err
-	}
-	if found {
-		return true, nil
-	}
-	return false, nil
+	return get(CacheDBNameMangalAuth, BucketNameAnilistAuthData, username, token)
 }
 
 // DeleteAnilistAuthData will delete the oauth2 Token assigned for the username.
 //
 // Doesn't return an error if not found.
 func DeleteAnilistAuthData(username string) error {
-	err := authStore_.open(BucketNameAnilistAuthData)
+	store, err := CacheStore(CacheDBNameMangalAuth, BucketNameAnilistAuthData)
 	if err != nil {
 		return err
 	}
-	defer authStore_.close()
-
-	err = authStore_.store.Delete(username)
-	if err != nil {
-		return err
-	}
-	return nil
+	return store.Delete(username)
 }
 
 // ExpireAnilistAuthData marks the username's oauth2 Token as expired (Anilist rejected it),

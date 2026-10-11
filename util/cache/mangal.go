@@ -1,9 +1,5 @@
 package cache
 
-import (
-	"github.com/philippgille/gokv"
-)
-
 const CacheDBNameMangal = "mangal"
 
 const (
@@ -15,84 +11,40 @@ const (
 	AnilistSearchHistory = "anilist"
 )
 
-var store_ = store{
-	openStore: func(bucketName string) (gokv.Store, error) {
-		return CacheStore(CacheDBNameMangal, bucketName)
-	},
-}
-
-type store struct {
-	openStore func(bucketName string) (gokv.Store, error)
-	store     gokv.Store
-}
-
-func (s *store) open(bucketName string) error {
-	store, err := s.openStore(bucketName)
-	s.store = store
-	return err
-}
-
-func (s *store) close() error {
-	if s.store == nil {
-		return nil
+// get and set go through the store each time: mangal's stores are views over the
+// databases, opened once per process, so there's nothing to keep open.
+func get(dbName, bucketName, key string, v any) (bool, error) {
+	store, err := CacheStore(dbName, bucketName)
+	if err != nil {
+		return false, err
 	}
-	return s.store.Close()
+	return store.Get(key, v)
+}
+
+func set(dbName, bucketName, key string, v any) error {
+	store, err := CacheStore(dbName, bucketName)
+	if err != nil {
+		return err
+	}
+	return store.Set(key, v)
 }
 
 // SetMangasSearchHistory will store the manga search history records to the cache.
 func SetMangasSearchHistory(records Records) error {
-	err := store_.open(BucketNameSearchHistory)
-	if err != nil {
-		return err
-	}
-	defer store_.close()
-
-	return store_.store.Set(MangasSearchHistory, records)
+	return set(CacheDBNameMangal, BucketNameSearchHistory, MangasSearchHistory, records)
 }
 
 // GetMangasSearchHistory will populate the given records from the manga search history cache.
 func GetMangasSearchHistory(records *Records) (bool, error) {
-	err := store_.open(BucketNameSearchHistory)
-	if err != nil {
-		return false, err
-	}
-	defer store_.close()
-
-	found, err := store_.store.Get(MangasSearchHistory, records)
-	if err != nil {
-		return false, err
-	}
-	if found {
-		return true, nil
-	}
-	return false, nil
+	return get(CacheDBNameMangal, BucketNameSearchHistory, MangasSearchHistory, records)
 }
 
 // SetAnilistSearchHistory will store the manga search history records to the cache.
 func SetAnilistSearchHistory(records Records) error {
-	err := store_.open(BucketNameSearchHistory)
-	if err != nil {
-		return err
-	}
-	defer store_.close()
-
-	return store_.store.Set(AnilistSearchHistory, records)
+	return set(CacheDBNameMangal, BucketNameSearchHistory, AnilistSearchHistory, records)
 }
 
 // GetAnilistSearchHistory will populate the given records from the manga search history cache.
 func GetAnilistSearchHistory(records *Records) (bool, error) {
-	err := store_.open(BucketNameSearchHistory)
-	if err != nil {
-		return false, err
-	}
-	defer store_.close()
-
-	found, err := store_.store.Get(AnilistSearchHistory, records)
-	if err != nil {
-		return false, err
-	}
-	if found {
-		return true, nil
-	}
-	return false, nil
+	return get(CacheDBNameMangal, BucketNameSearchHistory, AnilistSearchHistory, records)
 }
