@@ -82,6 +82,12 @@ func History() (storage.History, error) {
 	return s.History(), err
 }
 
+// Watches are the watched mangas and their checks.
+func Watches() (storage.Watches, error) {
+	s, err := Storage()
+	return s.Watches(), err
+}
+
 // AccountsStore is the cached provider accounts, by provider id.
 func AccountsStore(ttl time.Duration) (storage.KV, error) {
 	s, err := Storage()
@@ -103,13 +109,13 @@ func OldIDsNotice(loaders []libmangal.ProviderLoader) (short, long string, err e
 	var renames, details []string
 	for _, id := range oldIDs {
 		renames = append(renames, fmt.Sprintf("%s is now %s", id.Old, id.New))
-		details = append(details, fmt.Sprintf("- %s is now %s (%s): %d library mangas, %d downloads, %d read chapters, %d cache entries", id.Old, id.New, id.Name, id.Sources, id.Downloads, id.Reads, id.Cache))
+		details = append(details, fmt.Sprintf("- %s is now %s (%s): %d library mangas, %d downloads, %d read chapters, %d watches, %d cache entries", id.Old, id.New, id.Name, id.Sources, id.Downloads, id.Reads, id.Watches, id.Cache))
 	}
 	short = fmt.Sprintf("data under old provider ids (%s), run %q to update it", strings.Join(renames, ", "), "mangal migrate")
 	long = "Some data still uses old provider ids:\n\n" + strings.Join(details, "\n") + `
 
 Press M on the home screen (or run "mangal migrate") to see what would change and do it:
-the library entries, downloads, read history and .libmangal.json files move to the new
+the library entries, downloads, read history, watches and .libmangal.json files move to the new
 ids and the old cache is dropped (it rebuilds). Folders aren't renamed or moved, "mangal
 library rename" does that. Until then everything keeps working through the old ids.`
 	return short, long, nil

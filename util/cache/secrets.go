@@ -60,6 +60,36 @@ func SetMangaPlusFreeSecret(secret string) error {
 	return setString(keyMangaPlusFreeDevice, secret)
 }
 
+// The Discord webhook is a secret too (its url is enough to post).
+const (
+	authOwnerDiscord  = "discord"
+	keyDiscordWebhook = "webhook"
+)
+
+// DiscordWebhook is the saved Discord webhook url, empty if none.
+func DiscordWebhook() (string, error) {
+	st, err := Storage()
+	if err != nil {
+		return "", err
+	}
+	var url string
+	_, err = st.AuthStore(authOwnerDiscord, keyring).Get(keyDiscordWebhook, &url)
+	return url, err
+}
+
+// SetDiscordWebhook saves the Discord webhook url, empty removes it.
+func SetDiscordWebhook(url string) error {
+	st, err := Storage()
+	if err != nil {
+		return err
+	}
+	kv := st.AuthStore(authOwnerDiscord, keyring)
+	if url == "" {
+		return kv.Delete(keyDiscordWebhook)
+	}
+	return kv.Set(keyDiscordWebhook, url)
+}
+
 // keyring is true when the logins are kept in the OS keyring (auth.keyring).
 var keyring bool
 
