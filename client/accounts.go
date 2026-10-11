@@ -8,8 +8,11 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/kitsu"
+	"github.com/luevano/mangal/v5/client/myanimelist"
 	"github.com/luevano/mangal/v5/config"
-	"github.com/luevano/mangal/v5/provider/manager"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/provider/loader"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
@@ -34,47 +37,62 @@ type cachedAccount struct {
 	Checked time.Time
 }
 
-// Accounts lists the Anilist and Kitsu logins and the accounts of the providers that have one,
-// cached for accountsTTL unless refresh.
+// Accounts lists every account mangal can use, logged in or not: the Anilist, Kitsu and
+// MyAnimeList logins and the accounts of the providers that have one, cached for accountsTTL
+// unless refresh. A provider that can't be loaded is a row with the error.
 func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
-	entries := []AccountEntry{anilistAccount(ctx, refresh), kitsuAccount(ctx, refresh)}
+	entries := metadataAccounts(ctx, refresh)
 
-	loaders, err := manager.Loaders()
-	if err != nil {
-		return nil, err
-	}
 	accounts, err := cache.AccountsStore(accountsTTL)
 	if err != nil {
 		return nil, err
 	}
-	for _, loader := range loaders {
-		if l, ok := loader.(interface{ HasAccount() bool }); !ok || !l.HasAccount() {
-			continue
+	loaders, err := loader.MangoLoaders()
+	if err != nil {
+		entries = append(entries, AccountEntry{Account: libmangal.Account{Service: "Providers"}, Checked: time.Now(), Err: err})
+	}
+	lua, problems, err := loader.LuaLoaders()
+	for _, p := range problems {
+		log.Warn("skipped %s", p)
+	}
+	if err != nil {
+		entries = append(entries, AccountEntry{Account: libmangal.Account{Service: "Lua providers"}, Checked: time.Now(), Err: err})
+	}
+	for _, l := range append(loaders, lua...) {
+		if a, ok := l.(interface{ HasAccount() bool }); ok && a.HasAccount() {
+			entries = append(entries, providerAccount(ctx, accounts, l, refresh))
 		}
-		id := loader.Info().ID
-		var cached cachedAccount
-		if found, err := accounts.Get(id, &cached); err == nil && found && !refresh {
-			entries = append(entries, AccountEntry{Account: cached.Account, Provider: id, Checked: cached.Checked})
-			continue
-		}
-
-		entry := AccountEntry{Account: libmangal.Account{Service: loader.Info().Name}, Provider: id, Checked: time.Now()}
-		client, err := Acquire(ctx, loader)
-		if err == nil {
-			var found bool
-			entry.Account, found, err = client.AccountContext(ctx)
-			if err == nil && !found {
-				entry.Account = libmangal.Account{Service: loader.Info().Name, Status: "no account"}
-			}
-		}
-		if err != nil {
-			entry.Account.Service, entry.Err = loader.Info().Name, err
-		} else if err := accounts.Set(id, cachedAccount{Account: entry.Account, Checked: entry.Checked}); err != nil {
-			entry.Err = err
-		}
-		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+// metadataAccounts are the metadata providers' logins, by priority.
+func metadataAccounts(ctx context.Context, refresh bool) []AccountEntry {
+	return []AccountEntry{anilistAccount(ctx, refresh), kitsuAccount(ctx, refresh), myAnimeListAccount(ctx, refresh)}
+}
+
+func providerAccount(ctx context.Context, accounts storage.KV, pl libmangal.ProviderLoader, refresh bool) AccountEntry {
+	id, name := pl.Info().ID, pl.Info().Name
+	var cached cachedAccount
+	if found, err := accounts.Get(id, &cached); err == nil && found && !refresh {
+		return AccountEntry{Account: cached.Account, Provider: id, Checked: cached.Checked}
+	}
+
+	entry := AccountEntry{Account: libmangal.Account{Service: name}, Provider: id, Checked: time.Now()}
+	client, err := Acquire(ctx, pl)
+	if err == nil {
+		var found bool
+		entry.Account, found, err = client.AccountContext(ctx)
+		if err == nil && !found {
+			entry.Account = libmangal.Account{Service: name, Status: "no account"}
+		}
+	}
+	if err != nil {
+		entry.Account.Service, entry.Err = name, err
+	} else if err := accounts.Set(id, cachedAccount{Account: entry.Account, Checked: entry.Checked}); err != nil {
+		entry.Err = err
+	}
+	return entry
 }
 
 // anilistAccount is the Anilist login, with when its token expires; refresh tries the
@@ -106,32 +124,104 @@ func anilistAccount(ctx context.Context, refresh bool) AccountEntry {
 	return entry
 }
 
-// kitsuAccount is the Kitsu login, like anilistAccount. Its token is refreshed when it
-// expires, so there's no expiry shown.
-func kitsuAccount(ctx context.Context, refresh bool) AccountEntry {
-	k, err := kitsu.Kitsu()
+// savedLogin is a metadata provider's saved login, read locally.
+type savedLogin struct {
+	user    string
+	expired bool
+	// err is why the login couldn't be checked this run
+	err error
+}
+
+// refreshedLogin is a metadata provider whose token is refreshed when it expires (so no
+// expiry is shown), and that can be disabled in the config.
+type refreshedLogin struct {
+	service string
+	source  metadata.IDSource
+	enabled bool
+	// enabledKey is the config key that disables it
+	enabledKey    string
+	provider      func() (*metadata.ProviderWithCache, error)
+	ensure, check func(context.Context) error
+	saved         func() (savedLogin, bool, error)
+}
+
+// account is the login's entry: a disabled provider shows its saved user without logging
+// in; refresh tries the saved login again if it couldn't be checked.
+func (r refreshedLogin) account(ctx context.Context, refresh bool) AccountEntry {
+	p, err := r.provider()
 	if err != nil {
-		return AccountEntry{Account: libmangal.Account{Service: "Kitsu"}, Metadata: metadata.IDSourceKitsu, Checked: time.Now(), Err: err}
+		return AccountEntry{Account: libmangal.Account{Service: r.service}, Metadata: r.source, Checked: time.Now(), Err: err}
 	}
-	if refresh {
-		_ = kitsu.CheckLogin(ctx)
-	} else {
-		_ = kitsu.EnsureLogin(ctx)
+	switch {
+	case !r.enabled:
+	case refresh:
+		_ = r.check(ctx)
+	default:
+		_ = r.ensure(ctx)
 	}
-	entry := AccountEntry{Account: metadata.AccountOf(k), Metadata: metadata.IDSourceKitsu, Checked: time.Now()}
-	login, found, err := kitsu.SavedLogin()
+	entry := AccountEntry{Account: metadata.AccountOf(p), Metadata: r.source, Checked: time.Now()}
+	login, found, err := r.saved()
 	switch {
 	case err != nil:
 		entry.Err = err
-	case !found, k.Authenticated():
-	case login.Expired():
-		entry.User, entry.Status = login.User, "expired"
+	case !found, p.Authenticated():
+	case login.expired:
+		entry.User, entry.Status = login.user, "expired"
 		entry.Details = append(entry.Details, "l logs in again")
-	case login.Err != nil:
-		entry.User, entry.Status, entry.Err = login.User, "not checked", login.Err
+	case !r.enabled:
+		entry.User = login.user
+	case login.err != nil:
+		entry.User, entry.Status, entry.Err = login.user, "not checked", login.err
 	}
-	if !config.Metadata.Kitsu.Enabled.Get() {
-		entry.Details = append(entry.Details, "unused, metadata.kitsu.enabled is off")
+	if !r.enabled {
+		entry.Status = "disabled"
+		entry.Details = append(entry.Details, r.enabledKey+" is off")
 	}
 	return entry
+}
+
+// kitsuAccount is the Kitsu login.
+func kitsuAccount(ctx context.Context, refresh bool) AccountEntry {
+	return refreshedLogin{
+		service:    "Kitsu",
+		source:     metadata.IDSourceKitsu,
+		enabled:    config.Metadata.Kitsu.Enabled.Get(),
+		enabledKey: config.Metadata.Kitsu.Enabled.Key,
+		provider:   kitsu.Kitsu,
+		ensure:     kitsu.EnsureLogin,
+		check:      kitsu.CheckLogin,
+		saved: func() (savedLogin, bool, error) {
+			l, found, err := kitsu.SavedLogin()
+			return savedLogin{user: l.User, expired: l.Expired(), err: l.Err}, found, err
+		},
+	}.account(ctx, refresh)
+}
+
+// myAnimeListAccount is the MyAnimeList login, "not configured" without a client id.
+func myAnimeListAccount(ctx context.Context, refresh bool) AccountEntry {
+	if config.MyAnimeList.ClientID.Get() == "" {
+		return AccountEntry{
+			Account: libmangal.Account{
+				Service: "MyAnimeList",
+				URL:     "https://myanimelist.net/",
+				Status:  "not configured",
+				Details: []string{"set " + config.MyAnimeList.ClientID.Key},
+			},
+			Metadata: metadata.IDSourceMyAnimeList,
+			Checked:  time.Now(),
+		}
+	}
+	return refreshedLogin{
+		service:    "MyAnimeList",
+		source:     metadata.IDSourceMyAnimeList,
+		enabled:    config.MyAnimeList.Enabled.Get(),
+		enabledKey: config.MyAnimeList.Enabled.Key,
+		provider:   myanimelist.MyAnimeList,
+		ensure:     myanimelist.EnsureLogin,
+		check:      myanimelist.CheckLogin,
+		saved: func() (savedLogin, bool, error) {
+			l, found, err := myanimelist.SavedLogin()
+			return savedLogin{user: l.User, expired: l.Expired(), err: l.Err}, found, err
+		},
+	}.account(ctx, refresh)
 }
