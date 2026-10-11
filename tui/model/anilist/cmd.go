@@ -1,10 +1,12 @@
 package anilist
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/auth/oauth"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/skratchdot/open-golang/open"
@@ -28,9 +30,21 @@ func (m *Model) loginCachedCmd(item *item) tea.Cmd {
 			return NotificationMsg(fmt.Sprintf("cached user %q not found, deleted from history", item.user))
 		}
 
-		// TODO: check if the error is due to expired token
-		// delete cached username/token and ask for re-authentication
+		expired := func(when time.Time) tea.Msg {
+			m.inNew = true
+			m.updateKeybinds()
+			return NotificationMsg(fmt.Sprintf("the login of %q expired on %s, log in again", item.user, when.Format(time.DateOnly)))
+		}
+		if !token.Expiry.IsZero() && time.Now().After(token.Expiry) {
+			return expired(token.Expiry)
+		}
 		err = m.anilist.LoginContext(m.ctx, token.AccessToken)
+		if errors.Is(err, metadata.ErrUnauthorized) {
+			if err := cache.ExpireAnilistAuthData(item.user); err != nil {
+				return err
+			}
+			return expired(time.Now())
+		}
 		if err != nil {
 			return err
 		}

@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	cc "github.com/ivanpirog/coloredcobra"
+	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/theme/icon"
@@ -86,7 +87,10 @@ func initConfig(flag *pflag.Flag) func() {
 			fmt.Fprintf(os.Stderr, "%s storage: %s\n", icon.Cross.Colored(), err)
 			os.Exit(1)
 		}
-		for _, notice := range cache.Notices() {
+		for _, notice := range append(cache.Notices(), anilist.LoginNotice()) {
+			if notice == "" {
+				continue
+			}
 			fmt.Fprintf(os.Stderr, "notice: %s\n", notice)
 		}
 	}

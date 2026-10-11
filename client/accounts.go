@@ -10,7 +10,6 @@ import (
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
-	"golang.org/x/oauth2"
 )
 
 // accountsTTL is how long a provider's account is cached: plans and payment dates rarely change.
@@ -35,7 +34,7 @@ type cachedAccount struct {
 // Accounts lists the Anilist login and the accounts of the providers that have one,
 // cached for accountsTTL unless refresh.
 func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
-	entries := []AccountEntry{anilistAccount()}
+	entries := []AccountEntry{anilistAccount(ctx, refresh)}
 
 	loaders, err := manager.Loaders()
 	if err != nil {
@@ -76,15 +75,26 @@ func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
 	return entries, nil
 }
 
-// anilistAccount is the Anilist login, with when its token expires.
-func anilistAccount() AccountEntry {
+// anilistAccount is the Anilist login, with when its token expires; refresh tries the
+// saved login again if it couldn't be checked.
+func anilistAccount(ctx context.Context, refresh bool) AccountEntry {
 	ani := anilist.Anilist()
+	if refresh {
+		_ = anilist.CheckLogin(ctx)
+	}
 	entry := AccountEntry{Account: metadata.AccountOf(ani), Checked: time.Now()}
-	if user := ani.User(); user != nil {
-		var token oauth2.Token
-		if found, err := cache.GetAnilistAuthData(user.Name(), &token); err == nil && found {
-			entry.Expires = token.Expiry
-		}
+	login, found, err := anilist.SavedLogin()
+	switch {
+	case err != nil:
+		entry.Err = err
+	case !found:
+	case ani.Authenticated():
+		entry.Expires = login.Expires
+	case login.Expired():
+		entry.User, entry.Status, entry.Expires = login.User, "expired", login.Expires
+		entry.Details = append(entry.Details, "l logs in again")
+	case login.Err != nil:
+		entry.User, entry.Status, entry.Expires, entry.Err = login.User, "not checked", login.Expires, login.Err
 	}
 	return entry
 }

@@ -58,7 +58,7 @@ func CacheStore(dbName, bucketName string) (gokv.Store, error) {
 	case dbName == CacheDBNameMangalAuth && bucketName == BucketNameAuthHistory:
 		return storage.KV{DB: dataDB, Table: storage.TableAuthHistory}, nil
 	case dbName == CacheDBNameMangalAuth:
-		// no expiry, when the tokens expire the auth data is deleted and a new login asked
+		// no expiry, an expired token is kept (marked, see ExpireAnilistAuthData) to tell the user
 		return storage.KV{DB: dataDB, Table: storage.TableAuthTokens, Owner: bucketName}, nil
 	case dbName == CacheDBNameMangal && bucketName == BucketNameSearchHistory:
 		return storage.KV{DB: dataDB, Table: storage.TableSearchHistory}, nil

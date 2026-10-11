@@ -58,7 +58,7 @@ func New(ctx context.Context, anilist *metadata.ProviderWithCache, standalone bo
 		anilist:              anilist,
 		userHistory:          userHistory,
 		standalone:           standalone,
-		notificationDuration: 2 * time.Second,
+		notificationDuration: 5 * time.Second,
 		title:                _styles.title.Render("Anilist"),
 		selectCursor:         _styles.prompt.Render(icon.Item.Raw()),
 		state:                Uninitialized,

@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"time"
+
 	"github.com/philippgille/gokv"
 	"golang.org/x/oauth2"
 )
@@ -97,4 +99,16 @@ func DeleteAnilistAuthData(username string) error {
 		return err
 	}
 	return nil
+}
+
+// ExpireAnilistAuthData marks the username's oauth2 Token as expired (Anilist rejected it),
+// so it isn't tried again and the user is told to log in again.
+func ExpireAnilistAuthData(username string) error {
+	var token oauth2.Token
+	found, err := GetAnilistAuthData(username, &token)
+	if err != nil || !found {
+		return err
+	}
+	token.Expiry = time.Now()
+	return SetAnilistAuthData(username, &token)
 }
