@@ -8,7 +8,6 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/provider/manager"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
@@ -40,11 +39,10 @@ func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	cacheDB, _, err := cache.DBs()
+	accounts, err := cache.AccountsStore(accountsTTL)
 	if err != nil {
 		return nil, err
 	}
-	accounts := storage.KV{DB: cacheDB, Table: storage.TableOther, Owner: "accounts", TTL: accountsTTL}
 	for _, loader := range loaders {
 		if l, ok := loader.(interface{ HasAccount() bool }); !ok || !l.HasAccount() {
 			continue

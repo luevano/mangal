@@ -78,7 +78,7 @@ func EnsureLogin(ctx context.Context) error {
 		loginTried = true
 	}
 	if err != nil {
-		mlog.Log("anilist login: %s", err)
+		mlog.Warn("anilist login: %s", err)
 	}
 	return err
 }

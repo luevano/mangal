@@ -140,26 +140,25 @@ func retry(ctx context.Context, chapter mangadata.Chapter, get getFunc, onWait f
 
 func downloadChapter(ctx context.Context, client *libmangal.Client, chapter mangadata.Chapter, options libmangal.DownloadOptions) (*metadata.DownloadedChapter, error) {
 	down, err := client.DownloadChapterContext(ctx, chapter, options)
-	if err != nil || options.Directory == path.TempDir() {
+	if err != nil || options.Directory == path.Temp() {
 		return down, err
 	}
 	if down.Skipped != "" {
-		log.Log("chapter %q skipped: %s", chapter, down.Skipped)
+		log.Info("chapter %q skipped: %s", chapter, down.Skipped)
 	}
 
 	// the chapter is downloaded either way, a failed record is only logged
 	if err := recordDownload(client, chapter, options, down); err != nil {
-		log.Log("%s", err)
+		log.Error("%s", err)
 	}
 	return down, nil
 }
 
 func recordDownload(client *libmangal.Client, chapter mangadata.Chapter, options libmangal.DownloadOptions, down *metadata.DownloadedChapter) error {
-	_, dataDB, err := cache.DBs()
+	library, err := cache.Library()
 	if err != nil {
 		return err
 	}
-	library := storage.Library{DB: dataDB}
 	// a skipped chapter keeps who downloaded it
 	if down.Skipped != "" {
 		if recorded, err := library.HasDownload(down.Path()); err != nil || recorded {
