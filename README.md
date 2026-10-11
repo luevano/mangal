@@ -165,6 +165,57 @@ Shows every account mangal can use, logged in or not: Anilist, Kitsu, MyAnimeLis
 
 Metadata comes from [Anilist](https://anilist.co), then [Kitsu](https://kitsu.app) when Anilist finds nothing (`metadata.kitsu.enabled`), or the provider, and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config. Log in with `mangal anilist` to also sync the reading progress when reading from the TUI; `mangal kitsu` and `read.history.kitsu = true` do the same for Kitsu. MyAnimeList needs an API client id of your own: register an app at https://myanimelist.net/apiconfig (App Type "other", redirect URL `http://localhost:6969/oauth/mal/callback`), set `metadata.myanimelist.client_id`, then `mangal myanimelist` and `read.history.myanimelist = true`; it's searched last for metadata. Chapters read from the TUI are kept in a local history (`mangal history`, `read.history.local`).
 
+### Headless
+
+A watch is a manga mangal keeps up to date: each check downloads the chapters from the last one
+the library has up (and, with gap filling, the missing ones below it).
+
+```sh
+mangal watch add mango-mangapill "One-Punch Man" --from 240   # chapters up to 240 count as read
+mangal watch add mango-mangaplus mid:100171 --anilist-id 132029
+mangal watch ls                  # last check, next check, errors
+mangal watch check [--dry-run]   # check now
+mangal watch log --since 7d      # what each check got
+mangal notify webhook            # Discord message per manga with new chapters (watch.notify)
+```
+
+`mangal serve` keeps running and checks each watch when it's due (`watch.interval`, 4h by default,
+or the watch's own), one check at a time; the `watch.*` settings are re-read from the config file
+every minute. It serves a JSON API on `127.0.0.1:6977` (`serve.host`, `serve.port`) that the TUI
+and the `mangal watch` commands use while it runs; `--web` (`serve.web`) also serves the web UI
+there. On an address that isn't loopback the API needs a token: set `serve.token` (or
+`MANGAL_SERVE_TOKEN`) and send `Authorization: Bearer <token>`.
+
+```sh
+curl 127.0.0.1:6977/api/status
+curl 127.0.0.1:6977/api/watches
+curl -X POST 127.0.0.1:6977/api/check -d '{"ids": [1]}'     # 202 {"run": N}, 409 when one runs
+curl 127.0.0.1:6977/api/runs/N
+```
+
+As a systemd service (`/etc/systemd/system/mangal.service`, logs in `journalctl -u mangal`):
+
+```ini
+[Unit]
+Description=mangal serve
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=mangal
+ExecStart=/usr/local/bin/mangal serve
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+One server per config: a second instance (e.g. other mangas into another directory) uses another
+config file with its own `data.path`, `download.path` (and `cache.path`) and `serve.port`, and
+everything is run with `--config`: `ExecStart=/usr/local/bin/mangal --config /etc/mangal/b.toml
+serve`, `mangal --config /etc/mangal/b.toml watch add ...`.
+
 ### Templates
 
 Special functions are available and can be shown by running:
