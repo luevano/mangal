@@ -20,8 +20,8 @@ var _ base.State = (*mirrorsState)(nil)
 
 // mirrorsState picks the provider's preferred website (providers.mirrors).
 type mirrorsState struct {
+	list.Screen
 	info   libmangal.ProviderInfo
-	list   *list.Model
 	choose key.Binding
 	// closeAll closes the loaded clients, they keep the options they were loaded with
 	closeAll func() error
@@ -47,35 +47,28 @@ func newMirrors(info libmangal.ProviderInfo, closeAll func() error) *mirrorsStat
 		preferred = info.Website
 	}
 	sites := append([]string{info.Website}, info.Mirrors...)
-	return &mirrorsState{
-		info: info,
-		list: list.New(2, 1, "website", "websites", sites, func(site string) _list.DefaultItem {
-			kind := "mirror"
-			if site == info.Website {
-				kind = "website"
-			}
-			return mirrorItem{url: site, kind: kind, preferred: site == preferred}
-		}),
+	s := &mirrorsState{
+		info:     info,
 		choose:   util.Bind("prefer", "enter"),
 		closeAll: closeAll,
 	}
+	s.Screen = list.NewScreen(list.New(2, 1, "website", "websites", sites, func(site string) _list.DefaultItem {
+		kind := "mirror"
+		if site == info.Website {
+			kind = "website"
+		}
+		return mirrorItem{url: site, kind: kind, preferred: site == preferred}
+	}), s.keyMap)
+	return s
 }
 
-func (s *mirrorsState) Backable() bool  { return s.list.Unfiltered() }
-func (s *mirrorsState) Inputting() bool { return s.list.Filtering() }
-func (s *mirrorsState) KeyMap() help.KeyMap {
-	return base.CombinedKeyMap(mirrorsKeyMap{s.choose}, s.list.KeyMap)
-}
-func (s *mirrorsState) Title() base.Title             { return base.Title{Text: s.info.Name + " mirrors"} }
-func (s *mirrorsState) Subtitle() string              { return "tried in order when the preferred one is down" }
-func (s *mirrorsState) Status() string                { return s.list.Status() }
-func (s *mirrorsState) Resize(size base.Size) tea.Cmd { return s.list.Resize(size) }
-func (s *mirrorsState) Init(context.Context) tea.Cmd  { return s.list.Init() }
-func (s *mirrorsState) View() string                  { return s.list.View() }
+func (s *mirrorsState) keyMap() help.KeyMap { return util.KeyMap{Short: []key.Binding{s.choose}} }
+func (s *mirrorsState) Title() base.Title   { return base.Title{Text: s.info.Name + " mirrors"} }
+func (s *mirrorsState) Subtitle() string    { return "tried in order when the preferred one is down" }
 
 func (s *mirrorsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && !s.list.Filtering() && key.Matches(msg, s.choose) {
-		i, ok := s.list.SelectedItem().(mirrorItem)
+	if msg, ok := msg.(tea.KeyMsg); ok && !s.List.Filtering() && key.Matches(msg, s.choose) {
+		i, ok := s.List.SelectedItem().(mirrorItem)
 		if !ok {
 			return nil
 		}
@@ -101,10 +94,5 @@ func (s *mirrorsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			base.Notify(fmt.Sprintf("%s prefers %s", s.info.Name, i.url)),
 		)
 	}
-	return s.list.Update(msg)
+	return s.List.Update(msg)
 }
-
-type mirrorsKeyMap struct{ choose key.Binding }
-
-func (k mirrorsKeyMap) ShortHelp() []key.Binding  { return []key.Binding{k.choose} }
-func (k mirrorsKeyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
