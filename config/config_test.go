@@ -372,3 +372,25 @@ func TestKitsuKeys(t *testing.T) {
 		t.Error("syncs to a disabled kitsu")
 	}
 }
+
+func TestKindsAndValues(t *testing.T) {
+	for key, want := range map[string]Kind{
+		Download.Metadata.Strict.Key: KindBool,
+		Providers.Parallelism.Key:    KindInt,
+		Providers.Mirrors.Key:        KindMap,
+		Download.Path.Key:            KindString,
+	} {
+		if got := KindOf(key); got != want {
+			t.Errorf("%s: kind %d, want %d", key, got, want)
+		}
+	}
+	if got := Values(Icons.Key); len(got) != 2 {
+		t.Errorf("icons values %v", got)
+	}
+	if got := Values(Providers.MangaPlus.Quality.Key); len(got) != 3 {
+		t.Errorf("quality values %v", got)
+	}
+	if got := Values(Download.Path.Key); got != nil {
+		t.Errorf("path values %v", got)
+	}
+}

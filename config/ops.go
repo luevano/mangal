@@ -89,6 +89,41 @@ func Description(key string) (string, error) {
 	return f.description(), nil
 }
 
+// Kind is the type of a key's value in the file.
+type Kind int
+
+const (
+	KindString Kind = iota
+	KindBool
+	KindInt
+	// KindMap is a table of strings
+	KindMap
+)
+
+// KindOf the key, KindString for unknown keys.
+func KindOf(key string) Kind {
+	if f, ok := fields[key]; ok {
+		return f.kind()
+	}
+	return KindString
+}
+
+// Values are the accepted values of an enum key, nil for the others.
+func Values(key string) []string {
+	if f, ok := fields[key]; ok {
+		return f.values()
+	}
+	return nil
+}
+
+// EnvVar is the environment variable of the key, set if it has a value from it (which
+// wins over the file).
+func EnvVar(key string) (name string, set bool) {
+	name = envName(key)
+	_, set = os.LookupEnv(name)
+	return name, set
+}
+
 // IsSecret is true for keys that hold secrets (tokens, webhooks).
 func IsSecret(key string) bool {
 	f, ok := fields[key]

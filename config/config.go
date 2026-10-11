@@ -113,6 +113,7 @@ func enumEntry[T fmt.Stringer](key string, def T, description string, parse func
 		Key:         key,
 		Default:     def,
 		Description: fmt.Sprintf("%s One of: %s.", description, strings.Join(values, ", ")),
+		Values:      values,
 		Unmarshal: func(s string) (T, error) {
 			v, err := parse(s)
 			if err != nil {
@@ -129,6 +130,7 @@ func oneOfEntry(key, def, description string, values ...string) *entry[string, s
 		Key:         key,
 		Default:     def,
 		Description: description,
+		Values:      values,
 		Validate: func(s string) error {
 			if !slices.Contains(values, s) {
 				return fmt.Errorf("%q isn't one of %s", s, strings.Join(values, ", "))

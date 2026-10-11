@@ -16,6 +16,8 @@ type field interface {
 	description() string
 	secret() bool
 	isMap() bool
+	kind() Kind
+	values() []string
 	defaultRaw() any
 	// toRaw converts a value (raw, typed or a string) to the raw value stored in the file,
 	// and validates it.
@@ -29,7 +31,9 @@ type entry[Raw, Value any] struct {
 	Description string
 	Default     Value
 	// Secret values aren't given to templates (getConfig).
-	Secret    bool
+	Secret bool
+	// Values are the only accepted values, for enums.
+	Values    []string
 	Unmarshal func(Raw) (Value, error)
 	Marshal   func(Value) (Raw, error)
 	Validate  func(Value) error
@@ -93,6 +97,21 @@ func (e *entry[Raw, Value]) toRaw(a any) (any, error) {
 
 func (e *entry[Raw, Value]) description() string { return e.Description }
 func (e *entry[Raw, Value]) secret() bool        { return e.Secret }
+
+func (e *entry[Raw, Value]) values() []string { return e.Values }
+
+func (e *entry[Raw, Value]) kind() Kind {
+	switch any(*new(Raw)).(type) {
+	case bool:
+		return KindBool
+	case int64:
+		return KindInt
+	case map[string]any:
+		return KindMap
+	default:
+		return KindString
+	}
+}
 
 func (e *entry[Raw, Value]) isMap() bool {
 	_, ok := any(*new(Raw)).(map[string]any)
