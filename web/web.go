@@ -25,19 +25,7 @@ type Args struct {
 // Run serves until the context is cancelled (ctrl+c), which also cancels the requests in
 // flight. Messages for the user go to out.
 func Run(ctx context.Context, args Args, out io.Writer) error {
-	loaders, problems, err := manager.Load()
-	if err != nil {
-		return err
-	}
-	for _, p := range problems {
-		fmt.Fprintf(out, "warning: skipped %s\n", p)
-	}
-
-	handler, err := newHandler(&Server{
-		loaders:    loaders,
-		images:     newImageCache(imageCacheSize),
-		httpClient: loader.HTTPClient(),
-	})
+	handler, err := Handler(out)
 	if err != nil {
 		return err
 	}
@@ -79,6 +67,29 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+// Handler is the web UI with its API under /api, as Run serves it (`mangal serve --web`
+// mounts it). Providers that can't be loaded are told to out.
+func Handler(out io.Writer) (http.Handler, error) {
+	loaders, problems, err := manager.Load()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range problems {
+		fmt.Fprintf(out, "warning: skipped %s\n", p)
+	}
+	return newHandler(&Server{
+		loaders:    loaders,
+		images:     newImageCache(imageCacheSize),
+		httpClient: loader.HTTPClient(),
+	})
+}
+
+// CheckHost refuses requests for another host when serving on a loopback address (see
+// checkHost).
+func CheckHost(addr net.Addr, next http.Handler) http.Handler {
+	return checkHost(addr, next)
 }
 
 // checkHost refuses requests for another host when serving on a loopback address, so a
