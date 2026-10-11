@@ -30,6 +30,8 @@ var _ base.State = (*state)(nil)
 type state struct {
 	// providers is kept, it's shown again with its loaded marks
 	providers base.State
+	// shown again: tui.skip_home only applies at the start
+	restored bool
 
 	confirm,
 	library,
@@ -40,6 +42,8 @@ type state struct {
 // loadedMsg are the providers, with what to tell about them.
 type loadedMsg struct {
 	providers base.State
+	// shown again: tui.skip_home only applies at the start
+	restored bool
 	notices   []string
 }
 
@@ -64,6 +68,10 @@ func (s *state) KeyMap() help.KeyMap {
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
+	return s.load(ctx)
+}
+
+func (s *state) load(ctx context.Context) tea.Cmd {
 	return base.Load(ctx, "Loading providers", func(context.Context) (loadedMsg, error) {
 		loaders, problems, err := manager.Load()
 		if err != nil {
@@ -92,10 +100,16 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if len(msg.notices) != 0 {
 			return base.Viewport("Notice", strings.Join(msg.notices, "\n\n"), color.Warning)
 		}
-		if config.TUI.SkipHome.Get() {
+		if config.TUI.SkipHome.Get() && !s.restored {
 			return func() tea.Msg { return s.providers }
 		}
 		return base.Notify("Providers loaded")
+	case base.RestoredMsg:
+		s.restored = true
+		// left before they loaded
+		if s.providers == nil {
+			return s.load(ctx)
+		}
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, s.confirm):
