@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/luevano/mangal/v5/tui/base"
 	anilistViewer "github.com/luevano/mangal/v5/tui/model/anilist"
 	"github.com/spf13/cobra"
 )
@@ -15,7 +15,6 @@ var anilistCmd = &cobra.Command{
 	Short: "Log in to Anilist",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		_, err := tea.NewProgram(anilistViewer.New(cmd.Context(), true)).Run()
-		return err
+		return base.RunStandalone(cmd.Context(), anilistViewer.New())
 	},
 }

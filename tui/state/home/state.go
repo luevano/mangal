@@ -14,7 +14,7 @@ import (
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
-	"github.com/luevano/mangal/v5/tui/state/accounts"
+	"github.com/luevano/mangal/v5/tui/model/accounts"
 	"github.com/luevano/mangal/v5/tui/state/library"
 	"github.com/luevano/mangal/v5/tui/state/migrate"
 	"github.com/luevano/mangal/v5/tui/state/providers"
@@ -113,7 +113,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			}
 		case key.Matches(msg, s.keyMap.accounts):
 			return func() tea.Msg {
-				return accounts.New(ctx)
+				return accounts.New(false)
 			}
 		case key.Matches(msg, s.keyMap.migrate):
 			return func() tea.Msg {
