@@ -211,7 +211,11 @@ func (s *state) openCmd(ctx context.Context, i *item) tea.Cmd {
 	searchMeta := config.Download.Metadata.Search.Get() && !hasAnilist(manga.Metadata())
 	// the config isn't read from the background (viper isn't safe for it)
 	expandAll, expandSingle := config.TUI.ExpandAllVolumes.Get(), config.TUI.ExpandSingleVolume.Get()
-	return base.Load(ctx, fmt.Sprintf("Searching volumes for %q", manga), func(ctx context.Context) (openedMsg, error) {
+	label := fmt.Sprintf("Searching volumes for %q", manga)
+	if searchMeta {
+		label = fmt.Sprintf("Searching metadata and volumes for %q", manga)
+	}
+	return base.Load(ctx, label, func(ctx context.Context) (openedMsg, error) {
 		msg := openedMsg{item: i}
 		if searchMeta {
 			msg.meta, msg.notice = s.searchMetadata(ctx, manga)
