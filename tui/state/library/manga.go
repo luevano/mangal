@@ -53,9 +53,10 @@ type mangaState struct {
 	files   library.Files
 	manga   storage.Manga
 	confirm *confirm.Dialog
-	// watches are the manga's, for the header
-	watches []watch.Watch
-	size    base.Size
+	// watches and bindings are the manga's, for the header
+	watches  []watch.Watch
+	bindings []storage.Binding
+	size     base.Size
 
 	open, scan, delete, watch key.Binding
 }
@@ -63,6 +64,8 @@ type mangaState struct {
 type downloadsMsg []_list.Item
 
 type mangaWatchesMsg []watch.Watch
+
+type mangaBindingsMsg []storage.Binding
 
 // mangaScannedMsg is the result of a scan, and the manga after it.
 type mangaScannedMsg struct {
@@ -94,13 +97,61 @@ func (s *mangaState) watchesCmd(ctx context.Context) tea.Cmd {
 	return base.Load(ctx, "", watches.Watched, func(set watches.Set) tea.Msg { return mangaWatchesMsg(set.ForLibrary(manga)) })
 }
 
-// header is the manga's watch state, empty when not watched.
+// bindingsCmd loads the manga's metadata bindings.
+func (s *mangaState) bindingsCmd(ctx context.Context) tea.Cmd {
+	bindings, id := storage.Bindings{DB: s.files.Library.DB}, s.manga.ID
+	return base.Load(ctx, "", func(context.Context) (mangaBindingsMsg, error) {
+		return bindings.OfLibraryManga(id)
+	}, func(b mangaBindingsMsg) tea.Msg { return b })
+}
+
+// header is the manga's watch state and metadata bindings, empty when it has neither.
 func (s *mangaState) header() string {
-	lines := make([]string, len(s.watches))
-	for i, w := range s.watches {
-		lines[i] = watches.Describe(w)
+	var lines []string
+	for _, w := range s.watches {
+		lines = append(lines, watches.Describe(w))
+	}
+	if b := formatBindings(s.bindings); b != "" {
+		lines = append(lines, "metadata: "+b)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// formatBindings are the bindings of a library manga's sources as "al 132029 (default),
+// mal 30230", each source's prefixed by its provider when there are several, and the
+// .libmangal.json ids none has.
+func formatBindings(bindings []storage.Binding) string {
+	type group struct {
+		name string
+		list []string
+	}
+	var groups []*group
+	byName := map[string]*group{}
+	for _, b := range bindings {
+		name := b.Provider
+		if name == "" {
+			name = ".libmangal.json"
+		}
+		g, ok := byName[name]
+		if !ok {
+			g = &group{name: name}
+			byName[name] = g
+			groups = append(groups, g)
+		}
+		entry := fmt.Sprintf("%s %s", b.Source, b.ID)
+		if b.Default {
+			entry += " (default)"
+		}
+		g.list = append(g.list, entry)
+	}
+	if len(groups) == 1 && groups[0].name != ".libmangal.json" {
+		return strings.Join(groups[0].list, ", ")
+	}
+	parts := make([]string, len(groups))
+	for i, g := range groups {
+		parts[i] = g.name + ": " + strings.Join(g.list, ", ")
+	}
+	return strings.Join(parts, "; ")
 }
 
 func (s *mangaState) reload(ctx context.Context) tea.Cmd {
@@ -165,7 +216,7 @@ func (s *mangaState) Resize(size base.Size) tea.Cmd {
 }
 
 func (s *mangaState) Init(ctx context.Context) tea.Cmd {
-	return tea.Batch(s.scanCmd(ctx), s.watchesCmd(ctx))
+	return tea.Batch(s.scanCmd(ctx), s.watchesCmd(ctx), s.bindingsCmd(ctx))
 }
 
 func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
@@ -178,9 +229,12 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case mangaWatchesMsg:
 		s.watches = msg
 		return s.Resize(s.size)
+	case mangaBindingsMsg:
+		s.bindings = msg
+		return s.Resize(s.size)
 	case base.RestoredMsg:
-		// e.g. paused on its watch's screen
-		return s.watchesCmd(ctx)
+		// e.g. paused or bound on its watch's screen
+		return tea.Batch(s.watchesCmd(ctx), s.bindingsCmd(ctx))
 	case mangaScannedMsg:
 		return s.onScanned(ctx, msg)
 	case actionMsg:

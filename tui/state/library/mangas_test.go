@@ -89,3 +89,17 @@ func TestMangaWatches(t *testing.T) {
 		t.Error("W on a watched manga isn't its watch")
 	}
 }
+
+func TestFormatBindings(t *testing.T) {
+	one := []storage.Binding{{Provider: "p", MangaID: "1", Source: "al", ID: "132029", Default: true}, {Provider: "p", MangaID: "1", Source: "mal", ID: "30230"}}
+	if got := formatBindings(one); got != "al 132029 (default), mal 30230" {
+		t.Errorf("one source: %q", got)
+	}
+	several := append(one, storage.Binding{Provider: "q", MangaID: "9", Source: "al", ID: "132029", Default: true}, storage.Binding{Source: "kt", ID: "38"})
+	if got := formatBindings(several); got != "p: al 132029 (default), mal 30230; q: al 132029 (default); .libmangal.json: kt 38" {
+		t.Errorf("several: %q", got)
+	}
+	if formatBindings(nil) != "" {
+		t.Error("none")
+	}
+}
