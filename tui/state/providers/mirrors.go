@@ -9,6 +9,7 @@ import (
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
@@ -23,8 +24,6 @@ type mirrorsState struct {
 	list.Screen
 	info   libmangal.ProviderInfo
 	choose key.Binding
-	// closeAll closes the loaded clients, they keep the options they were loaded with
-	closeAll func() error
 }
 
 type mirrorItem struct {
@@ -41,16 +40,15 @@ func (i mirrorItem) Description() string {
 	return i.kind
 }
 
-func newMirrors(info libmangal.ProviderInfo, closeAll func() error) *mirrorsState {
+func newMirrors(info libmangal.ProviderInfo) *mirrorsState {
 	preferred := config.Providers.Mirrors.Get()[info.ID]
 	if preferred == "" {
 		preferred = info.Website
 	}
 	sites := append([]string{info.Website}, info.Mirrors...)
 	s := &mirrorsState{
-		info:     info,
-		choose:   util.Bind("prefer", "enter"),
-		closeAll: closeAll,
+		info:   info,
+		choose: util.Bind("prefer", "enter"),
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "website", "websites", sites, func(site string) _list.DefaultItem {
 		kind := "mirror"
@@ -77,16 +75,18 @@ func (s *mirrorsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			// the default, no need to keep it in the config
 			mirror = ""
 		}
+		// in Update, the providers list reads the config to render
+		if err := config.SetMirror(s.info.ID, mirror); err != nil {
+			return func() tea.Msg { return fmt.Errorf("set the mirror of %s: %w", s.info.Name, err) }
+		}
 		return tea.Sequence(
 			func() tea.Msg {
-				if err := config.SetMirror(s.info.ID, mirror); err != nil {
-					return err
-				}
 				// the choice wins over the mirror that last worked
 				if err := cache.DeleteMirror(s.info.ID); err != nil {
 					return err
 				}
-				if err := s.closeAll(); err != nil {
+				// the loaded clients keep the options they were loaded with
+				if err := client.CloseAll(); err != nil {
 					return err
 				}
 				return base.Back()

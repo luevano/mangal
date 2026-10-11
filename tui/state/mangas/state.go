@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
+	clientanilist "github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -107,7 +108,21 @@ func (s *state) Subtitle() string {
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	return tea.Batch(s.Screen.Init(ctx), s.Search.Focus())
+	return tea.Batch(s.Screen.Init(ctx), s.Search.Focus(), loginCmd(ctx))
+}
+
+// loginCmd logs into Anilist while the user types, for the metadata search. A cancelled
+// login is tried again by the next Anilist request.
+func loginCmd(ctx context.Context) tea.Cmd {
+	return func() tea.Msg {
+		release, ok := base.Track(ctx)
+		if !ok {
+			return nil
+		}
+		defer release()
+		_ = clientanilist.EnsureLogin(ctx)
+		return nil
+	}
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
