@@ -64,7 +64,7 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 // empty (free tier) if none.
 func mangaPlusSecret() string {
 	if secret, err := cache.MangaPlusSecret(); err != nil {
-		log.Log("MangaPlus secret: %s", err)
+		log.Error("MangaPlus secret: %s", err)
 	} else if secret != "" {
 		return secret
 	}
@@ -80,8 +80,7 @@ func mangaPlusSecret() string {
 		if errors.Is(err, fs.ErrNotExist) {
 			msg = fmt.Sprintf("MangaPlus secret file %q doesn't exist, using free tier", path)
 		}
-		log.L.Warn().Msg(msg)
-		log.Log("%s", msg)
+		log.Warn("%s", msg)
 		return ""
 	}
 	return strings.TrimSpace(string(data))
@@ -92,7 +91,7 @@ func mangaPlusSecret() string {
 func mangaPlusFreeSecret() string {
 	secret, err := cache.MangaPlusFreeSecret()
 	if err != nil {
-		log.Log("MangaPlus free device: %s", err)
+		log.Error("MangaPlus free device: %s", err)
 	}
 	if secret != "" {
 		return secret
@@ -107,7 +106,6 @@ func mangaPlusFreeSecret() string {
 func saveMangaPlusFreeSecret(secret string) {
 	if err := cache.SetMangaPlusFreeSecret(secret); err != nil {
 		msg := fmt.Sprintf("couldn't save the MangaPlus free device secret: %s", err)
-		log.L.Warn().Msg(msg)
-		log.Log("%s", msg)
+		log.Warn("%s", msg)
 	}
 }

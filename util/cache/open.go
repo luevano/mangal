@@ -50,17 +50,17 @@ func Notices() []string {
 func Storage() (storage.Storage, error) {
 	openOnce.Do(func() {
 		var cacheDB, dataDB *storage.DB
-		cacheDB, openErr = storage.OpenCache(filepath.Join(path.CacheDir(), storage.FilenameCache))
+		cacheDB, openErr = storage.OpenCache(filepath.Join(path.Cache(), storage.FilenameCache))
 		if openErr != nil {
 			return
 		}
-		dataDB, openErr = storage.OpenData(filepath.Join(path.DataDir(), storage.FilenameData))
+		dataDB, openErr = storage.OpenData(filepath.Join(path.Data(), storage.FilenameData))
 		if openErr != nil {
 			_ = cacheDB.Close()
 			return
 		}
 		st = storage.Storage{Cache: cacheDB, Data: dataDB}
-		if notice := legacy.Import(path.CacheDir(), dataDB); notice != "" {
+		if notice := legacy.Import(path.Cache(), dataDB); notice != "" {
 			notices = append(notices, notice)
 		}
 		if notice := useKeyring(dataDB); notice != "" {
