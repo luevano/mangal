@@ -160,10 +160,14 @@ func (s *mangasState) Title() base.Title {
 }
 
 func (s *mangasState) Status() string {
-	if s.trash != "" {
-		return s.trash + " · " + s.List.Status()
+	status := s.List.Status()
+	switch {
+	case s.trash == "":
+		return status
+	case status == "":
+		return s.trash
 	}
-	return s.List.Status()
+	return s.trash + " · " + status
 }
 
 func (s *mangasState) Resize(size base.Size) tea.Cmd {
