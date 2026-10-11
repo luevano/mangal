@@ -140,6 +140,9 @@ func retry(ctx context.Context, chapter mangadata.Chapter, get getFunc, onWait f
 
 func downloadChapter(ctx context.Context, client *libmangal.Client, chapter mangadata.Chapter, options libmangal.DownloadOptions) (*metadata.DownloadedChapter, error) {
 	down, err := client.DownloadChapterContext(ctx, chapter, options)
+	if err != nil && options.Strict && metadata.Validate(chapter.Volume().Manga().Metadata()) != nil {
+		return nil, fmt.Errorf("no valid metadata, bind an AniList manga (--anilist-id, or the TUI's AniList screen) or set download.metadata.strict = false: %w", err)
+	}
 	if err != nil || options.Directory == path.Temp() {
 		return down, err
 	}
