@@ -295,23 +295,3 @@ func makePrivate(path string) error {
 	}
 	return nil
 }
-
-// ClearCache deletes the cache entries of a provider (or metadata provider) id, or all of
-// them if the id is empty. It returns how many were deleted.
-func ClearCache(cache *DB, id string) (int64, error) {
-	var total int64
-	for _, table := range CacheTables {
-		query, args := `DELETE FROM `+table, []any{}
-		if id != "" {
-			// other's owners are "<id>/<bucket>"
-			query, args = query+` WHERE owner = ? OR owner LIKE ?`, []any{id, id + "/%"}
-		}
-		res, err := cache.Exec(query, args...)
-		if err != nil {
-			return total, fmt.Errorf("clear %s: %w", table, err)
-		}
-		n, _ := res.RowsAffected()
-		total += n
-	}
-	return total, nil
-}

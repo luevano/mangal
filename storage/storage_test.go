@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	mango "github.com/luevano/mangoprovider"
 )
 
 func TestKV(t *testing.T) {
@@ -182,5 +184,26 @@ func TestOpenEscapedPath(t *testing.T) {
 	db.Close()
 	if _, err := os.Stat(filepath.Join(dir, FilenameCache)); err != nil {
 		t.Errorf("not created where asked: %v", err)
+	}
+}
+
+func TestClearCacheProviderRows(t *testing.T) {
+	db, err := OpenCache(filepath.Join(t.TempDir(), FilenameCache))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := Storage{Cache: db}
+	_ = st.Store("mango_a", mango.CacheBucketNameMirrors, StoreOptions{}).Set("mango_a", "https://a")
+	_ = st.AccountsStore(0).Set("mango_a", 1)
+	_ = st.Store("mango_a", mango.CacheBucketNameChapters, StoreOptions{}).Set("x", 1)
+	// _ isn't a wildcard
+	_ = st.Store("mangoXa", mango.CacheBucketNameMirrors, StoreOptions{}).Set("mangoXa", "https://b")
+	_ = st.AccountsStore(0).Set("mangoXa", 1)
+
+	if n, err := st.ClearCache("mango_a"); err != nil || n != 3 {
+		t.Errorf("cleared %d, %v, want the mirror, account and chapters", n, err)
+	}
+	if n, _ := ClearCache(db, ""); n != 2 {
+		t.Errorf("%d left, want the other provider's 2", n)
 	}
 }

@@ -147,3 +147,49 @@ func TestMovedNonASCII(t *testing.T) {
 		}
 	}
 }
+
+func TestMigrateOldIDs(t *testing.T) {
+	cache, data := openBoth(t)
+	st := Storage{Cache: cache, Data: data}
+	library := st.Library()
+	loaders := []libmangal.ProviderLoader{loader{weebCentral}}
+
+	// the same manga under both ids, and one only under the old id
+	for _, src := range []struct{ provider, id, dir string }{
+		{"mango-mangasee", "berserk", "Berserk"},
+		{"mango-weebcentral", "berserk", "Berserk"},
+		{"mango-mangasee", "vagabond", "Vagabond"},
+	} {
+		err := library.RecordDownload("/lib", src.dir, Download{Path: filepath.Join("/lib", src.dir, src.provider+".cbz"), Provider: src.provider, MangaID: src.id, MangaTitle: src.dir, Chapter: 1, Format: "CBZ"})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	opts := StoreOptions{TTL: time.Hour, MirrorTTL: time.Hour}
+	_ = st.Store("mango-mangasee", "chapters", opts).Set("x", 1)
+	_ = st.Store("mango-mangasee", "mirrors", opts).Set("mango-mangasee", "https://mangasee")
+	_ = st.AccountsStore(time.Hour).Set("mango-mangasee", 1)
+	_ = st.Store("mango-weebcentral", "chapters", opts).Set("x", 1)
+
+	oldIDs, err := st.FindOldIDs(loaders)
+	if err != nil || len(oldIDs) != 1 {
+		t.Fatalf("got %+v, %v", oldIDs, err)
+	}
+	if got := oldIDs[0]; got.Old != "mango-mangasee" || got.New != "mango-weebcentral" || got.Sources != 2 || got.Downloads != 2 || got.Cache != 3 {
+		t.Errorf("got %+v", got)
+	}
+	if err := st.MigrateOldIDs(oldIDs); err != nil {
+		t.Fatal(err)
+	}
+	if oldIDs, err := st.FindOldIDs(loaders); err != nil || len(oldIDs) != 0 {
+		t.Errorf("still %+v, %v", oldIDs, err)
+	}
+	var n int
+	_ = data.QueryRow(`SELECT count(*) FROM library_sources WHERE provider = 'mango-weebcentral'`).Scan(&n)
+	if n != 2 {
+		t.Errorf("%d sources under the new id, want 2", n)
+	}
+	if n, _ := countProviderRows(cache, "mango-weebcentral"); n != 1 {
+		t.Errorf("%d cache entries of the new id, want its own 1 kept", n)
+	}
+}
