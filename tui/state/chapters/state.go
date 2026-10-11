@@ -199,6 +199,12 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return s.download(ctx, msg)
 	case downloadedMsg:
 		return s.onDownloaded(ctx, msg)
+	case readMsg:
+		refresh := s.refresh(ctx, false)
+		if msg.err != nil {
+			return tea.Batch(refresh, func() tea.Msg { return msg.err })
+		}
+		return refresh
 	case waitMsg:
 		return tea.Batch(base.NotifyWithDuration(fmt.Sprintf("Rate limited, trying again in %s (#%d)", msg.wait, msg.attempt), msg.wait), msg.next)
 	case format.BackMsg:

@@ -198,11 +198,15 @@ func (s *state) onDownloaded(ctx context.Context, msg downloadedMsg) tea.Cmd {
 	return tea.Batch(refresh, base.Notify(fmt.Sprintf("Downloaded %q", chapter)))
 }
 
+// readMsg is a chapter opened for reading, err is from opening or syncing it.
+type readMsg struct{ err error }
+
 func (s *state) readCmd(ctx context.Context, path string, chapter mangadata.Chapter) tea.Cmd {
-	c, options := s.client, config.ReadOptions()
-	return base.Load(ctx, fmt.Sprintf("Opening %q for reading", chapter), func(ctx context.Context) (struct{}, error) {
-		return struct{}{}, c.ReadChapterContext(ctx, path, chapter, options)
-	}, nil)
+	c := s.client
+	return base.Load(ctx, fmt.Sprintf("Opening %q for reading", chapter), func(ctx context.Context) (readMsg, error) {
+		// a failed sync still opened (and recorded) it, the marks refresh either way
+		return readMsg{err: client.ReadChapter(ctx, c, path, chapter)}, nil
+	}, func(msg readMsg) tea.Msg { return msg })
 }
 
 func openURLCmd(chapter mangadata.Chapter) tea.Cmd {

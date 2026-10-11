@@ -34,7 +34,6 @@ func DownloadOptions() libmangal.DownloadOptions {
 
 func ReadOptions() libmangal.ReadOptions {
 	o := libmangal.DefaultReadOptions()
-	o.SaveHistory = Read.History.Local.Get()
 	o.SaveAnilist = Read.History.Anilist.Get()
 	return o
 }
