@@ -96,6 +96,11 @@ func (s Storage) History() History {
 	return History{DB: s.Data}
 }
 
+// Watches are the watched mangas and their checks in the data database.
+func (s Storage) Watches() Watches {
+	return Watches{DB: s.Data}
+}
+
 // ClearCache deletes the cache entries of a provider (or metadata provider) id, or all of
 // them if the id is empty. It returns how many were deleted.
 func (s Storage) ClearCache(id string) (int64, error) {
