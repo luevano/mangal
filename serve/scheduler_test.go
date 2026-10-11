@@ -443,6 +443,8 @@ func TestSchedulerNoCatchUp(t *testing.T) {
 	}
 	f.now = at(12, 0, 0)
 	cycle(s)
+	// the providers run in parallel, in any order
+	slices.Sort(f.checks)
 	if want := []string{"12:00:00 [1] scheduled", "12:00:00 [2] scheduled"}; !slices.Equal(f.checks, want) {
 		t.Errorf("checks %v, want %v", f.checks, want)
 	}
