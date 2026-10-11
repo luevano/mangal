@@ -91,7 +91,7 @@ type listState struct {
 }
 
 type listKeyMap struct {
-	details, check, checkDue, pause, delete, edit, gaps, refresh, runs key.Binding
+	details, check, checkDue, pause, pauseProvider, delete, edit, gaps, refresh, runs key.Binding
 }
 
 type loadedMsg struct {
@@ -124,15 +124,16 @@ func newListState(connect connector) *listState {
 		backoff: config.Watch.Backoff.Get(),
 		now:     time.Now,
 		keys: listKeyMap{
-			details:  util.Bind("details", "enter"),
-			check:    util.Bind("check now", "c"),
-			checkDue: util.Bind("check due", "C"),
-			pause:    util.Bind("pause/resume", "p"),
-			delete:   util.Bind("delete", "d"),
-			edit:     util.Bind("edit", "e"),
-			gaps:     util.Bind("check gaps", "g"),
-			refresh:  util.Bind("refresh", "r"),
-			runs:     util.Bind("runs", "h"),
+			details:       util.Bind("details", "enter"),
+			check:         util.Bind("check now", "c"),
+			checkDue:      util.Bind("check due", "C"),
+			pause:         util.Bind("pause/resume", "p"),
+			pauseProvider: util.Bind("pause/resume its provider", "P"),
+			delete:        util.Bind("delete", "d"),
+			edit:          util.Bind("edit", "e"),
+			gaps:          util.Bind("check gaps", "g"),
+			refresh:       util.Bind("refresh", "r"),
+			runs:          util.Bind("runs", "h"),
 		},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "watch", "watches", []*item{}, func(i *item) _list.DefaultItem { return i }), s.keyMap)
@@ -150,7 +151,7 @@ func (s *listState) KeyMap() help.KeyMap {
 func (s *listState) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.details, k.check, k.pause, k.edit, k.runs}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{short, {k.checkDue, k.gaps, k.delete, k.refresh}}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{short, {k.checkDue, k.gaps, k.pauseProvider, k.delete, k.refresh}}}
 }
 
 func (s *listState) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
@@ -306,7 +307,7 @@ func (s *listState) onLoaded(msg loadedMsg) tea.Cmd {
 
 func (s *listState) updateKeys() {
 	enable := len(s.List.Items()) != 0
-	for _, k := range []*key.Binding{&s.keys.details, &s.keys.check, &s.keys.checkDue, &s.keys.pause, &s.keys.delete, &s.keys.edit, &s.keys.gaps} {
+	for _, k := range []*key.Binding{&s.keys.details, &s.keys.check, &s.keys.checkDue, &s.keys.pause, &s.keys.pauseProvider, &s.keys.delete, &s.keys.edit, &s.keys.gaps} {
 		k.SetEnabled(enable)
 	}
 }
@@ -348,6 +349,8 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		return s.check(ctx, []int64{w.ID}, watch.CheckOptions{Gaps: true, Kind: watch.KindGaps}, w.Title+" (gaps)"), true
 	case key.Matches(msg, s.keys.pause):
 		return pauseCmd(m, w), true
+	case key.Matches(msg, s.keys.pauseProvider):
+		return pauseProviderCmd(m, w), true
 	case key.Matches(msg, s.keys.delete):
 		message := fmt.Sprintf("Stop watching %q? The history of its checks stays, the downloads too.", w.Title)
 		s.confirm.AskDelete("Delete", message, s.View(), func() tea.Msg {
@@ -370,6 +373,35 @@ func pauseCmd(m watch.Manager, w watch.Watch) tea.Cmd {
 		return actionMsg{label: label, do: func(ctx context.Context) (string, error) {
 			_, err := m.SetEnabled(ctx, w.ID, !w.Enabled)
 			return done, err
+		}}
+	}
+}
+
+// pauseProviderCmd pauses every watch of w's provider, or resumes them when w is paused
+// (e.g. while the site is broken).
+func pauseProviderCmd(m watch.Manager, w watch.Watch) tea.Cmd {
+	resume := !w.Enabled
+	label, done := "Pausing the watches of "+w.Provider, "paused the watches of "+w.Provider
+	if resume {
+		label, done = "Resuming the watches of "+w.Provider, "resumed the watches of "+w.Provider
+	}
+	return func() tea.Msg {
+		return actionMsg{label: label, do: func(ctx context.Context) (string, error) {
+			all, err := m.List(ctx)
+			if err != nil {
+				return "", err
+			}
+			n := 0
+			for _, other := range all {
+				if other.Provider != w.Provider || other.Enabled == resume {
+					continue
+				}
+				if _, err := m.SetEnabled(ctx, other.ID, resume); err != nil {
+					return "", err
+				}
+				n++
+			}
+			return fmt.Sprintf("%s (%d)", done, n), nil
 		}}
 	}
 }

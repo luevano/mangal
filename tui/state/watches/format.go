@@ -53,6 +53,8 @@ func nextCheck(w watch.Watch, backoff int, now time.Time) string {
 	switch {
 	case !w.Enabled:
 		return "paused"
+	case w.ProviderMissing:
+		return "provider missing"
 	case !w.NextCheck.After(now):
 		return "due"
 	}
