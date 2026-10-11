@@ -1,12 +1,23 @@
+// Package path has mangal's directories. The getters only build the paths, Ensure creates
+// them.
 package path
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
+	"sync"
 
 	"github.com/adrg/xdg"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/meta"
+	"github.com/luevano/mangal/v5/util/afs"
 )
 
 type PathName string
@@ -23,14 +34,9 @@ const (
 
 type Paths map[PathName]string
 
+// Keys are the path names, sorted.
 func (p Paths) Keys() []PathName {
-	keys := make([]PathName, len(p))
-	i := 0
-	for k := range p {
-		keys[i] = k
-		i++
-	}
-	return keys
+	return slices.Sorted(maps.Keys(p))
 }
 
 func (p Paths) Get(name PathName) string {
@@ -41,57 +47,142 @@ func (p Paths) GetAsPaths(name PathName) Paths {
 	return Paths{name: p.Get(name)}
 }
 
-func AllPaths() Paths {
+// All returns every path, none is created.
+func All() Paths {
 	return Paths{
-		PathCache:     CacheDir(),
-		PathConfig:    ConfigDir(),
-		PathDownloads: DownloadsDir(),
-		PathTemp:      TempDir(),
-		PathProviders: ProvidersDir(),
-		PathLog:       LogDir(),
-		PathData:      DataDir(),
+		PathCache:     Cache(),
+		PathConfig:    Config(),
+		PathDownloads: Downloads(),
+		PathTemp:      Temp(),
+		PathProviders: Providers(),
+		PathLog:       Logs(),
+		PathData:      Data(),
 	}
 }
 
-func CacheDir() string {
-	dir := config.Cache.Path.Get()
-	createDirIfAbsent(dir)
+// Cache is where the cache database is (cache.path).
+func Cache() string {
+	return config.Cache.Path.Get()
+}
+
+// Data is where mangal keeps data that isn't cache (e.g. its database).
+func Data() string {
+	return filepath.Join(xdg.DataHome, meta.AppName)
+}
+
+// Config is the directory of the config file.
+func Config() string {
+	return filepath.Dir(config.Path)
+}
+
+// Downloads is download.path.
+func Downloads() string {
+	return config.Download.Path.Get()
+}
+
+// Providers is where the Lua providers are (providers.path).
+func Providers() string {
+	return config.Providers.Path.Get()
+}
+
+// Logs is where the log files are.
+func Logs() string {
+	return filepath.Join(xdg.StateHome, meta.AppName, "logs")
+}
+
+// Temp is the user's temporary directory of mangal (e.g. chapters downloaded for reading),
+// create it with EnsureTemp.
+func Temp() string {
+	name := meta.AppName
+	// os.TempDir is shared by every user on unix
+	if uid := os.Getuid(); uid != -1 {
+		name += "-" + strconv.Itoa(uid)
+	}
+	return filepath.Join(os.TempDir(), name)
+}
+
+// Ensure creates the directory if it doesn't exist (with download.mode_dir_decimal) and
+// returns it.
+func Ensure(dir string) (string, error) {
+	if err := afs.Afero.MkdirAll(dir, config.Download.ModeDir.Get()); err != nil {
+		return dir, fmt.Errorf("create directory: %w", err)
+	}
+	return dir, nil
+}
+
+// EnsureTemp creates Temp, only accessible by the user, and returns it. It errors if it
+// exists but isn't a directory only the user can write to (e.g. another user made it).
+func EnsureTemp() (string, error) {
+	dir := Temp()
+	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+		return dir, fmt.Errorf("create temp directory: %w", err)
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return dir, fmt.Errorf("create temp directory: %w", err)
+	}
+	if !info.IsDir() || info.Mode().Perm()&0o022 != 0 {
+		return dir, fmt.Errorf("temp directory %q isn't a directory only you can write to (%s), remove it", dir, info.Mode())
+	}
+	return dir, nil
+}
+
+// ensure is for the deprecated getters, which used to create the dirs.
+func ensure(dir string, err error) string {
+	if err != nil {
+		log.Warn("%s: %s", dir, err)
+	}
 	return dir
 }
 
-// DataDir is where mangal keeps data that isn't cache (e.g. its database).
-func DataDir() string {
-	dir := filepath.Join(xdg.DataHome, meta.AppName)
-	createDirIfAbsent(dir)
-	return dir
-}
+// fallbackTemp is a private temp dir for this run, if Temp can't be used.
+var fallbackTemp = sync.OnceValues(func() (string, error) {
+	return os.MkdirTemp("", meta.AppName+"-")
+})
 
-func ConfigDir() string {
-	var dir string = filepath.Dir(config.Path)
-	createDirIfAbsent(dir)
-	return dir
-}
+// CacheDir returns and creates Cache.
+//
+// Deprecated: use Cache and Ensure.
+func CacheDir() string { return ensure(Ensure(Cache())) }
 
-func DownloadsDir() string {
-	dir := config.Download.Path.Get()
-	createDirIfAbsent(dir)
-	return dir
-}
+// DataDir returns and creates Data.
+//
+// Deprecated: use Data and Ensure.
+func DataDir() string { return ensure(Ensure(Data())) }
 
+// ConfigDir returns and creates Config.
+//
+// Deprecated: use Config and Ensure.
+func ConfigDir() string { return ensure(Ensure(Config())) }
+
+// DownloadsDir returns and creates Downloads.
+//
+// Deprecated: use Downloads and Ensure.
+func DownloadsDir() string { return ensure(Ensure(Downloads())) }
+
+// ProvidersDir returns and creates Providers.
+//
+// Deprecated: use Providers and Ensure.
+func ProvidersDir() string { return ensure(Ensure(Providers())) }
+
+// TempDir returns and creates Temp.
+//
+// Deprecated: use EnsureTemp.
 func TempDir() string {
-	dir := filepath.Join(os.TempDir(), meta.AppName)
-	createDirIfAbsent(dir)
-	return dir
+	dir, err := EnsureTemp()
+	if err == nil {
+		return dir
+	}
+	log.Warn("%s", err)
+	return ensure(fallbackTemp())
 }
 
-func ProvidersDir() string {
-	dir := config.Providers.Path.Get()
-	createDirIfAbsent(dir)
-	return dir
-}
+// LogDir returns Logs, the log package creates it.
+//
+// Deprecated: use Logs.
+func LogDir() string { return Logs() }
 
-func LogDir() string {
-	dir := filepath.Join(TempDir(), "logs")
-	createDirIfAbsent(dir)
-	return dir
-}
+// AllPaths returns every path.
+//
+// Deprecated: use All.
+func AllPaths() Paths { return All() }
