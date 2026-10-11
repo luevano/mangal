@@ -33,17 +33,20 @@ timer), "mangal serve" on a schedule (watch.interval).`,
 	Args: cobra.NoArgs,
 }
 
-// newWatchService is the watch service with the Discord notifications.
-func newWatchService(cmd *cobra.Command) (*watch.Service, error) {
-	svc, err := watch.New(notify.Watches())
+// newWatchManager is the running `mangal serve` of this config, else the local watch
+// service with the Discord notifications.
+func newWatchManager(cmd *cobra.Command) (watch.Manager, error) {
+	m, err := watch.Connect(cmd.Context(), notify.Watches())
 	if err != nil {
 		return nil, err
 	}
-	svc.OnError = func(err error) {
-		log.Warn("%s", err)
-		cmd.PrintErrf("warning: %s\n", err)
+	if svc, ok := m.(*watch.Service); ok {
+		svc.OnError = func(err error) {
+			log.Warn("%s", err)
+			cmd.PrintErrf("warning: %s\n", err)
+		}
 	}
-	return svc, nil
+	return m, nil
 }
 
 // parseID is a watch id argument.
@@ -135,7 +138,7 @@ ones after --from.`,
 	Args:              cobra.MinimumNArgs(2),
 	ValidArgsFunction: completionProviderIDs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		svc, err := newWatchService(cmd)
+		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
 		}
@@ -176,7 +179,7 @@ var watchLsCmd = &cobra.Command{
 	Short:   "List the watched mangas",
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		svc, err := newWatchService(cmd)
+		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
 		}
@@ -246,7 +249,7 @@ var watchRmCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		svc, err := newWatchService(cmd)
+		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
 		}
@@ -282,7 +285,7 @@ func pauseCmd(resume bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			svc, err := newWatchService(cmd)
+			svc, err := newWatchManager(cmd)
 			if err != nil {
 				return err
 			}
@@ -340,7 +343,7 @@ var watchSetCmd = &cobra.Command{
 		if opts == (watch.UpdateOptions{}) {
 			return errors.New("nothing to change, see --help")
 		}
-		svc, err := newWatchService(cmd)
+		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
 		}
@@ -378,7 +381,7 @@ sent to Discord as configured (watch.notify), and make the exit code 1.`,
 		if err != nil {
 			return err
 		}
-		svc, err := newWatchService(cmd)
+		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
 		}
@@ -394,12 +397,19 @@ sent to Discord as configured (watch.notify), and make the exit code 1.`,
 		if err != nil {
 			return err
 		}
-		if watchCheckArgs.JSON {
+		_, remote := svc.(*watch.Remote)
+		switch {
+		case watchCheckArgs.JSON:
 			if err := printJSON(cmd.OutOrStdout(), report); err != nil {
 				return err
 			}
-		} else if len(report.Results) == 0 {
+		case len(report.Results) == 0:
 			cmd.Println("no watches to check")
+		case remote:
+			// the server doesn't tell the progress, only what it recorded
+			for _, r := range report.Results {
+				printResult(cmd, r, watchCheckArgs.DryRun)
+			}
 		}
 		if err := cmd.Context().Err(); err != nil {
 			return err
@@ -411,46 +421,13 @@ sent to Discord as configured (watch.notify), and make the exit code 1.`,
 	},
 }
 
-// checkLine is the line of a watch's check, like the old batch script's:
-// "Checking for new chapters [65-] for X from mango-mangaplus..."
-func checkLine(w storage.Watch, r watch.Result) string {
-	what := "Downloading all chapters"
-	if r.From != nil {
-		what = fmt.Sprintf("Checking for new chapters [%s-]", stringutil.FormatFloa32(*r.From))
-	}
-	if r.Gaps {
-		what += " and gaps"
-	}
-	return fmt.Sprintf("%s for %s from %s...", what, w.Title, w.Provider)
-}
-
-// checkOutcome is what follows the check line.
-func checkOutcome(r watch.Result, dryRun bool) string {
-	n := len(r.Chapters)
-	var outcome string
-	switch {
-	case r.Status == storage.StatusSkipped:
-		return "skipped (" + r.Error + ")"
-	case n == 0 && r.Error != "":
-		return "ERROR " + r.Error
-	case n == 0:
-		outcome = "no new chapters"
-	case dryRun:
-		numbers := make([]string, n)
-		for i, ch := range r.Chapters {
-			numbers[i] = stringutil.FormatFloa32(ch.Number)
+func printResult(cmd *cobra.Command, r watch.Result, dryRun bool) {
+	cmd.Println(watch.Describe(r, dryRun))
+	if !dryRun {
+		for _, ch := range r.Chapters {
+			cmd.Printf("  %s\n", ch.Path)
 		}
-		outcome = fmt.Sprintf("would download %d (%s)", n, strings.Join(numbers, ", "))
-	default:
-		outcome = fmt.Sprintf("downloaded %d (%s → %s)", n, formatLast(r.From), formatLast(r.Newest()))
 	}
-	if r.Unavailable > 0 {
-		outcome += fmt.Sprintf(", %d unavailable", r.Unavailable)
-	}
-	if r.Error != "" {
-		outcome += ", ERROR " + r.Error
-	}
-	return outcome
 }
 
 // printCheckEvent prints each watch once checked (providers run in parallel, the lines
@@ -463,12 +440,7 @@ func printCheckEvent(cmd *cobra.Command, e watch.Event, dryRun bool) {
 		}
 	case watch.EventDone:
 		r := e.Result
-		cmd.Printf("%s %s\n", checkLine(e.Watch, *r), checkOutcome(*r, dryRun))
-		if !dryRun {
-			for _, ch := range r.Chapters {
-				cmd.Printf("  %s\n", ch.Path)
-			}
-		}
+		printResult(cmd, *r, dryRun)
 	}
 }
 
@@ -498,7 +470,7 @@ var watchLogCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		svc, err := newWatchService(cmd)
+		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
 		}
@@ -579,7 +551,7 @@ var watchStaleCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		svc, err := newWatchService(cmd)
+		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
 		}

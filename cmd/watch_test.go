@@ -4,9 +4,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/luevano/mangal/v5/client/watch"
-	"github.com/luevano/mangal/v5/storage"
 )
 
 func TestParseSince(t *testing.T) {
@@ -30,33 +27,6 @@ func TestParseIDs(t *testing.T) {
 		if _, err := parseIDs([]string{bad}); err == nil {
 			t.Errorf("%q accepted", bad)
 		}
-	}
-}
-
-func f32(f float32) *float32 { return &f }
-
-func TestCheckLines(t *testing.T) {
-	w := storage.Watch{Title: "Dandadan", Provider: "mango-mangaplus"}
-	r := watch.Result{WatchRun: storage.WatchRun{From: f32(65), Status: storage.StatusNew,
-		Chapters: []storage.RunChapter{{Number: 65.5}, {Number: 66}, {Number: 70}}}}
-	line := checkLine(w, r) + " " + checkOutcome(r, false)
-	if line != "Checking for new chapters [65-] for Dandadan from mango-mangaplus... downloaded 3 (65 → 70)" {
-		t.Errorf("got %q", line)
-	}
-	if got := checkOutcome(r, true); got != "would download 3 (65.5, 66, 70)" {
-		t.Errorf("dry run %q", got)
-	}
-	r.From, r.Gaps = nil, true
-	if got := checkLine(w, r); !strings.HasPrefix(got, "Downloading all chapters and gaps for Dandadan") {
-		t.Errorf("first %q", got)
-	}
-	none := watch.Result{WatchRun: storage.WatchRun{Status: storage.StatusNone}, Unavailable: 2}
-	if got := checkOutcome(none, false); got != "no new chapters, 2 unavailable" {
-		t.Errorf("none %q", got)
-	}
-	failed := watch.Result{WatchRun: storage.WatchRun{Status: storage.StatusError, Error: "site down"}}
-	if got := checkOutcome(failed, false); got != "ERROR site down" {
-		t.Errorf("error %q", got)
 	}
 }
 
