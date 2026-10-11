@@ -25,10 +25,11 @@ func init() {
 
 var accountsCmd = &cobra.Command{
 	Use:   "accounts",
-	Short: "Show the accounts mangal uses",
-	Long: `Show the accounts mangal uses: the Anilist and Kitsu logins and the providers' accounts
-(e.g. the MangaPlus subscription), cached for 12 hours. In a terminal they can be refreshed,
-Anilist or Kitsu logged into, or the MangaPlus secret set.`,
+	Short: "Show the accounts mangal can use",
+	Long: `Show every account mangal can use, logged in or not: the Anilist, Kitsu and MyAnimeList
+logins and the providers' accounts (e.g. the MangaPlus subscription), cached for 12 hours.
+In a terminal they can be refreshed, Anilist, Kitsu or MyAnimeList logged into, or the
+MangaPlus secret set.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if accountsArgs.Plain || !term.IsTerminal(int(os.Stdout.Fd())) {

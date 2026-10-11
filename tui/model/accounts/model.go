@@ -1,5 +1,5 @@
-// Package accounts shows the accounts mangal uses: the Anilist and Kitsu logins and the
-// providers' accounts (e.g. the MangaPlus subscription).
+// Package accounts shows the accounts mangal can use: the Anilist, Kitsu and MyAnimeList
+// logins and the providers' accounts (e.g. the MangaPlus subscription).
 package accounts
 
 import (
@@ -22,6 +22,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/anilist"
 	"github.com/luevano/mangal/v5/tui/model/kitsu"
+	"github.com/luevano/mangal/v5/tui/model/myanimelist"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -48,11 +49,11 @@ type loadedMsg []client.AccountEntry
 func New(refresh bool) base.State {
 	t := table.New(
 		table.WithColumns([]table.Column{
-			{Title: "Service", Width: 12},
+			{Title: "Service", Width: 13},
 			{Title: "User", Width: 16},
 			{Title: "Status", Width: 14},
 			{Title: "Renews/expires", Width: 15},
-			{Title: "Notes", Width: 30},
+			{Title: "Notes", Width: 38},
 			{Title: "Checked", Width: 10},
 		}),
 		table.WithFocused(true),
@@ -120,7 +121,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		s.table.SetHeight(len(msg) + 1)
 		return nil
 	case base.RestoredMsg:
-		// e.g. after the Anilist or Kitsu login
+		// e.g. after a login
 		return s.load(ctx, false)
 	case tea.KeyMsg:
 		if s.inputting {
@@ -179,6 +180,8 @@ func (s *state) login() tea.Cmd {
 		return func() tea.Msg { return anilist.New() }
 	case entry.Metadata == metadata.IDSourceKitsu:
 		return func() tea.Msg { return kitsu.New() }
+	case entry.Metadata == metadata.IDSourceMyAnimeList:
+		return func() tea.Msg { return myanimelist.New() }
 	case entry.Provider == mangaPlusID:
 		s.inputting = true
 		s.secret.SetValue("")
