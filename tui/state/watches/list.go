@@ -54,6 +54,9 @@ func (i *item) Title() string {
 	if !i.w.Enabled {
 		title += " (paused)"
 	}
+	if i.w.NeedsRelink {
+		title += " " + relinkStyle.Render("(needs re-link)")
+	}
 	if _, ok := i.checking(); ok {
 		title = style.Normal.Accent.Render(spinnerFrames[i.s.frame%len(spinnerFrames)]) + " " + title
 	}
@@ -79,6 +82,9 @@ func (i *item) Description() string {
 			state += " (" + short(max(0, i.now.Sub(lw.since))) + ")"
 		}
 		return w.Provider + " · last " + formatNumber(w.LastDownloaded) + " · " + state
+	}
+	if w.NeedsRelink {
+		return w.Provider + " · " + w.MangaID + " · last " + formatNumber(w.LastDownloaded) + " · needs re-link: " + w.RelinkReason
 	}
 	parts := []string{
 		w.Provider,
@@ -119,6 +125,8 @@ type listState struct {
 	last       map[int64]storage.WatchRun
 	provider   string
 	byProvider bool
+	// missing shows only the watches whose manga needs fixing (missingManga)
+	missing bool
 
 	// feed are the live events; live the watches being checked and liveProviders the
 	// providers, as the events tell (the status, polled, has the rest)
@@ -134,7 +142,7 @@ type listState struct {
 
 type listKeyMap struct {
 	details, check, checkDue, checkProvider, pause, pauseProvider, delete, edit, gaps, refresh, runs,
-	library, history, nextProvider, group, live, running key.Binding
+	library, history, nextProvider, group, live, running, relink, missing key.Binding
 }
 
 type loadedMsg struct {
@@ -184,6 +192,8 @@ func newListState(connect connector) *listState {
 			group:         util.Bind("group by provider", "o"),
 			live:          util.Bind("live log", "l"),
 			running:       util.Bind("every live check", "alt+l"),
+			relink:        util.Bind("re-link manga", "m"),
+			missing:       util.Bind("needs re-link only", "n"),
 		},
 		live:          map[int64]liveWatch{},
 		liveProviders: map[string]bool{},
@@ -207,6 +217,7 @@ func (s *listState) keyMap() help.KeyMap {
 		short,
 		{k.checkDue, k.checkProvider, k.gaps, k.pauseProvider, k.delete, k.refresh},
 		{k.library, k.history, k.nextProvider, k.group, k.running},
+		{k.relink, k.missing},
 	}}
 }
 
@@ -223,6 +234,11 @@ func (s *listState) Subtitle() string {
 	}
 	if s.byProvider {
 		parts = append(parts, "by provider")
+	}
+	if s.missing {
+		parts = append(parts, "needing re-link")
+	} else if n := s.countMissing(); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d need a re-link (%s)", n, s.keys.missing.Help().Key))
 	}
 	if s.manager != nil {
 		parts = append(parts, managerName(s.status))
@@ -467,11 +483,22 @@ func (s *listState) onLoaded(ctx context.Context, msg loadedMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// countMissing is how many watches need their manga fixed.
+func (s *listState) countMissing() int {
+	n := 0
+	for _, w := range s.watches {
+		if missingManga(w) {
+			n++
+		}
+	}
+	return n
+}
+
 // shown are the watches of the provider filter, in the order chosen.
 func (s *listState) shown() []watch.Watch {
 	var shown []watch.Watch
 	for _, w := range s.watches {
-		if s.provider == "" || w.Provider == s.provider {
+		if (s.provider == "" || w.Provider == s.provider) && (!s.missing || missingManga(w)) {
 			shown = append(shown, w)
 		}
 	}
@@ -522,7 +549,7 @@ func (s *listState) providers() []string {
 func (s *listState) updateKeys() {
 	enable := len(s.List.Items()) != 0
 	for _, k := range []*key.Binding{&s.keys.details, &s.keys.check, &s.keys.checkDue, &s.keys.checkProvider, &s.keys.pause, &s.keys.pauseProvider,
-		&s.keys.delete, &s.keys.edit, &s.keys.gaps, &s.keys.library, &s.keys.history, &s.keys.live} {
+		&s.keys.delete, &s.keys.edit, &s.keys.gaps, &s.keys.library, &s.keys.history, &s.keys.live, &s.keys.relink} {
 		k.SetEnabled(enable)
 	}
 }
@@ -540,6 +567,13 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 	case key.Matches(msg, s.keys.group):
 		s.byProvider = !s.byProvider
 		return s.setItems(), true
+	case key.Matches(msg, s.keys.missing):
+		s.missing = !s.missing
+		cmd := s.setItems()
+		if s.missing && len(s.List.Items()) == 0 {
+			cmd = tea.Batch(cmd, base.Notify("No watch needs a re-link"))
+		}
+		return cmd, true
 	case key.Matches(msg, s.keys.running):
 		return func() tea.Msg { return newLiveState(m, nil) }, true
 	case key.Matches(msg, s.keys.checkDue):
@@ -548,7 +582,7 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		now := s.now()
 		for _, i := range s.List.Items() {
 			w := i.(*item).w
-			if !w.Enabled || w.ProviderMissing || w.NextCheck.After(now) {
+			if !w.Scheduled() || w.NextCheck.After(now) {
 				continue
 			}
 			if _, ok := s.busy(w.Provider); ok {
@@ -576,6 +610,8 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		return func() tea.Msg { return newDetailsState(m, w, backoff) }, true
 	case key.Matches(msg, s.keys.edit):
 		return func() tea.Msg { return newEditState(m, w) }, true
+	case key.Matches(msg, s.keys.relink):
+		return func() tea.Msg { return newRelinkState(m, w) }, true
 	case key.Matches(msg, s.keys.library):
 		return libraryCmd(ctx, w), true
 	case key.Matches(msg, s.keys.history):
@@ -704,7 +740,7 @@ func checkProviderCmd(ctx context.Context, m watch.Manager, provider string) tea
 		}
 		var ids []int64
 		for _, w := range all {
-			if w.Provider == provider && w.Enabled && !w.ProviderMissing {
+			if w.Provider == provider && w.Scheduled() {
 				ids = append(ids, w.ID)
 			}
 		}

@@ -5,13 +5,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/theme/color"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 const timeLayout = "2006-01-02 15:04"
+
+var relinkStyle = lipgloss.NewStyle().Foreground(color.Warning)
+
+// missingManga is a watch whose manga can't be checked as it is: it needs a re-link (a
+// placeholder id too) or its provider is missing.
+func missingManga(w watch.Watch) bool {
+	return w.NeedsRelink || w.ProviderMissing || strings.HasPrefix(w.MangaID, storage.PlaceholderPrefix)
+}
 
 func formatTime(t time.Time) string {
 	if t.IsZero() {
@@ -42,6 +52,8 @@ func formatNumber(n *float32) string {
 // a row), due or in how long.
 func nextCheck(w watch.Watch, backoff int, now time.Time) string {
 	switch {
+	case w.NeedsRelink:
+		return "needs re-link"
 	case !w.Enabled && w.ProviderMissing:
 		return "paused, provider missing"
 	case !w.Enabled:
@@ -136,6 +148,9 @@ func settings(w watch.Watch, backoff int, now time.Time) string {
 		fmt.Sprintf("%s · %s · manga id %s", w.Provider, enabled(w), w.MangaID),
 		fmt.Sprintf("schedule %s · gaps %s · metadata %s · from %s", schedule(w), onOff(w.Gaps), bindings(w), formatNumber(w.From)),
 		fmt.Sprintf("last downloaded %s · last checked %s · next check %s", formatNumber(w.LastDownloaded), ago(w.LastChecked, now), nextCheck(w, backoff, now)),
+	}
+	if w.NeedsRelink {
+		lines = append(lines, relinkStyle.Render("needs re-link: "+w.RelinkReason+" (m: search the manga)"))
 	}
 	if w.LastError != "" {
 		lines = append(lines, fmt.Sprintf("%s in a row, last: %s", stringutil.Quantify(w.Failures, "failure", "failures"), w.LastError))

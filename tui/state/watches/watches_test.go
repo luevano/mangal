@@ -3,6 +3,8 @@ package watches
 import (
 	"context"
 	"errors"
+	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/metadata"
 	"slices"
 	"strings"
 	"testing"
@@ -628,5 +630,95 @@ func TestProviderFilter(t *testing.T) {
 	s.Update(ctx, press("o"))
 	if got := titles(); !slices.Equal(got, []string{"Akira", "Berserk", "Dandadan", "Frieren"}) || !strings.Contains(s.Subtitle(), "by provider") {
 		t.Errorf("by provider: %v, %q", got, s.Subtitle())
+	}
+}
+
+type testManga struct{ info mangadata.MangaInfo }
+
+func (m *testManga) String() string                     { return m.info.Title }
+func (m *testManga) Info() mangadata.MangaInfo          { return m.info }
+func (m *testManga) Metadata() metadata.Metadata        { return nil }
+func (m *testManga) SetMetadata(meta metadata.Metadata) {}
+
+func TestRelink(t *testing.T) {
+	m := testManager()
+	m.watches[1].MangaID, m.watches[1].NeedsRelink, m.watches[1].RelinkReason = "dandadan", true, "moved from mango-mangasee"
+	m.watches[2].MangaID = "title:Frieren"
+	m.watches = append(m.watches, watch.Watch{Watch: storage.Watch{ID: 4, Title: "Vagabond", Provider: "mango-gone", Enabled: true}, ProviderMissing: true})
+	s := loaded(t, m)
+	ctx := context.Background()
+
+	if d := s.List.Items()[1].(*item); !strings.Contains(d.Title(), "needs re-link") || !strings.Contains(d.Description(), "needs re-link: moved from mango-mangasee") {
+		t.Errorf("row %q / %q", d.Title(), d.Description())
+	}
+	if !strings.Contains(s.Subtitle(), "3 need a re-link") {
+		t.Errorf("subtitle %q", s.Subtitle())
+	}
+	// only the ones to fix: flagged, placeholder id, provider missing
+	s.Update(ctx, press("n"))
+	if n := len(s.List.Items()); n != 3 || s.List.Items()[0].(*item).w.ID != 2 {
+		t.Fatalf("filtered to %d", n)
+	}
+	cmd := s.Update(ctx, press("m"))
+	if cmd == nil {
+		t.Fatal("m: no cmd")
+	}
+	r, ok := cmd().(*relinkState)
+	if !ok || r.provider != "mango-mangaplus" || r.Search.Query() != "Dandadan" {
+		t.Fatalf("m: %#v", r)
+	}
+	s.Update(ctx, press("n"))
+	if n := len(s.List.Items()); n != 4 {
+		t.Errorf("unfiltered %d", n)
+	}
+
+	// the search on another provider, the current manga marked
+	search := searchProvider
+	t.Cleanup(func() { searchProvider = search })
+	searchProvider = func(_ context.Context, provider, query string) ([]mangadata.Manga, string, error) {
+		if old, ok := strings.CutPrefix(provider, "old-"); ok {
+			provider = "mango-" + old
+		}
+		return []mangadata.Manga{
+			&testManga{mangadata.MangaInfo{ID: "01J76", Title: query}},
+			&testManga{mangadata.MangaInfo{ID: "dandadan", Title: query + " (old)"}},
+		}, provider, nil
+	}
+	r.Update(ctx, providerPickedMsg{provider: "old-weebcentral"})
+	res, err := relinkSearch(ctx, r.w, r.provider, "Dandadan")
+	if err != nil || res.provider != "mango-weebcentral" || len(res.items) != 2 || res.items[0].(*mangaItem).current {
+		t.Fatalf("search %+v, %v", res, err)
+	}
+	r.Update(ctx, res)
+	if r.provider != "mango-weebcentral" || len(r.List.Items()) != 2 || !r.assign.Enabled() {
+		t.Errorf("results: %s, %d", r.provider, len(r.List.Items()))
+	}
+	if res, _ := relinkSearch(ctx, r.w, "mango-mangaplus", "Dandadan"); !res.items[1].(*mangaItem).current {
+		t.Error("the watch's manga isn't marked")
+	}
+	if cmd := r.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+		t.Error("enter: no cmd")
+	}
+	done, err := relink(ctx, m, 2, r.provider, r.List.Items()[0].(*mangaItem).manga)
+	if err != nil || m.relinked[2] != (watch.RelinkOptions{Provider: "mango-weebcentral", MangaID: "01J76", Query: "Dandadan"}) || done.w.ID != 2 {
+		t.Errorf("re-linked %+v, %v", m.relinked, err)
+	}
+
+	// the edit screen: enter on the manga opens the search, the re-link shows there
+	e := newEditState(m, m.watches[1])
+	if e.form.focused() != e.schedule {
+		t.Error("the edit screen doesn't start on the schedule")
+	}
+	e.Update(ctx, tea.KeyMsg{Type: tea.KeyShiftTab})
+	if cmd := e.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+		t.Fatal("enter on the manga: no cmd")
+	} else if _, ok := cmd().(*relinkState); !ok {
+		t.Error("enter on the manga doesn't open the search")
+	}
+	moved := m.watches[1]
+	moved.Provider, moved.MangaID, moved.NeedsRelink = "mango-weebcentral", "01J76", false
+	e.Update(ctx, relinkedMsg{w: moved})
+	if !strings.Contains(e.manga.display, "mango-weebcentral · 01J76") || strings.Contains(e.manga.display, "needs") {
+		t.Errorf("edit after the re-link: %q", e.manga.display)
 	}
 }

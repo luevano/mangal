@@ -3,7 +3,9 @@ package migrate
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -31,7 +33,8 @@ type plannedMsg struct {
 	migration library.Migration
 }
 
-type migratedMsg struct{}
+// migratedMsg is a migration done, relink how many watches need a re-link then.
+type migratedMsg struct{ relink int }
 
 // New lists what would be migrated, enter does it.
 func New() base.State {
@@ -74,6 +77,10 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		s.migration = &msg.migration
 		s.keyMap.apply.SetEnabled(!msg.migration.Empty())
 	case migratedMsg:
+		if msg.relink > 0 {
+			return tea.Sequence(base.Back, base.NotifyWithDuration(fmt.Sprintf(
+				"Migrated. %d watches need a re-link (the site may use other ids): w, then n lists them, m re-links one", msg.relink), 10*time.Second))
+		}
 		return tea.Sequence(base.Back, base.Notify("Migrated, folders keep their names (mangal library rename renames them)"))
 	case tea.KeyMsg:
 		if s.migration == nil || s.migration.Empty() || !key.Matches(msg, s.keyMap.apply) || base.Busy(ctx) {
@@ -86,7 +93,17 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			if err != nil {
 				return migratedMsg{}, err
 			}
-			return migratedMsg{}, migration.ApplyTo(afs.Afero, st, modes)
+			if err := migration.ApplyTo(afs.Afero, st, modes); err != nil {
+				return migratedMsg{}, err
+			}
+			watches, err := st.Watches().List()
+			msg := migratedMsg{}
+			for _, w := range watches {
+				if w.NeedsRelink {
+					msg.relink++
+				}
+			}
+			return msg, err
 		}, func(msg migratedMsg) tea.Msg { return msg })
 	}
 	return nil

@@ -21,6 +21,9 @@ type field struct {
 	// toggle fields are on or off, space flips them
 	toggle bool
 	on     bool
+	// action fields show display, enter on them is the screen's (not a save)
+	action  bool
+	display string
 	// validate checks the text, nil accepts anything
 	validate func(string) error
 	err      string
@@ -37,6 +40,13 @@ func textField(label, value, hint string, validate func(string) error) *field {
 func toggleField(label string, on bool, hint string) *field {
 	return &field{label: label, hint: hint, toggle: true, on: on}
 }
+
+func actionField(label, display, hint string) *field {
+	return &field{label: label, hint: hint, action: true, display: display}
+}
+
+// typed is false for the fields without a text input.
+func (f *field) typed() bool { return !f.toggle && !f.action }
 
 func (f *field) value() string {
 	return strings.TrimSpace(f.input.Value())
@@ -62,6 +72,9 @@ func newForm(fields ...*field) *form {
 	return f
 }
 
+// focused is the focused field.
+func (f *form) focused() *field { return f.fields[f.current] }
+
 func (f *form) keys() []key.Binding {
 	return []key.Binding{f.submit, f.next, f.prev, f.flip}
 }
@@ -70,7 +83,7 @@ func (f *form) focus(i int) tea.Cmd {
 	f.current = (i + len(f.fields)) % len(f.fields)
 	var cmd tea.Cmd
 	for j, fl := range f.fields {
-		if fl.toggle {
+		if !fl.typed() {
 			continue
 		}
 		if j == f.current {
@@ -80,6 +93,7 @@ func (f *form) focus(i int) tea.Cmd {
 		}
 	}
 	f.flip.SetEnabled(f.fields[f.current].toggle)
+	f.submit.SetEnabled(!f.fields[f.current].action)
 	return cmd
 }
 
@@ -88,7 +102,7 @@ func (f *form) valid() bool {
 	first := -1
 	for i, fl := range f.fields {
 		fl.err = ""
-		if fl.toggle || fl.validate == nil {
+		if !fl.typed() || fl.validate == nil {
 			continue
 		}
 		if err := fl.validate(fl.value()); err != nil {
@@ -121,7 +135,7 @@ func (f *form) Update(msg tea.Msg) (submitted bool, cmd tea.Cmd) {
 			return false, nil
 		}
 	}
-	if cur.toggle {
+	if !cur.typed() {
 		return false, nil
 	}
 	cur.input, cmd = cur.input.Update(msg)
@@ -146,6 +160,9 @@ func (f *form) View() string {
 			cursor = labelStyle.Render(icon.Item.Raw()) + " "
 		}
 		value := fl.input.View()
+		if fl.action {
+			value = fl.display
+		}
 		if fl.toggle {
 			value = "[ ] off"
 			if fl.on {

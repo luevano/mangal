@@ -31,7 +31,7 @@ type detailsState struct {
 	size    base.Size
 	now     func() time.Time
 
-	open, edit, pause, refresh, library, history, live key.Binding
+	open, edit, pause, refresh, library, history, live, relink key.Binding
 }
 
 type detailsMsg struct {
@@ -55,6 +55,7 @@ func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState 
 		library: util.Bind("library manga", "L"),
 		history: util.Bind("provider history", "v"),
 		live:    util.Bind("live log", "l"),
+		relink:  util.Bind("re-link manga", "m"),
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
 	return s
@@ -62,7 +63,7 @@ func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState 
 
 func (s *detailsState) keyMap() help.KeyMap {
 	short := []key.Binding{s.open, s.live, s.edit, s.pause, s.library, s.history}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, s.refresh)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, s.relink, s.refresh)}}
 }
 
 func (s *detailsState) Title() base.Title { return base.Title{Text: s.w.Title} }
@@ -155,6 +156,8 @@ func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return func() tea.Msg { return newLiveState(m, &w) }
 		case key.Matches(msg, s.edit):
 			return func() tea.Msg { return newEditState(m, w) }
+		case key.Matches(msg, s.relink):
+			return func() tea.Msg { return newRelinkState(m, w) }
 		case key.Matches(msg, s.pause):
 			return pauseCmd(m, w)
 		case key.Matches(msg, s.open):
