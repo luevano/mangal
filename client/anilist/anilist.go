@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/metadata/anilist"
 	mlog "github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/provider/loader"
 	"github.com/luevano/mangal/v5/util/cache"
 	"golang.org/x/oauth2"
 )
@@ -42,7 +42,7 @@ func Anilist() (*metadata.ProviderWithCache, error) {
 
 func newAnilist() (*metadata.ProviderWithCache, error) {
 	aniOpts := anilist.DefaultOptions()
-	aniOpts.HTTPClient = &http.Client{Timeout: time.Minute}
+	aniOpts.HTTPClient = loader.HTTPClient()
 
 	ani, err := anilist.NewAnilist(aniOpts)
 	if err != nil {

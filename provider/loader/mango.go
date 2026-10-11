@@ -22,14 +22,12 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 	// Generates overall default options then overriding as necessary
 	o := mango.DefaultOptions()
 
-	o.HTTPClient.Timeout = time.Minute
-	o.UserAgent = config.Download.UserAgent.Get()
+	c := commonOptions()
+	o.HTTPClient = HTTPClient()
+	o.UserAgent = c.UserAgent
 	o.CacheStore = cache.CacheStore
 	o.Parallelism = config.Providers.Parallelism.Get()
-	o.Filter.NSFW = config.Providers.Filter.NSFW.Get()
-	o.Filter.Language = config.Providers.Filter.Language.Get()
-	o.Filter.AvoidDuplicateChapters = config.Providers.Filter.AvoidDuplicateChapters.Get()
-	o.Filter.ShowUnavailableChapters = config.Providers.Filter.ShowUnavailableChapters.Get()
+	o.Filter = mango.FilterOptions(c.Filter)
 	o.Headless.UseFlaresolverr = config.Providers.Headless.UseFlaresolverr.Get()
 	o.Headless.FlaresolverrURL = config.Providers.Headless.FlaresolverrURL.Get()
 	o.Mirrors = config.Providers.Mirrors.Get()

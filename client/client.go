@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"sync"
-	"time"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
+	providerloader "github.com/luevano/mangal/v5/provider/loader"
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/template"
@@ -172,7 +171,7 @@ func CloseAll() error {
 func newClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal.Client, error) {
 	options := libmangal.DefaultClientOptions()
 	options.FS = afs.Afero
-	options.HTTPClient = &http.Client{Timeout: time.Minute}
+	options.HTTPClient = providerloader.HTTPClient()
 	options.UserAgent = config.Download.UserAgent.Get()
 	options.ModeDir = config.Download.ModeDir.Get()
 	options.ModeFile = config.Download.ModeFile.Get()

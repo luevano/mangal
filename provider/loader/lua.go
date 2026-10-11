@@ -2,18 +2,13 @@ package loader
 
 import (
 	"fmt"
-	"net/http"
-	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/luaprovider"
-	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/info"
 	"github.com/luevano/mangal/v5/util/afs"
-	"github.com/luevano/mangal/v5/util/cache"
 )
 
 const mainLua = "main.lua"
@@ -63,11 +58,7 @@ func getLoaderBundles(bundleID, dir string) ([]libmangal.ProviderLoader, error) 
 // getLoaders returns either the providerloader or the next subset of bundles.
 // It all depends if the provider type is Lua (actual provider loader) or bundle.
 func getLoaders(bundleID, dir string) ([]libmangal.ProviderLoader, error) {
-	infoFile, err := afs.Afero.OpenFile(
-		filepath.Join(dir, info.Filename),
-		os.O_RDONLY,
-		config.Download.ModeFile.Get(),
-	)
+	infoFile, err := afs.Afero.Open(filepath.Join(dir, info.Filename))
 	if err != nil {
 		return nil, err
 	}
@@ -111,22 +102,7 @@ func newLoader(info libmangal.ProviderInfo, dir string) (libmangal.ProviderLoade
 		return nil, err
 	}
 
-	options := luaprovider.Options{
-		HTTPClient: &http.Client{
-			Timeout: time.Minute,
-		},
-		UserAgent:    config.Download.UserAgent.Get(),
-		CacheStore:   cache.CacheStore,
-		PackagePaths: []string{dir},
-		Filter: luaprovider.FilterOptions{
-			NSFW:                    config.Providers.Filter.NSFW.Get(),
-			Language:                config.Providers.Filter.Language.Get(),
-			AvoidDuplicateChapters:  config.Providers.Filter.AvoidDuplicateChapters.Get(),
-			ShowUnavailableChapters: config.Providers.Filter.ShowUnavailableChapters.Get(),
-		},
-	}
-
-	return luaprovider.NewLoader(providerMainFileContents, info, options)
+	return luaprovider.NewLoader(providerMainFileContents, info, LuaOptions(dir))
 }
 
 // withBundleID attaches the bundle id to the provider ids (current and old) to make them unique.
