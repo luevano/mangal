@@ -20,12 +20,12 @@ func testLogin(t *testing.T, secret string, browse func(base string)) (*AnilistL
 		t.Fatal(err)
 	}
 	var ln net.Listener
-	o.listen = func() (net.Listener, error) {
+	o.server.listen = func() (net.Listener, error) {
 		var err error
 		ln, err = net.Listen("tcp", "127.0.0.1:0")
 		return ln, err
 	}
-	o.openURL = func(string) error {
+	o.server.openURL = func(string) error {
 		go browse("http://" + ln.Addr().String())
 		return nil
 	}
@@ -131,14 +131,14 @@ func TestAuthorizeErrors(t *testing.T) {
 	// the port is taken
 	o, _ := NewAnilistLoginOption("id", "")
 	busy := errors.New("address already in use")
-	o.listen = func() (net.Listener, error) { return nil, busy }
+	o.server.listen = func() (net.Listener, error) { return nil, busy }
 	if err := o.Authorize(context.Background()); !errors.Is(err, busy) {
 		t.Errorf("got %v, want the listen error", err)
 	}
 
 	// the browser can't be opened: the server still shuts down
 	o, ln := testLogin(t, "", nil)
-	o.openURL = func(string) error { return errors.New("no browser") }
+	o.server.openURL = func(string) error { return errors.New("no browser") }
 	if err := o.Authorize(context.Background()); err == nil {
 		t.Error("no error without a browser")
 	}
