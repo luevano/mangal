@@ -91,6 +91,11 @@ func (s Storage) Library() Library {
 	return Library{DB: s.Data}
 }
 
+// History is the read history in the data database.
+func (s Storage) History() History {
+	return History{DB: s.Data}
+}
+
 // ClearCache deletes the cache entries of a provider (or metadata provider) id, or all of
 // them if the id is empty. It returns how many were deleted.
 func (s Storage) ClearCache(id string) (int64, error) {

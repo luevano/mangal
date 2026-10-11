@@ -517,8 +517,8 @@ func mergeDownload(tx *sql.Tx, keep int64, m MergeMove) error {
 }
 
 // Merge joins other into keep: the moved files get keep's chapters, the trashed files
-// (chapters keep already had) are forgotten, other's sources and metadata ids go to keep
-// and other is removed.
+// (chapters keep already had) are forgotten, other's sources, reads and metadata ids go to
+// keep and other is removed.
 func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) error {
 	err := l.DB.InTx(func(tx *sql.Tx) error {
 		for _, path := range trashed {
@@ -532,6 +532,9 @@ func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) e
 			}
 		}
 		if _, err := tx.Exec(`UPDATE library_sources SET manga = ? WHERE manga = ?`, keep, other); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE reads SET library_manga = ? WHERE library_manga = ?`, keep, other); err != nil {
 			return err
 		}
 		var raw string

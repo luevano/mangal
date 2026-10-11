@@ -16,6 +16,8 @@ type OldID struct {
 	Sources int
 	// Downloads is how many downloaded chapters use the old id.
 	Downloads int
+	// Reads is how many read chapters use the old id.
+	Reads int
 	// Cache is how many cache entries use the old id (dropped when migrating).
 	Cache int
 }
@@ -53,19 +55,22 @@ func FindOldIDs(cache, data *DB, loaders []libmangal.ProviderLoader) ([]OldID, e
 		if err := data.QueryRow(`SELECT count(*) FROM downloads WHERE provider = ?`, id).Scan(&old.Downloads); err != nil {
 			return nil, fmt.Errorf("count the downloads of %s: %w", id, err)
 		}
+		if err := data.QueryRow(`SELECT count(*) FROM reads WHERE provider = ?`, id).Scan(&old.Reads); err != nil {
+			return nil, fmt.Errorf("count the reads of %s: %w", id, err)
+		}
 		n, err := countProviderRows(cache, id)
 		if err != nil {
 			return nil, fmt.Errorf("count the cache of %s: %w", id, err)
 		}
 		old.Cache = n
-		if old.Sources+old.Downloads+old.Cache != 0 {
+		if old.Sources+old.Downloads+old.Reads+old.Cache != 0 {
 			oldIDs = append(oldIDs, old)
 		}
 	}
 	return oldIDs, nil
 }
 
-// MigrateOldIDs moves the library sources and downloads of each old id to its new id and drops
+// MigrateOldIDs moves the library sources, downloads and reads of each old id to its new id and drops
 // its cache entries (they're rebuilt under the new id).
 func MigrateOldIDs(cache, data *DB, oldIDs []OldID) error {
 	err := data.InTx(func(tx *sql.Tx) error {
@@ -78,6 +83,9 @@ func MigrateOldIDs(cache, data *DB, oldIDs []OldID) error {
 				return fmt.Errorf("migrate %s: %w", id.Old, err)
 			}
 			if _, err := tx.Exec(`UPDATE downloads SET provider = ? WHERE provider = ?`, id.New, id.Old); err != nil {
+				return fmt.Errorf("migrate %s: %w", id.Old, err)
+			}
+			if err := migrateReads(tx, id.Old, id.New); err != nil {
 				return fmt.Errorf("migrate %s: %w", id.Old, err)
 			}
 		}

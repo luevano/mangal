@@ -73,7 +73,7 @@ func (m Migration) Empty() bool {
 func (m Migration) Lines() []string {
 	var lines []string
 	for _, id := range m.OldIDs {
-		lines = append(lines, fmt.Sprintf("%s -> %s (%s): %d library mangas, %d downloads, %d cache entries (dropped)", id.Old, id.New, id.Name, id.Sources, id.Downloads, id.Cache))
+		lines = append(lines, fmt.Sprintf("%s -> %s (%s): %d library mangas, %d downloads, %d read chapters, %d cache entries (dropped)", id.Old, id.New, id.Name, id.Sources, id.Downloads, id.Reads, id.Cache))
 	}
 	for _, marker := range m.Markers {
 		lines = append(lines, fmt.Sprintf("%s: %s -> %s", marker.Dir, marker.Old, marker.New))
