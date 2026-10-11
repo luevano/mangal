@@ -24,7 +24,7 @@ require (
 	github.com/luevano/mangoplus v0.7.1
 	github.com/luevano/mangoprovider v0.18.2
 	github.com/oapi-codegen/runtime v1.2.0
-	github.com/pelletier/go-toml v1.9.5
+	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/philippgille/gokv v0.7.0
 	github.com/philippgille/gokv/encoding v0.7.0
 	github.com/philippgille/gokv/util v0.7.0
@@ -120,7 +120,6 @@ require (
 	github.com/oasdiff/yaml v0.0.0-20260313112342-a3ea61cb4d4c // indirect
 	github.com/oasdiff/yaml3 v0.0.0-20260224194419-61cd415a242b // indirect
 	github.com/pdfcpu/pdfcpu v0.16.1 // indirect
-	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/philippgille/gokv/syncmap v0.7.0 // indirect
 	github.com/pjbgf/sha1cd v0.5.0 // indirect
