@@ -23,5 +23,5 @@ func Quantify(n int, singular, plural string) string {
 //
 // For example, "001.500" becomes "1.5".
 func FormatFloa32(n float32) string {
-	return strconv.FormatFloat(float64(n), 'f', -1, 64)
+	return strconv.FormatFloat(float64(n), 'f', -1, 32)
 }
