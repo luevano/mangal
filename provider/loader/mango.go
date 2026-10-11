@@ -45,7 +45,7 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 	// already validated by the config
 	o.MangaPlus.RequestInterval, _ = time.ParseDuration(config.Providers.MangaPlus.RequestInterval.Get())
 	o.MangaPlus.Secret = mangaPlusSecret()
-	o.MangaPlus.FreeSecret = config.Providers.MangaPlus.FreeSecret.Get()
+	o.MangaPlus.FreeSecret = mangaPlusFreeSecret()
 	o.MangaPlus.OnRegister = saveMangaPlusFreeSecret
 
 	var loaders []libmangal.ProviderLoader
@@ -62,8 +62,15 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 	return loaders, nil
 }
 
-// mangaPlusSecret reads the secret from the configured file, empty (free tier) if not set or missing.
+// mangaPlusSecret is the saved secret (mangal accounts), or the one in the configured file,
+// empty (free tier) if none.
 func mangaPlusSecret() string {
+	if secret, err := cache.MangaPlusSecret(); err != nil {
+		log.Log("MangaPlus secret: %s", err)
+	} else if secret != "" {
+		return secret
+	}
+
 	path := config.Providers.MangaPlus.SecretFile.Get()
 	if path == "" {
 		return ""
@@ -82,14 +89,25 @@ func mangaPlusSecret() string {
 	return strings.TrimSpace(string(data))
 }
 
+// mangaPlusFreeSecret is the saved free device, imported once from the config (where
+// mangal 5.13 and older saved it).
+func mangaPlusFreeSecret() string {
+	secret, err := cache.MangaPlusFreeSecret()
+	if err != nil {
+		log.Log("MangaPlus free device: %s", err)
+	}
+	if secret != "" {
+		return secret
+	}
+	if secret = config.Providers.MangaPlus.FreeSecret.Get(); secret != "" {
+		saveMangaPlusFreeSecret(secret)
+	}
+	return secret
+}
+
 // saveMangaPlusFreeSecret saves a newly registered free device, so it's reused instead of registering a new one.
 func saveMangaPlusFreeSecret(secret string) {
-	// mangal only creates its config file when asked (config write/set), don't create it here
-	if _, err := os.Stat(config.Path); err != nil {
-		return
-	}
-	// only this key, config.Write would also save the flags of this run
-	if err := config.WriteKey(config.Providers.MangaPlus.FreeSecret.Key, secret); err != nil {
+	if err := cache.SetMangaPlusFreeSecret(secret); err != nil {
 		msg := fmt.Sprintf("couldn't save the MangaPlus free device secret: %s", err)
 		log.L.Warn().Msg(msg)
 		log.Log("%s", msg)
