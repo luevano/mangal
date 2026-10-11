@@ -1,8 +1,12 @@
 package chapters
 
 import (
+	"path/filepath"
+	"slices"
+
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
@@ -78,6 +82,31 @@ func (d *downloaded) libraryManga(lib storage.Library) (storage.Manga, bool, err
 		m, ok, err := lib.MangaBySource(id, d.manga.Info().ID)
 		if err != nil || ok {
 			return m, ok, err
+		}
+	}
+
+	// a folder a scan found has no source until the next download links it, that
+	// download goes into the folder in the provider's directory with the same metadata
+	meta := d.manga.Metadata()
+	if meta == nil || meta.ID().Raw == "" || meta.ID().Source == metadata.IDSourceProvider {
+		return storage.Manga{}, false, nil
+	}
+	mangas, err := lib.Mangas()
+	if err != nil {
+		return storage.Manga{}, false, err
+	}
+	dirs := append(ids, info.Name)
+	for _, alias := range info.History {
+		dirs = append(dirs, alias.Name)
+	}
+	for _, m := range mangas {
+		if len(m.Sources) != 0 || !slices.ContainsFunc(m.MetadataIDs, func(id metadata.ID) bool {
+			return id.Source == meta.ID().Source && id.Raw == meta.ID().Raw
+		}) {
+			continue
+		}
+		if !config.Download.Provider.CreateDir.Get() || slices.Contains(dirs, filepath.Base(m.Parent)) {
+			return m, true, nil
 		}
 	}
 	return storage.Manga{}, false, nil
