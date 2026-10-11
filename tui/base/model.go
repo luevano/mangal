@@ -53,9 +53,9 @@ type model struct {
 	notificationID              int
 	notificationDefaultDuration time.Duration
 
-	showBreadcrumbs bool
-
 	inViewport bool
+	// viewportConfigKey is the config key of the error shown in the viewport
+	viewportConfigKey string
 }
 
 func newModel(ctx context.Context, state State, standalone bool, notices []string) *model {
@@ -76,13 +76,17 @@ func newModel(ctx context.Context, state State, standalone bool, notices []strin
 		help:                        mhelp.New(),
 		spinner:                     _spinner,
 		notificationDefaultDuration: time.Second,
-		showBreadcrumbs:             !standalone && config.TUI.ShowBreadcrumbs.Get(),
 		notices:                     notices,
 	}
 	m.root, m.rootCancel = context.WithCancel(ctx)
 	m.newCtx()
 	m.updateKeybinds()
 	return m
+}
+
+// showBreadcrumbs is read each time, the config window can change it.
+func (m *model) showBreadcrumbs() bool {
+	return !m.standalone && config.TUI.ShowBreadcrumbs.Get()
 }
 
 // newCtx cancels the ctx of the shown State and makes the next one.

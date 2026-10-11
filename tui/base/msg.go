@@ -32,4 +32,6 @@ type ShowViewportMsg struct {
 	Title,
 	Content string
 	Color lipgloss.Color
+	// ConfigKey fixes the error shown, a key opens the config window on it
+	ConfigKey string
 }

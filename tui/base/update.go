@@ -36,7 +36,11 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	// receiving any of these msgs override the behavior of the keybinds;
 	// even if the keybinds are disabled, these messages will work.
 	case ShowViewportMsg:
-		return m.showViewport(msg.Title, msg.Content, msg.Color)
+		cmd := m.showViewport(msg.Title, msg.Content, msg.Color)
+		m.viewportConfigKey = msg.ConfigKey
+		return cmd
+	case OpenConfigMsg:
+		return m.openConfig(msg.Filter)
 	case viewport.NotificationMsg:
 		return m.notify(msg.Message, m.notificationDefaultDuration)
 	case viewport.BackMsg:
@@ -89,7 +93,8 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		log.Error("%s", msg)
-		return Viewport("Error", util.ErrorTree(msg), color.Error)
+		show := ShowViewportMsg{Title: "Error", Content: util.ErrorTree(msg), Color: color.Error, ConfigKey: configKeyOf(msg)}
+		return func() tea.Msg { return show }
 	}
 
 	// everything else is the State's, even while the viewport is shown
@@ -106,10 +111,15 @@ func (m *model) updateKey(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	if m.inViewport {
+		if key.Matches(msg, m.keyMap.configFix) {
+			return m.openConfig(m.viewportConfigKey)
+		}
 		return m.viewport.Update(msg)
 	}
 
 	switch {
+	case key.Matches(msg, m.keyMap.config):
+		return m.openConfig("")
 	case key.Matches(msg, m.keyMap.back):
 		return Back
 	case key.Matches(msg, m.keyMap.home):
@@ -130,6 +140,9 @@ func (m *model) updateKeybinds() {
 	m.keyMap.home.SetEnabled(!m.inViewport && !m.standalone && !inputting && hasHistory)
 	m.keyMap.help.SetEnabled(!inputting)
 	m.keyMap.log.SetEnabled(!m.inViewport)
+	_, inConfig := m.state.(ConfigWindow)
+	m.keyMap.config.SetEnabled(NewConfigWindow != nil && !m.standalone && !m.inViewport && !inputting && !inConfig)
+	m.keyMap.configFix.SetEnabled(NewConfigWindow != nil && !m.standalone && m.inViewport && m.viewportConfigKey != "")
 }
 
 // resize the program
@@ -246,5 +259,6 @@ func (m *model) showViewport(title, content string, color lipgloss.Color) tea.Cm
 
 func (m *model) hideViewport() tea.Cmd {
 	m.inViewport = false
+	m.viewportConfigKey = ""
 	return m.resizeState()
 }

@@ -36,7 +36,7 @@ func (m *model) viewHeader() string {
 	var header strings.Builder
 	header.Grow(200)
 
-	if m.showBreadcrumbs {
+	if m.showBreadcrumbs() {
 		header.WriteString(m.viewBreadcrumb())
 		header.WriteString("\n")
 	}
