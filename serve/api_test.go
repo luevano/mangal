@@ -1,0 +1,461 @@
+package serve
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/web"
+)
+
+type fakeManga struct {
+	info mangadata.MangaInfo
+	meta metadata.Metadata
+}
+
+func (m *fakeManga) String() string                     { return m.info.Title }
+func (m *fakeManga) Info() mangadata.MangaInfo          { return m.info }
+func (m *fakeManga) Metadata() metadata.Metadata        { return m.meta }
+func (m *fakeManga) SetMetadata(meta metadata.Metadata) { m.meta = meta }
+
+type fakeVolume struct{ manga *fakeManga }
+
+func (v *fakeVolume) String() string             { return "vol" }
+func (v *fakeVolume) Info() mangadata.VolumeInfo { return mangadata.VolumeInfo{Number: 1} }
+func (v *fakeVolume) Manga() mangadata.Manga     { return v.manga }
+
+type fakeChapter struct {
+	info mangadata.ChapterInfo
+	vol  *fakeVolume
+}
+
+func (c *fakeChapter) String() string              { return c.info.Title }
+func (c *fakeChapter) Info() mangadata.ChapterInfo { return c.info }
+func (c *fakeChapter) Volume() mangadata.Volume    { return c.vol }
+
+// fakeSource has mangas with chapters 1..n, its downloads are recorded in the library.
+type fakeSource struct {
+	library storage.Library
+	mangas  map[string]*fakeManga
+	n       map[string]int
+
+	mu sync.Mutex
+	// block makes downloads wait for it (or the ctx), started is closed on the first one
+	block   chan struct{}
+	started chan struct{}
+}
+
+func (s *fakeSource) Info() libmangal.ProviderInfo {
+	return libmangal.ProviderInfo{ID: "fake", Name: "fake"}
+}
+
+func (s *fakeSource) MangaByID(_ context.Context, id string) (mangadata.Manga, bool, error) {
+	m, ok := s.mangas[id]
+	return m, ok, nil
+}
+
+func (s *fakeSource) SearchMangas(_ context.Context, query string) ([]mangadata.Manga, error) {
+	var found []mangadata.Manga
+	for _, m := range s.mangas {
+		if m.info.Title == query {
+			found = append(found, m)
+		}
+	}
+	return found, nil
+}
+
+func (s *fakeSource) Chapters(_ context.Context, manga mangadata.Manga) ([]mangadata.Chapter, error) {
+	m := manga.(*fakeManga)
+	var chs []mangadata.Chapter
+	for i := 1; i <= s.n[m.info.ID]; i++ {
+		chs = append(chs, &fakeChapter{info: mangadata.ChapterInfo{Number: float32(i), Title: fmt.Sprint(i)}, vol: &fakeVolume{m}})
+	}
+	return chs, nil
+}
+
+func (s *fakeSource) BindAnilist(context.Context, mangadata.Manga, int) error { return nil }
+
+func (s *fakeSource) Download(ctx context.Context, chapters []mangadata.Chapter, _ bool, _ func(client.Event)) client.Results {
+	s.mu.Lock()
+	block, started := s.block, s.started
+	s.started = nil
+	s.mu.Unlock()
+	if started != nil {
+		close(started)
+	}
+	results := client.NewResults(chapters)
+	for _, r := range results {
+		if block != nil {
+			select {
+			case <-block:
+			case <-ctx.Done():
+				r.Err = ctx.Err()
+				continue
+			}
+		}
+		info := r.Chapter.Info()
+		manga := r.Chapter.Volume().Manga().Info()
+		down := &metadata.DownloadedChapter{Number: info.Number, Directory: "/lib/" + manga.Title, Filename: fmt.Sprintf("%g.cbz", info.Number), Pages: 1}
+		if err := s.library.RecordDownload("/lib", manga.Title, storage.Download{Path: down.Path(), Provider: "fake", MangaID: manga.ID,
+			MangaTitle: manga.Title, Chapter: info.Number, Format: "CBZ", Downloaded: time.Now()}); err != nil {
+			r.Err = err
+			continue
+		}
+		r.Down = down
+	}
+	return results
+}
+
+func newTestService(t *testing.T) (*watch.Service, *fakeSource) {
+	t.Helper()
+	data, err := storage.OpenData(filepath.Join(t.TempDir(), storage.FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+	src := &fakeSource{library: storage.Library{DB: data},
+		mangas: map[string]*fakeManga{
+			"opm": {info: mangadata.MangaInfo{ID: "opm", Title: "One-Punch Man"}},
+			"dan": {info: mangadata.MangaInfo{ID: "dan", Title: "Dandadan"}},
+		},
+		n: map[string]int{"opm": 3, "dan": 2},
+	}
+	svc := &watch.Service{
+		Watches: storage.Watches{DB: data},
+		Library: storage.Library{DB: data},
+		Options: watch.Options{Interval: 4 * time.Hour, ParallelProviders: 2, Notify: watch.NotifyNone, LockStale: time.Minute},
+		Source: func(_ context.Context, id string) (watch.Source, error) {
+			if id != "fake" {
+				return nil, fmt.Errorf("provider with id %q not found", id)
+			}
+			return src, nil
+		},
+		Now:     time.Now,
+		OnError: func(err error) { t.Errorf("unexpected: %s", err) },
+	}
+	return svc, src
+}
+
+type testServer struct {
+	*httptest.Server
+	api *API
+	svc *watch.Service
+	src *fakeSource
+}
+
+func newTestServer(t *testing.T, token string) *testServer {
+	t.Helper()
+	svc, src := newTestService(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	api := &API{
+		Manager: func() watch.Manager { return svc },
+		Info:    watch.Status{Server: true, Version: "test", Started: time.Now()},
+		Token:   token,
+		Log:     newLogger(io.Discard),
+		Runs:    &runs{},
+		ctx:     ctx,
+	}
+	mux := http.NewServeMux()
+	api.Register(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		cancel()
+		api.Wait()
+		srv.Close()
+	})
+	return &testServer{Server: srv, api: api, svc: svc, src: src}
+}
+
+// call sends the request and decodes the answer into out (if not nil), returning the status.
+func (s *testServer) call(t *testing.T, method, path string, body string, out any) int {
+	t.Helper()
+	var reader io.Reader
+	if body != "" {
+		reader = strings.NewReader(body)
+	}
+	req, err := http.NewRequest(method, s.URL+path, reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if out != nil && len(b) > 0 {
+		if err := json.Unmarshal(b, out); err != nil {
+			t.Fatalf("%s %s: %s: %s", method, path, err, b)
+		}
+	}
+	return resp.StatusCode
+}
+
+func TestAPIWatches(t *testing.T) {
+	s := newTestServer(t, "")
+	var w watch.Watch
+	if code := s.call(t, "POST", "/api/watches", `{"provider":"fake","query":"mid:opm","from":1,"interval":"2h"}`, &w); code != http.StatusCreated ||
+		w.ID == 0 || w.Title != "One-Punch Man" || time.Duration(w.Interval) != 2*time.Hour || w.LastDownloaded == nil || *w.LastDownloaded != 1 {
+		t.Fatalf("add: %d %+v", code, w)
+	}
+	var e watch.ErrorResponse
+	if code := s.call(t, "POST", "/api/watches", `{"provider":"fake","manga_id":"opm"}`, &e); code != http.StatusConflict || e.Code != watch.CodeExists {
+		t.Errorf("add twice: %d %+v", code, e)
+	}
+	if code := s.call(t, "POST", "/api/watches", `{"provider":"nope","manga_id":"opm"}`, &e); code != http.StatusUnprocessableEntity {
+		t.Errorf("unknown provider: %d %+v", code, e)
+	}
+	if code := s.call(t, "POST", "/api/watches", `{"provider":"fake","bogus":1}`, &e); code != http.StatusBadRequest {
+		t.Errorf("bad body: %d %+v", code, e)
+	}
+	var list []watch.Watch
+	if code := s.call(t, "GET", "/api/watches", "", &list); code != http.StatusOK || len(list) != 1 {
+		t.Errorf("list: %d %+v", code, list)
+	}
+	path := fmt.Sprintf("/api/watches/%d", w.ID)
+	if code := s.call(t, "GET", path, "", &w); code != http.StatusOK || w.Provider != "fake" {
+		t.Errorf("get: %d %+v", code, w)
+	}
+	if code := s.call(t, "GET", "/api/watches/999", "", &e); code != http.StatusNotFound || e.Code != watch.CodeNotFound {
+		t.Errorf("get missing: %d %+v", code, e)
+	}
+	if code := s.call(t, "PATCH", path, `{"enabled":false,"gaps":true}`, &w); code != http.StatusOK || w.Enabled || !w.Gaps {
+		t.Errorf("patch: %d %+v", code, w)
+	}
+	if code := s.call(t, "PATCH", path, `{}`, &e); code != http.StatusBadRequest {
+		t.Errorf("empty patch: %d", code)
+	}
+	var stale []watch.Watch
+	if code := s.call(t, "GET", "/api/watches/stale?since=0d", "", &stale); code != http.StatusOK || stale == nil {
+		t.Errorf("stale: %d %+v", code, stale)
+	}
+	if code := s.call(t, "DELETE", path, "", nil); code != http.StatusNoContent {
+		t.Errorf("delete: %d", code)
+	}
+	if code := s.call(t, "DELETE", path, "", &e); code != http.StatusNotFound {
+		t.Errorf("delete twice: %d", code)
+	}
+}
+
+func waitRun(t *testing.T, s *testServer, id int64) watch.CheckRun {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var run watch.CheckRun
+		if code := s.call(t, "GET", fmt.Sprintf("/api/runs/%d", id), "", &run); code != http.StatusOK {
+			t.Fatalf("run %d: %d", id, code)
+		}
+		if !run.Finished.IsZero() {
+			return run
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("run %d didn't finish", id)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestAPICheck(t *testing.T) {
+	s := newTestServer(t, "")
+	var w watch.Watch
+	if code := s.call(t, "POST", "/api/watches", `{"provider":"fake","manga_id":"opm","from":1}`, &w); code != http.StatusCreated {
+		t.Fatal(code)
+	}
+	block := make(chan struct{})
+	started := make(chan struct{})
+	s.src.mu.Lock()
+	s.src.block, s.src.started = block, started
+	s.src.mu.Unlock()
+
+	var resp watch.CheckResponse
+	if code := s.call(t, "POST", "/api/check", `{}`, &resp); code != http.StatusAccepted || resp.Run == 0 {
+		t.Fatalf("check: %d %+v", code, resp)
+	}
+	<-started
+	var st watch.Status
+	if code := s.call(t, "GET", "/api/status", "", &st); code != http.StatusOK || !st.Server || !st.Checking || st.Run != resp.Run || st.Version != "test" {
+		t.Errorf("status: %d %+v", code, st)
+	}
+	var e watch.ErrorResponse
+	if code := s.call(t, "POST", "/api/check", `{"ids":[1]}`, &e); code != http.StatusConflict || e.Code != watch.CodeBusy {
+		t.Errorf("second check: %d %+v", code, e)
+	}
+	var dry watch.Report
+	if code := s.call(t, "POST", "/api/check", `{"dry_run":true}`, &dry); code != http.StatusOK || !dry.DryRun || len(dry.Results) != 1 || len(dry.Results[0].Chapters) != 2 {
+		t.Errorf("dry run while busy: %d %+v", code, dry)
+	}
+	if code := s.call(t, "POST", "/api/check", `{"ids":[999]}`, &e); code != http.StatusNotFound {
+		t.Errorf("missing watch: %d %+v", code, e)
+	}
+	close(block)
+	run := waitRun(t, s, resp.Run)
+	if run.Kind != watch.KindManual || run.NewChapters != 2 || len(run.Results) != 1 {
+		t.Errorf("run %+v", run)
+	}
+	var list []watch.CheckRun
+	if code := s.call(t, "GET", fmt.Sprintf("/api/runs?watch=%d&since=7d&limit=5", w.ID), "", &list); code != http.StatusOK || len(list) != 1 {
+		t.Errorf("runs: %d %+v", code, list)
+	}
+	if code := s.call(t, "GET", "/api/runs?since=yesterday", "", &e); code != http.StatusBadRequest {
+		t.Errorf("bad since: %d", code)
+	}
+	if code := s.call(t, "POST", fmt.Sprintf("/api/runs/%d/cancel", resp.Run), "", &e); code != http.StatusNotFound {
+		t.Errorf("cancel a finished run: %d", code)
+	}
+}
+
+func TestAPIToken(t *testing.T) {
+	s := newTestServer(t, "s3cret")
+	for auth, want := range map[string]int{"": http.StatusUnauthorized, "Bearer nope": http.StatusUnauthorized, "Bearer s3cret": http.StatusOK} {
+		req, _ := http.NewRequest("GET", s.URL+"/api/watches", nil)
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("%q: %d, want %d", auth, resp.StatusCode, want)
+		}
+	}
+}
+
+func TestHostCheck(t *testing.T) {
+	s := newTestServer(t, "")
+	mux := http.NewServeMux()
+	s.api.Register(mux)
+	h := web.CheckHost(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}, mux)
+	for host, want := range map[string]int{"127.0.0.1:6977": http.StatusOK, "localhost:6977": http.StatusOK, "evil.example:6977": http.StatusMisdirectedRequest} {
+		req := httptest.NewRequest("GET", "/api/watches", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("%s: %d, want %d", host, rec.Code, want)
+		}
+	}
+}
+
+func TestRemote(t *testing.T) {
+	s := newTestServer(t, "tok")
+	ctx := context.Background()
+	r := watch.NewRemote(s.URL, "tok")
+	r.PollInterval = 10 * time.Millisecond
+
+	from := float32(1)
+	w, err := r.Add(ctx, watch.AddOptions{Provider: "fake", Query: "One-Punch Man", From: &from, Interval: time.Hour})
+	if err != nil || w.MangaID != "opm" || time.Duration(w.Interval) != time.Hour {
+		t.Fatalf("add: %+v, %v", w, err)
+	}
+	if _, err := r.Add(ctx, watch.AddOptions{Provider: "fake", MangaID: "opm"}); !errors.Is(err, watch.ErrExists) {
+		t.Errorf("add twice: %v", err)
+	}
+	if _, err := r.Get(ctx, 999); !errors.Is(err, watch.ErrNotFound) {
+		t.Errorf("get missing: %v", err)
+	}
+	if list, err := r.List(ctx); err != nil || len(list) != 1 {
+		t.Errorf("list: %+v, %v", list, err)
+	}
+	if w, err = r.SetEnabled(ctx, w.ID, false); err != nil || w.Enabled {
+		t.Errorf("pause: %+v, %v", w, err)
+	}
+	if w, err = r.SetEnabled(ctx, w.ID, true); err != nil || !w.Enabled {
+		t.Errorf("resume: %+v, %v", w, err)
+	}
+	interval, gaps := time.Duration(0), true
+	if w, err = r.Update(ctx, w.ID, watch.UpdateOptions{Interval: &interval, Gaps: &gaps}); err != nil || w.Interval != 0 || !w.Gaps {
+		t.Errorf("update: %+v, %v", w, err)
+	}
+	if stale, err := r.Stale(ctx, 0); err != nil || len(stale) != 1 {
+		t.Errorf("stale: %+v, %v", stale, err)
+	}
+	if st, err := r.Status(ctx); err != nil || !st.Server || st.Checking {
+		t.Errorf("status: %+v, %v", st, err)
+	}
+
+	dry, err := r.Check(ctx, nil, watch.CheckOptions{DryRun: true})
+	if err != nil || !dry.DryRun || len(dry.Results) != 1 || len(dry.Results[0].Chapters) != 2 {
+		t.Errorf("dry run: %+v, %v", dry, err)
+	}
+	report, err := r.Check(ctx, []int64{w.ID}, watch.CheckOptions{})
+	if err != nil || report.ID == 0 || report.Finished.IsZero() || report.NewChapters != 2 || len(report.Results) != 1 || report.Results[0].Status != storage.StatusNew {
+		t.Fatalf("check: %+v, %v", report, err)
+	}
+	runs, err := r.Runs(ctx, watch.RunFilter{Watch: w.ID, Since: time.Now().Add(-time.Hour), Limit: 10})
+	if err != nil || len(runs) != 1 || runs[0].ID != report.ID {
+		t.Errorf("runs: %+v, %v", runs, err)
+	}
+	if run, err := r.RunDetails(ctx, report.ID); err != nil || len(run.Results) != 1 {
+		t.Errorf("run: %+v, %v", run, err)
+	}
+	if _, err := r.RunDetails(ctx, 999); !errors.Is(err, watch.ErrNotFound) {
+		t.Errorf("missing run: %v", err)
+	}
+
+	// busy, then cancelled: the server's check stops and is reported
+	s.src.n["opm"] = 5
+	block := make(chan struct{})
+	started := make(chan struct{})
+	s.src.mu.Lock()
+	s.src.block, s.src.started = block, started
+	s.src.mu.Unlock()
+	cctx, cancel := context.WithCancel(ctx)
+	type result struct {
+		report watch.Report
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		report, err := r.Check(cctx, nil, watch.CheckOptions{})
+		done <- result{report, err}
+	}()
+	<-started
+	if _, err := r.Check(ctx, nil, watch.CheckOptions{}); !errors.Is(err, watch.ErrBusy) {
+		t.Errorf("second check: %v", err)
+	}
+	cancel()
+	res := <-done
+	if res.err != nil || res.report.Finished.IsZero() || res.report.NewChapters != 0 {
+		t.Errorf("cancelled check: %+v, %v", res.report, res.err)
+	}
+	if err := r.Remove(ctx, w.ID); err != nil {
+		t.Error(err)
+	}
+	if err := r.Remove(ctx, w.ID); !errors.Is(err, watch.ErrNotFound) {
+		t.Errorf("remove twice: %v", err)
+	}
+
+	bad := watch.NewRemote(s.URL, "")
+	var apiErr *watch.APIError
+	if _, err := bad.List(ctx); !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized {
+		t.Errorf("no token: %v", err)
+	}
+}
+
+func TestErrorBody(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeError(rec, fmt.Errorf("check: %w", watch.ErrBusy))
+	var e watch.ErrorResponse
+	if err := json.NewDecoder(bytes.NewReader(rec.Body.Bytes())).Decode(&e); err != nil || rec.Code != http.StatusConflict || e.Code != watch.CodeBusy || !strings.Contains(e.Error, "running") {
+		t.Errorf("%d %+v %v", rec.Code, e, err)
+	}
+}
