@@ -6,9 +6,10 @@ import (
 	"io"
 	"os"
 
-	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/provider/loader"
 	"github.com/luevano/mangal/v5/script/lib"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -32,12 +33,9 @@ func addVarsTable(state *lua.LState, variables Variables) {
 	state.SetGlobal("Vars", table)
 }
 
-func addClient(state *lua.LState, client *libmangal.Client) {
-	lib.Preload(state, client)
-}
-
+// Run runs the script with the provider's client and the mangal library.
 func Run(ctx context.Context, args Args, script io.Reader) error {
-	client, warnings, err := client.AcquireByID(ctx, args.Provider)
+	c, warnings, err := client.AcquireByID(ctx, args.Provider)
 	for _, w := range warnings {
 		fmt.Fprintln(os.Stderr, "warning: "+w)
 	}
@@ -46,20 +44,35 @@ func Run(ctx context.Context, args Args, script io.Reader) error {
 	}
 	_ = anilist.EnsureLogin(ctx)
 
-	state := lua.NewState()
-	state.SetContext(ctx)
-
-	addVarsTable(state, args.Variables)
-	addClient(state, client)
-
-	lFunction, err := state.Load(script, "script")
+	sdkOptions, resources, err := loader.SDKOptions("script")
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := resources.Close(); err != nil {
+			log.Warn("close script resources: %s", err)
+		}
+	}()
 
-	return state.CallByParam(lua.P{
+	state := lua.NewState()
+	defer state.Close()
+	state.SetContext(ctx)
+
+	addVarsTable(state, args.Variables)
+	lib.Preload(state, c, sdkOptions)
+
+	lFunction, err := state.Load(script, "script")
+	if err != nil {
+		return fmt.Errorf("load script: %w", err)
+	}
+
+	err = state.CallByParam(lua.P{
 		Fn:      lFunction,
 		NRet:    1,
 		Protect: true,
 	})
+	if err != nil {
+		return fmt.Errorf("run script: %w", err)
+	}
+	return nil
 }

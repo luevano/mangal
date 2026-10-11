@@ -1,8 +1,13 @@
 package lib
 
-import lua "github.com/yuin/gopher-lua"
+import (
+	sdk "github.com/luevano/luaprovider/lib"
+	lua "github.com/yuin/gopher-lua"
+)
 
-// Mangal script Lua doc.
+// LuaDoc is the Lua doc of the mangal library.
 func LuaDoc() string {
-	return Lib(lua.NewState(), nil).LuaDoc()
+	state := lua.NewState()
+	defer state.Close()
+	return Lib(state, nil, sdk.DefaultOptions()).LuaDoc()
 }
