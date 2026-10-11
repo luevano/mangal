@@ -126,7 +126,7 @@ func init() {
 	f.StringVar(&watchAddArgs.Title, "title", "", "Title of an --offline watch (default: the id)")
 	f.BoolVar(&watchAddArgs.Enabled, "enabled", false, "An --offline watch starts enabled (checked once its provider is installed)")
 	f.StringVarP(&watchAddArgs.Selector, "manga-selector", "m", "exact", "Manga selector of the search (first|last|exact|closest|<index>)")
-	f.IntVarP(&watchAddArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind (its metadata is used for the downloads)")
+	f.IntVarP(&watchAddArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind as the default (its metadata is used for the downloads, see mangal bind)")
 	f.Float32Var(&watchAddArgs.From, "from", 0, "Treat the chapters up to this number as downloaded (read elsewhere)")
 	f.BoolVar(&watchAddArgs.Gaps, "gaps", false, "Also download the missing chapters below the last downloaded one (default: config watch.gaps)")
 	f.DurationVar(&watchAddArgs.Interval, "interval", 0, "Check interval of this manga (default: config watch.interval)")
@@ -178,6 +178,9 @@ ones after --from.`,
 			state = ", provider missing"
 		}
 		successf(cmd, "watching %q from %s (id %d), last downloaded %s%s", w.Title, w.Provider, w.ID, formatLast(w.LastDownloaded), state)
+		if len(w.Bindings) != 0 {
+			cmd.Printf("metadata: %s\n", formatBindings(w.Bindings))
+		}
 		return nil
 	},
 }
@@ -361,7 +364,7 @@ func init() {
 	f := watchSetCmd.Flags()
 	f.DurationVar(&watchSetArgs.Interval, "interval", 0, "Check interval of this manga, 0 for config watch.interval")
 	f.BoolVar(&watchSetArgs.Gaps, "gaps", false, "Gap filling (--gaps=false turns it off)")
-	f.IntVarP(&watchSetArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind, 0 unbinds")
+	f.IntVarP(&watchSetArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind as the default, 0 unbinds it (see mangal bind)")
 	f.Float32Var(&watchSetArgs.From, "from", 0, "Treat the chapters up to this number as downloaded")
 }
 
