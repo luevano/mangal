@@ -75,7 +75,8 @@ func assignAnilist(ctx context.Context, c *libmangal.Client, args Args, mangaRes
 	}
 	if err != nil {
 		// the results are still useful without it
-		log.Log("anilist: %s", err)
+		log.Warn("anilist: %s", err)
+		fmt.Fprintf(os.Stderr, "warning: anilist: %s\n", err)
 		return nil
 	}
 

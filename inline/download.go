@@ -18,9 +18,9 @@ import (
 func RunDownload(ctx context.Context, args Args) error {
 	results, err := runDownload(ctx, args)
 	if err != nil {
-		return notify.SendError(err)
+		return notify.SendErrorContext(ctx, err)
 	}
-	if err := notify.Send(results); err != nil {
+	if err := notify.SendContext(ctx, results); err != nil {
 		return err
 	}
 	// so scripts can tell from the exit code
@@ -43,7 +43,7 @@ func runDownload(ctx context.Context, args Args) (client.Results, error) {
 	useMangaMetadata := false
 	if args.PreferProviderMetadata {
 		if err = metadata.Validate(manga.Metadata()); err != nil {
-			log.Log("provider metadata is preferred but it's not valid: %s", err)
+			log.Warn("provider metadata is preferred but it's not valid: %s", err)
 		} else {
 			useMangaMetadata = true
 		}
