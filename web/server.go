@@ -3,12 +3,9 @@ package web
 import (
 	"bytes"
 	"context"
-	"embed"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
-	"path/filepath"
 
 	"github.com/labstack/echo/v4"
 	"github.com/luevano/libmangal"
@@ -24,9 +21,6 @@ import (
 	"github.com/philippgille/gokv/encoding"
 	"github.com/samber/lo"
 )
-
-//go:embed all:ui/dist
-var frontend embed.FS
 
 var _ api.StrictServerInterface = (*Server)(nil)
 
@@ -355,7 +349,7 @@ func (s *Server) GetProviders(ctx context.Context, _ api.GetProvidersRequestObje
 }
 
 func NewServer() (*echo.Echo, error) {
-	sub, err := fs.Sub(frontend, filepath.Join("ui", "dist"))
+	sub, err := frontend()
 	if err != nil {
 		return nil, err
 	}

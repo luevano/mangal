@@ -2,9 +2,6 @@ module github.com/luevano/mangal/v5
 
 go 1.27.0
 
-// https://github.com/go-rod/rod/issues/1203
-replace github.com/ysmood/fetchup => github.com/ysmood/fetchup v0.3.0
-
 require (
 	github.com/adrg/xdg v0.5.3
 	github.com/atotto/clipboard v0.1.4
@@ -153,7 +150,7 @@ require (
 	github.com/woodsbury/decimal128 v1.4.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	github.com/ysmood/fetchup v0.5.3 // indirect
+	github.com/ysmood/fetchup v0.3.0 // indirect
 	github.com/ysmood/goob v0.4.0 // indirect
 	github.com/ysmood/got v0.42.3 // indirect
 	github.com/ysmood/gson v0.7.3 // indirect

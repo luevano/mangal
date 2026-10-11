@@ -16,6 +16,7 @@ builds:
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     flags: [-trimpath]
+    tags: [webui]
     ldflags: [-s -w]
 
 archives:

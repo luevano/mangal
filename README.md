@@ -19,6 +19,8 @@ Download a binary from the [releases](https://github.com/luevano/mangal/releases
 go install github.com/luevano/mangal/v5@latest
 ```
 
+Built with `go install`, `mangal web` has no web UI; release binaries include it (see [Development](#development), `-tags webui`).
+
 ## Development
 
 For now, just notes for myself while I work on this.
@@ -68,6 +70,8 @@ Or compiled/installed:
 just build # or full or install
 ./mangal
 ```
+
+The web UI is only embedded when building with `-tags webui` (the `just` recipes do), after building it in `web/ui`.
 
 Releases are built by [GoReleaser](https://goreleaser.com) when a `v*` tag is pushed (see `.goreleaser.yaml`), `meta.Version` has to match the tag.
 

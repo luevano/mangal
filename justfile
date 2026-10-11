@@ -7,15 +7,15 @@ default: run
 
 # just run without compiling/installling
 run *args='':
-    go run . $@
+    go run -tags webui . $@
 
 # install mangal to the ~/go/bin
 install:
-    go install -ldflags "-s -w" .
+    go install -tags webui -ldflags "-s -w" .
 
 # build
 build:
-    go build -ldflags "-s -w" .
+    go build -tags webui -ldflags "-s -w" .
 
 # run tests
 test:

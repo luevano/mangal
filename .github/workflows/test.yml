@@ -33,10 +33,9 @@ jobs:
           cache: npm
           cache-dependency-path: web/ui/package-lock.json
 
-      # the web UI is embedded, it isn't committed
-      - name: Build the web UI
-        working-directory: web/ui
-        run: npm ci && npm run build-only
+      # the web UI is only embedded with the webui tag, it isn't committed
+      - name: Build with the web UI
+        run: cd web/ui && npm ci && npm run build-only && cd ../.. && go build -tags webui ./...
 
       - name: Test
         run: go test -race -v ./...
