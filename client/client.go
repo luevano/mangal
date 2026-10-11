@@ -26,14 +26,17 @@ type entry struct {
 	done   chan struct{}
 	client *libmangal.Client
 	err    error
+	// auth is the logins/secrets fingerprint the client was made with
+	auth string
 }
 
 var (
 	clients   = map[string]*entry{}
 	clientsMu sync.Mutex
 
-	// create is swapped in tests
-	create = newClient
+	// create and authFingerprint are swapped in tests
+	create          = newClient
+	authFingerprint = cache.AuthFingerprint
 )
 
 // Get returns the provider's client if it's already created, nil otherwise.
@@ -71,6 +74,7 @@ func Acquire(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal.C
 
 		if !ok {
 			// created outside the lock, the others wait on done
+			e.auth, _ = authFingerprint()
 			e.client, e.err = create(ctx, loader)
 			if e.err != nil {
 				clientsMu.Lock()
@@ -152,6 +156,51 @@ func Release(client *libmangal.Client) error {
 		return fmt.Errorf("close %s: %w", client, err)
 	}
 	return nil
+}
+
+// ReleaseIfAuthChanged closes the provider's client when the logins or secrets changed
+// since it was made (e.g. the MangaPlus secret set from a TUI while `mangal serve` runs),
+// so the next Acquire makes it with the new ones. It's left alone while anything holds the
+// provider's download lock. True when it was released.
+func ReleaseIfAuthChanged(provider string) (bool, error) {
+	current, err := authFingerprint()
+	if err != nil {
+		return false, err
+	}
+	clientsMu.Lock()
+	e, ok := clients[provider]
+	if ok {
+		select {
+		case <-e.done:
+		default:
+			ok = false // still being made
+		}
+	}
+	if !ok || e.err != nil || e.auth == current {
+		clientsMu.Unlock()
+		return false, nil
+	}
+	if busy, err := providerLocked(provider); err != nil || busy {
+		clientsMu.Unlock()
+		return false, err
+	}
+	delete(clients, provider)
+	clientsMu.Unlock()
+	if err := e.client.Close(); err != nil {
+		return true, fmt.Errorf("close %s: %w", e.client, err)
+	}
+	return true, nil
+}
+
+// providerLocked is true when something holds the provider's download lock (a check, a
+// download, in any process).
+var providerLocked = func(provider string) (bool, error) {
+	st, err := cache.Storage()
+	if err != nil {
+		return false, err
+	}
+	_, held, err := st.Watches().Holder(ProviderLockName(provider), ProviderLockStale)
+	return held, err
 }
 
 // CloseAll closes every client, even if some fail. Clients still being created are left

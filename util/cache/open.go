@@ -137,3 +137,12 @@ ids and the old cache is dropped (it rebuilds). Folders aren't renamed or moved,
 library rename" does that. Until then everything keeps working through the old ids.`
 	return short, long, nil
 }
+
+// AuthFingerprint is Storage().AuthFingerprint().
+func AuthFingerprint() (string, error) {
+	st, err := Storage()
+	if err != nil {
+		return "", err
+	}
+	return st.AuthFingerprint()
+}

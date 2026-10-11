@@ -221,3 +221,11 @@ func refresh(ctx context.Context, k *kitsu.Kitsu, user string, token *kitsu.Toke
 	*token = fresh
 	return nil
 }
+
+// ResetLogin makes the next EnsureLogin log in again with the saved login (it changed, e.g.
+// from a TUI while `mangal serve` runs).
+func ResetLogin() {
+	loginSem <- struct{}{}
+	defer func() { <-loginSem }()
+	loginTried = false
+}

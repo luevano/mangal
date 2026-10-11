@@ -7,8 +7,12 @@ import (
 	"time"
 
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/client/kitsu"
+	"github.com/luevano/mangal/v5/client/myanimelist"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
@@ -53,6 +57,13 @@ type Scheduler struct {
 	wake chan struct{}
 	// started is when Run started: checks only start on the ticks after it
 	started time.Time
+	// auth is the logins/secrets fingerprint last seen (empty before the first cycle)
+	auth string
+	// AuthChanged runs before a provider's run: it reloads the provider when the saved
+	// logins changed (swapped in tests)
+	AuthChanged func(provider string) (bool, error)
+	// AuthFingerprint is cache.AuthFingerprint (nil in tests: no reloads)
+	AuthFingerprint func() (string, error)
 
 	mu sync.Mutex
 	// running are the providers being checked by the scheduler
@@ -68,15 +79,17 @@ const minSleep = 5 * time.Second
 
 func newScheduler(c func() checker, log logger, r *runs) *Scheduler {
 	return &Scheduler{
-		Checker:  c,
-		Now:      time.Now,
-		After:    time.After,
-		MaxSleep: time.Minute,
-		Log:      log,
-		Runs:     r,
-		wake:     make(chan struct{}, 1),
-		running:  map[string]bool{},
-		retry:    map[string]time.Time{},
+		Checker:         c,
+		Now:             time.Now,
+		After:           time.After,
+		MaxSleep:        time.Minute,
+		Log:             log,
+		Runs:            r,
+		wake:            make(chan struct{}, 1),
+		AuthChanged:     client.ReleaseIfAuthChanged,
+		AuthFingerprint: cache.AuthFingerprint,
+		running:         map[string]bool{},
+		retry:           map[string]time.Time{},
 	}
 }
 
@@ -117,6 +130,7 @@ type work struct {
 func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 	c := s.Checker()
 	now := s.Now()
+	s.resetLogins()
 	all, err := c.List(ctx)
 	if err != nil {
 		s.Log.Errorf("list the watches: %s", err)
@@ -187,9 +201,35 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 	return max(sleep, minSleep)
 }
 
+// resetLogins makes the metadata providers log in again when the saved logins changed (a
+// login from a TUI while serve runs).
+func (s *Scheduler) resetLogins() {
+	if s.AuthFingerprint == nil {
+		return
+	}
+	fp, err := s.AuthFingerprint()
+	if err != nil {
+		return
+	}
+	if s.auth != "" && fp != s.auth {
+		anilist.ResetLogin()
+		kitsu.ResetLogin()
+		myanimelist.ResetLogin()
+		s.Log.Infof("logins or secrets changed")
+	}
+	s.auth = fp
+}
+
 // runProvider checks the provider's due watches, then the ones whose gaps are due.
 func (s *Scheduler) runProvider(ctx context.Context, c checker, provider string, w work) {
 	defer s.wg.Done()
+	if s.AuthChanged != nil {
+		if released, err := s.AuthChanged(provider); err != nil {
+			s.Log.Errorf("%s: logins: %s", provider, err)
+		} else if released {
+			s.Log.Infof("logins or secrets changed, %s reloads with them", provider)
+		}
+	}
 	ok := true
 	if len(w.due) > 0 {
 		ok = s.check(ctx, c, provider, w.due, watch.CheckOptions{Kind: watch.KindScheduled})

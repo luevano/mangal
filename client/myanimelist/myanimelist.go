@@ -265,3 +265,11 @@ func refresh(ctx context.Context, user string, token *oauth2.Token) error {
 	*token = *fresh
 	return nil
 }
+
+// ResetLogin makes the next EnsureLogin log in again with the saved login (it changed, e.g.
+// from a TUI while `mangal serve` runs).
+func ResetLogin() {
+	loginSem <- struct{}{}
+	defer func() { <-loginSem }()
+	loginTried = false
+}

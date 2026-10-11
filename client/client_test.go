@@ -44,6 +44,9 @@ func fakeRegistry(t *testing.T, before func(ctx context.Context) error) *atomic.
 	clientsMu.Lock()
 	clients = map[string]*entry{}
 	clientsMu.Unlock()
+	auth, locked := authFingerprint, providerLocked
+	authFingerprint = func() (string, error) { return "v1", nil }
+	providerLocked = func(string) (bool, error) { return false, nil }
 	create = func(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal.Client, error) {
 		if before != nil {
 			if err := before(ctx); err != nil {
@@ -55,6 +58,7 @@ func fakeRegistry(t *testing.T, before func(ctx context.Context) error) *atomic.
 	}
 	t.Cleanup(func() {
 		create = newClient
+		authFingerprint, providerLocked = auth, locked
 		clientsMu.Lock()
 		clients = map[string]*entry{}
 		clientsMu.Unlock()
@@ -183,5 +187,39 @@ func TestAcquireError(t *testing.T) {
 	// a failed creation isn't kept
 	if _, err := Acquire(context.Background(), fakeLoader{"a"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestReleaseIfAuthChanged(t *testing.T) {
+	created := fakeRegistry(t, nil)
+	ctx := context.Background()
+	loader := fakeLoader{"a"}
+	first, err := Acquire(ctx, loader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if released, err := ReleaseIfAuthChanged("a"); err != nil || released {
+		t.Fatalf("released with the same logins: %v, %v", released, err)
+	}
+
+	// a secret saved since (e.g. from a TUI): released, the next Acquire makes a new one
+	authFingerprint = func() (string, error) { return "v2", nil }
+	providerLocked = func(string) (bool, error) { return true, nil }
+	if released, _ := ReleaseIfAuthChanged("a"); released {
+		t.Fatal("released while the provider is locked")
+	}
+	providerLocked = func(string) (bool, error) { return false, nil }
+	if released, err := ReleaseIfAuthChanged("a"); err != nil || !released {
+		t.Fatalf("not released: %v, %v", released, err)
+	}
+	second, err := Acquire(ctx, loader)
+	if err != nil || second == first || created.Load() != 2 {
+		t.Fatalf("second client %p (first %p), created %d, %v", second, first, created.Load(), err)
+	}
+	if released, _ := ReleaseIfAuthChanged("a"); released {
+		t.Error("released again with the same logins")
+	}
+	if released, _ := ReleaseIfAuthChanged("not-loaded"); released {
+		t.Error("released a provider that wasn't loaded")
 	}
 }

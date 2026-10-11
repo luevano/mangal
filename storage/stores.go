@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"encoding/hex"
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"time"
@@ -173,4 +175,29 @@ func (s Storage) ClearChapterCache(id string) (int64, error) {
 		return nil
 	})
 	return total, err
+}
+
+// AuthFingerprint changes whenever a login or secret is saved or removed (the auth_tokens
+// table), so a long-running process can tell its providers were made with older ones. With
+// auth.keyring the values are in the keyring and only their rows are seen.
+func (s Storage) AuthFingerprint() (string, error) {
+	rows, err := s.Data.Query(`SELECT owner, key, value FROM ` + TableAuthTokens + ` ORDER BY owner, key`)
+	if err != nil {
+		return "", fmt.Errorf("auth fingerprint: %w", err)
+	}
+	defer rows.Close()
+	h := sha256.New()
+	for rows.Next() {
+		var owner, key string
+		var value []byte
+		if err := rows.Scan(&owner, &key, &value); err != nil {
+			return "", fmt.Errorf("auth fingerprint: %w", err)
+		}
+		fmt.Fprintf(h, "%s\x00%s\x00%d\x00", owner, key, len(value))
+		h.Write(value)
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("auth fingerprint: %w", err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

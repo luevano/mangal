@@ -128,6 +128,7 @@ func providerWatch(provider string, id int64, next time.Time, enabled bool) watc
 
 func newTestScheduler(f *fakeChecker) *Scheduler {
 	s := newScheduler(func() checker { return f }, newLogger(io.Discard), &runs{})
+	s.AuthChanged, s.AuthFingerprint = nil, nil
 	s.Now = func() time.Time {
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -369,6 +370,7 @@ func TestSchedulerTicks(t *testing.T) {
 	}
 	f.now = at(10, 1, 10)
 	s := newScheduler(func() checker { return f }, newLogger(io.Discard), &runs{})
+	s.AuthChanged, s.AuthFingerprint = nil, nil
 	s.Now = func() time.Time {
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -428,6 +430,7 @@ func TestSchedulerNoCatchUp(t *testing.T) {
 	}
 	f.now = at(9, 30, 0)
 	s := newScheduler(func() checker { return f }, newLogger(io.Discard), &runs{})
+	s.AuthChanged, s.AuthFingerprint = nil, nil
 	s.Now = func() time.Time {
 		f.mu.Lock()
 		defer f.mu.Unlock()
