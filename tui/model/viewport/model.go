@@ -34,8 +34,16 @@ func (m *Model) Color() lipgloss.Color {
 
 func (m *Model) SetContent(content string) {
 	m.content = content
-	m.Model.SetContent(content)
+	m.Model.SetContent(m.wrap(content))
 	m.updateKeybinds()
+}
+
+// wrap breaks the long lines (e.g. notices) at the viewport's width.
+func (m *Model) wrap(content string) string {
+	if m.Width <= 0 {
+		return content
+	}
+	return lipgloss.NewStyle().Width(m.Width).Render(content)
 }
 
 func (m *Model) SetData(title, content string, color lipgloss.Color) {
@@ -52,6 +60,10 @@ func (s *Model) Status() string {
 func (m *Model) Resize(width, height int) tea.Cmd {
 	m.Width = width - m.borderHorizontalSize
 	m.Height = height - m.borderVerticalSize
+	if m.content != "" {
+		m.Model.SetContent(m.wrap(m.content))
+		m.updateKeybinds()
+	}
 	return nil
 }
 
