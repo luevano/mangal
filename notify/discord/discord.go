@@ -141,8 +141,8 @@ func embed(results client.Results, opts listOptions) (discord.Embed, bool) {
 	}, true
 }
 
-func send(ctx context.Context, e discord.Embed) (*discord.Message, error) {
-	c, err := webhook.NewWithURL(config.Notification.Discord.WebhookURL.Get())
+func send(ctx context.Context, url string, e discord.Embed) (*discord.Message, error) {
+	c, err := webhook.NewWithURL(url)
 	if err != nil {
 		return nil, err
 	}
@@ -154,8 +154,8 @@ func send(ctx context.Context, e discord.Embed) (*discord.Message, error) {
 	}, rest.CreateWebhookMessageParams{}, rest.WithCtx(ctx))
 }
 
-// Send sends a summary of the download to the configured webhook.
-func Send(ctx context.Context, results client.Results) error {
+// Send sends a summary of the download to the webhook.
+func Send(ctx context.Context, url string, results client.Results) error {
 	e, ok := embed(results, listOptions{
 		includeExisting: config.Notification.IncludeExisting.Get(),
 		includeDirs:     config.Notification.IncludeDirectory.Get(),
@@ -163,7 +163,7 @@ func Send(ctx context.Context, results client.Results) error {
 	if !ok {
 		return nil
 	}
-	message, err := send(ctx, e)
+	message, err := send(ctx, url, e)
 	if err != nil {
 		return fmt.Errorf("notify discord: %w", err)
 	}
@@ -171,10 +171,10 @@ func Send(ctx context.Context, results client.Results) error {
 	return nil
 }
 
-// SendError sends the error to the configured webhook and returns it, joined with the
-// error sending it if any.
-func SendError(ctx context.Context, toSend error) error {
-	message, err := send(ctx, discord.Embed{
+// SendError sends the error to the webhook and returns it, joined with the error sending
+// it if any.
+func SendError(ctx context.Context, url string, toSend error) error {
+	message, err := send(ctx, url, discord.Embed{
 		Title:       "Error",
 		Description: truncate("General error found when downloading chapters:\n```"+toSend.Error(), maxDescription-3) + "```",
 		Color:       ColorRed,
