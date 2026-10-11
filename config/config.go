@@ -429,8 +429,8 @@ var Data = configData{
 var Watch = configWatch{
 	Schedule: scheduleEntry("watch.schedule", "0 */4 * * *",
 		"When the watched mangas are checked for new chapters (by `mangal serve`): a cron schedule in the local time zone (minute hour day-of-month month day-of-week, e.g. \"0 */4 * * *\" every 4 hours on the hour), @hourly, @daily, @weekly, @monthly or @every <duration>. A watch is due once a tick passed since its last check. A watch can have its own (`mangal watch set --schedule`).", false),
-	Jitter: durationEntry("watch.jitter", "0s",
-		"Up to how long after a tick a provider's watches are checked (fixed per provider and tick), so the providers don't all start at once.", false),
+	Jitter: durationEntry("watch.jitter", "15m",
+		"Up to how long after a tick a provider's watches are checked: each provider starts somewhere between 0 and this (fixed per provider and tick, the same in every mangal process). Out of politeness: the sites don't get every client's requests on the exact hour, and checks at varying times look less like a bot. 0 starts them right on the tick.", false),
 	GapSchedule: scheduleEntry("watch.gap_schedule", "",
 		"When the watches with gap filling also download the chapters below the last downloaded one the library misses, a cron schedule like watch.schedule (e.g. \"0 3 * * 0\" on sundays at 3:00). Empty turns it off (`mangal watch check --gaps` still does it).", true),
 	Gaps: boolEntry("watch.gaps", false, "Gap filling for new watches (`mangal watch add --gaps` sets it per watch)."),
