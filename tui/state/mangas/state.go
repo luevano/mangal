@@ -208,7 +208,7 @@ func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 func (s *state) openCmd(ctx context.Context, i *item) tea.Cmd {
 	manga := i.manga
 	// the metadata is read here, it's only changed in Update
-	searchMeta := config.Download.Metadata.Search.Get() && !hasAnilist(manga.Metadata())
+	searchMeta := config.Download.Metadata.Search.Get() && !hasMetadata(manga.Metadata())
 	// the config isn't read from the background (viper isn't safe for it)
 	expandAll, expandSingle := config.TUI.ExpandAllVolumes.Get(), config.TUI.ExpandSingleVolume.Get()
 	label := fmt.Sprintf("Searching volumes for %q", manga)
@@ -246,7 +246,7 @@ func (s *state) openCmd(ctx context.Context, i *item) tea.Cmd {
 	}, func(msg openedMsg) tea.Msg { return msg })
 }
 
-// searchMetadata finds the manga on Anilist. Without a match the manga still opens, a
+// searchMetadata finds the manga on Anilist, or Kitsu. Without a match the manga still opens, a
 // strict download then says what to do.
 func (s *state) searchMetadata(ctx context.Context, manga mangadata.Manga) (lmmeta.Metadata, string) {
 	meta, err := s.client.SearchMetadataContext(ctx, manga)
@@ -256,11 +256,11 @@ func (s *state) searchMetadata(ctx context.Context, manga mangadata.Manga) (lmme
 		return nil, fmt.Sprintf("Metadata search failed: %s", err)
 	case meta == nil:
 		log.Info("no metadata found for %q", manga)
-		return nil, fmt.Sprintf("No Anilist match for %q", manga)
+		return nil, fmt.Sprintf("No metadata match for %q", manga)
 	}
 	if err := lmmeta.Validate(meta); err != nil {
 		log.Info("metadata %q for %q: %s", meta, manga, err)
-		return nil, fmt.Sprintf("No usable Anilist match for %q", manga)
+		return nil, fmt.Sprintf("No usable metadata match for %q: %s", manga, err)
 	}
 	log.Info("found metadata for %q: %q", manga, meta)
 	return meta, ""
@@ -298,9 +298,14 @@ func joinNotice(a, b string) string {
 	return a + " · " + b
 }
 
-// hasAnilist is true when the manga's metadata is from Anilist (bound or found before).
-func hasAnilist(meta lmmeta.Metadata) bool {
-	return meta != nil && meta.ID().Source == lmmeta.IDSourceAnilist && lmmeta.Validate(meta) == nil
+// hasMetadata is true when the manga's metadata is from Anilist or Kitsu (bound or found
+// before), not the provider's.
+func hasMetadata(meta lmmeta.Metadata) bool {
+	if meta == nil || lmmeta.Validate(meta) != nil {
+		return false
+	}
+	source := meta.ID().Source
+	return source == lmmeta.IDSourceAnilist || source == lmmeta.IDSourceKitsu
 }
 
 func (s *state) updateKeys() {
