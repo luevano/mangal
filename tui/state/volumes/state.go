@@ -2,6 +2,7 @@ package volumes
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -9,109 +10,84 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
-	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/model/metadata"
 	"github.com/luevano/mangal/v5/tui/state/anilist"
+	"github.com/luevano/mangal/v5/tui/state/chapters"
+	"github.com/luevano/mangal/v5/tui/util"
 )
 
 var _ base.State = (*state)(nil)
 
-// state implements base.state.
 type state struct {
-	list *list.Model
-	meta *metadata.Model
+	list.Screen
+	manga  mangadata.Manga
+	client *libmangal.Client
+	// fullMeta shows the metadata's source and id in the status
+	fullMeta bool
 
-	volumes []mangadata.Volume
-	manga   mangadata.Manga
-	client  *libmangal.Client
-
-	keyMap keyMap
+	confirm,
+	anilist,
+	metadata,
+	info key.Binding
 }
 
-// Backable implements base.State.
-func (s *state) Backable() bool {
-	return s.list.FilterState() == _list.Unfiltered
+func New(client *libmangal.Client, manga mangadata.Manga, volumes []mangadata.Volume) base.State {
+	s := &state{
+		manga:    manga,
+		client:   client,
+		confirm:  util.Bind("confirm", "enter"),
+		anilist:  util.Bind("anilist", "A"),
+		metadata: util.Bind("metadata", "m"),
+		info:     util.Bind("info", "i"),
+	}
+	s.Screen = list.NewScreen(list.New(1, 1, "volume", "volumes", volumes, func(volume mangadata.Volume) _list.DefaultItem {
+		return &item{volume}
+	}), s.keyMap)
+	return s
 }
 
-// Inputting implements base.State.
-func (s *state) Inputting() bool {
-	return s.list.Filtering()
+func (s *state) keyMap() help.KeyMap {
+	return util.KeyMap{Short: []key.Binding{s.confirm, s.anilist, s.metadata, s.info}}
 }
 
-// KeyMap implements base.State.
-func (s *state) KeyMap() help.KeyMap {
-	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)
-}
-
-// Title implements base.State.
 func (s *state) Title() base.Title {
 	return base.Title{Text: s.manga.String()}
 }
 
-// Subtitle implements base.State.
-func (s *state) Subtitle() string {
-	return s.list.Subtitle()
-}
-
-// Status implements base.State.
 func (s *state) Status() string {
-	return s.meta.View() + " " + s.list.Status()
+	return metadata.Status(s.manga.Metadata(), s.fullMeta) + s.List.Status()
 }
 
-// Resize implements base.State.
-func (s *state) Resize(size base.Size) tea.Cmd {
-	return s.list.Resize(size)
-}
-
-// Init implements base.State.
-func (s *state) Init(ctx context.Context) tea.Cmd {
-	return s.list.Init()
-}
-
-// Update implements base.State.
-func (s *state) Update(ctx context.Context, msg tea.Msg) (cmd tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if s.list.FilterState() == _list.Filtering {
-			goto end
-		}
-
-		i, ok := s.list.SelectedItem().(*item)
+func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
+	if msg, ok := msg.(tea.KeyMsg); ok && !s.List.Filtering() {
+		i, ok := s.List.SelectedItem().(*item)
 		if !ok {
+			return s.List.Update(msg)
+		}
+		switch {
+		case key.Matches(msg, s.confirm):
+			if base.Busy(ctx) {
+				return nil
+			}
+			return s.chaptersCmd(ctx, i.volume)
+		case key.Matches(msg, s.anilist):
+			return anilist.Open(s.client, s.manga)
+		case key.Matches(msg, s.metadata):
+			return metadata.ShowManga(s.manga)
+		case key.Matches(msg, s.info):
+			s.fullMeta = !s.fullMeta
 			return nil
 		}
-
-		switch {
-		case key.Matches(msg, s.keyMap.confirm):
-			return s.searchVolumeChapters(ctx, i)
-		case key.Matches(msg, s.keyMap.anilist):
-			ani, err := s.client.GetMetadataProvider(lmmeta.IDSourceAnilist)
-			if err != nil {
-				return func() tea.Msg {
-					return err
-				}
-			}
-			return func() tea.Msg {
-				return anilist.New(ani, s.manga)
-			}
-		case key.Matches(msg, s.keyMap.metadata):
-			return func() tea.Msg {
-				return s.meta.ShowMetadataCmd()
-			}
-		case key.Matches(msg, s.keyMap.info):
-			s.meta.ShowFull = !s.meta.ShowFull
-		}
-	case base.RestoredMsg:
-		// in case the metadata was updated in the anilist state
-		s.meta.SetMetadata(s.manga.Metadata())
 	}
-end:
-	return s.list.Update(msg)
+	return s.List.Update(msg)
 }
 
-// View implements base.State.
-func (s *state) View() string {
-	return s.list.View()
+func (s *state) chaptersCmd(ctx context.Context, volume mangadata.Volume) tea.Cmd {
+	return base.Load(ctx, fmt.Sprintf("Searching chapters for volume %s", volume), func(ctx context.Context) ([]mangadata.Chapter, error) {
+		return s.client.VolumeChaptersContext(ctx, volume)
+	}, func(list []mangadata.Chapter) tea.Msg {
+		return chapters.New(s.client, s.manga, volume, list)
+	})
 }

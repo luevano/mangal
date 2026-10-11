@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -45,6 +46,23 @@ func Color(meta metadata.Metadata) lipgloss.Color {
 // ShowCmd shows the details in the TUI's viewport.
 func ShowCmd(meta metadata.Metadata) tea.Cmd {
 	return base.Viewport(Title(meta), Details(meta), Color(meta))
+}
+
+// Status is the Badge with a trailing space for a State's status, empty without metadata.
+func Status(meta metadata.Metadata, full bool) string {
+	if meta == nil {
+		return ""
+	}
+	return Badge(meta, full) + " "
+}
+
+// ShowManga shows the manga's metadata details, or says it has none.
+func ShowManga(manga mangadata.Manga) tea.Cmd {
+	meta := manga.Metadata()
+	if meta == nil {
+		return base.Notify("No metadata")
+	}
+	return ShowCmd(meta)
 }
 
 func codePrefix(id metadata.ID) string {
