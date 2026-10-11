@@ -1,17 +1,22 @@
+// Package discord sends notifications to a Discord webhook (notification.discord.*).
 package discord
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/disgo/webhook"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
-	"github.com/luevano/mangal/v5/util/chapter"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
@@ -21,197 +26,162 @@ const (
 	ColorGreen  = 5763719
 )
 
-type DiscordNotifyError string
+// Discord rejects the whole message if a limit is passed
+const (
+	maxFieldValue  = 1024
+	maxDescription = 4096
+)
 
-func (e DiscordNotifyError) Error() string {
-	return "error notifying discord: " + string(e)
+// listOptions are the config of the chapter lists.
+type listOptions struct {
+	includeExisting bool
+	includeDirs     bool
 }
 
-type DiscordErrorNotifyError struct {
-	toSend error
-	found  error
-}
-
-func (e DiscordErrorNotifyError) Error() string {
-	return "error notifying error (" + e.toSend.Error() + ") to discord: " + e.found.Error()
-}
-
-func chaptersToList(chapters chapter.Chapters, includeDirs bool) (out string) {
+func chaptersToList(chapters client.Results, opts listOptions) string {
+	var lines []string
 	var lastDir string
-	for i, ch := range chapters {
-		if ch.Down != nil &&
-			ch.Down.ChapterStatus == metadata.DownloadStatusExists &&
-			!config.Notification.IncludeExisting.Get() {
+	for _, ch := range chapters {
+		if ch.Down != nil && ch.Down.ChapterStatus == metadata.DownloadStatusExists && !opts.includeExisting {
 			continue
 		}
-		if includeDirs &&
-			ch.Down != nil &&
-			ch.Down.Directory != lastDir {
+		if opts.includeDirs && ch.Down != nil && ch.Down.Directory != lastDir {
 			lastDir = ch.Down.Directory
-			out += lastDir
-			out += ":\n"
+			lines = append(lines, lastDir+":")
 		}
-		out += "> "
+		line := "> "
 		if ch.Down != nil {
-			switch ch.Down.ChapterStatus {
-			case metadata.DownloadStatusNew:
-				out += "[N]"
-			case metadata.DownloadStatusMissingMetadata:
-				out += "[M]"
-			case metadata.DownloadStatusOverwritten:
-				out += "[O]"
-			case metadata.DownloadStatusSkip:
-				out += "[S]"
-			case metadata.DownloadStatusFailed:
-				out += "[F]"
-			case metadata.DownloadStatusExists:
-				out += "[E]"
-			default:
-				out += "[?]"
-			}
-			out += " "
+			line += status(ch.Down.ChapterStatus) + " "
 		}
-		out += stringutil.FormatFloa32(ch.Chapter.Info().Number)
-		out += " - "
-		out += ch.Chapter.Info().Title
-		if i < len(chapters) {
-			out += "\n"
-		}
+		info := ch.Chapter.Info()
+		line += stringutil.FormatFloa32(info.Number) + " - " + info.Title
+		lines = append(lines, line)
 	}
-	return
+	return strings.Join(lines, "\n")
 }
 
-// Send will send a message using the configured discord WebhookURL.
-func Send(chapters chapter.Chapters) error {
-	if len(chapters) == 0 {
-		return SendError(errors.New("No downloaded chapters to be notified of."))
+func status(s metadata.DownloadStatus) string {
+	switch s {
+	case metadata.DownloadStatusNew:
+		return "[N]"
+	case metadata.DownloadStatusMissingMetadata:
+		return "[M]"
+	case metadata.DownloadStatusOverwritten:
+		return "[O]"
+	case metadata.DownloadStatusSkip:
+		return "[S]"
+	case metadata.DownloadStatusFailed:
+		return "[F]"
+	case metadata.DownloadStatusExists:
+		return "[E]"
+	default:
+		return "[?]"
 	}
-	d, s, f := chapters.GetEach()
+}
+
+// truncate cuts s to max runes, marking the cut.
+func truncate(s string, max int) string {
+	if utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	const more = "\n…"
+	runes := []rune(s)
+	return string(runes[:max-utf8.RuneCountInString(more)]) + more
+}
+
+// embed builds the message of the download, false if there's nothing to notify.
+func embed(results client.Results, opts listOptions) (discord.Embed, bool) {
+	if len(results) == 0 {
+		return discord.Embed{
+			Title:       "Downloaded chapters",
+			Description: "No chapters to download.",
+			Color:       ColorOrange,
+		}, true
+	}
+	d, s, f := results.GetEach()
 	e := s.Existent()
-
-	// All downloaded chapters are succeed already existent
-	if len(chapters) == len(e) && !config.Notification.IncludeExisting.Get() {
-		return nil
+	// every chapter already existed
+	if len(results) == len(e) && !opts.includeExisting {
+		return discord.Embed{}, false
 	}
 
-	client, err := webhook.NewWithURL(config.Notification.Discord.WebhookURL.Get())
-	if err != nil {
-		return DiscordNotifyError(err.Error())
-	}
-
-	var (
-		color      int
-		failed     string
-		succeed    string
-		toDownload string
-		fields     []discord.EmbedField
-	)
-
+	color := ColorGreen
 	switch {
 	case len(f) != 0:
 		color = ColorRed
 	case len(d) != 0:
 		color = ColorOrange
-	default:
-		color = ColorGreen
 	}
 
 	succeedCount := strconv.Itoa(len(s))
 	if len(e) != 0 {
 		succeedCount += " (" + strconv.Itoa(len(e)) + " existed)"
 	}
-
-	// summaries
 	inline := true
-	fields = append(fields, discord.EmbedField{
-		Name:   "succeed",
-		Value:  succeedCount,
-		Inline: &inline,
-	})
-	fields = append(fields, discord.EmbedField{
-		Name:   "failed",
-		Value:  strconv.Itoa(len(f)),
-		Inline: &inline,
-	})
-	fields = append(fields, discord.EmbedField{
-		Name:   "to download",
-		Value:  strconv.Itoa(len(d)),
-		Inline: &inline,
-	})
-
-	// failed
-	if len(f) != 0 {
-		failed = chaptersToList(f, false)
-		fields = append(fields, discord.EmbedField{
-			Name:  "failed",
-			Value: failed,
-		})
+	fields := []discord.EmbedField{
+		{Name: "succeed", Value: succeedCount, Inline: &inline},
+		{Name: "failed", Value: strconv.Itoa(len(f)), Inline: &inline},
+		{Name: "to download", Value: strconv.Itoa(len(d)), Inline: &inline},
 	}
-
-	// succeed
-	if len(s) != 0 {
-		succeed = chaptersToList(s, config.Notification.IncludeDirectory.Get())
-		fields = append(fields, discord.EmbedField{
-			Name:  "succeed",
-			Value: succeed,
-		})
+	addList := func(name string, chapters client.Results, opts listOptions) {
+		// an empty value is rejected (e.g. every succeeded chapter existed)
+		if list := chaptersToList(chapters, opts); list != "" {
+			fields = append(fields, discord.EmbedField{Name: name, Value: truncate(list, maxFieldValue)})
+		}
 	}
+	addList("failed", f, listOptions{includeExisting: opts.includeExisting})
+	addList("succeed", s, opts)
+	addList("to download", d, listOptions{includeExisting: opts.includeExisting})
 
-	// to download
-	if len(d) != 0 {
-		toDownload = chaptersToList(d, false)
-		fields = append(fields, discord.EmbedField{
-			Name:  "to download",
-			Value: toDownload,
-		})
-	}
+	return discord.Embed{
+		Title:       "Downloaded chapters",
+		Description: truncate(results[0].Chapter.Volume().Manga().Info().Title, maxDescription),
+		Color:       color,
+		Fields:      fields,
+	}, true
+}
 
-	t := time.Now()
-	message, err := client.CreateMessage(discord.WebhookMessageCreate{
-		Username: config.Notification.Discord.Username.Get(),
-		Embeds: []discord.Embed{
-			{
-				Title:       "Downloaded chapters",
-				Description: chapters[0].Chapter.Volume().Manga().Info().Title,
-				Color:       color,
-				Timestamp:   &t,
-				Fields:      fields,
-			},
-		},
-	},
-		rest.CreateWebhookMessageParams{})
+func send(ctx context.Context, e discord.Embed) (*discord.Message, error) {
+	c, err := webhook.NewWithURL(config.Notification.Discord.WebhookURL.Get())
 	if err != nil {
-		return DiscordNotifyError(err.Error())
+		return nil, err
 	}
-	log.Log("sent discord message with id %d", message.ID)
+	t := time.Now()
+	e.Timestamp = &t
+	return c.CreateMessage(discord.WebhookMessageCreate{
+		Username: config.Notification.Discord.Username.Get(),
+		Embeds:   []discord.Embed{e},
+	}, rest.CreateWebhookMessageParams{}, rest.WithCtx(ctx))
+}
+
+// Send sends a summary of the download to the configured webhook.
+func Send(ctx context.Context, results client.Results) error {
+	e, ok := embed(results, listOptions{
+		includeExisting: config.Notification.IncludeExisting.Get(),
+		includeDirs:     config.Notification.IncludeDirectory.Get(),
+	})
+	if !ok {
+		return nil
+	}
+	message, err := send(ctx, e)
+	if err != nil {
+		return fmt.Errorf("notify discord: %w", err)
+	}
+	log.Info("sent discord message with id %d", message.ID)
 	return nil
 }
 
-// SendError is a wrapper error handling that will send a webhook
-// message to the configured discord WebhookURL and return the same error back.
-func SendError(toSend error) error {
-	client, err := webhook.NewWithURL(config.Notification.Discord.WebhookURL.Get())
+// SendError sends the error to the configured webhook and returns it, joined with the
+// error sending it if any.
+func SendError(ctx context.Context, toSend error) error {
+	message, err := send(ctx, discord.Embed{
+		Title:       "Error",
+		Description: truncate("General error found when downloading chapters:\n```"+toSend.Error(), maxDescription-3) + "```",
+		Color:       ColorRed,
+	})
 	if err != nil {
-		return DiscordErrorNotifyError{toSend, err}
+		return errors.Join(toSend, fmt.Errorf("notify discord: %w", err))
 	}
-
-	t := time.Now()
-	message, err := client.CreateMessage(discord.WebhookMessageCreate{
-		Username: config.Notification.Discord.Username.Get(),
-		Embeds: []discord.Embed{
-			{
-				Title: "Error",
-				Description: "General error found when downloading chapters:\n```" +
-					toSend.Error() + "```",
-				Color:     ColorRed,
-				Timestamp: &t,
-			},
-		},
-	},
-		rest.CreateWebhookMessageParams{})
-	if err != nil {
-		return DiscordErrorNotifyError{toSend, err}
-	}
-	log.Log("sent discord error message with id %d", message.ID)
+	log.Info("sent discord error message with id %d", message.ID)
 	return toSend
 }

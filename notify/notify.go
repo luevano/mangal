@@ -1,24 +1,38 @@
+// Package notify sends download notifications (only Discord for now). Only `mangal inline
+// download` sends them.
 package notify
 
 import (
+	"context"
+
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/notify/discord"
-	"github.com/luevano/mangal/v5/util/chapter"
 )
 
-// Send will send a notification to the configured services.
-func Send(chapters chapter.Chapters) error {
+// SendContext sends a summary of the download to the configured services.
+func SendContext(ctx context.Context, results client.Results) error {
 	if config.Notification.Discord.WebhookURL.Get() != "" {
-		return discord.Send(chapters)
+		return discord.Send(ctx, results)
 	}
 	return nil
 }
 
-// SendError is a wrapper error handling that will send a notification
-// to configured services and return the same error back.
-func SendError(err error) error {
+// Send calls SendContext with context.Background().
+func Send(results client.Results) error {
+	return SendContext(context.Background(), results)
+}
+
+// SendErrorContext sends the error to the configured services and returns it, joined
+// with the error sending it if any.
+func SendErrorContext(ctx context.Context, err error) error {
 	if config.Notification.Discord.WebhookURL.Get() != "" {
-		return discord.SendError(err)
+		return discord.SendError(ctx, err)
 	}
 	return err
+}
+
+// SendError calls SendErrorContext with context.Background().
+func SendError(err error) error {
+	return SendErrorContext(context.Background(), err)
 }
