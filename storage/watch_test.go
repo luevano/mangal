@@ -91,6 +91,9 @@ func TestWatches(t *testing.T) {
 	if r := runs[1]; r.NewChapters != 2 || len(r.Results) != 1 || len(r.Results[0].Chapters) != 2 || r.Results[0].Chapters[0].Number != 201.5 {
 		t.Errorf("run %+v", r)
 	}
+	if n := runs[1].Results[0].NewChapters; n != 2 {
+		t.Errorf("a check's count is its chapters: %d", n)
+	}
 	if runs, _ := watches.Runs(RunFilter{Watch: w.ID}); len(runs) != 1 {
 		t.Errorf("runs of the watch: %+v", runs)
 	}
@@ -384,5 +387,18 @@ func TestMigrateRelink(t *testing.T) {
 	list, err := (Watches{DB: data}).List()
 	if err != nil || len(list) != 2 || !list[0].NeedsRelink || list[1].NeedsRelink {
 		t.Errorf("watches %+v, %v", list, err)
+	}
+}
+
+func TestWatchRunNewChapters(t *testing.T) {
+	watches := Watches{DB: openData(t)}
+	// imported history with only a count: the count stays, more than the chapters recorded
+	imported, _ := watches.StartRun(CheckRun{Kind: "import", Started: time.Unix(150, 0)})
+	if _, err := watches.RecordWatchRun(WatchRun{CheckRun: imported.ID, Provider: "mango-mangadex", MangaID: "title:Berserk",
+		Title: "Berserk", Status: StatusNew, NewChapters: 384, Chapters: []RunChapter{{Number: 376}}}); err != nil {
+		t.Fatal(err)
+	}
+	if r, _, _ := watches.Run(imported.ID); len(r.Results) != 1 || r.Results[0].New() != 384 || len(r.Results[0].Chapters) != 1 {
+		t.Errorf("imported %+v", r.Results)
 	}
 }

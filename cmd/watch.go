@@ -772,7 +772,7 @@ func printRun(cmd *cobra.Command, run watch.CheckRun) {
 		line := fmt.Sprintf("  %s (%s) [%s]: ", r.Title, r.Provider, from)
 		switch r.Status {
 		case storage.StatusNew:
-			line += fmt.Sprintf("%d new", len(r.Chapters))
+			line += fmt.Sprintf("%d new", r.New())
 		case storage.StatusNone:
 			line += "no new chapters"
 		default:

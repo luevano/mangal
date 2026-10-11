@@ -121,6 +121,14 @@ type WatchRun struct {
 	Started  time.Time    `json:"started"`
 	Finished time.Time    `json:"finished"`
 	Chapters []RunChapter `json:"chapters,omitempty"`
+	// NewChapters is how many chapters it downloaded: len(Chapters), or more when they
+	// weren't all recorded (e.g. history imported from elsewhere with only a count).
+	NewChapters int `json:"new_chapters"`
+}
+
+// New is how many chapters the check downloaded, see NewChapters.
+func (r WatchRun) New() int {
+	return max(r.NewChapters, len(r.Chapters))
 }
 
 // RunChapter is a chapter a WatchRun downloaded.
@@ -439,9 +447,10 @@ func (s Watches) FinishRun(run CheckRun) error {
 // RecordWatchRun records the check of a watch with its chapters, its ID is set.
 func (s Watches) RecordWatchRun(r WatchRun) (WatchRun, error) {
 	err := s.DB.InTx(func(tx *sql.Tx) error {
-		res, err := tx.Exec(`INSERT INTO watch_runs (check_run, watch, provider, manga_id, title, from_number, status, error, started, finished)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.CheckRun, nullID(r.Watch), r.Provider, r.MangaID, r.Title, nullFloat(r.From), r.Status, r.Error,
-			unix(r.Started), unix(r.Finished))
+		r.NewChapters = r.New()
+		res, err := tx.Exec(`INSERT INTO watch_runs (check_run, watch, provider, manga_id, title, from_number, status, error, started, finished, new_chapters)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.CheckRun, nullID(r.Watch), r.Provider, r.MangaID, r.Title, nullFloat(r.From), r.Status, r.Error,
+			unix(r.Started), unix(r.Finished), r.NewChapters)
 		if err != nil {
 			return err
 		}
@@ -523,10 +532,10 @@ func (s Watches) watchRuns(checkRun int64, f RunFilter) ([]WatchRun, error) {
 		var r WatchRun
 		var from sql.NullFloat64
 		var started, finished int64
-		err := rows.Scan(&r.ID, &r.CheckRun, &r.Watch, &r.Provider, &r.MangaID, &r.Title, &from, &r.Status, &r.Error, &started, &finished)
+		err := rows.Scan(&r.ID, &r.CheckRun, &r.Watch, &r.Provider, &r.MangaID, &r.Title, &from, &r.Status, &r.Error, &started, &finished, &r.NewChapters)
 		r.From, r.Started, r.Finished = floatPtr(from), fromUnix(started), fromUnix(finished)
 		return r, err
-	}, `SELECT id, check_run, coalesce(watch, 0), provider, manga_id, title, from_number, status, error, started, finished
+	}, `SELECT id, check_run, coalesce(watch, 0), provider, manga_id, title, from_number, status, error, started, finished, new_chapters
 FROM watch_runs w WHERE check_run = ?1 AND `+runFilterWhere+` ORDER BY id`, checkRun, f.Watch, f.Provider, f.MangaID)
 	if err != nil {
 		return nil, fmt.Errorf("watch runs of check run %d: %w", checkRun, err)
@@ -717,3 +726,8 @@ WHERE watch IN (SELECT o.id FROM watches o JOIN watches n ON n.manga_id = o.mang
 	_, err := tx.Exec(`UPDATE watch_runs SET provider = ? WHERE provider = ?`, newID, oldID)
 	return err
 }
+
+// runNewChapters gives every watch run its count of new chapters (the existing ones: the
+// chapters recorded under it).
+const runNewChapters = `ALTER TABLE watch_runs ADD COLUMN new_chapters INTEGER NOT NULL DEFAULT 0;
+UPDATE watch_runs SET new_chapters = (SELECT count(*) FROM watch_run_chapters c WHERE c.watch_run = watch_runs.id)`

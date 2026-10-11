@@ -74,7 +74,7 @@ func nextCheck(w watch.Watch, backoff int, now time.Time) string {
 func result(r storage.WatchRun) string {
 	switch r.Status {
 	case storage.StatusNew:
-		res := fmt.Sprintf("new %d", len(r.Chapters))
+		res := fmt.Sprintf("new %d", r.New())
 		if r.Error != "" {
 			res += " (some failed)"
 		}
@@ -111,18 +111,22 @@ func runReport(r storage.WatchRun) string {
 	if r.Error != "" {
 		fmt.Fprintf(&b, "Error:    %s\n", r.Error)
 	}
-	if len(r.Chapters) != 0 {
+	switch n := r.New(); {
+	case n > len(r.Chapters):
+		// e.g. imported history that only had a count
+		fmt.Fprintf(&b, "\n%s, %d recorded:\n", stringutil.Quantify(n, "new chapter", "new chapters"), len(r.Chapters))
+	case len(r.Chapters) != 0:
 		fmt.Fprintf(&b, "\n%s:\n", stringutil.Quantify(len(r.Chapters), "chapter", "chapters"))
-		for _, ch := range r.Chapters {
-			line := "  " + stringutil.FormatFloa32(ch.Number)
-			if ch.Title != "" {
-				line += " - " + ch.Title
-			}
-			if ch.Path != "" {
-				line += "\n      " + ch.Path
-			}
-			b.WriteString(line + "\n")
+	}
+	for _, ch := range r.Chapters {
+		line := "  " + stringutil.FormatFloa32(ch.Number)
+		if ch.Title != "" {
+			line += " - " + ch.Title
 		}
+		if ch.Path != "" {
+			line += "\n      " + ch.Path
+		}
+		b.WriteString(line + "\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
