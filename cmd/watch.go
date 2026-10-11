@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -408,9 +409,11 @@ var watchSetCmd = &cobra.Command{
 }
 
 var watchCheckArgs = struct {
-	DryRun bool
-	Gaps   bool
-	JSON   bool
+	DryRun   bool
+	Gaps     bool
+	JSON     bool
+	Provider string
+	Due      bool
 }{}
 
 func init() {
@@ -419,14 +422,28 @@ func init() {
 	f.BoolVarP(&watchCheckArgs.DryRun, "dry-run", "n", false, "Only list what would be downloaded")
 	f.BoolVar(&watchCheckArgs.Gaps, "gaps", false, "Also download the missing chapters below the last downloaded one, for every watch checked")
 	f.BoolVar(&watchCheckArgs.JSON, "json", false, "Print the report as JSON at the end (instead of the lines)")
+	f.StringVar(&watchCheckArgs.Provider, "provider", "", "Every enabled watch of this provider")
+	f.BoolVar(&watchCheckArgs.Due, "due", false, "Only the watches that are due")
+	_ = watchCheckCmd.RegisterFlagCompletionFunc("provider", completionProviderIDs)
 }
 
 var watchCheckCmd = &cobra.Command{
-	Use:   "check [id...]",
+	Use:   "check [id...] | --provider <id> [--due]",
 	Short: "Check the watches now",
-	Long: `Check the watches with the ids, or every one that isn't paused, and download what's new.
-Only one check runs at a time (also across processes, e.g. "mangal serve"). Errors are
-sent to Discord as configured (watch.notify), and make the exit code 1.`,
+	Long: `Check the watches with the ids, or every one that isn't paused (--provider: of that
+provider; --due: only the due ones), and download what's new. A check counts as the
+scheduled one: the next check is an interval from now.
+
+A provider is checked by one check at a time, also across processes (e.g. "mangal
+serve"): the watches of a provider another check has are skipped, and when every one is
+busy it's an error. Errors are sent to Discord as configured (watch.notify), and make the
+exit code 1.`,
+	Args: func(cmd *cobra.Command, args []string) error {
+		if watchCheckArgs.Provider != "" && len(args) > 0 {
+			return errors.New("ids or --provider, not both")
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ids, err := parseIDs(args)
 		if err != nil {
@@ -435,6 +452,17 @@ sent to Discord as configured (watch.notify), and make the exit code 1.`,
 		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
+		}
+		if watchCheckArgs.Provider != "" || watchCheckArgs.Due {
+			all, err := svc.List(cmd.Context())
+			if err != nil {
+				return err
+			}
+			ids = selectWatches(all, ids, watchCheckArgs.Provider, watchCheckArgs.Due, time.Now())
+			if len(ids) == 0 {
+				cmd.Println("no watches to check")
+				return nil
+			}
 		}
 		kind := watch.KindManual
 		if watchCheckArgs.Gaps {
@@ -462,6 +490,9 @@ sent to Discord as configured (watch.notify), and make the exit code 1.`,
 				printResult(cmd, r, watchCheckArgs.DryRun)
 			}
 		}
+		for _, p := range report.Busy {
+			cmd.PrintErrf("%s is being checked by another check, its watches were skipped\n", p)
+		}
 		if err := cmd.Context().Err(); err != nil {
 			return err
 		}
@@ -470,6 +501,23 @@ sent to Discord as configured (watch.notify), and make the exit code 1.`,
 		}
 		return nil
 	},
+}
+
+// selectWatches are the watches to check: the enabled ones of the provider (or the ones
+// with the ids, or every enabled one), only the due ones with due.
+func selectWatches(all []watch.Watch, ids []int64, provider string, due bool, now time.Time) []int64 {
+	var selected []int64
+	for _, w := range all {
+		switch {
+		case len(ids) > 0 && !slices.Contains(ids, w.ID):
+		case len(ids) == 0 && (!w.Enabled || w.ProviderMissing):
+		case provider != "" && w.Provider != provider:
+		case due && w.NextCheck.After(now):
+		default:
+			selected = append(selected, w.ID)
+		}
+	}
+	return selected
 }
 
 func printResult(cmd *cobra.Command, r watch.Result, dryRun bool) {
@@ -496,10 +544,12 @@ func printCheckEvent(cmd *cobra.Command, e watch.Event, dryRun bool) {
 }
 
 var watchLogArgs = struct {
-	Since string
-	Watch int64
-	Limit int
-	JSON  bool
+	Since    string
+	Watch    int64
+	Provider string
+	MangaID  string
+	Limit    int
+	JSON     bool
 }{}
 
 func init() {
@@ -507,6 +557,9 @@ func init() {
 	f := watchLogCmd.Flags()
 	f.StringVar(&watchLogArgs.Since, "since", "7d", "How far back (e.g. 7d, 12h), 0 for everything")
 	f.Int64Var(&watchLogArgs.Watch, "watch", 0, "Only the checks of this watch id")
+	f.StringVar(&watchLogArgs.Provider, "provider", "", "Only the checks of this provider's mangas (removed watches too)")
+	f.StringVar(&watchLogArgs.MangaID, "manga", "", "Only the checks of this manga id (with --provider)")
+	_ = watchLogCmd.RegisterFlagCompletionFunc("provider", completionProviderIDs)
 	f.IntVar(&watchLogArgs.Limit, "limit", 0, "Only the latest N check runs")
 	f.BoolVar(&watchLogArgs.JSON, "json", false, "Print JSON")
 }
@@ -521,11 +574,14 @@ var watchLogCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if watchLogArgs.MangaID != "" && watchLogArgs.Provider == "" {
+			return errors.New("--manga needs --provider")
+		}
 		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
 		}
-		filter := watch.RunFilter{Watch: watchLogArgs.Watch, Limit: watchLogArgs.Limit}
+		filter := watch.RunFilter{Watch: watchLogArgs.Watch, Provider: watchLogArgs.Provider, MangaID: watchLogArgs.MangaID, Limit: watchLogArgs.Limit}
 		if since > 0 {
 			filter.Since = time.Now().Add(-since)
 		}

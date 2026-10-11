@@ -1,9 +1,13 @@
 package cmd
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/storage"
 )
 
 func TestParseSince(t *testing.T) {
@@ -46,6 +50,29 @@ func TestWatchFlags(t *testing.T) {
 	for _, sub := range []string{"ls", "rm", "pause", "resume", "set", "check", "log", "stale"} {
 		if c, _, err := rootCmd.Find([]string{"watch", sub}); err != nil || c.Name() != sub {
 			t.Errorf("watch %s: %v", sub, err)
+		}
+	}
+}
+
+func TestSelectWatches(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	w := func(id int64, provider string, enabled bool, next time.Duration) watch.Watch {
+		return watch.Watch{Watch: storage.Watch{ID: id, Provider: provider, Enabled: enabled}, NextCheck: now.Add(next)}
+	}
+	all := []watch.Watch{w(1, "p", true, -time.Hour), w(2, "p", true, time.Hour), w(3, "p", false, -time.Hour), w(4, "q", true, -time.Hour)}
+	for _, tc := range []struct {
+		ids      []int64
+		provider string
+		due      bool
+		want     []int64
+	}{
+		{provider: "p", want: []int64{1, 2}},
+		{provider: "p", due: true, want: []int64{1}},
+		{due: true, want: []int64{1, 4}},
+		{ids: []int64{2, 3, 4}, due: true, want: []int64{3, 4}},
+	} {
+		if got := selectWatches(all, tc.ids, tc.provider, tc.due, now); !slices.Equal(got, tc.want) {
+			t.Errorf("%+v: %v", tc, got)
 		}
 	}
 }
