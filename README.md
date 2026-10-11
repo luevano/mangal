@@ -95,7 +95,7 @@ mangal config write
 
 It will be written to `$XDG_CONFIG_HOME/mangal/mangal.toml`.
 
-Then, the config can be set either by modifying the file itself or by running:
+Then, the config can be set by modifying the file itself, from the TUI's config window (`,` on any screen, changes apply right away), or by running:
 
 ```sh
 mangal config set <key> <value>
@@ -161,9 +161,9 @@ The TUI has the same under `l` on the home screen, where `d` deletes a manga or 
 mangal accounts
 ```
 
-Shows the Anilist and Kitsu logins and the provider accounts (e.g. the MangaPlus subscription), `a` on the TUI home. From there you can log into Anilist or Kitsu or set the MangaPlus secret. mangal tells you when the Anilist login expires.
+Shows every account mangal can use, logged in or not: Anilist, Kitsu, MyAnimeList and the provider accounts (e.g. the MangaPlus subscription), `a` on the TUI home. From there you can log into Anilist, Kitsu or MyAnimeList or set the MangaPlus secret. mangal tells you when the Anilist login expires. Without a browser on the same machine, `mangal anilist login` and `mangal myanimelist login` print the URL to open and take the redirected URL pasted back.
 
-Metadata comes from [Anilist](https://anilist.co), then [Kitsu](https://kitsu.app) when Anilist finds nothing (`metadata.kitsu.enabled`), or the provider, and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config. Log in with `mangal anilist` to also sync the reading progress when reading from the TUI; `mangal kitsu` and `read.history.kitsu = true` do the same for Kitsu.
+Metadata comes from [Anilist](https://anilist.co), then [Kitsu](https://kitsu.app) when Anilist finds nothing (`metadata.kitsu.enabled`), or the provider, and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config. Log in with `mangal anilist` to also sync the reading progress when reading from the TUI; `mangal kitsu` and `read.history.kitsu = true` do the same for Kitsu. MyAnimeList needs an API client id of your own: register an app at https://myanimelist.net/apiconfig (App Type "other", redirect URL `http://localhost:6969/oauth/mal/callback`), set `metadata.myanimelist.client_id`, then `mangal myanimelist` and `read.history.myanimelist = true`; it's searched last for metadata. Chapters read from the TUI are kept in a local history (`mangal history`, `read.history.local`).
 
 ### Templates
 
