@@ -53,10 +53,10 @@ func TestSanitize(t *testing.T) {
 
 func TestSanitizeCapsLength(t *testing.T) {
 	got := SanitizeUNIX(strings.Repeat("進", 100))
-	if len(got) > maxNameBytes || !utf8.ValidString(got) {
+	if len(got) > 240 || !utf8.ValidString(got) {
 		t.Errorf("got %d bytes, valid utf8: %v", len(got), utf8.ValidString(got))
 	}
-	if long := strings.Repeat("a", maxNameBytes); SanitizeUNIX(long) != long {
+	if long := strings.Repeat("a", 240); SanitizeUNIX(long) != long {
 		t.Error("a name at the limit changed")
 	}
 }

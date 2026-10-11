@@ -38,7 +38,7 @@ func UpdateMarker(fsys afero.Fs, marker OldMarker, mode fs.FileMode) error {
 		return err
 	}
 	info.Provider = marker.New
-	if err := writeMangaDirInfo(fsys, marker.Dir, info, mode); err != nil {
+	if err := libmangal.WriteMangaDirInfo(fsys, marker.Dir, info, mode); err != nil {
 		return fmt.Errorf("update %s: %w", marker.Dir, err)
 	}
 	return nil

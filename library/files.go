@@ -1,7 +1,6 @@
 package library
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
@@ -10,7 +9,6 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/spf13/afero"
 )
@@ -31,36 +29,6 @@ type Files struct {
 	// Root is the download directory, with the trash.
 	Root  string
 	Modes Modes
-}
-
-// writeMangaDirInfo writes the folder's .libmangal.json, atomically: a reader sees the
-// old one or the new one, never a partial file.
-func writeMangaDirInfo(fsys afero.Fs, dir string, info libmangal.MangaDirInfo, mode fs.FileMode) error {
-	data, err := json.MarshalIndent(info, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp, err := afero.TempFile(fsys, dir, libmangal.FilenameMangaDirInfo+".*.tmp")
-	if err != nil {
-		return err
-	}
-	_, err = tmp.Write(data)
-	if err == nil {
-		err = tmp.Sync()
-	}
-	if closeErr := tmp.Close(); err == nil {
-		err = closeErr
-	}
-	if err == nil {
-		err = fsys.Chmod(tmp.Name(), mode)
-	}
-	if err == nil {
-		err = fsys.Rename(tmp.Name(), filepath.Join(dir, libmangal.FilenameMangaDirInfo))
-	}
-	if err != nil {
-		_ = fsys.Remove(tmp.Name())
-	}
-	return err
 }
 
 // moveFile renames a file or folder, copying it (and removing the original) when it's on
