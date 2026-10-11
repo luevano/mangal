@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/path"
 	providerloader "github.com/luevano/mangal/v5/provider/loader"
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/template"
@@ -187,8 +188,9 @@ func newClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal
 	if err != nil {
 		return nil, fmt.Errorf("open data db: %w", err)
 	}
-	options.MangaDirIndex = library
-	options.ChapterIndex = library
+	index := libraryIndex{library: library, temp: path.Temp()}
+	options.MangaDirIndex = index
+	options.ChapterIndex = index
 
 	metas, err := metadataProviders()
 	if err != nil {
