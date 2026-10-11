@@ -124,11 +124,11 @@ func NewClientByID(ctx context.Context, provider string) (*libmangal.Client, err
 	if alias != nil {
 		info := loader.Info()
 		msg := fmt.Sprintf("provider %q is now %q (%s), use that id instead", provider, info.ID, info.Name)
-		log.Log(msg)
+		log.Log("%s", msg)
 		fmt.Fprintln(os.Stderr, "warning: "+msg)
 	}
 	if notice, _, err := cache.OldIDsNotice(loaders); err == nil && notice != "" {
-		log.Log(notice)
+		log.Log("%s", notice)
 		fmt.Fprintln(os.Stderr, "warning: "+notice)
 	}
 
