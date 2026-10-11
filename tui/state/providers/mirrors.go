@@ -9,7 +9,6 @@ import (
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
@@ -85,10 +84,8 @@ func (s *mirrorsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 				if err := cache.DeleteMirror(s.info.ID); err != nil {
 					return err
 				}
-				// the loaded clients keep the options they were loaded with
-				if err := client.CloseAll(); err != nil {
-					return err
-				}
+				// the loaded providers keep the options they were loaded with
+				base.ReloadProviders()
 				return base.Back()
 			},
 			base.Notify(fmt.Sprintf("%s prefers %s", s.info.Name, i.url)),

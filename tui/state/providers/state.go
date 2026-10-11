@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/state/mangas"
@@ -40,6 +41,11 @@ type loadedMsg struct {
 
 type closedMsg struct{}
 
+// reloadedMsg are the providers loaded again, nil if they weren't.
+type reloadedMsg struct {
+	loaders []libmangal.ProviderLoader
+}
+
 func New(loaders []libmangal.ProviderLoader) base.State {
 	s := &state{
 		confirm:  util.Bind("confirm", "enter"),
@@ -47,10 +53,12 @@ func New(loaders []libmangal.ProviderLoader) base.State {
 		closeAll: util.Bind("close all", "backspace"),
 		mirrors:  util.Bind("mirrors", "m"),
 	}
-	s.Screen = list.NewScreen(list.New(2, 1, "provider", "providers", loaders, func(loader libmangal.ProviderLoader) _list.DefaultItem {
-		return &item{loader: loader, extraInfo: &s.extraInfo}
-	}), s.keyMap)
+	s.Screen = list.NewScreen(list.New(2, 1, "provider", "providers", loaders, s.newItem), s.keyMap)
 	return s
+}
+
+func (s *state) newItem(loader libmangal.ProviderLoader) _list.DefaultItem {
+	return &item{loader: loader, extraInfo: &s.extraInfo}
 }
 
 func (s *state) keyMap() help.KeyMap {
@@ -66,9 +74,26 @@ func (s *state) Title() base.Title {
 
 // Init closes the clients left from the last time (back home and in again).
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	return base.Load(ctx, "", func(context.Context) (struct{}, error) {
-		return struct{}{}, client.CloseAll()
-	}, nil)
+	return s.refresh(ctx, base.TakeReloadProviders())
+}
+
+// refresh closes the clients, and loads the providers again if reload (the config
+// changed their options, see base.ReloadProviders).
+func (s *state) refresh(ctx context.Context, reload bool) tea.Cmd {
+	label := ""
+	if reload {
+		label = "Reloading providers"
+	}
+	return base.Load(ctx, label, func(context.Context) (reloadedMsg, error) {
+		if err := client.CloseAll(); err != nil {
+			return reloadedMsg{}, err
+		}
+		if !reload {
+			return reloadedMsg{}, nil
+		}
+		loaders, err := manager.Loaders()
+		return reloadedMsg{loaders: loaders}, err
+	}, func(msg reloadedMsg) tea.Msg { return msg })
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
@@ -80,6 +105,22 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return func() tea.Msg { return mangas.New(msg.client) }
 	case closedMsg:
 		return base.Notify("Closed all clients")
+	case base.RestoredMsg:
+		if base.TakeReloadProviders() {
+			return s.refresh(ctx, true)
+		}
+	case reloadedMsg:
+		if msg.loaders == nil {
+			return nil
+		}
+		items := make([]_list.Item, len(msg.loaders))
+		for n, loader := range msg.loaders {
+			items[n] = s.newItem(loader)
+		}
+		selected := s.List.Index()
+		cmd := s.List.SetItems(items)
+		s.List.Select(selected)
+		return tea.Sequence(cmd, base.Notify("Providers reloaded"))
 	case tea.KeyMsg:
 		if s.List.Filtering() {
 			break
