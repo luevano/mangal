@@ -15,9 +15,10 @@ func init() {
 }
 
 var templatesCmd = &cobra.Command{
-	Use:   "templates",
-	Short: "Name templates commands",
-	Args:  cobra.NoArgs,
+	Annotations: map[string]string{startupAnnotation: startupNoStorage},
+	Use:         "templates",
+	Short:       "Name templates commands",
+	Args:        cobra.NoArgs,
 }
 
 func init() {

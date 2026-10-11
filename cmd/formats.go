@@ -10,9 +10,10 @@ func init() {
 }
 
 var formatsCmd = &cobra.Command{
-	Use:   "formats",
-	Short: "Show available download formats",
-	Args:  cobra.NoArgs,
+	Annotations: map[string]string{startupAnnotation: startupNoStorage},
+	Use:         "formats",
+	Short:       "Show available download formats",
+	Args:        cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
 		for _, format := range libmangal.FormatStrings() {
 			cmd.Println(format)

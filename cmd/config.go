@@ -6,7 +6,6 @@ import (
 
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/theme/style"
-	"github.com/luevano/mangal/v5/util"
 	"github.com/spf13/cobra"
 )
 
@@ -15,9 +14,10 @@ func init() {
 }
 
 var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "Manage configuration",
-	Args:  cobra.NoArgs,
+	Use:         "config",
+	Short:       "Manage configuration",
+	Args:        cobra.NoArgs,
+	Annotations: map[string]string{startupAnnotation: startupConfig},
 }
 
 var configInfoArgs = struct {
@@ -39,18 +39,19 @@ var configInfoCmd = &cobra.Command{
 	Use:   "info",
 	Short: "Show configuration information",
 	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, _ []string) {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		type configEntry struct {
 			Value       any    `json:"value"`
 			Default     any    `json:"default"`
 			Description string `json:"description"`
 		}
 
+		keys := config.Keys()
 		configEntries := map[string]configEntry{}
-		for _, key := range config.Keys() {
+		for _, key := range keys {
 			value, err := config.Get(key)
 			if err != nil {
-				errorf(cmd, "%s", util.ErrorTree(err))
+				return err
 			}
 			def, _ := config.Default(key)
 			description, _ := config.Description(key)
@@ -64,14 +65,14 @@ var configInfoCmd = &cobra.Command{
 		if configInfoArgs.JSON {
 			jsonEntries, err := json.Marshal(configEntries)
 			if err != nil {
-				errorf(cmd, "%s", util.ErrorTree(err))
+				return err
 			}
 			cmd.Println(string(jsonEntries))
-			return
+			return nil
 		}
 
-		// TODO: change theme?
-		for key, entry := range configEntries {
+		for _, key := range keys {
+			entry := configEntries[key]
 			if configInfoArgs.Short {
 				cmd.Printf("%s:%s\n",
 					style.Normal.Viewport.Render(key),
@@ -93,6 +94,7 @@ var configInfoCmd = &cobra.Command{
 				style.Normal.Secondary.Render(fmt.Sprintf("%v", entry.Default)),
 			)
 		}
+		return nil
 	},
 }
 
@@ -103,13 +105,16 @@ func init() {
 var configWriteCmd = &cobra.Command{
 	Use:   "write",
 	Short: "Write configuration to disk",
-	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, _ []string) {
+	Long: `Write every config key to the config file: its current values and the defaults of the
+keys it doesn't have (values from environment variables or flags aren't written). The file is
+re-serialised, comments and order are lost.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := config.Write(); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
+			return err
 		}
-
-		successf(cmd, "Wrote config to the file")
+		successf(cmd, "Wrote config to %s", config.Path)
+		return nil
 	},
 }
 
@@ -121,14 +126,14 @@ var configGetCmd = &cobra.Command{
 	Use:               "get key",
 	Short:             "Get config value by key",
 	Args:              cobra.ExactArgs(1),
-	SilenceErrors:     true,
 	ValidArgsFunction: completionConfigKeys,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		value, err := config.Get(args[0])
 		if err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
+			return err
 		}
 		cmd.Println(value)
+		return nil
 	},
 }
 
@@ -137,25 +142,25 @@ func init() {
 }
 
 var configSetCmd = &cobra.Command{
-	Use:               "set key value",
-	Short:             "Sets value to the config key",
+	Use:   "set key value",
+	Short: "Sets value to the config key",
+	Long: `Set the value of the config key in the config file (created if there's none). Only that
+key changes, but the file is re-serialised: comments and order are lost.`,
 	Args:              cobra.ExactArgs(2),
-	SilenceErrors:     true,
 	ValidArgsFunction: completionConfigKeys,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]
-
 		raw, err := config.Parse(key, value)
 		if err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
+			return err
 		}
 		if err := config.CreateFile(); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
+			return err
 		}
 		if err := config.WriteKey(key, raw); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
+			return err
 		}
-
 		successf(cmd, "Successfully set %q to %v", key, raw)
+		return nil
 	},
 }

@@ -8,7 +8,6 @@ import (
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/info"
 	"github.com/luevano/mangal/v5/provider/manager"
-	"github.com/luevano/mangal/v5/util"
 	"github.com/spf13/cobra"
 )
 
@@ -98,12 +97,13 @@ var providersRmCmd = &cobra.Command{
 	Use:   "rm tags",
 	Short: "Remove provider",
 	Args:  cobra.MinimumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		for _, tag := range args {
 			if err := manager.Remove(tag); err != nil {
-				errorf(cmd, "%s", util.ErrorTree(err))
+				return err
 			}
 		}
+		return nil
 	},
 }
 
@@ -111,8 +111,8 @@ func init() {
 	providersCmd.AddCommand(providersNewCmd)
 
 	f := providersNewCmd.Flags()
-	f.StringP("directory", "d", config.Providers.Path.Get(), "Directory in which new providers will be created")
-	config.BindPFlag(config.Providers.Path.Key, f.Lookup("directory"))
+	f.StringP("directory", "d", "", "Directory in which new providers will be created")
+	configKeyFlag(f, "directory", config.Providers.Path.Key)
 
 	providersNewCmd.MarkFlagDirname("directory")
 }
@@ -122,9 +122,13 @@ var providersNewCmd = &cobra.Command{
 	Use:   "new",
 	Short: "Create new provider",
 	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, _ []string) {
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		dir, err := path.Ensure(path.Providers())
+		if err != nil {
+			return err
+		}
 		options := manager.NewOptions{
-			Dir: path.ProvidersDir(),
+			Dir: dir,
 			Info: info.Info{
 				ProviderInfo: libmangal.ProviderInfo{
 					ID:          "test",
@@ -137,8 +141,6 @@ var providersNewCmd = &cobra.Command{
 			},
 		}
 
-		if err := manager.New(options); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
-		}
+		return manager.New(options)
 	},
 }

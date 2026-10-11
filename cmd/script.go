@@ -10,7 +10,6 @@ import (
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/script"
 	"github.com/luevano/mangal/v5/script/lib"
-	"github.com/luevano/mangal/v5/util"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/spf13/cobra"
 )
@@ -22,24 +21,13 @@ func init() {
 	f := scriptCmd.Flags()
 
 	f.StringVarP(&scriptArgs.File, "file", "f", "", "Read script from file")
-	f.StringVarP(&scriptArgs.String, "string", "s", "", "Read script from script")
+	f.StringVarP(&scriptArgs.String, "string", "s", "", "Read script from the given string")
 	f.BoolVarP(&scriptArgs.Stdin, "stdin", "i", false, "Read script from stdin")
 	f.StringVarP(&scriptArgs.Provider, "provider", "p", "", "Load provider by tag")
 	f.StringToStringVarP(&scriptArgs.Variables, "vars", "v", nil, "Variables to set in the `Vars` table")
+	addLoaderFlags(f)
 
-	// Reused loader options from inlineCmd, this only
-	// works because inline init() runs before script init()
-	inlineFlags := inlineCmd.Flags()
-	f.AddFlag(inlineFlags.Lookup("nsfw"))
-	f.AddFlag(inlineFlags.Lookup("language"))
-	f.AddFlag(inlineFlags.Lookup("avoid-duplicate-chapters"))
-	f.AddFlag(inlineFlags.Lookup("show-unavailable-chapters"))
-	f.AddFlag(inlineFlags.Lookup("parallelism"))
-	f.AddFlag(inlineFlags.Lookup("headless-use-flaresolverr"))
-	f.AddFlag(inlineFlags.Lookup("headless-flaresolverr-url"))
-
-	scriptCmd.MarkPersistentFlagRequired("provider")
-	scriptCmd.MarkPersistentFlagRequired("vars")
+	scriptCmd.MarkFlagRequired("provider")
 	scriptCmd.MarkFlagsOneRequired("file", "string", "stdin")
 	scriptCmd.MarkFlagsMutuallyExclusive("file", "string", "stdin")
 	scriptCmd.RegisterFlagCompletionFunc("provider", completionProviderIDs)
@@ -51,22 +39,16 @@ var scriptCmd = &cobra.Command{
 	Long:    "script, useful for custom process with Lua",
 	GroupID: groupMode,
 	Args:    cobra.NoArgs,
-	Run: func(cmd *cobra.Command, _ []string) {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		var reader io.Reader
 
 		switch {
 		case cmd.Flag("file").Changed:
-			file, err := afs.Afero.OpenFile(
-				scriptArgs.File,
-				os.O_RDONLY,
-				config.Download.ModeFile.Get(),
-			)
+			file, err := afs.Afero.Open(scriptArgs.File)
 			if err != nil {
-				errorf(cmd, "%s", util.ErrorTree(err))
+				return fmt.Errorf("open script: %w", err)
 			}
-
 			defer file.Close()
-
 			reader = file
 		case cmd.Flag("string").Changed:
 			reader = strings.NewReader(scriptArgs.String)
@@ -74,9 +56,7 @@ var scriptCmd = &cobra.Command{
 			reader = os.Stdin
 		}
 
-		if err := script.Run(cmd.Context(), scriptArgs, reader); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
-		}
+		return script.Run(cmd.Context(), scriptArgs, reader)
 	},
 }
 
@@ -85,16 +65,17 @@ func init() {
 }
 
 var scriptDocCmd = &cobra.Command{
-	Use:   "doc",
-	Short: "Generate documentation for the `mangal` lua library",
-	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, _ []string) {
-		// TODO: use Sprintf?
-		filename := fmt.Sprint(meta.AppName, ".lua")
+	Use:         "doc",
+	Short:       "Generate documentation for the `mangal` lua library",
+	Args:        cobra.NoArgs,
+	Annotations: map[string]string{startupAnnotation: startupNoStorage},
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		filename := meta.AppName + ".lua"
 		err := afs.Afero.WriteFile(filename, []byte(lib.LuaDoc()), config.Download.ModeFile.Get())
 		if err != nil {
-			errorf(cmd, "Error writting library specs: %s", err.Error())
+			return fmt.Errorf("write library specs: %w", err)
 		}
 		successf(cmd, "Library specs written to %s", filename)
+		return nil
 	},
 }

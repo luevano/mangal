@@ -19,9 +19,10 @@ func init() {
 }
 
 var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Show version information",
-	Args:  cobra.NoArgs,
+	Annotations: map[string]string{startupAnnotation: startupNone},
+	Use:         "version",
+	Short:       "Show version information",
+	Args:        cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
 		if versionArgs.Short {
 			cmd.Println(meta.Version)

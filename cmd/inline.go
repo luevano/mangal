@@ -7,11 +7,29 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/inline"
-	"github.com/luevano/mangal/v5/util"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var inlineArgs = inline.Args{}
+
+// addLoaderFlags adds the provider options flags, they set the config keys when given.
+func addLoaderFlags(f *pflag.FlagSet) {
+	f.Uint8("parallelism", 0, "Provider parallelism to use (when supported)")
+	configKeyFlag(f, "parallelism", config.Providers.Parallelism.Key)
+	f.Bool("nsfw", false, "Include NSFW content (when supported)")
+	configKeyFlag(f, "nsfw", config.Providers.Filter.NSFW.Key)
+	f.String("language", "", "Manga/Chapter language")
+	configKeyFlag(f, "language", config.Providers.Filter.Language.Key)
+	f.Bool("avoid-duplicate-chapters", false, "No duplicate chapters")
+	configKeyFlag(f, "avoid-duplicate-chapters", config.Providers.Filter.AvoidDuplicateChapters.Key)
+	f.Bool("show-unavailable-chapters", false, "Show undownloadable chapters")
+	configKeyFlag(f, "show-unavailable-chapters", config.Providers.Filter.ShowUnavailableChapters.Key)
+	f.Bool("headless-use-flaresolverr", false, "Use Flaresolverr for headless providers")
+	configKeyFlag(f, "headless-use-flaresolverr", config.Providers.Headless.UseFlaresolverr.Key)
+	f.String("headless-flaresolverr-url", "", "Flaresolverr service URL")
+	configKeyFlag(f, "headless-flaresolverr-url", config.Providers.Headless.FlaresolverrURL.Key)
+}
 
 func init() {
 	rootCmd.AddCommand(inlineCmd)
@@ -25,16 +43,11 @@ func init() {
 	f.IntVarP(&inlineArgs.AnilistID, "anilist-id", "a", 0, "Anilist ID to search for metadata")
 	f.BoolVar(&inlineArgs.PreferProviderMetadata, "prefer-provider-metadata", false, "Prefer provider metadata if valid (skips --search-metadata)")
 
-	f.Bool("search-metadata", config.Download.Metadata.Search.Get(), "Search metadata and replace the provider metadata")
+	f.Bool("search-metadata", false, "Search metadata and replace the provider metadata")
+	configKeyFlag(f, "search-metadata", config.Download.Metadata.Search.Key)
 
-	// Loader options, these are reused for script cmd
-	f.Uint8("parallelism", config.Providers.Parallelism.Get(), "Provider parallelism to use (when supported)")
-	f.Bool("nsfw", config.Providers.Filter.NSFW.Get(), "Include NSFW content (when supported)")
-	f.String("language", config.Providers.Filter.Language.Get(), "Manga/Chapter language")
-	f.Bool("avoid-duplicate-chapters", config.Providers.Filter.AvoidDuplicateChapters.Get(), "No duplicate chapters")
-	f.Bool("show-unavailable-chapters", config.Providers.Filter.ShowUnavailableChapters.Get(), "Show undownloadable chapters")
-	f.Bool("headless-use-flaresolverr", config.Providers.Headless.UseFlaresolverr.Get(), "Use Flaresolverr for headlessproviders")
-	f.String("headless-flaresolverr-url", config.Providers.Headless.FlaresolverrURL.Get(), "Flaresolverr service URL")
+	// also used by the script command
+	addLoaderFlags(f)
 
 	inlineCmd.MarkPersistentFlagRequired("provider")
 	inlineCmd.MarkPersistentFlagRequired("query")
@@ -43,16 +56,6 @@ func init() {
 	// when anilist-id is provided, then use that exclusively
 	inlineCmd.MarkFlagsMutuallyExclusive("anilist-id", "search-metadata")
 	inlineCmd.MarkFlagsMutuallyExclusive("anilist-id", "prefer-provider-metadata")
-
-	// config(viper) flag binds
-	config.BindPFlag(config.Download.Metadata.Search.Key, f.Lookup("search-metadata"))
-	config.BindPFlag(config.Providers.Parallelism.Key, f.Lookup("parallelism"))
-	config.BindPFlag(config.Providers.Filter.NSFW.Key, f.Lookup("nsfw"))
-	config.BindPFlag(config.Providers.Filter.Language.Key, f.Lookup("language"))
-	config.BindPFlag(config.Providers.Filter.AvoidDuplicateChapters.Key, f.Lookup("avoid-duplicate-chapters"))
-	config.BindPFlag(config.Providers.Filter.ShowUnavailableChapters.Key, f.Lookup("show-unavailable-chapters"))
-	config.BindPFlag(config.Providers.Headless.UseFlaresolverr.Key, f.Lookup("headless-use-flaresolverr"))
-	config.BindPFlag(config.Providers.Headless.FlaresolverrURL.Key, f.Lookup("headless-flaresolverr-url"))
 }
 
 var inlineCmd = &cobra.Command{
@@ -77,10 +80,8 @@ var inlineJSONCmd = &cobra.Command{
 	Use:   "json",
 	Short: "Output search results",
 	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, _ []string) {
-		if err := inline.RunJSON(cmd.Context(), inlineArgs); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
-		}
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		return inline.RunJSON(cmd.Context(), inlineArgs)
 	},
 }
 
@@ -88,24 +89,22 @@ func init() {
 	inlineCmd.AddCommand(inlineDownloadCmd)
 
 	f := inlineDownloadCmd.Flags()
-	fmtDesc := fmt.Sprintf("Download format (%s)", strings.Join(libmangal.FormatStrings(), "|"))
 	f.BoolVar(&inlineArgs.JSONOutput, "json-output", false, "JSON format for individual chapter download output")
-	f.StringP("format", "f", config.Download.Format.Get().String(), fmtDesc)
-	f.StringP("directory", "d", config.Download.Path.Get(), "Download directory")
+	f.StringP("format", "f", "", fmt.Sprintf("Download format (%s)", strings.Join(libmangal.FormatStrings(), "|")))
+	configKeyFlag(f, "format", config.Download.Format.Key)
+	f.StringP("directory", "d", "", "Download directory")
+	configKeyFlag(f, "directory", config.Download.Path.Key)
 
 	inlineDownloadCmd.MarkFlagDirname("directory")
-
-	config.BindPFlag(config.Download.Format.Key, f.Lookup("format"))
-	config.BindPFlag(config.Download.Path.Key, f.Lookup("directory"))
 }
 
 var inlineDownloadCmd = &cobra.Command{
 	Use:   "download",
 	Short: "Download manga",
-	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, _ []string) {
-		if err := inline.RunDownload(cmd.Context(), inlineArgs); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
-		}
+	Long: `Download the chapters (--chapter-selector) of a manga. The manga selector must select a
+single manga: the default "all" only works when the search finds one, use e.g. -m first.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		return inline.RunDownload(cmd.Context(), inlineArgs)
 	},
 }

@@ -17,7 +17,7 @@ import (
 )
 
 func successf(cmd *cobra.Command, format string, a ...any) {
-	cmd.Printf(fmt.Sprintf("%s %s\n", icon.Check.Colored(), format), a...)
+	cmd.Printf("%s %s\n", icon.Check.Colored(), fmt.Sprintf(format, a...))
 }
 
 func errorf(cmd *cobra.Command, format string, a ...any) {

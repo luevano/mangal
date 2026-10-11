@@ -38,7 +38,11 @@ Only lists what would change unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		migration, err := library.PlanMigration(afs.Afero, cacheDB, dataDB, path.DownloadsDir(), config.Download.Provider.CreateDir.Get(), loaders)
+		root, err := path.Ensure(path.Downloads())
+		if err != nil {
+			return err
+		}
+		migration, err := library.PlanMigration(afs.Afero, cacheDB, dataDB, root, config.Download.Provider.CreateDir.Get(), loaders)
 		if err != nil {
 			return err
 		}

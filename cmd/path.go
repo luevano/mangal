@@ -6,7 +6,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/path"
 	pathViewer "github.com/luevano/mangal/v5/tui/model/path"
-	"github.com/luevano/mangal/v5/util"
 	"github.com/spf13/cobra"
 )
 
@@ -45,12 +44,12 @@ func init() {
 	)
 }
 
-// TODO: refactor
 var pathCmd = &cobra.Command{
-	Use:   "path",
-	Short: "Show paths",
-	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, _ []string) {
+	Annotations: map[string]string{startupAnnotation: startupNoStorage},
+	Use:         "path",
+	Short:       "Show paths",
+	Args:        cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		var p path.PathName
 		switch {
 		case pathArgs.Cache:
@@ -68,26 +67,21 @@ var pathCmd = &cobra.Command{
 		case pathArgs.Data:
 			p = path.PathData
 		}
-		paths := path.AllPaths()
+		paths := path.All()
 		if p != "" {
 			paths = paths.GetAsPaths(p)
 		}
 
 		if pathArgs.JSON {
-			err := json.NewEncoder(cmd.OutOrStdout()).Encode(paths)
-			if err != nil {
-				errorf(cmd, "%s", util.ErrorTree(err))
-			}
-			return
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(paths)
 		}
 
 		if p != "" {
 			cmd.Println(paths.Get(p))
-			return
+			return nil
 		}
 
-		if _, err := tea.NewProgram(pathViewer.New(true)).Run(); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
-		}
+		_, err := tea.NewProgram(pathViewer.New(true)).Run()
+		return err
 	},
 }

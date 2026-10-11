@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/luevano/mangal/v5/util"
 	"github.com/luevano/mangal/v5/web"
 	"github.com/spf13/cobra"
 )
@@ -22,9 +21,7 @@ var webCmd = &cobra.Command{
 	Long:    "web, start server",
 	GroupID: groupMode,
 	Args:    cobra.NoArgs,
-	Run: func(cmd *cobra.Command, _ []string) {
-		if err := web.Run(cmd.Context(), webArgs); err != nil {
-			errorf(cmd, "%s", util.ErrorTree(err))
-		}
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		return web.Run(cmd.Context(), webArgs)
 	},
 }
