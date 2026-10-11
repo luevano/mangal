@@ -37,6 +37,9 @@ func (i *item) FilterValue() string {
 func (i *item) Title() string {
 	var title strings.Builder
 	title.WriteString(i.FilterValue())
+	if info := i.loader.Info(); len(info.History) != 0 {
+		title.WriteString(style.Normal.Secondary.Render(" (formerly " + formerly(info) + ")"))
+	}
 
 	if i.isLoaded() {
 		title.WriteString(" ")
@@ -63,9 +66,6 @@ func (i *item) Description() string {
 			mirrors = "mirror"
 		}
 		website += style.Normal.Secondary.Render(fmt.Sprintf(" (+%d %s)", len(info.Mirrors), mirrors))
-	}
-	if len(info.History) != 0 {
-		website += style.Normal.Secondary.Render(" (formerly " + formerly(info) + ")")
 	}
 	if *i.extraInfo {
 		moreInfo := fmt.Sprintf("%s v%s", info.ID, info.Version)
