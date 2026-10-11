@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
@@ -84,11 +85,10 @@ templates give them. Only lists the renames unless --apply is set.`,
 			cmd.Println("run with --apply to rename")
 			return nil
 		}
-		_, dataDB, err := cache.DBs()
+		index, err := cache.Library()
 		if err != nil {
 			return err
 		}
-		index := storage.Library{DB: dataDB}
 		for i, err := range library.Apply(afs.Afero, renames) {
 			r := renames[i]
 			if err != nil {
@@ -116,7 +116,7 @@ var libraryDownloadsCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(2),
 	ValidArgsFunction: completionProviderIDs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_, dataDB, err := cache.DBs()
+		lib, err := cache.Library()
 		if err != nil {
 			return err
 		}
@@ -127,7 +127,7 @@ var libraryDownloadsCmd = &cobra.Command{
 		if len(args) > 1 {
 			mangaID = args[1]
 		}
-		downloads, err := storage.Downloads{DB: dataDB}.List(provider, mangaID)
+		downloads, err := lib.ListDownloads(provider, mangaID)
 		if err != nil {
 			return err
 		}
@@ -177,8 +177,7 @@ func init() {
 
 // libraryOf opens the library of the data database.
 func libraryOf() (storage.Library, error) {
-	_, dataDB, err := cache.DBs()
-	return storage.Library{DB: dataDB}, err
+	return cache.Library()
 }
 
 var libraryLsCmd = &cobra.Command{
@@ -323,7 +322,11 @@ Only lists what would happen unless --apply is set.`,
 			}
 			mangas[i] = m
 		}
-		plan, err := library.PlanMerge(afs.Afero, lib, mangas[0], mangas[1])
+		files, err := client.LibraryFiles()
+		if err != nil {
+			return err
+		}
+		plan, err := files.PlanMerge(mangas[0], mangas[1])
 		if err != nil {
 			return err
 		}
@@ -338,7 +341,7 @@ Only lists what would happen unless --apply is set.`,
 			cmd.Println("run with --apply to merge")
 			return nil
 		}
-		if err := library.ApplyMerge(afs.Afero, lib, path.Downloads(), plan); err != nil {
+		if err := files.ApplyMerge(plan); err != nil {
 			return err
 		}
 		cmd.Println("merged")

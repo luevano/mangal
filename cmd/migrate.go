@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
@@ -34,7 +35,7 @@ Only lists what would change unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		cacheDB, dataDB, err := cache.DBs()
+		st, err := cache.Storage()
 		if err != nil {
 			return err
 		}
@@ -42,7 +43,7 @@ Only lists what would change unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		migration, err := library.PlanMigration(afs.Afero, cacheDB, dataDB, root, config.Download.Provider.CreateDir.Get(), loaders)
+		migration, err := library.FindMigration(afs.Afero, st, root, config.Download.Provider.CreateDir.Get(), loaders)
 		if err != nil {
 			return err
 		}
@@ -57,7 +58,7 @@ Only lists what would change unless --apply is set.`,
 			cmd.Println("run with --apply to migrate")
 			return nil
 		}
-		if err := migration.Apply(afs.Afero, cacheDB, dataDB); err != nil {
+		if err := migration.ApplyTo(afs.Afero, st, client.LibraryModes()); err != nil {
 			return err
 		}
 		cmd.Println("migrated")

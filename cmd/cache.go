@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 )
@@ -24,7 +23,7 @@ var cacheClearCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completionProviderIDs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cacheDB, _, err := cache.DBs()
+		st, err := cache.Storage()
 		if err != nil {
 			return err
 		}
@@ -32,7 +31,7 @@ var cacheClearCmd = &cobra.Command{
 		if len(args) == 1 {
 			id = args[0]
 		}
-		n, err := storage.ClearCache(cacheDB, id)
+		n, err := st.ClearCache(id)
 		if err != nil {
 			return err
 		}
