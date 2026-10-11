@@ -46,15 +46,18 @@ func (s *state) loadProviderCmd(ctx context.Context, item *item) tea.Cmd {
 }
 
 func (s *state) closeAllProvidersCmd() tea.Msg {
-	if err := client.CloseAll(); err != nil {
-		return func() tea.Msg {
-			return err
-		}
+	if err := s.closeAll(); err != nil {
+		return err
 	}
+	return base.Notify("Closed all clients")()
+}
 
+func (s *state) closeAll() error {
+	if err := client.CloseAll(); err != nil {
+		return err
+	}
 	for _, item := range s.loaded.Keys() {
 		item.markClosed()
 	}
-
-	return base.Notify("Closed all clients")()
+	return nil
 }

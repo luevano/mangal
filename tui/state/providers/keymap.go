@@ -13,6 +13,7 @@ func newKeyMap() keyMap {
 		confirm:  util.Bind("confirm", "enter"),
 		info:     util.Bind("info", "i"),
 		closeAll: util.Bind("close all", "backspace"),
+		mirrors:  util.Bind("mirrors", "m"),
 	}
 }
 
@@ -20,7 +21,8 @@ func newKeyMap() keyMap {
 type keyMap struct {
 	confirm,
 	info,
-	closeAll key.Binding
+	closeAll,
+	mirrors key.Binding
 }
 
 // ShortHelp implements help.KeyMap.
@@ -34,6 +36,6 @@ func (k keyMap) ShortHelp() []key.Binding {
 // FullHelp implements help.KeyMap.
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		append(k.ShortHelp(), k.closeAll),
+		append(k.ShortHelp(), k.mirrors, k.closeAll),
 	}
 }

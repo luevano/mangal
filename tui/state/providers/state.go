@@ -95,6 +95,14 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			}
 		case key.Matches(msg, s.keyMap.closeAll):
 			return s.closeAllProvidersCmd
+		case key.Matches(msg, s.keyMap.mirrors):
+			info := i.loader.Info()
+			if len(info.Mirrors) == 0 {
+				return base.Notify(info.Name + " has no mirrors")
+			}
+			return func() tea.Msg {
+				return newMirrors(info, s.closeAll)
+			}
 		}
 	}
 end:

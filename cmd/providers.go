@@ -57,6 +57,7 @@ var providersUpCmd = &cobra.Command{
 
 func init() {
 	providersCmd.AddCommand(providersLsCmd)
+	providersLsCmd.Flags().BoolP("mirrors", "m", false, "Also list each provider's website and mirrors (for providers.mirrors)")
 }
 
 var providersLsCmd = &cobra.Command{
@@ -69,8 +70,20 @@ var providersLsCmd = &cobra.Command{
 			return err
 		}
 
+		withMirrors, _ := cmd.Flags().GetBool("mirrors")
 		for _, loader := range loaders {
-			cmd.Println(loader.Info().ID)
+			info := loader.Info()
+			cmd.Println(info.ID)
+			if withMirrors && len(info.Mirrors) != 0 {
+				preferred := config.Providers.Mirrors.Get()[info.ID]
+				for _, site := range append([]string{info.Website}, info.Mirrors...) {
+					mark := ""
+					if site == preferred || (preferred == "" && site == info.Website) {
+						mark = " (preferred)"
+					}
+					cmd.Printf("  %s%s\n", site, mark)
+				}
+			}
 		}
 
 		return nil

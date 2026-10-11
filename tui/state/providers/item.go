@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/zyedidia/generic/set"
@@ -53,6 +54,16 @@ func (i *item) Title() string {
 func (i *item) Description() string {
 	info := i.loader.Info()
 	website := info.Website
+	if preferred := config.Providers.Mirrors.Get()[info.ID]; preferred != "" && preferred != info.Website {
+		website = preferred
+	}
+	if len(info.Mirrors) != 0 {
+		mirrors := "mirrors"
+		if len(info.Mirrors) == 1 {
+			mirrors = "mirror"
+		}
+		website += style.Normal.Secondary.Render(fmt.Sprintf(" (+%d %s)", len(info.Mirrors), mirrors))
+	}
 	if len(info.History) != 0 {
 		website += style.Normal.Secondary.Render(" (formerly " + formerly(info) + ")")
 	}
