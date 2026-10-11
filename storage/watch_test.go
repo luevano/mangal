@@ -210,9 +210,12 @@ func TestLock(t *testing.T) {
 	if _, err := watches.Lock("check", time.Minute); !errors.As(err, &lockErr) || !errors.Is(err, ErrLocked) || lockErr.Holder.PID == 0 {
 		t.Fatalf("locked twice: %v", err)
 	}
-	if other, err := watches.Lock("other", time.Minute); err != nil {
+	if other, err := watches.LockAs("other", "download", time.Minute); err != nil {
 		t.Errorf("another lock: %v", err)
 	} else {
+		if _, err := watches.Lock("other", time.Minute); !errors.As(err, &lockErr) || lockErr.Holder.Purpose != "download" {
+			t.Errorf("purpose: %v", err)
+		}
 		_ = other.Unlock()
 	}
 	if err := lock.Heartbeat(); err != nil {

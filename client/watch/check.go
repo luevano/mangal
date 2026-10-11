@@ -48,6 +48,9 @@ const (
 	EventDone
 	// EventFound is a watch's chapters listed, before downloading (Found is set).
 	EventFound
+	// EventBusy is the provider, under the id it has now (the watch has an old one or an
+	// alias), locked by a download: the check waits for it (Busy is set).
+	EventBusy
 )
 
 // Event is the progress of Check.
@@ -57,6 +60,7 @@ type Event struct {
 	Chapter *client.Event
 	Result  *Result
 	Found   *Found
+	Busy    *client.ProviderBusy
 }
 
 // Result is the check of a watch: the recorded run (Chapters are the downloaded ones, or
@@ -265,10 +269,11 @@ func (s *Service) toCheck(ids []int64) ([]storage.Watch, error) {
 	return watches, nil
 }
 
-// lockPrefix starts the data db lock of each provider's checks: watch-check:<provider>.
-const lockPrefix = "watch-check:"
+// lockPrefix starts the data db lock of each provider, shared with the downloads (see
+// client.ProviderLockName): a check has a provider's lock for its whole run of it.
+const lockPrefix = client.ProviderLockPrefix
 
-func lockName(provider string) string { return lockPrefix + provider }
+func lockName(provider string) string { return client.ProviderLockName(provider) }
 
 func (s *Service) lockStale() time.Duration {
 	if s.Options.LockStale <= 0 {
@@ -294,7 +299,7 @@ func (s *Service) lockProviders(providers []string) (*providerLocks, []string, e
 	var busy []string
 	var busyErr error
 	for _, p := range providers {
-		lock, err := s.Watches.Lock(lockName(p), stale)
+		lock, err := s.Watches.LockAs(lockName(p), client.LockForWatch, stale)
 		if errors.Is(err, storage.ErrLocked) {
 			busy = append(busy, p)
 			busyErr = cmp.Or(busyErr, err)
@@ -394,6 +399,8 @@ func (s *Service) checkProvider(ctx context.Context, provider string, watches []
 	var src Source
 	var srcErr error
 	missing := !s.installed()(provider)
+	// the check has the provider's lock: its downloads don't wait for it
+	ctx = client.HoldingProvider(ctx, provider)
 	for _, i := range indexes {
 		w := watches[i]
 		if ctx.Err() != nil {
@@ -403,6 +410,15 @@ func (s *Service) checkProvider(ctx context.Context, provider string, watches []
 		onEvent(Event{Kind: EventStart, Watch: w})
 		if src == nil && srcErr == nil && !missing {
 			src, srcErr = s.Source(ctx, provider)
+			if srcErr == nil && src.Info().ID != provider && !opts.DryRun {
+				var unlock func()
+				ctx, unlock, srcErr = client.LockProvider(ctx, s.Watches, src.Info().ID, client.LockForWatch, func(b client.ProviderBusy) {
+					onEvent(Event{Kind: EventBusy, Watch: w, Busy: &b})
+				})
+				if srcErr == nil {
+					defer unlock()
+				}
+			}
 		}
 		var r Result
 		if missing || errors.Is(srcErr, client.ErrProviderNotFound) {

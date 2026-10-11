@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/luevano/mangal/v5/client"
 )
 
 // Manager manages the watches: the local Service, or a running `mangal serve` through its
@@ -67,6 +69,10 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		}
 	}
 	for _, h := range held {
+		if h.Purpose != client.LockForWatch {
+			// a download, not a check
+			continue
+		}
 		provider := strings.TrimPrefix(h.Name, lockPrefix)
 		ps, ok := active[provider]
 		if !ok || ps.PID != h.PID || ps.Host != h.Host {

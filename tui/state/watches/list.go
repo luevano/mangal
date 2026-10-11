@@ -665,7 +665,7 @@ func (s *listState) check(ctx context.Context, ids []int64, opts watch.CheckOpti
 }
 
 // busyMessage is a check refused because another check has its providers.
-const busyMessage = "Another check has those providers, try again when it's done"
+const busyMessage = "Another check or a download has those providers, try again when it's done"
 
 func checkCmd(ctx context.Context, m watch.Manager, ids []int64, opts watch.CheckOptions) tea.Cmd {
 	return func() tea.Msg {

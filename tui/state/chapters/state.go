@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -234,6 +235,9 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		return refresh
 	case waitMsg:
+		if msg.busy != "" {
+			return tea.Batch(base.NotifyWithDuration(msg.busy, 10*time.Second), msg.next)
+		}
 		return tea.Batch(base.NotifyWithDuration(fmt.Sprintf("Rate limited, trying again in %s (#%d)", msg.wait, msg.attempt), msg.wait), msg.next)
 	case format.BackMsg:
 		s.inFormats = false

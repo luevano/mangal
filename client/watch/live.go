@@ -275,6 +275,8 @@ func liveEvent(run int64, e Event) (LiveEvent, bool) {
 		default:
 			return le, false
 		}
+	case EventBusy:
+		le.Kind, le.Message = LiveWait, e.Busy.Message()
 	case EventDone:
 		le.Kind, le.Message, le.Status = LiveDone, outcome(*e.Result, false), e.Result.Status
 		if e.Result.Title != "" {

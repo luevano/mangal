@@ -39,10 +39,11 @@ type downloadedMsg struct {
 	read bool
 }
 
-// waitMsg is a rate limit the download waits out.
+// waitMsg is a rate limit the download waits out, or the manga's lock (busy).
 type waitMsg struct {
 	attempt int
 	wait    time.Duration
+	busy    string
 	next    tea.Cmd
 }
 
@@ -160,9 +161,13 @@ func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
 				return downloadedMsg{}, err
 			}
 		}
-		down, err := client.DownloadChapter(ctx, c, chapter, options, func(attempt int, wait time.Duration) {
+		down, err := client.DownloadChapter(ctx, c, chapter, options, func(e client.Event) {
+			msg := waitMsg{attempt: e.Attempt, wait: e.Wait}
+			if e.Kind == client.EventBusy {
+				msg = waitMsg{busy: e.Busy.Message()}
+			}
 			select {
-			case waits <- waitMsg{attempt: attempt, wait: wait}:
+			case waits <- msg:
 			case <-ctx.Done():
 			}
 		})

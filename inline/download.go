@@ -87,6 +87,8 @@ func runDownload(ctx context.Context, args Args) (client.Results, error) {
 	results := client.Download(ctx, c, chapters, downloadOptions, func(e client.Event) {
 		r := e.Result
 		switch {
+		case e.Kind == client.EventBusy:
+			fmt.Fprintln(os.Stderr, e.Busy.Message())
 		case e.Kind == client.EventWait:
 			// stderr, stdout may be json
 			fmt.Fprintf(os.Stderr, "chapter %s: rate limited (retry #%d), retrying in %s\n", r.Chapter, e.Attempt, e.Wait)

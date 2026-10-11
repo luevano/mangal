@@ -223,6 +223,8 @@ func logEvents(log logger, dryRun bool) func(watch.Event) {
 			if c := e.Chapter; c.Kind == client.EventWait {
 				log.Infof("%s: chapter %s rate limited (retry #%d), retrying in %s", e.Watch.Title, c.Result.Chapter, c.Attempt, c.Wait)
 			}
+		case watch.EventBusy:
+			log.Infof("%s: %s", e.Watch.Title, e.Busy.Message())
 		case watch.EventDone:
 			r := *e.Result
 			line := watch.Describe(r, dryRun)

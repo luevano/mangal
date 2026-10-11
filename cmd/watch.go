@@ -491,7 +491,7 @@ exit code 1.`,
 			}
 		}
 		for _, p := range report.Busy {
-			cmd.PrintErrf("%s is being checked by another check, its watches were skipped\n", p)
+			cmd.PrintErrf("%s is busy (another check or a download), its watches were skipped\n", p)
 		}
 		if err := cmd.Context().Err(); err != nil {
 			return err
@@ -537,6 +537,8 @@ func printCheckEvent(cmd *cobra.Command, e watch.Event, dryRun bool) {
 		if c := e.Chapter; c.Kind == client.EventWait {
 			cmd.PrintErrf("%s: chapter %s rate limited (retry #%d), retrying in %s\n", e.Watch.Title, c.Result.Chapter, c.Attempt, c.Wait)
 		}
+	case watch.EventBusy:
+		cmd.PrintErrf("%s: %s\n", e.Watch.Title, e.Busy.Message())
 	case watch.EventDone:
 		r := e.Result
 		printResult(cmd, *r, dryRun)

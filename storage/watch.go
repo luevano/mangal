@@ -194,6 +194,9 @@ CREATE TABLE locks (
 	heartbeat INTEGER NOT NULL
 )`
 
+// migration 7: what a lock is held for (e.g. a manga's: a watch check or a download).
+const lockPurpose = `ALTER TABLE locks ADD COLUMN purpose TEXT NOT NULL DEFAULT ''`
+
 func nullFloat(f *float32) sql.NullFloat64 {
 	if f == nil {
 		return sql.NullFloat64{}
@@ -483,7 +486,9 @@ type Lock struct {
 // LockHolder is who holds a lock.
 type LockHolder struct {
 	// Name is the lock's, set by Holders.
-	Name      string
+	Name string
+	// Purpose is what it's held for (LockAs), may be empty.
+	Purpose   string
 	PID       int
 	Host      string
 	Acquired  time.Time
@@ -506,6 +511,11 @@ func (e *LockError) Is(target error) bool { return target == ErrLocked }
 // newer than stale. A lock held by a process of this host that doesn't run anymore is
 // taken over right away.
 func (s Watches) Lock(name string, stale time.Duration) (*Lock, error) {
+	return s.LockAs(name, "", stale)
+}
+
+// LockAs is Lock saying what the lock is held for (LockHolder.Purpose).
+func (s Watches) LockAs(name, purpose string, stale time.Duration) (*Lock, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
@@ -516,7 +526,7 @@ func (s Watches) Lock(name string, stale time.Duration) (*Lock, error) {
 	err := s.DB.InTx(func(tx *sql.Tx) error {
 		var h LockHolder
 		var acquired, heartbeat int64
-		err := tx.QueryRow(`SELECT pid, host, acquired, heartbeat FROM locks WHERE name = ?`, name).Scan(&h.PID, &h.Host, &acquired, &heartbeat)
+		err := tx.QueryRow(`SELECT purpose, pid, host, acquired, heartbeat FROM locks WHERE name = ?`, name).Scan(&h.Purpose, &h.PID, &h.Host, &acquired, &heartbeat)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 		case err != nil:
@@ -526,9 +536,9 @@ func (s Watches) Lock(name string, stale time.Duration) (*Lock, error) {
 			h.Acquired, h.Heartbeat = time.Unix(acquired, 0), time.Unix(heartbeat, 0)
 			return &LockError{Name: name, Holder: h}
 		}
-		_, err = tx.Exec(`INSERT INTO locks (name, token, pid, host, acquired, heartbeat) VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT (name) DO UPDATE SET token = excluded.token, pid = excluded.pid, host = excluded.host,
-	acquired = excluded.acquired, heartbeat = excluded.heartbeat`, name, token, os.Getpid(), host, now.Unix(), now.Unix())
+		_, err = tx.Exec(`INSERT INTO locks (name, token, purpose, pid, host, acquired, heartbeat) VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (name) DO UPDATE SET token = excluded.token, purpose = excluded.purpose, pid = excluded.pid, host = excluded.host,
+	acquired = excluded.acquired, heartbeat = excluded.heartbeat`, name, token, purpose, os.Getpid(), host, now.Unix(), now.Unix())
 		return err
 	})
 	if err != nil {
@@ -545,7 +555,7 @@ ON CONFLICT (name) DO UPDATE SET token = excluded.token, pid = excluded.pid, hos
 func (s Watches) Holder(name string, stale time.Duration) (LockHolder, bool, error) {
 	var h LockHolder
 	var acquired, heartbeat int64
-	err := s.DB.QueryRow(`SELECT pid, host, acquired, heartbeat FROM locks WHERE name = ?`, name).Scan(&h.PID, &h.Host, &acquired, &heartbeat)
+	err := s.DB.QueryRow(`SELECT purpose, pid, host, acquired, heartbeat FROM locks WHERE name = ?`, name).Scan(&h.Purpose, &h.PID, &h.Host, &acquired, &heartbeat)
 	if errors.Is(err, sql.ErrNoRows) {
 		return h, false, nil
 	}
@@ -559,7 +569,7 @@ func (s Watches) Holder(name string, stale time.Duration) (LockHolder, bool, err
 // Holders are the held locks whose name starts with prefix, by name: heartbeat newer than
 // stale and, on this host, a holder that runs.
 func (s Watches) Holders(prefix string, stale time.Duration) ([]LockHolder, error) {
-	rows, err := s.DB.Query(`SELECT name, pid, host, acquired, heartbeat FROM locks WHERE substr(name, 1, length(?1)) = ?1 ORDER BY name`, prefix)
+	rows, err := s.DB.Query(`SELECT name, purpose, pid, host, acquired, heartbeat FROM locks WHERE substr(name, 1, length(?1)) = ?1 ORDER BY name`, prefix)
 	if err != nil {
 		return nil, fmt.Errorf("locks %s: %w", prefix, err)
 	}
@@ -569,7 +579,7 @@ func (s Watches) Holders(prefix string, stale time.Duration) ([]LockHolder, erro
 	for rows.Next() {
 		var h LockHolder
 		var acquired, heartbeat int64
-		if err := rows.Scan(&h.Name, &h.PID, &h.Host, &acquired, &heartbeat); err != nil {
+		if err := rows.Scan(&h.Name, &h.Purpose, &h.PID, &h.Host, &acquired, &heartbeat); err != nil {
 			return nil, fmt.Errorf("locks %s: %w", prefix, err)
 		}
 		h.Acquired, h.Heartbeat = time.Unix(acquired, 0), time.Unix(heartbeat, 0)

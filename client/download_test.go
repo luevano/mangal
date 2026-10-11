@@ -1,6 +1,7 @@
 package client
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,33 @@ type chapter struct {
 	mangadata.Chapter
 	number      float32
 	unavailable string
+	// manga is the manga's id, "m" when empty
+	manga string
+}
+
+type volume struct {
+	mangadata.Volume
+	manga string
+}
+
+type manga struct {
+	mangadata.Manga
+	id string
+}
+
+func (c chapter) Volume() mangadata.Volume {
+	return volume{manga: cmp.Or(c.manga, "m")}
+}
+
+func (v volume) Manga() mangadata.Manga { return manga{id: v.manga} }
+
+func (m manga) Info() mangadata.MangaInfo {
+	return mangadata.MangaInfo{ID: m.id, Title: "Manga " + m.id}
+}
+
+// noLock is a lockFunc that doesn't lock.
+func noLock(ctx context.Context, _ string, _ func(ProviderBusy)) (context.Context, func(), error) {
+	return ctx, func() {}, nil
 }
 
 func (c chapter) Info() mangadata.ChapterInfo {
@@ -49,14 +77,14 @@ func TestDownloadRetry(t *testing.T) {
 	var done int
 	// waits are floored at 1s, too slow for many: make them instant
 	results := withInstantWaits(t, func() Results {
-		return download(context.Background(), chapters, func(e Event) {
+		return download(context.Background(), "p", chapters, func(e Event) {
 			switch e.Kind {
 			case EventWait:
 				waits = append(waits, e.Attempt)
 			case EventDone:
 				done++
 			}
-		}, get)
+		}, noLock, get)
 	})
 
 	if !results[0].Succeed() {
@@ -90,11 +118,11 @@ func TestDownloadCancelledWait(t *testing.T) {
 		return nil, rateLimitError{wait: time.Hour}
 	}
 	start := time.Now()
-	results := download(ctx, chapters, func(e Event) {
+	results := download(ctx, "p", chapters, func(e Event) {
 		if e.Kind == EventWait {
 			cancel()
 		}
-	}, get)
+	}, noLock, get)
 	if time.Since(start) > 5*time.Second {
 		t.Error("the wait ignored the cancel")
 	}

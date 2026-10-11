@@ -67,6 +67,7 @@ type eventMsg struct {
 	result  client.Result
 	attempt int
 	wait    time.Duration
+	busy    *client.ProviderBusy
 	// next waits for the following event
 	next tea.Cmd
 }
@@ -158,7 +159,7 @@ func (s *state) start(ctx context.Context, batch client.Results) tea.Cmd {
 			defer release()
 			defer close(events)
 			client.Download(ctx, c, chapters, options, func(e client.Event) {
-				msg := eventMsg{run: run, kind: e.Kind, index: e.Index, result: *e.Result, attempt: e.Attempt, wait: e.Wait}
+				msg := eventMsg{run: run, kind: e.Kind, index: e.Index, result: *e.Result, attempt: e.Attempt, wait: e.Wait, busy: e.Busy}
 				select {
 				case events <- msg:
 				case <-ctx.Done():
@@ -228,6 +229,10 @@ func (s *state) onEvent(msg eventMsg) tea.Cmd {
 		s.message = fmt.Sprintf("429 Too Many Requests (retry #%d)", msg.attempt)
 		s.timer = timer.NewWithInterval(msg.wait, time.Second)
 		return s.timer.Init()
+	case client.EventBusy:
+		s.current = msg.index
+		s.message = msg.busy.Message()
+		return base.NotifyWithDuration(s.message, 10*time.Second)
 	case client.EventDone:
 		*s.batch[msg.index] = msg.result
 		s.done = msg.index + 1

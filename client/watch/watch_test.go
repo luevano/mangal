@@ -84,6 +84,8 @@ type fakeSource struct {
 	// gate, when set, makes Chapters say so on entered and wait for it (or the ctx)
 	gate    chan struct{}
 	entered chan struct{}
+	// onDownload, when set, is called before each download
+	onDownload func(ctx context.Context)
 
 	mu         sync.Mutex
 	downloaded []float32
@@ -148,6 +150,9 @@ func (s *fakeSource) BoundMetadata(_ context.Context, code metadata.IDCode, id s
 }
 
 func (s *fakeSource) Download(ctx context.Context, chapters []mangadata.Chapter, onEvent func(client.Event)) client.Results {
+	if s.onDownload != nil {
+		s.onDownload(ctx)
+	}
 	results := client.NewResults(chapters)
 	for i, r := range results {
 		info := r.Chapter.Info()
@@ -751,5 +756,60 @@ func TestOfflineAndMissingProvider(t *testing.T) {
 	}
 	if len(e.notifier.errs) != 0 {
 		t.Errorf("notified %v", e.notifier.errs)
+	}
+}
+
+// TestCheckAndDownload: a check and a download of a provider share its lock: a check
+// skips a provider a download has, its own downloads don't wait for the lock it holds.
+func TestCheckAndDownload(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "m", Title: "M"}}
+	src := e.source("p", m)
+	src.chs["m"] = m.chapters(1, 2)
+	w, err := e.svc.Add(ctx, AddOptions{Provider: "p", MangaID: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// a TUI download of the provider has it
+	_, unlock, err := client.LockProvider(ctx, e.svc.Watches, "p", client.LockForDownload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Check(ctx, []int64{w.ID}, CheckOptions{}); !errors.Is(err, ErrBusy) {
+		t.Errorf("check while downloading: %v", err)
+	}
+	if st, err := e.svc.Status(ctx); err != nil || st.Checking {
+		t.Errorf("a download is no check: %+v, %v", st, err)
+	}
+	unlock()
+
+	src.onDownload = func(ctx context.Context) {
+		if l, err := e.svc.Watches.Lock(lockName("p"), time.Minute); err == nil {
+			_ = l.Unlock()
+			t.Error("the check doesn't hold the provider's lock")
+		}
+		held := make(chan struct{})
+		go func() {
+			defer close(held)
+			if _, unlock, err := client.LockProvider(ctx, e.svc.Watches, "p", client.LockForDownload, nil); err == nil {
+				unlock()
+			}
+		}()
+		select {
+		case <-held:
+		case <-time.After(5 * time.Second):
+			t.Error("the check's download waits for its own lock")
+		}
+	}
+	report, err := e.svc.Check(ctx, []int64{w.ID}, CheckOptions{})
+	if err != nil || report.Results[0].Status != storage.StatusNew {
+		t.Fatalf("check %+v, %v", report, err)
+	}
+	if l, err := e.svc.Watches.Lock(lockName("p"), time.Minute); err != nil {
+		t.Errorf("lock kept: %v", err)
+	} else {
+		_ = l.Unlock()
 	}
 }
