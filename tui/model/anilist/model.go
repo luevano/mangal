@@ -60,9 +60,11 @@ type state struct {
 
 // statusMsg is the login state, after checking it or a login action.
 type statusMsg struct {
-	user   metadata.User
-	users  []string
-	notice string
+	// id and secret are the API client of the last new login
+	id, secret string
+	user       metadata.User
+	users      []string
+	notice     string
 	// form opens the new login (e.g. the saved one expired)
 	form bool
 }
@@ -159,7 +161,11 @@ func status(context.Context) (statusMsg, error) {
 	if ani.Authenticated() {
 		user = ani.User()
 	}
-	return statusMsg{user: user, users: users}, nil
+	id, secret, err := anilist.Client()
+	if err != nil {
+		return statusMsg{}, err
+	}
+	return statusMsg{id: id, secret: secret, user: user, users: users}, nil
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
@@ -188,6 +194,10 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 func (s *state) setStatus(msg statusMsg) tea.Cmd {
 	s.user, s.users = msg.user, msg.users
+	if s.inputs[idField].Value() == "" && s.inputs[secretField].Value() == "" {
+		s.inputs[idField].SetValue(msg.id)
+		s.inputs[secretField].SetValue(msg.secret)
+	}
 	items := make([]_list.Item, len(s.users))
 	for i, u := range s.users {
 		items[i] = item(u)

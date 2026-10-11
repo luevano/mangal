@@ -29,6 +29,9 @@ var (
 
 	loginErr     error
 	loginErrLock sync.Mutex
+
+	// httpClient is swapped in tests
+	httpClient = loader.HTTPClient
 )
 
 // Anilist is the AniList metadata provider shared by every client. It makes no request:
@@ -42,7 +45,7 @@ func Anilist() (*metadata.ProviderWithCache, error) {
 
 func newAnilist() (*metadata.ProviderWithCache, error) {
 	aniOpts := anilist.DefaultOptions()
-	aniOpts.HTTPClient = loader.HTTPClient()
+	aniOpts.HTTPClient = httpClient()
 
 	ani, err := anilist.NewAnilist(aniOpts)
 	if err != nil {

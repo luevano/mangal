@@ -9,6 +9,7 @@ import (
 
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/auth/oauth"
+	mlog "github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/util/cache"
 	"golang.org/x/oauth2"
 )
@@ -157,7 +158,16 @@ func loginNew(ctx context.Context, id, secret string, authorize func(*oauth.Anil
 	if err := cache.SetAnilistAuthData(u.Name(), token); err != nil {
 		return nil, fmt.Errorf("save login of %q: %w", u.Name(), err)
 	}
+	// kept for the next new login
+	if err := cache.SetAnilistClient(id, secret); err != nil {
+		mlog.Warn("save the anilist client: %s", err)
+	}
 	return u, loggedIn(u)
+}
+
+// Client is the AniList API client of the last new login, an empty id if none.
+func Client() (id, secret string, err error) {
+	return cache.AnilistClient()
 }
 
 // Logout logs out, also of the next runs: the saved login stays (a login picks it from the

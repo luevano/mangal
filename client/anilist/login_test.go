@@ -1,12 +1,18 @@
 package anilist
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/adrg/xdg"
+	"github.com/luevano/mangal/v5/auth/oauth"
 	"github.com/luevano/mangal/v5/util/cache"
 	"golang.org/x/oauth2"
 )
@@ -20,6 +26,7 @@ func TestMain(m *testing.M) {
 	os.Setenv("MANGAL_CACHE_PATH", filepath.Join(dir, "cache"))
 	os.Setenv("MANGAL_AUTH_KEYRING", "false")
 	xdg.DataHome = filepath.Join(dir, "data")
+	httpClient = func() *http.Client { return &http.Client{Transport: fakeViewer{}} }
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
@@ -57,5 +64,38 @@ func TestLogoutSticks(t *testing.T) {
 	}
 	if _, found, err := SavedLogin(); err != nil || !found {
 		t.Fatalf("saved login after logging in again: %v, %v", found, err)
+	}
+}
+
+// fakeViewer answers every AniList API request with the user "me".
+type fakeViewer struct{}
+
+func (fakeViewer) RoundTrip(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":{"Viewer":{"id":1,"name":"me"}}}`)),
+		Request:    req,
+	}, nil
+}
+
+func TestLoginNewSavesClient(t *testing.T) {
+	pasted := make(chan string, 1)
+	u, err := LoginManual(context.Background(), " the-id ", "", oauth.Manual{
+		Pasted: pasted,
+		Show: func(authURL string) {
+			u, _ := url.Parse(authURL)
+			state := u.Query().Get("state")
+			pasted <- oauth.AnilistServerCallbackURL + "#access_token=tok&token_type=Bearer&expires_in=3600&state=" + state
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Name() != "me" {
+		t.Errorf("user %q", u.Name())
+	}
+	if id, secret, err := Client(); err != nil || id != "the-id" || secret != "" {
+		t.Errorf("saved client %q %q, %v", id, secret, err)
 	}
 }

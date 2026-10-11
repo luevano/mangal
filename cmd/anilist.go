@@ -25,7 +25,7 @@ var anilistLoginArgs = struct {
 func init() {
 	rootCmd.AddCommand(anilistCmd)
 	anilistCmd.AddCommand(anilistLoginCmd)
-	anilistLoginCmd.Flags().StringVar(&anilistLoginArgs.ID, "id", "", "ID of the Anilist API client (asked when missing)")
+	anilistLoginCmd.Flags().StringVar(&anilistLoginArgs.ID, "id", "", "ID of the Anilist API client (asked when missing, the last one is kept)")
 	anilistLoginCmd.Flags().StringVar(&anilistLoginArgs.Secret, "secret", "", "Secret of the Anilist API client, without it the login is an implicit grant")
 	anilistLoginCmd.Flags().BoolVar(&anilistLoginArgs.Browser, "browser", false, "Also open the address in the browser")
 }
@@ -53,13 +53,33 @@ won't load, paste its address (it has the token after #access_token=, or the cod
 		in := bufio.NewReader(cmd.InOrStdin())
 		id, secret := anilistLoginArgs.ID, anilistLoginArgs.Secret
 		if id == "" {
-			var err error
-			if id, err = prompt(cmd, in, "Anilist API client ID: "); err != nil {
+			savedID, savedSecret, err := anilist.Client()
+			if err != nil {
 				return err
 			}
+			label := "Anilist API client ID: "
+			if savedID != "" {
+				label = fmt.Sprintf("Anilist API client ID (enter for %s): ", savedID)
+			}
+			if id, err = prompt(cmd, in, label); err != nil {
+				return err
+			}
+			if id == "" {
+				id = savedID
+			}
 			if secret == "" {
-				if secret, err = promptSecret(cmd, in, "Client secret (empty for an implicit grant): "); err != nil {
+				label := "Client secret (empty for an implicit grant): "
+				if id == savedID && savedSecret != "" {
+					label = `Client secret (enter for the saved one, "-" for an implicit grant): `
+				}
+				if secret, err = promptSecret(cmd, in, label); err != nil {
 					return err
+				}
+				switch {
+				case secret == "-":
+					secret = ""
+				case secret == "" && id == savedID:
+					secret = savedSecret
 				}
 			}
 		}
