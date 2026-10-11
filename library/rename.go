@@ -3,9 +3,8 @@ package library
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io/fs"
+	"os"
 	"path/filepath"
 
 	"github.com/luevano/libmangal"
@@ -36,75 +35,37 @@ type Namer struct {
 // libmangal.MangaDirInfo), and of the provider directories when providerDirs is set.
 // Manga directories come before the provider directory they're in.
 func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Rename, error) {
-	if !providerDirs {
-		renames, _, err := n.planMangas(ctx, dir)
-		return renames, err
-	}
-
-	entries, err := afero.ReadDir(n.FS, dir)
+	folders, err := markedDirs(n.FS, dir, providerDirs)
 	if err != nil {
 		return nil, err
 	}
 	var renames []Rename
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	// the provider of each provider directory: its first manga with a known provider
+	var providerDirsSeen []string
+	providers := map[string]libmangal.ProviderInfo{}
+	for _, f := range folders {
+		provider := libmangal.ProviderInfo{ID: f.info.Provider, Name: f.info.Provider}
+		if loader, _, ok := libmangal.FindLoader(n.Loaders, f.info.Provider); ok {
+			provider = loader.Info()
+			if _, seen := providers[f.providerDir]; f.providerDir != "" && !seen {
+				providers[f.providerDir] = provider
+				providerDirsSeen = append(providerDirsSeen, f.providerDir)
+			}
 		}
-		providerDir := filepath.Join(dir, entry.Name())
-		mangas, provider, err := n.planMangas(ctx, providerDir)
+		meta, err := n.Metadata(ctx, f.info.MetadataIDs)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("metadata of %q: %w", f.path, err)
 		}
-		renames = append(renames, mangas...)
-		if provider == nil {
-			continue
+		if name := n.MangaName(provider, &dirManga{info: f.info.Manga, meta: meta}); name != filepath.Base(f.path) {
+			renames = append(renames, Rename{From: f.path, To: filepath.Join(filepath.Dir(f.path), name)})
 		}
-		if name := n.ProviderName(*provider); name != entry.Name() {
+	}
+	for _, providerDir := range providerDirsSeen {
+		if name := n.ProviderName(providers[providerDir]); name != filepath.Base(providerDir) {
 			renames = append(renames, Rename{From: providerDir, To: filepath.Join(dir, name)})
 		}
 	}
 	return renames, nil
-}
-
-// planMangas plans the manga directories in parent, and returns the provider of the
-// first one with a known provider.
-func (n Namer) planMangas(ctx context.Context, parent string) ([]Rename, *libmangal.ProviderInfo, error) {
-	entries, err := afero.ReadDir(n.FS, parent)
-	if err != nil {
-		return nil, nil, err
-	}
-	var renames []Rename
-	var parentProvider *libmangal.ProviderInfo
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		mangaDir := filepath.Join(parent, entry.Name())
-		info, err := libmangal.ReadMangaDirInfo(n.FS, mangaDir)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return nil, nil, err
-		}
-
-		provider := libmangal.ProviderInfo{ID: info.Provider, Name: info.Provider}
-		if loader, _, ok := libmangal.FindLoader(n.Loaders, info.Provider); ok {
-			provider = loader.Info()
-			if parentProvider == nil {
-				parentProvider = &provider
-			}
-		}
-		meta, err := n.Metadata(ctx, info.MetadataIDs)
-		if err != nil {
-			return nil, nil, fmt.Errorf("metadata of %q: %w", mangaDir, err)
-		}
-
-		if name := n.MangaName(provider, &dirManga{info: info.Manga, meta: meta}); name != entry.Name() {
-			renames = append(renames, Rename{From: mangaDir, To: filepath.Join(parent, name)})
-		}
-	}
-	return renames, parentProvider, nil
 }
 
 // Apply does the renames in order, skipping those whose target exists.
@@ -116,6 +77,12 @@ func Apply(fsys afero.Fs, renames []Rename) []error {
 		switch {
 		case err != nil:
 			errs[i] = err
+		case exists && sameFile(fsys, r.From, r.To):
+			// only the case changes, on a case-insensitive filesystem
+			tmp := r.From + ".mangal-rename"
+			if errs[i] = fsys.Rename(r.From, tmp); errs[i] == nil {
+				errs[i] = fsys.Rename(tmp, r.To)
+			}
 		case exists:
 			errs[i] = fmt.Errorf("%s already exists", r.To)
 		default:
@@ -123,6 +90,15 @@ func Apply(fsys afero.Fs, renames []Rename) []error {
 		}
 	}
 	return errs
+}
+
+func sameFile(fsys afero.Fs, a, b string) bool {
+	infoA, err := fsys.Stat(a)
+	if err != nil {
+		return false
+	}
+	infoB, err := fsys.Stat(b)
+	return err == nil && os.SameFile(infoA, infoB)
 }
 
 // dirManga is a manga rebuilt from its directory info, for the name templates.

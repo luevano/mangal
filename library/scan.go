@@ -3,9 +3,7 @@ package library
 import (
 	"archive/zip"
 	"encoding/xml"
-	"errors"
 	"io"
-	"io/fs"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -52,6 +50,28 @@ type Scanner struct {
 // recorded files that are gone are looked for in the folder before being forgotten, and
 // chapter files nobody recorded are added.
 func (s Scanner) ScanManga(m storage.Manga, root string, providerDirs bool) (ScanResult, error) {
+	return s.scanManga(m, root, providerDirs, &markedCache{})
+}
+
+// markedCache keeps the marked folders under root for a whole scan, read when first needed.
+type markedCache struct {
+	folders []mangaFolder
+	read    bool
+}
+
+func (s Scanner) marked(c *markedCache, root string, providerDirs bool) ([]mangaFolder, error) {
+	if c.read {
+		return c.folders, nil
+	}
+	folders, err := markedDirs(s.FS, root, providerDirs)
+	if err != nil {
+		return nil, err
+	}
+	c.folders, c.read = folders, true
+	return folders, nil
+}
+
+func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, marked *markedCache) (ScanResult, error) {
 	var res ScanResult
 	folder := m.Path()
 	exists, err := afero.DirExists(s.FS, folder)
@@ -59,7 +79,7 @@ func (s Scanner) ScanManga(m storage.Manga, root string, providerDirs bool) (Sca
 		return res, err
 	}
 	if !exists {
-		found, ok, err := s.locate(m, root, providerDirs)
+		found, ok, err := s.locate(m, root, providerDirs, marked)
 		if err != nil {
 			return res, err
 		}
@@ -142,15 +162,16 @@ func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
 	if err != nil {
 		return res, err
 	}
+	marked := &markedCache{}
 	for _, m := range mangas {
-		r, err := s.ScanManga(m, root, providerDirs)
+		r, err := s.scanManga(m, root, providerDirs, marked)
 		if err != nil {
 			return res, err
 		}
 		res.add(r)
 	}
 
-	folders, err := s.mangaFolders(root, providerDirs)
+	folders, err := walkMangaDirs(s.FS, root, providerDirs)
 	if err != nil {
 		return res, err
 	}
@@ -183,7 +204,7 @@ func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
 		if err != nil {
 			return res, err
 		}
-		r, err := s.ScanManga(m, root, providerDirs)
+		r, err := s.scanManga(m, root, providerDirs, marked)
 		if err != nil {
 			return res, err
 		}
@@ -227,60 +248,10 @@ func movedTo(files []chapterFile, known map[string]bool, dl storage.Download) (c
 	return chapterFile{}, false
 }
 
-type mangaFolder struct {
-	path   string
-	info   libmangal.MangaDirInfo
-	marked bool
-}
-
-// markedFolders are the folders with a .libmangal.json under root (and its provider directories).
-func (s Scanner) markedFolders(root string, providerDirs bool) ([]mangaFolder, error) {
-	folders, err := s.mangaFolders(root, providerDirs)
-	return slices.DeleteFunc(folders, func(f mangaFolder) bool { return !f.marked }), err
-}
-
-// mangaFolders are the folders that may be mangas: with a .libmangal.json under root (and
-// its provider directories), and the rest of the provider directories' folders (root's
-// when not providerDirs, its folders are the provider directories otherwise).
-func (s Scanner) mangaFolders(root string, providerDirs bool) ([]mangaFolder, error) {
-	parents := []string{root}
-	if providerDirs {
-		entries, err := afero.ReadDir(s.FS, root)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, err
-		}
-		for _, e := range entries {
-			if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-				parents = append(parents, filepath.Join(root, e.Name()))
-			}
-		}
-	}
-	var folders []mangaFolder
-	for i, parent := range parents {
-		entries, err := afero.ReadDir(s.FS, parent)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, err
-		}
-		for _, e := range entries {
-			if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-				continue
-			}
-			path := filepath.Join(parent, e.Name())
-			info, err := libmangal.ReadMangaDirInfo(s.FS, path)
-			if err == nil {
-				folders = append(folders, mangaFolder{path: path, info: info, marked: true})
-			} else if !providerDirs || i > 0 {
-				folders = append(folders, mangaFolder{path: path})
-			}
-		}
-	}
-	return folders, nil
-}
-
 // locate finds the folder of a library manga under root by its .libmangal.json: same
 // source, or else a shared metadata id (not another library manga's folder).
-func (s Scanner) locate(m storage.Manga, root string, providerDirs bool) (string, bool, error) {
-	folders, err := s.markedFolders(root, providerDirs)
+func (s Scanner) locate(m storage.Manga, root string, providerDirs bool, marked *markedCache) (string, bool, error) {
+	folders, err := s.marked(marked, root, providerDirs)
 	if err != nil {
 		return "", false, err
 	}

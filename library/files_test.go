@@ -7,6 +7,8 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
 	"github.com/spf13/afero"
 )
 
@@ -127,5 +129,60 @@ func TestPlanMergeKeepInsideOther(t *testing.T) {
 	other, _, _ := library.MangaByFolder(root, "Berserk")
 	if _, err := (Files{FS: afero.NewOsFs(), Library: library, Root: root}).PlanMerge(keep, other); err == nil {
 		t.Error("planned trashing the folder keep is in")
+	}
+}
+
+func TestUpdateMarkerMode(t *testing.T) {
+	dir := t.TempDir()
+	fsys := afero.NewOsFs()
+	writeMarker(t, dir, libmangal.MangaDirInfo{Provider: "old", Manga: mangadata.MangaInfo{ID: "1"}})
+	if err := UpdateMarker(fsys, OldMarker{Dir: dir, Old: "old", New: "new"}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(dir, libmangal.FilenameMangaDirInfo))
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("mode %v, %v, want 0600", info.Mode().Perm(), err)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Errorf("%d files, want only the marker (no temp file left)", len(entries))
+	}
+}
+
+func TestWalkMangaDirs(t *testing.T) {
+	fsys := afero.NewMemMapFs()
+	writeInfo := func(dir string) {
+		_ = fsys.MkdirAll(dir, 0o755)
+		_ = afero.WriteFile(fsys, filepath.Join(dir, libmangal.FilenameMangaDirInfo), []byte(`{"provider":"p","manga":{"id":"1"}}`), 0o644)
+	}
+	writeInfo("/lib/Root Manga")              // marked, at root level
+	writeInfo("/lib/Root Manga/Vol. 1/Inner") // inside a manga folder: not a provider directory
+	writeInfo("/lib/Provider/Marked")
+	_ = fsys.MkdirAll("/lib/Provider/Unmarked", 0o755)
+	_ = fsys.MkdirAll("/lib/Unmarked Root", 0o755)
+	writeInfo("/lib/" + TrashDir + "/batch/Trashed")
+	writeInfo("/lib/.hidden/Marked")
+
+	folders, err := walkMangaDirs(fsys, "/lib", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, f := range folders {
+		got = append(got, f.path)
+	}
+	// the unmarked root folder is an (empty) provider directory, not a manga
+	want := []string{"/lib/Root Manga", "/lib/Provider/Marked", "/lib/Provider/Unmarked"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("got %v, want %v", got, want)
+	}
+
+	folders, _ = walkMangaDirs(fsys, "/lib", false)
+	got = nil
+	for _, f := range folders {
+		got = append(got, f.path)
+	}
+	if want := "/lib/Provider|/lib/Root Manga|/lib/Unmarked Root"; strings.Join(got, "|") != want {
+		t.Errorf("without provider dirs: got %v, want %v", got, want)
 	}
 }

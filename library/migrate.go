@@ -1,11 +1,8 @@
 package library
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
-	"path/filepath"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/storage"
@@ -21,58 +18,30 @@ type OldMarker struct {
 // OldMarkers lists the manga directories under dir (and its provider directories when
 // providerDirs is set) whose info has an old id of one of the loaders.
 func OldMarkers(fsys afero.Fs, dir string, providerDirs bool, loaders []libmangal.ProviderLoader) ([]OldMarker, error) {
-	parents := []string{dir}
-	if providerDirs {
-		entries, err := afero.ReadDir(fsys, dir)
-		if err != nil {
-			return nil, err
-		}
-		parents = nil
-		for _, entry := range entries {
-			if entry.IsDir() {
-				parents = append(parents, filepath.Join(dir, entry.Name()))
-			}
-		}
+	folders, err := markedDirs(fsys, dir, providerDirs)
+	if err != nil {
+		return nil, err
 	}
-
 	var markers []OldMarker
-	for _, parent := range parents {
-		entries, err := afero.ReadDir(fsys, parent)
-		if err != nil {
-			return nil, err
-		}
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			mangaDir := filepath.Join(parent, entry.Name())
-			info, err := libmangal.ReadMangaDirInfo(fsys, mangaDir)
-			if errors.Is(err, fs.ErrNotExist) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			if loader, alias, ok := libmangal.FindLoader(loaders, info.Provider); ok && alias != nil {
-				markers = append(markers, OldMarker{Dir: mangaDir, Old: info.Provider, New: loader.Info().ID})
-			}
+	for _, f := range folders {
+		if loader, alias, ok := libmangal.FindLoader(loaders, f.info.Provider); ok && alias != nil {
+			markers = append(markers, OldMarker{Dir: f.path, Old: f.info.Provider, New: loader.Info().ID})
 		}
 	}
 	return markers, nil
 }
 
-// UpdateMarker writes the new provider id into the directory's info.
-func UpdateMarker(fsys afero.Fs, marker OldMarker) error {
+// UpdateMarker writes the new provider id into the directory's info (with the mode).
+func UpdateMarker(fsys afero.Fs, marker OldMarker, mode fs.FileMode) error {
 	info, err := libmangal.ReadMangaDirInfo(fsys, marker.Dir)
 	if err != nil {
 		return err
 	}
 	info.Provider = marker.New
-	data, err := json.MarshalIndent(info, "", "  ")
-	if err != nil {
-		return err
+	if err := writeMangaDirInfo(fsys, marker.Dir, info, mode); err != nil {
+		return fmt.Errorf("update %s: %w", marker.Dir, err)
 	}
-	return afero.WriteFile(fsys, filepath.Join(marker.Dir, libmangal.FilenameMangaDirInfo), data, 0o644)
+	return nil
 }
 
 // Migration is the data still under old provider ids, see PlanMigration.
@@ -81,15 +50,22 @@ type Migration struct {
 	Markers []OldMarker
 }
 
-// PlanMigration finds the data under old provider ids: library entries, downloads and
-// cache in the databases, and the .libmangal.json files under root.
+// PlanMigration finds the data under old provider ids, see FindMigration.
+//
+// Deprecated: use FindMigration.
 func PlanMigration(fsys afero.Fs, cacheDB, dataDB *storage.DB, root string, providerDirs bool, loaders []libmangal.ProviderLoader) (Migration, error) {
-	oldIDs, err := storage.FindOldIDs(cacheDB, dataDB, loaders)
+	return FindMigration(fsys, storage.Storage{Cache: cacheDB, Data: dataDB}, root, providerDirs, loaders)
+}
+
+// FindMigration finds the data under old provider ids: library entries, downloads and
+// cache in the databases, and the .libmangal.json files under root.
+func FindMigration(fsys afero.Fs, st storage.Storage, root string, providerDirs bool, loaders []libmangal.ProviderLoader) (Migration, error) {
+	oldIDs, err := st.FindOldIDs(loaders)
 	if err != nil {
 		return Migration{}, err
 	}
 	markers, err := OldMarkers(fsys, root, providerDirs, loaders)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err != nil {
 		return Migration{}, err
 	}
 	return Migration{OldIDs: oldIDs, Markers: markers}, nil
@@ -112,13 +88,20 @@ func (m Migration) Lines() []string {
 	return lines
 }
 
-// Apply moves the data to the current ids.
+// Apply moves the data to the current ids, see ApplyTo.
+//
+// Deprecated: use ApplyTo.
 func (m Migration) Apply(fsys afero.Fs, cacheDB, dataDB *storage.DB) error {
-	if err := storage.MigrateOldIDs(cacheDB, dataDB, m.OldIDs); err != nil {
+	return m.ApplyTo(fsys, storage.Storage{Cache: cacheDB, Data: dataDB}, DefaultModes)
+}
+
+// ApplyTo moves the data to the current ids.
+func (m Migration) ApplyTo(fsys afero.Fs, st storage.Storage, modes Modes) error {
+	if err := st.MigrateOldIDs(m.OldIDs); err != nil {
 		return err
 	}
 	for _, marker := range m.Markers {
-		if err := UpdateMarker(fsys, marker); err != nil {
+		if err := UpdateMarker(fsys, marker, modes.File); err != nil {
 			return err
 		}
 	}
