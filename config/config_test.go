@@ -412,3 +412,27 @@ func TestFileValueIgnoresEnv(t *testing.T) {
 		t.Errorf("default %v, %v", got, err)
 	}
 }
+
+func TestWriteKeepsComments(t *testing.T) {
+	reset(t)
+	writeConfig(t, "# my settings\nicons = 'nerd' # nerd font\n\n[library]\npath = ''\n")
+	if err := Load(Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for _, want := range []string{"# my settings\n", "icons = 'nerd' # nerd font\n", "skip_if_exists = true"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "[library]") {
+		t.Errorf("retired table left:\n%s", got)
+	}
+}

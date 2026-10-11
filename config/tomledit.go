@@ -466,3 +466,25 @@ func normalizeTOML(m map[string]any) {
 		}
 	}
 }
+
+// removeTOMLKey returns the document without the key's line, and without its table's
+// header when the key was all the table had.
+func removeTOMLKey(data []byte, key string) ([]byte, error) {
+	d, err := parseTOMLDoc(data)
+	if err != nil {
+		return nil, err
+	}
+	kv := d.find(strings.Split(key, "."))
+	if kv == nil {
+		return data, nil
+	}
+	if kv.lineEnd < 0 {
+		return nil, fmt.Errorf("%w: %s", errCantEdit, key)
+	}
+	edits := []edit{{start: kv.lineStart, end: kv.lineEnd}}
+	if t := kv.table; t.header && !t.array && len(t.kvs) == 1 {
+		edits = append(edits, edit{start: t.start, end: d.lineEnd(t.start)})
+	}
+	slices.SortFunc(edits, func(a, b edit) int { return a.start - b.start })
+	return apply(data, edits), nil
+}

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -385,6 +386,61 @@ func CreateFile() error {
 // keys it doesn't have (values from the environment or flags aren't written). The file
 // is re-serialised (comments and order are lost), and created if there's none.
 func Write() error {
+	if data, err := afs.Afero.ReadFile(Path); err == nil {
+		edited, err := writeInPlace(data)
+		if err == nil {
+			mode := fs.FileMode(0o644)
+			if info, err := afs.Afero.Stat(Path); err == nil {
+				mode = info.Mode().Perm()
+			}
+			if err := afs.Afero.WriteFile(Path, edited, mode); err != nil {
+				return fmt.Errorf("write config: %w", err)
+			}
+			return nil
+		}
+		log.Warn("config: couldn't write the defaults in place (%s), the file is re-serialised (its comments are lost)", err)
+	}
+	return rewrite()
+}
+
+// writeInPlace adds the missing keys with their defaults and drops the retired ones,
+// keeping the comments and order of the file.
+func writeInPlace(data []byte) ([]byte, error) {
+	file := viper.New()
+	file.SetConfigType("toml")
+	if err := file.ReadConfig(bytes.NewReader(data)); err != nil {
+		return nil, err
+	}
+	var err error
+	for _, key := range slices.Sorted(maps.Keys(retired)) {
+		if file.IsSet(key) {
+			if data, err = removeTOMLKey(data, key); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, key := range Keys() {
+		if file.IsSet(key) {
+			continue
+		}
+		raw := fields[key].defaultRaw()
+		if m, ok := raw.(map[string]any); ok && len(m) == 0 {
+			continue
+		}
+		edited, err := editTOML(data, key, raw)
+		if err == nil {
+			err = checkTOMLEdit(data, edited, key, raw)
+		}
+		if err != nil {
+			return nil, err
+		}
+		data = edited
+	}
+	return data, nil
+}
+
+// rewrite writes the file's values plus the defaults by re-serialising it.
+func rewrite() error {
 	file := viper.New()
 	file.SetFs(afs.Afero.Fs)
 	file.SetConfigFile(Path)
