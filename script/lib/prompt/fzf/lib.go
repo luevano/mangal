@@ -1,6 +1,9 @@
 package fzf
 
 import (
+	"context"
+	"errors"
+
 	"github.com/ktr0731/go-fuzzyfinder"
 	luadoc "github.com/luevano/gopher-luadoc"
 	"github.com/luevano/mangal/v5/script/lib/util"
@@ -51,7 +54,7 @@ func Lib() *luadoc.Lib {
 				Returns: []*luadoc.Param{
 					{
 						Name:        "item",
-						Description: "",
+						Description: "The chosen item, nil if cancelled",
 						Type:        generic,
 					},
 				},
@@ -60,25 +63,34 @@ func Lib() *luadoc.Lib {
 	}
 }
 
+// find is swapped in tests.
+var find = fuzzyfinder.Find
+
 func findOne(state *lua.LState) int {
 	var values []lua.LValue
-
 	state.CheckTable(1).ForEach(func(_, value lua.LValue) {
 		values = append(values, value)
 	})
-
 	toString := state.CheckFunction(2)
 
-	index, err := fuzzyfinder.Find(values, func(i int) string {
-		state.Push(toString)
-		state.Push(values[i])
-
-		err := state.PCall(1, 1, nil)
+	// the strings are made before, the finder can't run lua (or raise its errors)
+	items := make([]string, len(values))
+	for i, value := range values {
+		err := state.CallByParam(lua.P{Fn: toString, NRet: 1, Protect: true}, value)
 		util.Must(state, err)
+		items[i] = state.Get(-1).String()
+		state.Pop(1)
+	}
 
-		return state.Get(-1).String()
-	})
-
+	ctx := state.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	index, err := find(items, func(i int) string { return items[i] }, fuzzyfinder.WithContext(ctx))
+	if errors.Is(err, fuzzyfinder.ErrAbort) && ctx.Err() == nil {
+		state.Push(lua.LNil)
+		return 1
+	}
 	util.Must(state, err)
 
 	state.Push(values[index])
