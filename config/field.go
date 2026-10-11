@@ -87,14 +87,22 @@ func reg[Raw, Value any](e entry[Raw, Value]) *entry[Raw, Value] {
 		Unmarshal: func(a any) (any, error) {
 			raw, ok := a.(Raw)
 			if !ok {
-				return a.(Value), nil
+				value, ok := a.(Value)
+				if !ok {
+					return nil, fmt.Errorf("wrong type of value: expected %T, got %T", *new(Value), a)
+				}
+				return value, nil
 			}
 			return e.Unmarshal(raw)
 		},
 		Validate: func(a any) error {
 			raw, ok := a.(Raw)
 			if !ok {
-				return e.Validate(a.(Value))
+				value, ok := a.(Value)
+				if !ok {
+					return fmt.Errorf("wrong type of value: expected %T, got %T", *new(Value), a)
+				}
+				return e.Validate(value)
 			}
 			value, err := e.Unmarshal(raw)
 			if err != nil {

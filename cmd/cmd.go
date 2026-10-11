@@ -77,8 +77,10 @@ func initConfig(flag *pflag.Flag) func() {
 	return func() {
 		if flag.Changed {
 			if err := config.Load(config.Path); err != nil {
-				panic(fmt.Errorf("error loading config from path %s: %s", config.Path, err.Error()))
+				errorf(rootCmd, "%s", util.ErrorTree(fmt.Errorf("load config %q: %w", config.Path, err)))
 			}
+		} else if err := config.LoadError(); err != nil {
+			errorf(rootCmd, "%s", util.ErrorTree(fmt.Errorf("load config %q: %w", config.Path, err)))
 		}
 		// once the config finishes initializing (using custom config path or not), set the actual icon type
 		icon.SetType(config.Icons.Get())

@@ -128,7 +128,7 @@ func Load(path string) error {
 	// will read config and set all keys that match
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return errorf("Load: unexpected error reading in the config: %s", err.Error())
+			return err
 		}
 	}
 
@@ -143,10 +143,10 @@ func Load(path string) error {
 		v := Get(key)
 		value, err := field.Unmarshal(v)
 		if err != nil {
-			return errorf("Load: error unmarshaling value for key %q: %s", key, err.Error())
+			return fmt.Errorf("key %q: %w", key, err)
 		}
 		if err := Validate(key, value); err != nil {
-			return errorf("Load: %s", err.Error())
+			return err
 		}
 	}
 	return nil

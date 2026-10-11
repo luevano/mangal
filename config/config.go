@@ -25,7 +25,14 @@ var (
 	// variable declarations run before init() functions,
 	// this ensures the config is initialized before any cmd
 	cfg config = initConfig()
+	// loadErr is the default config's, reported by the cmd unless --config replaces it
+	loadErr error
 )
+
+// LoadError is the error reading the config from the default location, if any.
+func LoadError() error {
+	return loadErr
+}
 
 // Exported config
 var (
@@ -574,8 +581,6 @@ func initConfig() config {
 		},
 	}
 	// Load from "default" config paths
-	if err := Load(""); err != nil {
-		panic(errorf("error loading config from default locations: %s", err.Error()))
-	}
+	loadErr = Load("")
 	return c
 }
