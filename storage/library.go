@@ -374,8 +374,9 @@ func (l Library) Moved(from, to string) error {
 		if _, err := tx.Exec(`UPDATE library_mangas SET parent = ? WHERE parent = ?`, to, from); err != nil {
 			return err
 		}
-		_, err := tx.Exec(`UPDATE downloads SET path = ? || substr(path, ?) WHERE substr(path, 1, ?) = ?`,
-			to, len(from)+1, len(from)+1, from+string(filepath.Separator))
+		// substr and length count characters, not bytes
+		_, err := tx.Exec(`UPDATE downloads SET path = ?1 || substr(path, length(?2)) WHERE substr(path, 1, length(?2)) = ?2`,
+			to, from+string(filepath.Separator))
 		return err
 	})
 	if err != nil {

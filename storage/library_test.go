@@ -124,3 +124,26 @@ func TestLibrary(t *testing.T) {
 		t.Errorf("still %+v", oldIDs)
 	}
 }
+
+func openData(t *testing.T) *DB {
+	t.Helper()
+	_, data := openBoth(t)
+	return data
+}
+
+func TestMovedNonASCII(t *testing.T) {
+	library := Library{DB: openData(t)}
+	for _, dir := range []string{"Café", "ベルセルク"} {
+		file := filepath.Join("/lib", dir, "[0001.0] Ch 1.cbz")
+		if err := library.RecordDownload("/lib", dir, Download{Path: file, Provider: "p", MangaID: dir, MangaTitle: dir, Chapter: 1, Format: "CBZ"}); err != nil {
+			t.Fatal(err)
+		}
+		to := filepath.Join("/lib", dir+" (1989)")
+		if err := library.Moved(filepath.Join("/lib", dir), to); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := library.HasDownload(filepath.Join(to, "[0001.0] Ch 1.cbz")); err != nil || !ok {
+			t.Errorf("%s: download not moved (%v)", dir, err)
+		}
+	}
+}
