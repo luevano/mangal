@@ -10,7 +10,10 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
@@ -69,7 +72,7 @@ type mangasState struct {
 }
 
 type mangasKeyMap struct {
-	confirm, scan, merge, remove, trash, delete key.Binding
+	confirm, scan, check, merge, remove, trash, delete key.Binding
 }
 
 type mangasLoadedMsg struct {
@@ -78,9 +81,13 @@ type mangasLoadedMsg struct {
 }
 
 // scannedMsg is a finished library scan, otherRoot a directory that has the missing mangas.
+// checked is a scan with an id check, its checks or checkErr.
 type scannedMsg struct {
 	result    library.ScanResult
 	otherRoot string
+	checked   bool
+	checks    []library.IDCheck
+	checkErr  error
 }
 
 type mergePlannedMsg struct {
@@ -88,9 +95,10 @@ type mergePlannedMsg struct {
 	plan        library.MergePlan
 }
 
-// setRootMsg is the confirmed new download.path.
+// setRootMsg is the confirmed new download.path, check the id check of the scan to redo.
 type setRootMsg struct {
-	dir string
+	dir   string
+	check bool
 }
 
 // New is the library: the downloaded mangas.
@@ -108,6 +116,7 @@ func newMangasState(files library.Files) *mangasState {
 		keys: mangasKeyMap{
 			confirm: util.Bind("chapters", "enter"),
 			scan:    util.Bind("scan", "s"),
+			check:   util.Bind("scan and check ids", "S"),
 			merge:   util.Bind("merge", "m"),
 			remove:  util.Bind("remove missing", "x"),
 			trash:   util.Bind("trash", "t"),
@@ -121,7 +130,7 @@ func newMangasState(files library.Files) *mangasState {
 func (s *mangasState) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.remove)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.check, k.remove)}}
 }
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
@@ -203,7 +212,7 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return func() tea.Msg { return err }
 		}
 		s.files.Root = path.Downloads()
-		return s.scanCmd(ctx)
+		return s.scanCmd(ctx, msg.check)
 	case actionMsg:
 		return msg.run(ctx)
 	case reloadMsg:
@@ -224,11 +233,11 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch {
-	case key.Matches(msg, s.keys.scan):
+	case key.Matches(msg, s.keys.scan), key.Matches(msg, s.keys.check):
 		if base.Busy(ctx) {
 			return nil, true
 		}
-		return s.scanCmd(ctx), true
+		return s.scanCmd(ctx, key.Matches(msg, s.keys.check)), true
 	case key.Matches(msg, s.keys.trash):
 		files := s.files
 		return func() tea.Msg { return newTrashState(files) }, true
@@ -283,10 +292,10 @@ func (s *mangasState) onLoaded(msg mangasLoadedMsg) tea.Cmd {
 	return s.List.SetItems(items)
 }
 
-func (s *mangasState) scanCmd(ctx context.Context) tea.Cmd {
+func (s *mangasState) scanCmd(ctx context.Context, check bool) tea.Cmd {
 	files := s.files
 	providerDirs := config.Download.Provider.CreateDir.Get()
-	return base.Load(ctx, "Scanning the library", func(context.Context) (scannedMsg, error) {
+	return base.Load(ctx, "Scanning the library", func(ctx context.Context) (scannedMsg, error) {
 		root, err := path.Ensure(files.Root)
 		if err != nil {
 			return scannedMsg{}, err
@@ -296,17 +305,62 @@ func (s *mangasState) scanCmd(ctx context.Context) tea.Cmd {
 		if err != nil {
 			return scannedMsg{}, err
 		}
-		return scannedMsg{result: res, otherRoot: library.OtherRoot(files.FS, res.Missing, root, providerDirs)}, nil
+		msg := scannedMsg{result: res, otherRoot: library.OtherRoot(files.FS, res.Missing, root, providerDirs), checked: check}
+		if check && msg.otherRoot == "" {
+			msg.checks, msg.checkErr = checkIDs(ctx, files)
+		}
+		return msg, nil
 	}, func(msg scannedMsg) tea.Msg { return msg })
+}
+
+// checkIDs checks the ids of the adopted folders on AniList and Kitsu.
+func checkIDs(ctx context.Context, files library.Files) ([]library.IDCheck, error) {
+	mangas, err := files.Library.Mangas()
+	if err != nil {
+		return nil, err
+	}
+	ani, err := anilist.Anilist()
+	if err != nil {
+		return nil, err
+	}
+	_ = anilist.EnsureLogin(ctx)
+	kt, err := kitsu.Kitsu()
+	if err != nil {
+		return nil, err
+	}
+	checker := library.IDChecker{
+		FS:        files.FS,
+		Providers: map[metadata.IDSource]library.IDProvider{metadata.IDSourceAnilist: ani, metadata.IDSourceKitsu: kt},
+		Suggest:   ani,
+	}
+	return checker.Check(ctx, mangas)
 }
 
 func (s *mangasState) onScanned(msg scannedMsg) tea.Cmd {
 	if dir := msg.otherRoot; dir != "" {
 		message := fmt.Sprintf("%d mangas are in %s, but download.path is %s. Use %s as download.path?", len(msg.result.Missing), dir, s.files.Root, dir)
-		s.confirm.Ask("Download path", message, s.View(), func() tea.Msg { return setRootMsg{dir: dir} })
+		s.confirm.Ask("Download path", message, s.View(), func() tea.Msg { return setRootMsg{dir: dir, check: msg.checked} })
 		return nil
 	}
-	return base.Viewport("Library scan", scanReport(msg.result), color.Accent)
+	report := scanReport(msg.result)
+	if msg.checked {
+		report += "\n\n" + checkReport(msg.checks, msg.checkErr)
+	}
+	return base.Viewport("Library scan", report, color.Accent)
+}
+
+func checkReport(checks []library.IDCheck, err error) string {
+	switch {
+	case err != nil:
+		return "Checking the ids: " + err.Error()
+	case len(checks) == 0:
+		return "The ids of the folders without a .libmangal.json look right."
+	}
+	report := fmt.Sprintf("Check the ids of %d folders without a .libmangal.json:", len(checks))
+	for _, c := range checks {
+		report += "\n  " + c.String()
+	}
+	return report
 }
 
 func scanReport(res library.ScanResult) string {
