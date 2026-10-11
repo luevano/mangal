@@ -7,7 +7,9 @@ import (
 	"sync"
 
 	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	providerloader "github.com/luevano/mangal/v5/provider/loader"
@@ -188,7 +190,7 @@ func newClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal
 	options.MangaDirIndex = library
 	options.ChapterIndex = library
 
-	ani, err := anilist.Anilist()
+	metas, err := metadataProviders()
 	if err != nil {
 		return nil, err
 	}
@@ -199,10 +201,30 @@ func newClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal
 	}
 	// every mode gets the provider's logs (page lines at debug)
 	client.Logger().SetOnLog(log.ProviderHook(""))
-	// no login here, see anilist.EnsureLogin
-	if err := client.SetMetadataProvider(ani); err != nil {
-		_ = client.Close()
-		return nil, fmt.Errorf("set anilist: %w", err)
+	// no login here, see anilist.EnsureLogin and kitsu.EnsureLogin
+	for _, meta := range metas {
+		if err := client.SetMetadataProvider(meta); err != nil {
+			_ = client.Close()
+			return nil, fmt.Errorf("set %s: %w", meta, err)
+		}
 	}
 	return client, nil
+}
+
+// metadataProviders are the metadata providers of the clients, by priority: libmangal
+// searches the next one only when the previous finds nothing (or fails).
+func metadataProviders() ([]*metadata.ProviderWithCache, error) {
+	ani, err := anilist.Anilist()
+	if err != nil {
+		return nil, err
+	}
+	metas := []*metadata.ProviderWithCache{ani}
+	if config.Metadata.Kitsu.Enabled.Get() {
+		k, err := kitsu.Kitsu()
+		if err != nil {
+			return nil, err
+		}
+		metas = append(metas, k)
+	}
+	return metas, nil
 }

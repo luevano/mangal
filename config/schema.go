@@ -23,6 +23,15 @@ type configRead struct {
 type configReadHistory struct {
 	Anilist *entry[bool, bool]
 	Local   *entry[bool, bool]
+	Kitsu   *entry[bool, bool]
+}
+
+type configMetadata struct {
+	Kitsu configMetadataKitsu
+}
+
+type configMetadataKitsu struct {
+	Enabled *entry[bool, bool]
 }
 
 type configDownload struct {

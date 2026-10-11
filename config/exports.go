@@ -35,5 +35,7 @@ func DownloadOptions() libmangal.DownloadOptions {
 func ReadOptions() libmangal.ReadOptions {
 	o := libmangal.DefaultReadOptions()
 	o.SaveAnilist = Read.History.Anilist.Get()
+	// without the provider libmangal would fail the sync
+	o.SaveKitsu = Read.History.Kitsu.Get() && Metadata.Kitsu.Enabled.Get()
 	return o
 }

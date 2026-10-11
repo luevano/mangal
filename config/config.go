@@ -172,8 +172,16 @@ var Read = configRead{
 	History: configReadHistory{
 		Anilist: boolEntry("read.history.anilist", true, "Sync to Anilist reading history if logged in."),
 		Local:   boolEntry("read.history.local", true, "Save to local history."),
+		Kitsu:   boolEntry("read.history.kitsu", false, "Sync to Kitsu reading history if logged in."),
 	},
 	DownloadOnRead: boolEntry("read.download_on_read", false, "Download chapter to the configured directory when opening for reading."),
+}
+
+var Metadata = configMetadata{
+	Kitsu: configMetadataKitsu{
+		Enabled: boolEntry("metadata.kitsu.enabled", true,
+			"Search Kitsu for metadata when Anilist finds none (or fails). Kitsu often lacks the authors, such metadata isn't valid (see download.metadata.strict)."),
+	},
 }
 
 var Download = configDownload{
@@ -335,7 +343,7 @@ var Providers = configProviders{
 
 var Auth = configAuth{
 	Keyring: boolEntry("auth.keyring", false,
-		"Keep the logins and secrets (Anilist/MyAnimeList tokens, MangaPlus secrets) in the OS keyring (Secret Service on Linux, Keychain on macOS, Credential Manager on Windows) instead of mangal's database. They move on the next run after changing it."),
+		"Keep the logins and secrets (Anilist/Kitsu/MyAnimeList tokens, MangaPlus secrets) in the OS keyring (Secret Service on Linux, Keychain on macOS, Credential Manager on Windows) instead of mangal's database. They move on the next run after changing it."),
 }
 
 var Notification = configNotification{

@@ -351,3 +351,24 @@ func TestDescriptions(t *testing.T) {
 		t.Error("secret keys")
 	}
 }
+
+func TestKitsuKeys(t *testing.T) {
+	reset(t)
+	if !Metadata.Kitsu.Enabled.Get() || Read.History.Kitsu.Get() || ReadOptions().SaveKitsu {
+		t.Fatal("kitsu defaults: enabled, no sync")
+	}
+	writeConfig(t, "[read.history]\nkitsu = true\n")
+	if err := Load(Path); err != nil {
+		t.Fatal(err)
+	}
+	if !ReadOptions().SaveKitsu {
+		t.Error("read.history.kitsu doesn't sync")
+	}
+	// no provider to sync to
+	if err := Metadata.Kitsu.Enabled.Set(false); err != nil {
+		t.Fatal(err)
+	}
+	if ReadOptions().SaveKitsu {
+		t.Error("syncs to a disabled kitsu")
+	}
+}
