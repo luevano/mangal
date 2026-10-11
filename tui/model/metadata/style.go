@@ -6,26 +6,21 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
-	_style "github.com/luevano/mangal/v5/theme/style"
 )
 
 type styles struct {
-	meta metaStyle
 	enum func(list.Items, int) string
 
-	mini,
 	fieldName,
 	enumerator lipgloss.Style
 }
 
-func defaultStyles(meta metaStyle) styles {
+func newStyles(meta metaStyle) styles {
 	base := lipgloss.NewStyle().Foreground(meta.Color)
 	return styles{
-		meta: meta,
 		enum: func(_ list.Items, _ int) string {
 			return icon.SubItem.Raw()
 		},
-		mini:       _style.Normal.Base.Padding(0, 1).Foreground(color.Bright),
 		fieldName:  base,
 		enumerator: base.MarginRight(1).PaddingLeft(2),
 	}

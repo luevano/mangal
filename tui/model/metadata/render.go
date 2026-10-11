@@ -12,9 +12,12 @@ import (
 	_style "github.com/luevano/mangal/v5/theme/style"
 )
 
+// Details renders every field of meta.
+//
 // TODO: handle wrapping for smaller terminals
-func (m *Model) RenderMetadata() string {
-	f := allFields(m.meta)
+func Details(meta metadata.Metadata) string {
+	m := renderer{styles: newStyles(metaIDStyle(meta.ID()))}
+	f := allFields(meta)
 
 	// manually managing is prone to errros
 	l := make([]string, 12)
@@ -34,7 +37,11 @@ func (m *Model) RenderMetadata() string {
 	return jV(l...)
 }
 
-func (m *Model) render(f field) string {
+type renderer struct {
+	styles styles
+}
+
+func (m renderer) render(f field) string {
 	var str string
 	switch value := f.value.(type) {
 	case string:
@@ -75,11 +82,11 @@ func (m *Model) render(f field) string {
 	return m.renderField(f.name, str, f.width)
 }
 
-func (m *Model) renderFieldName(name string) string {
+func (m renderer) renderFieldName(name string) string {
 	return m.styles.fieldName.Render(icon.Item.Raw() + name + ":")
 }
 
-func (m *Model) renderField(name string, str string, width int) string {
+func (m renderer) renderField(name string, str string, width int) string {
 	minWidth := 2
 	if width < minWidth {
 		width = minWidth
@@ -90,7 +97,7 @@ func (m *Model) renderField(name string, str string, width int) string {
 	return jH(m.renderFieldName(name), lipgloss.NewStyle().Width(width).MaxWidth(width).Render(str))
 }
 
-func (m *Model) renderList(name string, items []string, itemStyle lipgloss.Style) string {
+func (m renderer) renderList(name string, items []string, itemStyle lipgloss.Style) string {
 	if len(items) == 0 {
 		return m.renderField(name, "", 3)
 	}
