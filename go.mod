@@ -24,7 +24,7 @@ require (
 	github.com/luevano/libmangal v0.24.1
 	github.com/luevano/luaprovider v0.15.8
 	github.com/luevano/mangoplus v0.7.1
-	github.com/luevano/mangoprovider v0.17.8
+	github.com/luevano/mangoprovider v0.17.9
 	github.com/mattn/go-runewidth v0.0.31
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.16.0
@@ -56,7 +56,6 @@ require (
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0 // indirect
-	github.com/Luzifer/go-openssl/v4 v4.2.4 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.0 // indirect
 	github.com/PuerkitoBio/goquery v1.13.0 // indirect
@@ -147,10 +146,8 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/temoto/robotstxt v1.1.2 // indirect
-	github.com/tj/go-naturaldate v1.3.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
-	github.com/vineesh12344/gojsfuck v0.2.0 // indirect
 	github.com/woodsbury/decimal128 v1.4.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
@@ -168,6 +165,7 @@ require (
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
