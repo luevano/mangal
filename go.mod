@@ -19,10 +19,10 @@ require (
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luevano/gopher-luadoc v0.3.3
-	github.com/luevano/libmangal v0.25.0
-	github.com/luevano/luaprovider v0.15.10
+	github.com/luevano/libmangal v0.26.0
+	github.com/luevano/luaprovider v0.15.11
 	github.com/luevano/mangoplus v0.7.1
-	github.com/luevano/mangoprovider v0.18.1
+	github.com/luevano/mangoprovider v0.18.2
 	github.com/oapi-codegen/runtime v1.2.0
 	github.com/pelletier/go-toml v1.9.5
 	github.com/philippgille/gokv v0.7.0
