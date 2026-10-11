@@ -164,3 +164,22 @@ type configNotificationDiscord struct {
 	Username   *entry[string, string]
 	WebhookURL *entry[string, string]
 }
+
+type configData struct {
+	Path *entry[string, string]
+}
+
+type configWatch struct {
+	Interval          *entry[string, string]
+	Jitter            *entry[string, string]
+	GapInterval       *entry[string, string]
+	Gaps              *entry[bool, bool]
+	ParallelProviders *entry[int64, int]
+	Backoff           *entry[int64, int]
+	Notify            *entry[string, string]
+}
+
+type configServe struct {
+	Host *entry[string, string]
+	Port *entry[int64, int]
+}

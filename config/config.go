@@ -78,6 +78,21 @@ func durationEntry(key, def, description string, allowNegative bool) *entry[stri
 	})
 }
 
+func intEntry(key string, def, minimum, maximum int, description string) *entry[int64, int] {
+	return reg(entry[int64, int]{
+		Key:         key,
+		Default:     def,
+		Description: description,
+		Unmarshal: func(i int64) (int, error) {
+			if i < int64(minimum) || i > int64(maximum) {
+				return 0, fmt.Errorf("%d isn't between %d and %d", i, minimum, maximum)
+			}
+			return int(i), nil
+		},
+		Marshal: func(i int) (int64, error) { return int64(i), nil },
+	})
+}
+
 func modeEntry(key string, def fs.FileMode, description string) *entry[int64, fs.FileMode] {
 	return reg(entry[int64, fs.FileMode]{
 		Key:         key,
@@ -142,7 +157,8 @@ func oneOfEntry(key, def, description string, values ...string) *entry[string, s
 
 var webhookPath = regexp.MustCompile(`/api/webhooks/\d+/[\w-]+`)
 
-func validateWebhookURL(s string) error {
+// ValidateWebhookURL checks a Discord webhook url, empty is fine (none).
+func ValidateWebhookURL(s string) error {
 	if s == "" {
 		return nil
 	}
@@ -380,9 +396,36 @@ var Notification = configNotification{
 			"Username of the message sender. If empty it will use the configured name in the server."),
 		WebhookURL: reg(entry[string, string]{
 			Key:         "notification.discord.webhook_url",
-			Description: "Webhook URL, if present discord notifications are sent after `mangal inline download`, and after TUI downloads with notification.tui (not from scripts or the web UI).",
+			Description: "Webhook URL, if present discord notifications are sent after `mangal inline download`, watch checks, and TUI downloads with notification.tui (not from scripts or the web UI). Only used when none is saved with `mangal notify webhook` (or the TUI accounts).",
 			Secret:      true,
-			Validate:    validateWebhookURL,
+			Validate:    ValidateWebhookURL,
 		}),
 	},
+}
+
+var Data = configData{
+	Path: pathEntry("data.path", "",
+		"Directory of mangal's data database (library, logins, watches), empty for the XDG data directory (~/.local/share/mangal). Another mangal instance (e.g. a second `mangal serve`) uses another config pointing to another directory.",
+		false),
+}
+
+var Watch = configWatch{
+	Interval: durationEntry("watch.interval", "4h",
+		"How often a watched manga is checked for new chapters (by `mangal serve`), a duration such as \"4h\". A watch can override it (`mangal watch set --interval`).", false),
+	Jitter: durationEntry("watch.jitter", "10m",
+		"Up to how much later than its interval a watch is checked, so the checks spread out.", false),
+	GapInterval: durationEntry("watch.gap_interval", "0s",
+		"How often the watches with gap filling also download the chapters below the last downloaded one the library misses, e.g. \"168h\". 0s turns it off (`mangal watch check --gaps` still does it).", false),
+	Gaps: boolEntry("watch.gaps", false, "Gap filling for new watches (`mangal watch add --gaps` sets it per watch)."),
+	ParallelProviders: intEntry("watch.parallel_providers", 2, 1, 32,
+		"How many providers are checked at the same time, the mangas of one provider are always checked one at a time."),
+	Backoff: intEntry("watch.backoff", 3, 0, 1000,
+		"After this many failed checks in a row a watch waits longer between checks (doubling, up to 8 times its interval). 0 never waits longer."),
+	Notify: oneOfEntry("watch.notify", "both",
+		"What watch checks notify (Discord): new chapters, errors, both or none.", "new", "errors", "both", "none"),
+}
+
+var Serve = configServe{
+	Host: stringEntry("serve.host", "127.0.0.1", "Address `mangal serve` listens on, 127.0.0.1 only accepts local connections."),
+	Port: intEntry("serve.port", 6977, 1, 65535, "Port `mangal serve` listens on, one per instance."),
 }
