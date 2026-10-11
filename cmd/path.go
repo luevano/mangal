@@ -3,8 +3,8 @@ package cmd
 import (
 	"encoding/json"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/tui/base"
 	pathViewer "github.com/luevano/mangal/v5/tui/model/path"
 	"github.com/spf13/cobra"
 )
@@ -81,7 +81,6 @@ var pathCmd = &cobra.Command{
 			return nil
 		}
 
-		_, err := tea.NewProgram(pathViewer.New(true)).Run()
-		return err
+		return base.RunStandalone(cmd.Context(), pathViewer.New())
 	},
 }

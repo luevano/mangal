@@ -1,88 +1,95 @@
+// Package path shows mangal's paths (mangal path).
 package path
 
 import (
+	"context"
 	"fmt"
-	"time"
+	"slices"
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/util"
 )
 
-var _ tea.Model = (*Model)(nil)
+var _ base.State = (*state)(nil)
 
-// Model implements tea.Model.
-type Model struct {
+type state struct {
 	table table.Model
-	help  help.Model
-
-	// to be able to clear the screen in standalone
-	quitting,
-	standalone bool
-
-	// pre-rendered
-	title string
-
-	notification         string
-	notificationDuration time.Duration
-
-	styles styles
-	keyMap KeyMap
+	copy  key.Binding
 }
 
-// Init implements tea.Model.
-func (m *Model) Init() tea.Cmd {
+// New is the paths screen.
+func New() base.State {
+	paths := path.All()
+	keys := paths.Keys()
+	slices.Sort(keys)
+	rows := make([]table.Row, len(keys))
+	for i, k := range keys {
+		rows[i] = table.Row{string(k), paths.Get(k)}
+	}
+
+	_styles := defaultStyles()
+	t := table.New(
+		table.WithColumns([]table.Column{
+			{Title: "Name", Width: 10},
+			{Title: "Path", Width: 40},
+		}),
+		table.WithRows(rows),
+		table.WithFocused(true),
+		table.WithHeight(len(rows)+1),
+		table.WithStyles(table.Styles{
+			Header:   _styles.header,
+			Cell:     _styles.cell,
+			Selected: _styles.selected,
+		}),
+	)
+	return &state{
+		table: t,
+		copy:  util.Bind("copy", "c", "enter"),
+	}
+}
+
+func (s *state) Backable() bool               { return true }
+func (s *state) Inputting() bool              { return false }
+func (s *state) Subtitle() string             { return "" }
+func (s *state) Status() string               { return "" }
+func (s *state) Init(context.Context) tea.Cmd { return nil }
+func (s *state) View() string                 { return s.table.View() }
+
+func (s *state) Title() base.Title {
+	return base.Title{Text: "Mangal Paths"}
+}
+
+func (s *state) KeyMap() help.KeyMap {
+	return util.KeyMap{Short: []key.Binding{s.copy, s.table.KeyMap.LineUp, s.table.KeyMap.LineDown}}
+}
+
+func (s *state) Resize(size base.Size) tea.Cmd {
+	cols := s.table.Columns()
+	cols[1].Width = max(10, size.Width-cols[0].Width-4)
+	s.table.SetColumns(cols)
 	return nil
 }
 
-// Update implements tea.Model.
-func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, m.keyMap.quit):
-			m.quitting = true
-			return m, tea.Quit
-		case key.Matches(msg, m.keyMap.Copy):
-			row := m.table.SelectedRow()
-			path := row[1]
-
-			msg := fmt.Sprintf("copied %q path to clipboard", row[0])
-			if err := clipboard.WriteAll(path); err != nil {
-				msg = fmt.Sprintf("error copying path to clipboard: %s", err)
-			}
-			return m, func() tea.Msg {
-				return NotificationMsg(msg)
-			}
+func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
+	if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, s.copy) {
+		row := s.table.SelectedRow()
+		if row == nil {
+			return nil
 		}
-	case NotificationMsg:
-		return m, m.notifyCmd(string(msg))
-	case NotificationTimeoutMsg:
-		m.notification = ""
-		return m, nil
+		return func() tea.Msg {
+			if err := clipboard.WriteAll(row[1]); err != nil {
+				return base.NotificationMsg{Message: "Copy: " + err.Error()}
+			}
+			return base.NotificationMsg{Message: fmt.Sprintf("Copied the %s path", row[0])}
+		}
 	}
-
 	var cmd tea.Cmd
-	m.table, cmd = m.table.Update(msg)
-	return m, cmd
-}
-
-// View implements tea.Model.
-func (m *Model) View() string {
-	if !m.standalone {
-		return m.table.View()
-	}
-	if m.quitting {
-		return ""
-	}
-	msg := m.styles.notification.Render(m.notification)
-	view := lipgloss.JoinVertical(lipgloss.Left, m.title, msg, m.table.View(), " ", m.help.View(&m.keyMap))
-	return m.styles.view.Render(view)
-}
-
-func (m *Model) DisableQuitKeybindings() {
-	m.keyMap.quit.SetEnabled(false)
+	s.table, cmd = s.table.Update(msg)
+	return cmd
 }
