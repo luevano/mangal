@@ -7,12 +7,6 @@ func (e Error) Error() string {
 	return "oauth: " + string(e)
 }
 
-type ConvertCodeError string
-
-func (e ConvertCodeError) Error() string {
-	return "oauth converting access code to access token: " + string(e)
-}
-
 // Some specific errors
 
 var (

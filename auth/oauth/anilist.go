@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal/metadata/anilist"
-	"github.com/luevano/mangal/v5/auth"
 	"github.com/skratchdot/open-golang/open"
 	"golang.org/x/oauth2"
 )
@@ -31,16 +30,13 @@ var AnilistEndpoint = oauth2.Endpoint{
 	AuthStyle: oauth2.AuthStyleInParams,
 }
 
-var _ auth.LoginOption = (*AnilistLoginOption)(nil)
-
 // WARN: the implicit grant (empty ClientSecret) should be used
 // with caution and only if completely needed, due to the access
 // token being resent (to the same callback URL) on the URL params.
 // Anilist api was designed to send it as part of the URL fragment,
 // specifically so that servers didn't have access to the token directly.
 //
-// AnilistLoginOption is an implementation of metadata.LoginOption
-// that handles OAuth2 login.
+// AnilistLoginOption handles the OAuth2 login.
 type AnilistLoginOption struct {
 	// ClientID is the application's ID.
 	//
@@ -77,20 +73,6 @@ func (o *AnilistLoginOption) getOAuthConfig() *oauth2.Config {
 		ClientSecret: o.ClientSecret,
 		Endpoint:     AnilistEndpoint,
 		RedirectURL:  AnilistServerCallbackURL, // TODO: make configurable?
-	}
-}
-
-// getRequestBody is a convenience method to get the OAuthLoginOption
-// as a code grant request body.
-//
-// Only needed when there is a ClientSecret.
-func (o *AnilistLoginOption) getRequestBody() map[string]string {
-	return map[string]string{
-		"client_id":     o.ClientID,
-		"client_secret": o.ClientSecret,
-		"code":          o.code,
-		"grant_type":    "authorization_code",
-		"redirect_uri":  AnilistServerCallbackURL, // TODO: make configurable?
 	}
 }
 
