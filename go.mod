@@ -22,9 +22,9 @@ require (
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luevano/gopher-luadoc v0.3.3
 	github.com/luevano/libmangal v0.24.1
-	github.com/luevano/luaprovider v0.15.7
+	github.com/luevano/luaprovider v0.15.8
 	github.com/luevano/mangoplus v0.7.1
-	github.com/luevano/mangoprovider v0.17.7
+	github.com/luevano/mangoprovider v0.17.8
 	github.com/mattn/go-runewidth v0.0.31
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.16.0
@@ -44,6 +44,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/wk8/go-ordered-map/v2 v2.1.8
 	github.com/yuin/gopher-lua v1.1.1
+	github.com/zalando/go-keyring v0.2.8
 	github.com/zyedidia/generic v1.2.1
 	go.etcd.io/bbolt v1.4.3
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90
@@ -159,7 +160,6 @@ require (
 	github.com/ysmood/gson v0.7.3 // indirect
 	github.com/ysmood/leakless v0.9.0 // indirect
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7 // indirect
-	github.com/zalando/go-keyring v0.2.8 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/image v0.47.0 // indirect
