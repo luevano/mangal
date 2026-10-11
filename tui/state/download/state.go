@@ -1,9 +1,11 @@
+// Package download is the download of several chapters, with its progress.
 package download
 
 import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -13,181 +15,249 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/viewport"
-	"github.com/luevano/mangal/v5/util/chapter"
+	"github.com/luevano/mangal/v5/tui/util"
 	stringutil "github.com/luevano/mangal/v5/util/string"
+	"github.com/skratchdot/open-golang/open"
 )
 
 var _ base.State = (*state)(nil)
 
-type downloadState uint8
-
-const (
-	dSUninitialized downloadState = iota + 1
-	dSDownloading
-	dSDownloaded
-)
-
-// state implements base.state.
 type state struct {
 	progress progress.Model
 	spinner  spinner.Model
 	timer    timer.Model
 	viewport *viewport.Model
 	client   *libmangal.Client
-	chapters chapter.Chapters
 	options  libmangal.DownloadOptions
 
-	downloading downloadState
-	currentIdx  int
-	toDownload  chapter.Chapters
-
-	retryCount,
-	maxRetries int
-	retrying bool
-
-	sep,
+	// results are all the chapters, batch the ones of the running download (all, or the
+	// failed ones on retry), both only changed in Update
+	results client.Results
+	batch   client.Results
+	// run counts the downloads, the events of an older one are dropped
+	run         int
+	downloading bool
+	// current is the chapter (in batch) being downloaded, done how many finished
+	current, done int
+	// attempt is the rate limit retry of the current chapter, 0 if not waiting
+	attempt int
 	message string
 
+	sep    string
 	size   base.Size
 	styles styles
-	keyMap keyMap
+
+	open,
+	retry key.Binding
 }
 
-// Backable implements base.State.
-func (s *state) Backable() bool {
-	return true
+// eventMsg is an event of the run's download, with a copy of the chapter's result.
+type eventMsg struct {
+	run     int
+	kind    client.EventKind
+	index   int
+	result  client.Result
+	attempt int
+	wait    time.Duration
+	// next waits for the following event
+	next tea.Cmd
 }
 
-// Inputting implements base.State.
-func (s *state) Inputting() bool {
-	return false
+type finishedMsg struct {
+	run int
 }
 
-// KeyMap implements base.State.
+func New(c *libmangal.Client, chapters []mangadata.Chapter, options libmangal.DownloadOptions) base.State {
+	_styles := defaultStyles()
+	return &state{
+		progress: progress.New(),
+		spinner: spinner.New(
+			spinner.WithSpinner(base.DotSpinner),
+			spinner.WithStyle(style.Normal.Accent),
+		),
+		viewport: viewport.New(),
+		client:   c,
+		results:  client.NewResults(chapters),
+		options:  options,
+		sep:      _styles.sep.Render(icon.Separator.Raw()),
+		message:  "Preparing...",
+		styles:   _styles,
+		open:     util.Bind("open directory", "o"),
+		retry:    util.Bind("retry", "r"),
+	}
+}
+
+func (s *state) Backable() bool    { return true }
+func (s *state) Inputting() bool   { return false }
+func (s *state) Title() base.Title { return base.Title{Text: "Download"} }
+func (s *state) Status() string    { return "" }
+
 func (s *state) KeyMap() help.KeyMap {
-	return s.keyMap
+	return base.CombinedKeyMap(util.KeyMap{Short: []key.Binding{s.open, s.retry}}, s.viewport.KeyMap)
 }
 
-// Title implements base.State.
-func (s *state) Title() base.Title {
-	return base.Title{Text: "Download"}
-}
-
-// Subtitle implements base.State.
 func (s *state) Subtitle() string {
-	down, succ, fail := s.chapters.GetEach()
-	var sb strings.Builder
-	sb.Grow(50)
-
-	renDown := len(down) != 0
-	renSucc := len(succ) != 0
-	renFail := len(fail) != 0
-
-	if renDown {
-		q := stringutil.Quantify(len(down), "chapter", "chapters")
-		sb.WriteString(s.styles.toDownload.Render(q + " to download"))
-		if renSucc || renFail {
-			sb.WriteString(s.sep)
-		}
+	down, succ, fail := s.results.GetEach()
+	var parts []string
+	if len(down) != 0 {
+		parts = append(parts, s.styles.toDownload.Render(stringutil.Quantify(len(down), "chapter", "chapters")+" to download"))
 	}
-	if renSucc {
-		q := stringutil.Quantify(len(succ), "chapter", "chapters")
-		sb.WriteString(s.styles.succeed.Render(q + " downloaded"))
-		if renFail {
-			sb.WriteString(s.sep)
-		}
+	if len(succ) != 0 {
+		parts = append(parts, s.styles.succeed.Render(stringutil.Quantify(len(succ), "chapter", "chapters")+" downloaded"))
 	}
-	if renFail {
-		q := stringutil.Quantify(len(fail), "chapter", "chapters")
-		sb.WriteString(s.styles.failed.Render(q + " failed"))
+	if len(fail) != 0 {
+		parts = append(parts, s.styles.failed.Render(stringutil.Quantify(len(fail), "chapter", "chapters")+" failed"))
 	}
-	return sb.String()
+	return strings.Join(parts, s.sep)
 }
 
-// Status implements base.State.
-func (s *state) Status() string {
-	return ""
-}
-
-// Resize implements base.State.
 func (s *state) Resize(size base.Size) tea.Cmd {
 	s.size = size
 	s.progress.Width = s.size.Width
 	h := 0
-	if s.downloading != dSDownloaded {
+	if s.downloading {
 		h = lipgloss.Height(s.viewDownloading())
 	}
 	return s.viewport.Resize(base.Size{Width: s.size.Width, Height: s.size.Height - h})
 }
 
-// Init implements base.State.
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	s.client.Logger().SetOnLog(func(format string, a ...any) {
-		s.message = fmt.Sprintf(format, a...)
-		// TODO: add option for "verbose" so it logs pages progress?
-		if !strings.HasPrefix(format, "page") {
-			log.Log(format, a...)
-		}
-	})
-
-	s.updateKeybinds()
-	return tea.Sequence(
-		s.spinner.Tick,
-		s.startDownloadCmd,
-	)
+	return tea.Batch(s.spinner.Tick, s.start(ctx, s.results.ToDownload()))
 }
 
-// Update implements base.State.
+// start downloads the batch in the background, its events come back as msgs.
+func (s *state) start(ctx context.Context, batch client.Results) tea.Cmd {
+	s.run++
+	s.batch = batch
+	s.downloading = true
+	s.current, s.done, s.attempt = 0, 0, 0
+	chapters := make([]mangadata.Chapter, len(batch))
+	for i, r := range batch {
+		r.Down, r.Err = nil, nil
+		chapters[i] = r.Chapter
+	}
+	s.updateView()
+
+	run, c, options := s.run, s.client, s.options
+	events := make(chan eventMsg, 8)
+	download := func() tea.Msg {
+		release, ok := base.Track(ctx)
+		if !ok {
+			close(events)
+			return nil
+		}
+		go func() {
+			defer release()
+			defer close(events)
+			client.Download(ctx, c, chapters, options, func(e client.Event) {
+				msg := eventMsg{run: run, kind: e.Kind, index: e.Index, result: *e.Result, attempt: e.Attempt, wait: e.Wait}
+				select {
+				case events <- msg:
+				case <-ctx.Done():
+				}
+			})
+		}()
+		return nil
+	}
+	return tea.Batch(download, listen(run, events), s.Resize(s.size))
+}
+
+// listen waits for the next event of the run.
+func listen(run int, events <-chan eventMsg) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-events
+		if !ok {
+			return finishedMsg{run: run}
+		}
+		msg.next = listen(run, events)
+		return msg
+	}
+}
+
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, s.keyMap.open):
-			return s.openCmd
-		case key.Matches(msg, s.keyMap.retry):
-			return s.retryCmd()
+		case key.Matches(msg, s.open):
+			return s.openCmd()
+		case key.Matches(msg, s.retry):
+			return s.start(ctx, s.results.Failed())
 		}
 	case spinner.TickMsg:
-		spinner, cmd := s.spinner.Update(msg)
-		s.spinner = spinner
+		var cmd tea.Cmd
+		s.spinner, cmd = s.spinner.Update(msg)
 		return cmd
-	case timer.TickMsg:
-		timer, cmd := s.timer.Update(msg)
-		s.timer = timer
-		if !msg.Timeout {
-			return cmd
+	case timer.TickMsg, timer.StartStopMsg:
+		var cmd tea.Cmd
+		s.timer, cmd = s.timer.Update(msg)
+		return cmd
+	case eventMsg:
+		if msg.run != s.run {
+			return nil
 		}
-
-		s.retrying = false
-		// since the currentIdx is not updated,
-		// just resend the normal download chapter cmd
-		return tea.Sequence(
-			cmd,
-			s.downloadChapterCmd(ctx),
-		)
-	case nextChapterMsg:
-		s.updateKeybinds()
-		s.viewport.SetContent(s.viewDownloaded())
-		return s.downloadChapterCmd(ctx)
-	case retryChapterMsg:
-		s.retrying = true
-		s.timer.Timeout = msg.After
-		return s.timer.Init()
-	case downloadCompletedMsg:
-		s.downloading = dSDownloaded
-		s.updateKeybinds()
-		s.viewport.SetContent(s.viewDownloaded())
+		return tea.Batch(s.onEvent(msg), msg.next)
+	case finishedMsg:
+		if msg.run != s.run {
+			return nil
+		}
+		s.downloading = false
+		s.updateView()
 		return s.Resize(s.size)
 	}
 	return s.viewport.Update(msg)
 }
 
-// View implements base.State.
+func (s *state) onEvent(msg eventMsg) tea.Cmd {
+	if msg.index < 0 || msg.index >= len(s.batch) {
+		return nil
+	}
+	switch msg.kind {
+	case client.EventStart:
+		s.current, s.attempt = msg.index, 0
+		s.message = "Downloading..."
+	case client.EventWait:
+		s.current, s.attempt = msg.index, msg.attempt
+		s.message = fmt.Sprintf("429 Too Many Requests (retry #%d)", msg.attempt)
+		s.timer = timer.NewWithInterval(msg.wait, time.Second)
+		return s.timer.Init()
+	case client.EventDone:
+		*s.batch[msg.index] = msg.result
+		s.done = msg.index + 1
+		s.attempt = 0
+		s.updateView()
+	}
+	return nil
+}
+
+func (s *state) updateView() {
+	_, succ, fail := s.results.GetEach()
+	s.open.SetEnabled(len(succ) != 0 && !s.downloading)
+	s.retry.SetEnabled(len(fail) != 0 && !s.downloading)
+	s.viewport.SetContent(s.viewDownloaded())
+}
+
+// openCmd opens the directory of the first downloaded chapter.
+func (s *state) openCmd() tea.Cmd {
+	for _, r := range s.results.Succeed() {
+		dir := r.Down.Directory
+		return func() tea.Msg {
+			if err := open.Start(dir); err != nil {
+				return fmt.Errorf("open %s: %w", dir, err)
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
 func (s *state) View() string {
-	if s.downloading == dSDownloading {
+	if s.downloading {
 		return s.viewDownloading() + "\n" + s.viewport.View()
 	}
 	return s.viewport.View()
