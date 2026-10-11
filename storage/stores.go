@@ -1,9 +1,9 @@
 package storage
 
 import (
-	"encoding/hex"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"time"
 
