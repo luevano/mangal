@@ -10,6 +10,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/kitsu"
+	"github.com/luevano/mangal/v5/client/myanimelist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
@@ -203,7 +204,7 @@ func newClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal
 	}
 	// every mode gets the provider's logs (page lines at debug)
 	client.Logger().SetOnLog(log.ProviderHook(""))
-	// no login here, see anilist.EnsureLogin and kitsu.EnsureLogin
+	// no login here, see the EnsureLogin of anilist, kitsu and myanimelist
 	for _, meta := range metas {
 		if err := client.SetMetadataProvider(meta); err != nil {
 			_ = client.Close()
@@ -227,6 +228,13 @@ func metadataProviders() ([]*metadata.ProviderWithCache, error) {
 			return nil, err
 		}
 		metas = append(metas, k)
+	}
+	if config.MyAnimeList.Configured() {
+		m, err := myanimelist.MyAnimeList()
+		if err != nil {
+			return nil, err
+		}
+		metas = append(metas, m)
 	}
 	return metas, nil
 }
