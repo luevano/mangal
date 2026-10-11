@@ -31,7 +31,6 @@ type bindingsState struct {
 	manga  mangadata.Manga
 
 	search,
-	setDefault,
 	remove,
 	metadata key.Binding
 }
@@ -39,7 +38,7 @@ type bindingsState struct {
 // loadedMsg are the sources with their bindings and bound metadata.
 type loadedMsg []*sourceItem
 
-// changedMsg is a binding changed (made the default or removed), the screen reloads.
+// changedMsg is a binding changed (removed), the screen reloads.
 type changedMsg struct{ notice string }
 
 // Open shows the metadata bindings of the manga.
@@ -49,12 +48,11 @@ func Open(c *libmangal.Client, manga mangadata.Manga) tea.Cmd {
 
 func newBindings(c *libmangal.Client, manga mangadata.Manga) base.State {
 	s := &bindingsState{
-		client:     c,
-		manga:      manga,
-		search:     util.Bind("search", "enter", "s"),
-		setDefault: util.Bind("default", "D"),
-		remove:     util.Bind("remove", "d"),
-		metadata:   util.Bind("metadata", "m"),
+		client:   c,
+		manga:    manga,
+		search:   util.Bind("search", "enter", "s"),
+		remove:   util.Bind("remove", "d"),
+		metadata: util.Bind("metadata", "m"),
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "source", "sources", []*sourceItem{}, func(i *sourceItem) _list.DefaultItem { return i }), s.keyMap)
 	return s
@@ -62,8 +60,8 @@ func newBindings(c *libmangal.Client, manga mangadata.Manga) base.State {
 
 func (s *bindingsState) keyMap() help.KeyMap {
 	return util.KeyMap{
-		Short: []key.Binding{s.search, s.setDefault, s.remove, s.metadata},
-		Full:  [][]key.Binding{{s.search, s.setDefault, s.remove, s.metadata}},
+		Short: []key.Binding{s.search, s.remove, s.metadata},
+		Full:  [][]key.Binding{{s.search, s.remove, s.metadata}},
 	}
 }
 
@@ -144,10 +142,6 @@ func (s *bindingsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 				return func() tea.Msg { return err }
 			}
 			return func() tea.Msg { return newSearch(s.client, i.src, p, s.manga) }
-		case key.Matches(msg, s.setDefault) && i.binding != nil && !i.binding.Default:
-			return s.change(ctx, i, func(b storage.Bindings) (string, error) {
-				return fmt.Sprintf("%s is the default", i.src.Name), b.SetDefault(s.client.Info().ID, s.manga.Info().ID, i.src.Code)
-			})
 		case key.Matches(msg, s.remove) && i.binding != nil:
 			return s.change(ctx, i, func(b storage.Bindings) (string, error) {
 				_, err := b.Remove(s.client.Info().ID, s.manga.Info().ID, i.src.Code)
@@ -176,11 +170,11 @@ func (s *bindingsState) change(ctx context.Context, i *sourceItem, change func(s
 	}, func(msg changedMsg) tea.Msg { return msg })
 }
 
-// applyDefault sets the default binding's metadata on the manga, so the screens and their
-// downloads use it.
+// applyDefault sets the default binding's metadata on the manga (the first bound source
+// whose metadata loaded, as downloads fall back), so the screens and their downloads use it.
 func (s *bindingsState) applyDefault(items []*sourceItem) {
 	for _, i := range items {
-		if i.binding == nil || !i.binding.Default || i.meta == nil {
+		if i.binding == nil || i.meta == nil {
 			continue
 		}
 		if cur := s.manga.Metadata(); cur != nil && cur.ID().Code == i.src.Code && cur.ID().Raw == i.binding.ID {

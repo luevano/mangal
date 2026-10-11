@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/logger"
@@ -144,6 +145,7 @@ var (
 
 func TestApplyBinding(t *testing.T) {
 	ctx := context.Background()
+	failed.at = map[string]time.Time{}
 	bindings := openBindings(t)
 	ani := &fakeMetaProvider{src: srcAnilist, byID: map[int]string{30013: "One Piece (AniList)"}}
 	kitsu := &fakeMetaProvider{src: srcKitsu, byID: map[int]string{11: "One Piece (Kitsu)"}}
@@ -154,31 +156,50 @@ func TestApplyBinding(t *testing.T) {
 		t.Fatalf("unbound manga: %v, %v, %v", bound, err, manga.meta)
 	}
 
-	// the default is the metadata, the other sources aren't asked
-	if _, err := bind(ctx, bindings, providers, "mango-mangapill", "2", nil, metadata.IDCodeAnilist, "30013", false); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := bind(ctx, bindings, providers, "mango-mangapill", "2", manga, metadata.IDCodeKitsu, "11", true); err != nil {
+	// AniList is the default whatever the order of binding, the other sources aren't asked
+	if _, err := bind(ctx, bindings, providers, "mango-mangapill", "2", manga, metadata.IDCodeKitsu, "11"); err != nil {
 		t.Fatal(err)
 	}
 	if manga.meta == nil || manga.meta.Title() != "One Piece (Kitsu)" {
 		t.Fatalf("bind didn't set the default's metadata: %v", manga.meta)
 	}
+	if _, err := bind(ctx, bindings, providers, "mango-mangapill", "2", manga, metadata.IDCodeAnilist, "30013"); err != nil {
+		t.Fatal(err)
+	}
+	if manga.meta.Title() != "One Piece (AniList)" {
+		t.Fatalf("bind didn't set the new default's metadata: %v", manga.meta)
+	}
 	manga.meta = nil
+	kitsu.ids = nil
 	bound, err := applyBinding(ctx, bindings, "mango-mangapill", providers, manga)
-	if err != nil || !bound || manga.meta == nil || manga.meta.ID().Code != metadata.IDCodeKitsu || manga.meta.ID().Raw != "11" {
+	if err != nil || !bound || manga.meta == nil || manga.meta.ID().Code != metadata.IDCodeAnilist || manga.meta.ID().Raw != "30013" {
 		t.Fatalf("applied %v, %v, %v", bound, err, manga.meta)
 	}
-	if len(kitsu.searches)+len(ani.searches) != 0 {
-		t.Errorf("searched: %v %v", kitsu.searches, ani.searches)
+	if len(kitsu.searches)+len(ani.searches)+len(kitsu.ids) != 0 {
+		t.Errorf("searched: %v %v %v", kitsu.searches, ani.searches, kitsu.ids)
 	}
 	// already set: no request (the provider's cache aside)
-	kitsu.ids = nil
-	if bound, err := applyBinding(ctx, bindings, "mango-mangapill", providers, manga); err != nil || !bound || len(kitsu.ids) != 0 {
-		t.Errorf("applied again: %v, %v, ids %v", bound, err, kitsu.ids)
+	ani.ids = nil
+	if bound, err := applyBinding(ctx, bindings, "mango-mangapill", providers, manga); err != nil || !bound || len(ani.ids) != 0 {
+		t.Errorf("applied again: %v, %v, ids %v", bound, err, ani.ids)
 	}
 
-	// a binding that's gone is an error, not a silent search
+	// an AniList id that isn't found falls back to Kitsu, and Kitsu stays for the next chapters
+	if err := bindings.Set(storage.Binding{Provider: "mango-mangapill", MangaID: "2", Source: metadata.IDCodeAnilist, ID: "999999999"}); err != nil {
+		t.Fatal(err)
+	}
+	manga.meta = nil
+	bound, err = applyBinding(ctx, bindings, "mango-mangapill", providers, manga)
+	if err != nil || !bound || manga.meta == nil || manga.meta.ID().Code != metadata.IDCodeKitsu || manga.meta.ID().Raw != "11" {
+		t.Fatalf("fallback %v, %v, %v", bound, err, manga.meta)
+	}
+	ani.ids, kitsu.ids = nil, nil
+	if bound, err := applyBinding(ctx, bindings, "mango-mangapill", providers, manga); err != nil || !bound || len(ani.ids)+len(kitsu.ids) != 0 ||
+		manga.meta.ID().Code != metadata.IDCodeKitsu {
+		t.Errorf("fallback again: %v, %v, ids %v %v", bound, err, ani.ids, kitsu.ids)
+	}
+
+	// a binding that's gone (and no backup) is an error, not a silent search
 	if err := bindings.Set(storage.Binding{Provider: "mango-mangapill", MangaID: "3", Source: metadata.IDCodeAnilist, ID: "404"}); err != nil {
 		t.Fatal(err)
 	}
@@ -186,10 +207,10 @@ func TestApplyBinding(t *testing.T) {
 		t.Error("missing bound manga applied")
 	}
 	// a source without a provider (MyAnimeList not configured)
-	if _, err := bind(ctx, bindings, providers, "p", "m", nil, metadata.IDCodeMyAnimeList, "1", false); err == nil {
+	if _, err := bind(ctx, bindings, providers, "p", "m", nil, metadata.IDCodeMyAnimeList, "1"); err == nil {
 		t.Error("bound to an unavailable source")
 	}
-	if _, err := bind(ctx, bindings, providers, "p", "m", nil, metadata.IDCodeAnilist, "abc", false); err == nil {
+	if _, err := bind(ctx, bindings, providers, "p", "m", nil, metadata.IDCodeAnilist, "abc"); err == nil {
 		t.Error("bound to a non-integer id")
 	}
 }
@@ -201,7 +222,7 @@ func TestReadSyncsBoundIDs(t *testing.T) {
 	kitsu := &fakeMetaProvider{src: srcKitsu}
 	providers := newFakeMetaProviders(t, ani, kitsu)
 	for _, b := range []storage.Binding{
-		{Provider: "p", MangaID: "2", Source: metadata.IDCodeKitsu, ID: "11", Default: true},
+		{Provider: "p", MangaID: "2", Source: metadata.IDCodeKitsu, ID: "11"},
 		{Provider: "p", MangaID: "2", Source: metadata.IDCodeAnilist, ID: "30013"},
 		{Provider: "p", MangaID: "2", Source: metadata.IDCodeMyAnimeList, ID: "13"},
 	} {

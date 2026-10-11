@@ -7,6 +7,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -27,7 +29,8 @@ type MetadataSource struct {
 	URL string
 }
 
-// MetadataSources are the sources a manga can be bound to, in their order of priority.
+// MetadataSources are the sources a manga can be bound to, in their order of priority (the
+// first bound one is the default, see storage.Bindings).
 var MetadataSources = []MetadataSource{
 	{Code: metadata.IDCodeAnilist, Source: metadata.IDSourceAnilist, Name: "AniList", Key: "anilist", URL: "https://anilist.co/manga/"},
 	{Code: metadata.IDCodeKitsu, Source: metadata.IDSourceKitsu, Name: "Kitsu", Key: "kitsu", URL: "https://kitsu.app/manga/"},
@@ -120,27 +123,44 @@ func bindingsOff(ctx context.Context) bool {
 }
 
 // ApplyBinding sets the metadata of the manga's default binding (if any) as its metadata,
-// false when it has none. Downloads do it (see WithoutBinding), so libmangal doesn't search.
+// false when it has none. When the default can't be fetched (not found, any error but a
+// rate limit) the next bound source by priority is used, logged. Downloads do it (see
+// WithoutBinding), so libmangal doesn't search.
 func ApplyBinding(ctx context.Context, c *libmangal.Client, manga mangadata.Manga) (bool, error) {
 	bindings, err := cache.Bindings()
 	if err != nil {
 		return false, err
 	}
-	if b, found, err := bindings.Default(c.Info().ID, manga.Info().ID); err == nil && found {
-		ensureLogin(ctx, b.Source)
-	}
+	loginBound(ctx, bindings, c.Info().ID, manga.Info().ID)
 	return applyBinding(ctx, bindings, c.Info().ID, c, manga)
 }
 
+// loginBound logs into the sources the manga is bound to that need it (see ensureLogin).
+func loginBound(ctx context.Context, bindings storage.Bindings, provider, mangaID string) {
+	if list, err := bindings.Get(provider, mangaID); err == nil {
+		for _, b := range list {
+			ensureLogin(ctx, b.Source)
+		}
+	}
+}
+
 func applyBinding(ctx context.Context, bindings storage.Bindings, provider string, c metadataProvider, manga mangadata.Manga) (bool, error) {
-	b, found, err := bindings.Default(provider, manga.Info().ID)
-	if err != nil || !found {
+	list, err := bindings.Get(provider, manga.Info().ID)
+	if err != nil || len(list) == 0 {
 		return false, err
 	}
-	if meta := manga.Metadata(); meta != nil && meta.ID().Code == b.Source && meta.ID().Raw == b.ID {
-		return true, nil
+	if meta := manga.Metadata(); meta != nil {
+		for _, b := range list {
+			if meta.ID().Code == b.Source && meta.ID().Raw == b.ID {
+				// a backup stays while the ones before it keep failing
+				return true, nil
+			}
+			if !recentlyFailed(b) {
+				break
+			}
+		}
 	}
-	meta, err := boundMetadata(ctx, c, b.Source, b.ID)
+	meta, err := firstBound(ctx, c, list, manga.String())
 	if err != nil {
 		return false, fmt.Errorf("bound metadata of %q: %w", manga, err)
 	}
@@ -148,41 +168,96 @@ func applyBinding(ctx context.Context, bindings storage.Bindings, provider strin
 	return true, nil
 }
 
-// SearchMetadata is the metadata of the manga's default binding, else libmangal's search
-// (title bindings, the closest match of each metadata provider).
+// failedTTL is how long a binding that couldn't be fetched is skipped for the backup the
+// manga already has, so each chapter of a download doesn't ask again.
+const failedTTL = 10 * time.Minute
+
+var failed = struct {
+	sync.Mutex
+	at map[string]time.Time
+}{at: map[string]time.Time{}}
+
+func failedKey(b storage.Binding) string { return string(b.Source) + ":" + b.ID }
+
+func recentlyFailed(b storage.Binding) bool {
+	failed.Lock()
+	defer failed.Unlock()
+	at, ok := failed.at[failedKey(b)]
+	return ok && time.Since(at) < failedTTL
+}
+
+func setFailed(b storage.Binding, failedNow bool) {
+	failed.Lock()
+	defer failed.Unlock()
+	if failedNow {
+		failed.at[failedKey(b)] = time.Now()
+	} else {
+		delete(failed.at, failedKey(b))
+	}
+}
+
+// firstBound is the metadata of the first of the bindings (by priority) that can be
+// fetched. A rate limit or a cancelled ctx stops it (the download waits and tries again).
+func firstBound(ctx context.Context, c metadataProvider, bindings []storage.Binding, manga string) (metadata.Metadata, error) {
+	var errs []error
+	for i, b := range bindings {
+		meta, err := boundMetadata(ctx, c, b.Source, b.ID)
+		if err == nil {
+			setFailed(b, false)
+			if i > 0 {
+				log.Warn("manga %q: using its %s binding %s instead", manga, SourceName(b.Source), b.ID)
+			}
+			return meta, nil
+		}
+		if _, limited := RetryAfter(err); limited || ctx.Err() != nil {
+			return nil, err
+		}
+		setFailed(b, true)
+		errs = append(errs, err)
+		if i < len(bindings)-1 {
+			log.Warn("manga %q: %s, falling back to %s", manga, err, SourceName(bindings[i+1].Source))
+		}
+	}
+	return nil, errors.Join(errs...)
+}
+
+// SearchMetadata is the metadata of the manga's default binding (or the next that can be
+// fetched, see ApplyBinding), else libmangal's search (title bindings, the closest match of
+// each metadata provider).
 func SearchMetadata(ctx context.Context, c *libmangal.Client, manga mangadata.Manga) (metadata.Metadata, error) {
 	bindings, err := cache.Bindings()
 	if err != nil {
 		return nil, err
 	}
-	b, found, err := bindings.Default(c.Info().ID, manga.Info().ID)
+	list, err := bindings.Get(c.Info().ID, manga.Info().ID)
 	if err != nil {
 		return nil, err
 	}
-	if found {
-		return BoundMetadata(ctx, c, b.Source, b.ID)
+	if len(list) > 0 {
+		loginBound(ctx, bindings, c.Info().ID, manga.Info().ID)
+		return firstBound(ctx, c, list, manga.String())
 	}
 	return c.SearchMetadataContext(ctx, manga)
 }
 
 // Bind binds the provider's manga to the source's manga id after getting its metadata
-// (returned), as the default when makeDefault (or when it's the manga's first binding).
-// When it ends up the default and manga isn't nil, the metadata is set on it.
-func Bind(ctx context.Context, c *libmangal.Client, provider, mangaID string, manga mangadata.Manga, code metadata.IDCode, id string, makeDefault bool) (metadata.Metadata, error) {
+// (returned). When it's the default (the first bound source by priority) and manga isn't
+// nil, the metadata is set on it.
+func Bind(ctx context.Context, c *libmangal.Client, provider, mangaID string, manga mangadata.Manga, code metadata.IDCode, id string) (metadata.Metadata, error) {
 	bindings, err := cache.Bindings()
 	if err != nil {
 		return nil, err
 	}
 	ensureLogin(ctx, code)
-	return bind(ctx, bindings, c, provider, mangaID, manga, code, id, makeDefault)
+	return bind(ctx, bindings, c, provider, mangaID, manga, code, id)
 }
 
-func bind(ctx context.Context, bindings storage.Bindings, c metadataProvider, provider, mangaID string, manga mangadata.Manga, code metadata.IDCode, id string, makeDefault bool) (metadata.Metadata, error) {
+func bind(ctx context.Context, bindings storage.Bindings, c metadataProvider, provider, mangaID string, manga mangadata.Manga, code metadata.IDCode, id string) (metadata.Metadata, error) {
 	meta, err := boundMetadata(ctx, c, code, id)
 	if err != nil {
 		return nil, err
 	}
-	if err := bindings.Set(storage.Binding{Provider: provider, MangaID: mangaID, Source: code, ID: id, Default: makeDefault}); err != nil {
+	if err := bindings.Set(storage.Binding{Provider: provider, MangaID: mangaID, Source: code, ID: id}); err != nil {
 		return nil, err
 	}
 	log.Info("bound %s %q to %s %s (%s)", provider, mangaID, SourceName(code), id, meta)

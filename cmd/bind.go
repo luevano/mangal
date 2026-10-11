@@ -20,7 +20,8 @@ func init() {
 	f.StringVar(&bindArgs.Anilist, "anilist", "", "Bind the AniList manga with this id")
 	f.StringVar(&bindArgs.Kitsu, "kitsu", "", "Bind the Kitsu manga with this id")
 	f.StringVar(&bindArgs.MyAnimeList, "mal", "", "Bind the MyAnimeList manga with this id")
-	f.StringVar(&bindArgs.Default, "default", "", "Make this source's binding the default (anilist|kitsu|mal)")
+	f.StringVar(&bindArgs.Default, "default", "", "")
+	_ = f.MarkHidden("default")
 	f.StringSliceVar(&bindArgs.Remove, "remove", nil, "Remove the binding of these sources (anilist|kitsu|mal)")
 	f.BoolVar(&bindArgs.JSON, "json", false, "Print JSON")
 
@@ -42,10 +43,11 @@ var bindCmd = &cobra.Command{
 	Long: `Bind a provider's manga (the one the selector picks from a search of the query, or the
 manga with the id, "mid:<id>") to metadata sources: the default binding's metadata is what
 its downloads use (ComicInfo.xml, folder names), every bound id is used to sync the reading
-progress. The first binding is the default; when the default is removed the next one
-(AniList, Kitsu, MyAnimeList) is. Without flags it prints the manga's bindings. Watches,
-the library and the TUI (A on a manga) share the bindings.`,
-	Example: `  mangal bind mango-mangapill "One Piece" --anilist 30013 --kitsu 11 --default kitsu
+progress. The default is the first bound source in the order AniList, Kitsu, MyAnimeList;
+the others are its backups, used in that order when the default's metadata can't be fetched.
+Without flags it prints the manga's bindings. Watches, the library and the TUI (A on a
+manga) share the bindings.`,
+	Example: `  mangal bind mango-mangapill "One Piece" --anilist 30013 --kitsu 11
   mangal bind mango-mangaplus mid:100171 --remove kitsu
   mangal bind ls mango-mangapill`,
 	Args:              cobra.MinimumNArgs(2),
@@ -66,22 +68,14 @@ the library and the TUI (A on a manga) share the bindings.`,
 			src, _ := client.ParseMetadataSource(s.key)
 			sets = append(sets, set{src: src, id: strings.TrimSpace(s.id)})
 		}
-		var def metadata.IDCode
-		if bindArgs.Default != "" {
-			src, err := client.ParseMetadataSource(bindArgs.Default)
-			if err != nil {
-				return err
-			}
-			def = src.Code
+		if cmd.Flags().Changed("default") {
+			return errors.New("--default is gone: the default is the first bound source of AniList, Kitsu, MyAnimeList (remove the ones before the one you want with --remove)")
 		}
 		var remove []metadata.IDCode
 		for _, r := range bindArgs.Remove {
 			src, err := client.ParseMetadataSource(r)
 			if err != nil {
 				return err
-			}
-			if def == src.Code {
-				return fmt.Errorf("can't remove the %s binding and make it the default", src.Name)
 			}
 			remove = append(remove, src.Code)
 		}
@@ -119,7 +113,7 @@ the library and the TUI (A on a manga) share the bindings.`,
 			return err
 		}
 		for _, s := range sets {
-			meta, err := client.Bind(ctx, c, provider, mangaID, nil, s.src.Code, s.id, def == s.src.Code)
+			meta, err := client.Bind(ctx, c, provider, mangaID, nil, s.src.Code, s.id)
 			if err != nil {
 				return err
 			}
@@ -132,13 +126,6 @@ the library and the TUI (A on a manga) share the bindings.`,
 			}
 			if removed {
 				successf(cmd, "removed the %s binding", client.SourceName(code))
-			}
-		}
-		if def != "" {
-			if err := bindings.SetDefault(provider, mangaID, def); errors.Is(err, storage.ErrBindingNotFound) {
-				return fmt.Errorf("no %s binding to make the default (bind it with --%s)", client.SourceName(def), defKey(def))
-			} else if err != nil {
-				return err
 			}
 		}
 
@@ -165,20 +152,15 @@ the library and the TUI (A on a manga) share the bindings.`,
 	},
 }
 
-func defKey(code metadata.IDCode) string {
-	if s, ok := client.MetadataSourceOf(code); ok {
-		return s.Key
-	}
-	return string(code)
-}
-
-// formatBindings is "AniList 30013 (default), Kitsu 11".
+// formatBindings is "AniList 30013 (default), Kitsu 11 (backup)".
 func formatBindings(bindings []storage.Binding) string {
 	parts := make([]string, len(bindings))
 	for i, b := range bindings {
 		parts[i] = client.SourceName(b.Source) + " " + b.ID
 		if b.Default {
 			parts[i] += " (default)"
+		} else {
+			parts[i] += " (backup)"
 		}
 	}
 	return strings.Join(parts, ", ")

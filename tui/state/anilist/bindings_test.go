@@ -18,6 +18,10 @@ func TestSourceItem(t *testing.T) {
 	if i.Title() != "Kitsu (default)" || i.Description() != "38" {
 		t.Errorf("bound: %q, %q", i.Title(), i.Description())
 	}
+	i.binding.Default = false
+	if i.Title() != "Kitsu (backup)" {
+		t.Errorf("backup: %q", i.Title())
+	}
 }
 
 func TestIDQuery(t *testing.T) {

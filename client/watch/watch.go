@@ -445,14 +445,14 @@ func (s *Service) bindings() storage.Bindings {
 	return storage.Bindings{DB: s.Watches.DB}
 }
 
-// bindAnilist makes the AniList manga with the id the watched manga's default binding,
-// nothing for 0 (the shortcut of --anilist-id).
+// bindAnilist binds the watched manga to the AniList manga with the id (the default, AniList
+// comes first), nothing for 0 (the shortcut of --anilist-id).
 func (s *Service) bindAnilist(w storage.Watch, anilistID int) error {
 	if anilistID == 0 {
 		return nil
 	}
 	return s.bindings().Set(storage.Binding{Provider: w.Provider, MangaID: w.MangaID, Source: metadata.IDCodeAnilist,
-		ID: strconv.Itoa(anilistID), Default: true, Updated: s.now()})
+		ID: strconv.Itoa(anilistID), Updated: s.now()})
 }
 
 func (s *Service) complete(w storage.Watch) (Watch, error) {

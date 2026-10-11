@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -52,47 +51,27 @@ func TestBindings(t *testing.T) {
 	if _, found, err := bindings.Default(p, m); err != nil || found {
 		t.Fatalf("default of nothing: %v, %v", found, err)
 	}
-	// the first one is the default
+	if err := bindings.Set(Binding{Provider: p, MangaID: m, Source: metadata.IDCodeMyAnimeList, ID: "13", Default: true}); err != nil {
+		t.Fatal(err)
+	}
 	if err := bindings.Set(Binding{Provider: p, MangaID: m, Source: metadata.IDCodeKitsu, ID: "11"}); err != nil {
 		t.Fatal(err)
+	}
+	// the default is by priority, whatever came first or asked to be it
+	if d, found, err := bindings.Default(p, m); err != nil || !found || d.Source != metadata.IDCodeKitsu || !d.Default {
+		t.Fatalf("default %+v, %v, %v", d, found, err)
 	}
 	if err := bindings.Set(Binding{Provider: p, MangaID: m, Source: metadata.IDCodeAnilist, ID: "30013"}); err != nil {
 		t.Fatal(err)
 	}
-	if d, found, err := bindings.Default(p, m); err != nil || !found || d.Source != metadata.IDCodeKitsu {
-		t.Fatalf("default %+v, %v, %v", d, found, err)
-	}
-	// rebinding keeps the default
+	// rebinding replaces the id
 	if err := bindings.Set(Binding{Provider: p, MangaID: m, Source: metadata.IDCodeKitsu, ID: "12"}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := bindings.Get(p, m)
-	if len(got) != 2 || got[0].Source != metadata.IDCodeKitsu || got[0].ID != "12" || !got[0].Default || got[1].Source != metadata.IDCodeAnilist || got[1].Default {
+	if len(got) != 3 || got[0].Source != metadata.IDCodeAnilist || !got[0].Default ||
+		got[1].Source != metadata.IDCodeKitsu || got[1].ID != "12" || got[1].Default || got[2].Source != metadata.IDCodeMyAnimeList || got[2].Default {
 		t.Fatalf("bindings %+v", got)
-	}
-
-	// one default
-	if err := bindings.Set(Binding{Provider: p, MangaID: m, Source: metadata.IDCodeMyAnimeList, ID: "13", Default: true}); err != nil {
-		t.Fatal(err)
-	}
-	if err := bindings.SetDefault(p, m, metadata.IDCodeAnilist); err != nil {
-		t.Fatal(err)
-	}
-	got, _ = bindings.Get(p, m)
-	defaults := 0
-	for _, b := range got {
-		if b.Default {
-			defaults++
-		}
-	}
-	if defaults != 1 || got[0].Source != metadata.IDCodeAnilist {
-		t.Fatalf("bindings %+v", got)
-	}
-	if _, err := bindings.DB.Exec(`UPDATE metadata_bindings SET is_default = 1 WHERE source = 'kt'`); err == nil {
-		t.Error("two defaults")
-	}
-	if err := bindings.SetDefault(p, m, "mu"); !errors.Is(err, ErrBindingNotFound) {
-		t.Errorf("default of an unbound source: %v", err)
 	}
 
 	// the next one becomes the default
@@ -105,8 +84,36 @@ func TestBindings(t *testing.T) {
 	if d, _, _ := bindings.Default(p, m); d.Source != metadata.IDCodeKitsu {
 		t.Errorf("default after removing it: %+v", d)
 	}
-	if all, _ := bindings.List("", ""); len(all) != 2 {
+	if all, _ := bindings.List("", ""); len(all) != 2 || !all[0].Default || all[1].Default {
 		t.Errorf("all %+v", all)
+	}
+}
+
+// TestMigrateBindingsDefault: the stored default (schema 7) gives way to the priority.
+func TestMigrateBindingsDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FilenameData)
+	old, err := Open(path, dataMigrations[:7])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO metadata_bindings (provider, manga_id, source, metadata_id, is_default, updated) VALUES ('p', 'm', 'kt', '11', 1, 10)`,
+		`INSERT INTO metadata_bindings (provider, manga_id, source, metadata_id, is_default, updated) VALUES ('p', 'm', 'al', '30013', 0, 10)`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old.Close()
+
+	data, err := OpenData(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	got, err := (Bindings{DB: data}).Get("p", "m")
+	if err != nil || len(got) != 2 || got[0].Source != metadata.IDCodeAnilist || !got[0].Default || got[1].Default {
+		t.Errorf("bindings %+v, %v", got, err)
 	}
 }
 
@@ -162,8 +169,8 @@ func TestMigrateOldIDsBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	berserk, _ := bindings.Get("mango-weebcentral", "berserk")
-	if len(berserk) != 2 || berserk[0].Source != metadata.IDCodeKitsu || berserk[0].ID != "3" || !berserk[0].Default ||
-		berserk[1].Source != metadata.IDCodeAnilist || berserk[1].Default {
+	if len(berserk) != 2 || berserk[0].Source != metadata.IDCodeAnilist || berserk[0].ID != "1" || !berserk[0].Default ||
+		berserk[1].Source != metadata.IDCodeKitsu || berserk[1].ID != "3" || berserk[1].Default {
 		t.Errorf("berserk %+v", berserk)
 	}
 	if vagabond, _ := bindings.Get("mango-weebcentral", "vagabond"); len(vagabond) != 1 || !vagabond[0].Default {

@@ -64,10 +64,13 @@ func (i *sourceItem) FilterValue() string { return i.src.Name }
 
 // Title implements list.Item.
 func (i *sourceItem) Title() string {
-	if i.binding != nil && i.binding.Default {
+	switch {
+	case i.binding == nil:
+		return i.src.Name
+	case i.binding.Default:
 		return i.src.Name + " (default)"
 	}
-	return i.src.Name
+	return i.src.Name + " (backup)"
 }
 
 // Description implements list.Item.
