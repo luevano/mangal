@@ -59,6 +59,8 @@ func readOptions(ctx context.Context) libmangal.ReadOptions {
 		log.Info("not logged into Kitsu, its reading progress isn't synced")
 		options.SaveKitsu = false
 	}
+	// the client id is saved with the logins, config.ReadOptions can't tell
+	options.SaveMyAnimeList = options.SaveMyAnimeList && myanimelist.Configured()
 	if options.SaveMyAnimeList && !loggedIn(ctx, myanimelist.EnsureLogin, myanimelist.MyAnimeList) {
 		log.Info("not logged into MyAnimeList, its reading progress isn't synced")
 		options.SaveMyAnimeList = false

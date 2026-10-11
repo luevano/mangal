@@ -37,6 +37,7 @@ func ReadOptions() libmangal.ReadOptions {
 	o.SaveAnilist = Read.History.Anilist.Get()
 	// without the provider libmangal would fail the sync
 	o.SaveKitsu = Read.History.Kitsu.Get() && Metadata.Kitsu.Enabled.Get()
-	o.SaveMyAnimeList = Read.History.MyAnimeList.Get() && Metadata.MyAnimeList.Configured()
+	// MyAnimeList needs its saved API client too, see client.readOptions
+	o.SaveMyAnimeList = Read.History.MyAnimeList.Get() && Metadata.MyAnimeList.Enabled.Get()
 	return o
 }

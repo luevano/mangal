@@ -15,7 +15,6 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/auth/oauth"
 	"github.com/luevano/mangal/v5/client/myanimelist"
-	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -284,7 +283,7 @@ func (s *state) View() string {
 			"MyAnimeList needs the client ID of a MyAnimeList API client:",
 			"register one at https://myanimelist.net/apiconfig (App Type \"other\",",
 			"App Redirect URL "+oauth.MyAnimeListServerCallbackURL+"),",
-			"then set "+config.Metadata.MyAnimeList.ClientID.Key+" to its ID.",
+			"then save its ID with mangal myanimelist client.",
 		)
 	case loggedIn:
 		return "Logged in as " + s.user.String()

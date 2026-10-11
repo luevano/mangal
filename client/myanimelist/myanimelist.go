@@ -1,5 +1,6 @@
 // Package myanimelist is the MyAnimeList metadata provider shared by every client, and its
-// login. It needs the client id of a MyAnimeList API client (metadata.myanimelist.client_id).
+// login. It needs the client id of a MyAnimeList API client, saved with the logins
+// (cache.SetMyAnimeListClient).
 package myanimelist
 
 import (
@@ -26,7 +27,7 @@ const (
 )
 
 // ErrNotConfigured is MyAnimeList without a client id.
-var ErrNotConfigured = errors.New("not configured: set metadata.myanimelist.client_id")
+var ErrNotConfigured = errors.New("not configured: set the client id of a MyAnimeList API client (mangal myanimelist client)")
 
 var (
 	mal      *myanimelist.MyAnimeList
@@ -46,13 +47,29 @@ var (
 	httpClient = loader.HTTPClient
 )
 
+// Configured is true when MyAnimeList can be used: enabled (metadata.myanimelist.enabled),
+// with a saved client id.
+func Configured() bool {
+	if !config.Metadata.MyAnimeList.Enabled.Get() {
+		return false
+	}
+	id, _, err := cache.MyAnimeListClient()
+	if err != nil {
+		mlog.Warn("myanimelist client: %s", err)
+	}
+	return id != ""
+}
+
 // MyAnimeList is the MyAnimeList metadata provider shared by every client, ErrNotConfigured
 // without a client id. It makes no request: EnsureLogin logs in with the saved user.
 func MyAnimeList() (*metadata.ProviderWithCache, error) {
 	malLock.Lock()
 	defer malLock.Unlock()
-	// the client id can change during the run (the TUI config window)
-	id := config.Metadata.MyAnimeList.ClientID.Get()
+	// the client id can change during the run (the TUI, another process for mangal serve)
+	id, _, err := cache.MyAnimeListClient()
+	if err != nil {
+		return nil, fmt.Errorf("get the myanimelist client: %w", err)
+	}
 	if provider != nil && id == providerID {
 		return provider, nil
 	}
@@ -93,7 +110,7 @@ func (g *guarded) Search(ctx context.Context, query string) ([]metadata.Metadata
 	mangas, err := g.MyAnimeList.Search(ctx, query)
 	if errors.Is(err, myanimelist.ErrInvalidClientID) {
 		g.refused.Store(true)
-		return nil, fmt.Errorf("myanimelist refused metadata.myanimelist.client_id, not searched again until it changes: %w", err)
+		return nil, fmt.Errorf("myanimelist refused the client id (mangal myanimelist client), not searched again until it changes: %w", err)
 	}
 	return mangas, err
 }
@@ -247,7 +264,11 @@ func logInSaved(ctx context.Context, m *myanimelist.MyAnimeList, user string, to
 // refresh gets a new token with the refresh token and saves it. A rejected refresh marks
 // the login expired.
 func refresh(ctx context.Context, user string, token *oauth2.Token) error {
-	fresh, err := oauth.RefreshMyAnimeList(oauthContext(ctx), config.Metadata.MyAnimeList.ClientID.Get(), config.Metadata.MyAnimeList.ClientSecret.Get(), token.RefreshToken)
+	id, secret, err := cache.MyAnimeListClient()
+	if err != nil {
+		return fmt.Errorf("get the myanimelist client: %w", err)
+	}
+	fresh, err := oauth.RefreshMyAnimeList(oauthContext(ctx), id, secret, token.RefreshToken)
 	if errors.Is(err, oauth.ErrRefreshRejected) {
 		if err := cache.ExpireMyAnimeListAuthData(user); err != nil {
 			return err

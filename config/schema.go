@@ -33,14 +33,7 @@ type configMetadata struct {
 }
 
 type configMetadataMyAnimeList struct {
-	ClientID     *entry[string, string]
-	ClientSecret *entry[string, string]
-	Enabled      *entry[bool, bool]
-}
-
-// Configured is true when MyAnimeList can be used: enabled, with a client id.
-func (c configMetadataMyAnimeList) Configured() bool {
-	return c.Enabled.Get() && c.ClientID.Get() != ""
+	Enabled *entry[bool, bool]
 }
 
 type configMetadataKitsu struct {

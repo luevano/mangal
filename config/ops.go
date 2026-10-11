@@ -239,6 +239,19 @@ var retired = map[string]bool{
 	"library.path": true,
 	// the databases are always 0600, they hold logins
 	"download.mode_db_decimal": true,
+	// saved with the logins (mangal myanimelist client), moved by RetiredValue
+	"metadata.myanimelist.client_id":     true,
+	"metadata.myanimelist.client_secret": true,
+}
+
+// RetiredValue is the value of a retired key in the loaded config file (or its environment
+// variable), to move it elsewhere. Empty if unset.
+func RetiredValue(key string) string {
+	if !retired[key] {
+		return ""
+	}
+	value, _ := viperGet(key).(string)
+	return strings.TrimSpace(value)
 }
 
 // Unsupported are the keys of the loaded config file that mangal doesn't know (e.g. removed

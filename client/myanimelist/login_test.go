@@ -17,7 +17,6 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/luevano/libmangal/metadata/myanimelist"
 	"github.com/luevano/mangal/v5/auth/oauth"
-	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/util/cache"
 	"golang.org/x/oauth2"
 )
@@ -32,10 +31,11 @@ func TestMain(m *testing.M) {
 	os.Setenv("MANGAL_AUTH_KEYRING", "false")
 	xdg.DataHome = filepath.Join(dir, "data")
 	httpClient = func() *http.Client { return &http.Client{Transport: fake} }
-	if err := config.Metadata.MyAnimeList.ClientID.Set("test-id"); err != nil {
+	if err := cache.SetMyAnimeListClient("test-id", ""); err != nil {
 		panic(err)
 	}
 	code := m.Run()
+	_ = cache.Close()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
 }
@@ -198,6 +198,9 @@ func TestEnsureLoginRefreshesSoonToExpire(t *testing.T) {
 	if token := saved(t); token.AccessToken != "new" || token.RefreshToken != "r-new" {
 		t.Errorf("saved %+v", token)
 	}
+	if fake.form.Get("client_id") != "test-id" {
+		t.Errorf("refresh with the client %q, want the saved one", fake.form.Get("client_id"))
+	}
 }
 
 func TestEnsureLoginKeepsFreshToken(t *testing.T) {
@@ -312,10 +315,16 @@ func TestNotConfigured(t *testing.T) {
 		malLock.Lock()
 		provider = kept
 		malLock.Unlock()
-		_ = config.Metadata.MyAnimeList.ClientID.Set("test-id")
+		_ = cache.SetMyAnimeListClient("test-id", "")
 	}()
-	if err := config.Metadata.MyAnimeList.ClientID.Set(""); err != nil {
+	if !Configured() {
+		t.Error("not configured with a saved client id")
+	}
+	if err := cache.SetMyAnimeListClient("", ""); err != nil {
 		t.Fatal(err)
+	}
+	if Configured() {
+		t.Error("configured without a client id")
 	}
 	if _, err := MyAnimeList(); !errors.Is(err, ErrNotConfigured) {
 		t.Errorf("got %v, want ErrNotConfigured", err)
@@ -347,5 +356,23 @@ func TestInvalidClientIDSearchesOnce(t *testing.T) {
 	}
 	if fake.searches != 1 {
 		t.Errorf("%d requests, the refused id is asked once", fake.searches)
+	}
+}
+
+func TestSavedClientChangeRebuilds(t *testing.T) {
+	first, err := MyAnimeList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.SetMyAnimeListClient("other-id", "other-secret"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cache.SetMyAnimeListClient("test-id", "") }()
+	second, err := MyAnimeList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second == first || providerID != "other-id" {
+		t.Errorf("provider not rebuilt for the new client id (%q)", providerID)
 	}
 }

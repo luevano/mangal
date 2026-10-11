@@ -10,6 +10,7 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/client/myanimelist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -27,7 +28,7 @@ func isolate(t *testing.T) {
 		xdg.DataHome = dataHome
 		_ = config.Metadata.Kitsu.Enabled.Set(true)
 		_ = config.Metadata.MyAnimeList.Enabled.Set(true)
-		_ = config.Metadata.MyAnimeList.ClientID.Set("")
+		_ = cache.SetMyAnimeListClient("", "")
 	})
 }
 
@@ -56,19 +57,25 @@ func TestMetadataAccountsAlwaysListed(t *testing.T) {
 		}
 	}
 	mal := entryOf(t, entries, "MyAnimeList")
-	if mal.Status != "not configured" || mal.Metadata != metadata.IDSourceMyAnimeList || !strings.Contains(strings.Join(mal.Details, " "), "metadata.myanimelist.client_id") {
+	if mal.Status != "not configured" || mal.Metadata != metadata.IDSourceMyAnimeList || !strings.Contains(strings.Join(mal.Details, " "), "client id") {
 		t.Errorf("unconfigured myanimelist: %+v", mal)
 	}
 
-	if err := config.Metadata.MyAnimeList.ClientID.Set("some-id"); err != nil {
+	if err := cache.SetMyAnimeListClient("some-id", ""); err != nil {
 		t.Fatal(err)
 	}
 	if e := entryOf(t, metadataAccounts(ctx, false), "MyAnimeList"); e.Status != "not logged in" || e.Err != nil {
 		t.Errorf("configured myanimelist: %+v", e)
 	}
+	if !myanimelist.Configured() {
+		t.Error("not configured with a saved client id")
+	}
 
 	_ = config.Metadata.MyAnimeList.Enabled.Set(false)
 	_ = config.Metadata.Kitsu.Enabled.Set(false)
+	if myanimelist.Configured() {
+		t.Error("configured while disabled")
+	}
 	entries = metadataAccounts(ctx, false)
 	for _, service := range []string{"Kitsu", "MyAnimeList"} {
 		if e := entryOf(t, entries, service); e.Status != "disabled" || len(e.Details) == 0 {
@@ -124,7 +131,7 @@ func TestDiscordAccount(t *testing.T) {
 
 func TestMetadataProvidersMyAnimeListLast(t *testing.T) {
 	isolate(t)
-	if err := config.Metadata.MyAnimeList.ClientID.Set("some-id"); err != nil {
+	if err := cache.SetMyAnimeListClient("some-id", ""); err != nil {
 		t.Fatal(err)
 	}
 	metas, err := metadataProviders()

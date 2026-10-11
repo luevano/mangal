@@ -282,7 +282,7 @@ func metadataProviders() ([]*metadata.ProviderWithCache, error) {
 		}
 		metas = append(metas, k)
 	}
-	if config.Metadata.MyAnimeList.Configured() {
+	if myanimelist.Configured() {
 		m, err := myanimelist.MyAnimeList()
 		if err != nil {
 			return nil, err

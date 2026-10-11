@@ -23,8 +23,8 @@ func init() {
 
 const myAnimeListSetup = `MyAnimeList needs the client ID of a MyAnimeList API client: register one at
 https://myanimelist.net/apiconfig (App Type "other", App Redirect URL
-` + oauth.MyAnimeListServerCallbackURL + `) and set metadata.myanimelist.client_id
-to its ID (metadata.myanimelist.client_secret only for other App Types).`
+` + oauth.MyAnimeListServerCallbackURL + `) and save its ID with
+"mangal myanimelist client" (the secret only for other App Types).`
 
 var myAnimeListCmd = &cobra.Command{
 	Use:   "myanimelist",

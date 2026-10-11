@@ -220,22 +220,8 @@ var Metadata = configMetadata{
 			"Search Kitsu for metadata when Anilist finds none (or fails). Kitsu often lacks the authors, such metadata isn't valid (see download.metadata.strict)."),
 	},
 	MyAnimeList: configMetadataMyAnimeList{
-		ClientID: reg(entry[string, string]{
-			Key: "metadata.myanimelist.client_id",
-			Description: "Client ID of a MyAnimeList API client, empty disables MyAnimeList. Register one at https://myanimelist.net/apiconfig " +
-				`(App Type "other", App Redirect URL "http://localhost:6969/oauth/mal/callback"), the ID is on its page.`,
-			Unmarshal: func(raw string) (string, error) { return strings.TrimSpace(raw), nil },
-			Marshal:   func(value string) (string, error) { return value, nil },
-		}),
-		ClientSecret: reg(entry[string, string]{
-			Key:         "metadata.myanimelist.client_secret",
-			Description: `Client secret of the MyAnimeList API client, only for App Types other than "other" (those have none).`,
-			Secret:      true,
-			Unmarshal:   func(raw string) (string, error) { return strings.TrimSpace(raw), nil },
-			Marshal:     func(value string) (string, error) { return value, nil },
-		}),
 		Enabled: boolEntry("metadata.myanimelist.enabled", true,
-			"Search MyAnimeList for metadata when Anilist and Kitsu find none (or fail). Only with a metadata.myanimelist.client_id."),
+			"Search MyAnimeList for metadata when Anilist and Kitsu find none (or fail). Only with a MyAnimeList API client (mangal myanimelist client)."),
 	},
 }
 

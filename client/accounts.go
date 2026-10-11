@@ -220,13 +220,18 @@ func kitsuAccount(ctx context.Context, refresh bool) AccountEntry {
 
 // myAnimeListAccount is the MyAnimeList login, "not configured" without a client id.
 func myAnimeListAccount(ctx context.Context, refresh bool) AccountEntry {
-	if config.Metadata.MyAnimeList.ClientID.Get() == "" {
+	id, _, err := cache.MyAnimeListClient()
+	if err != nil || id == "" {
+		details := []string{"l sets the client id (or mangal myanimelist client)"}
+		if err != nil {
+			details = []string{err.Error()}
+		}
 		return AccountEntry{
 			Account: libmangal.Account{
 				Service: "MyAnimeList",
 				URL:     "https://myanimelist.net/",
 				Status:  "not configured",
-				Details: []string{"set " + config.Metadata.MyAnimeList.ClientID.Key},
+				Details: details,
 			},
 			Metadata: metadata.IDSourceMyAnimeList,
 			Checked:  time.Now(),

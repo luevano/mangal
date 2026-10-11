@@ -66,6 +66,9 @@ func Storage() (storage.Storage, error) {
 		if notice := useKeyring(dataDB); notice != "" {
 			notices = append(notices, notice)
 		}
+		if notice := moveConfigClient(dataDB); notice != "" {
+			notices = append(notices, notice)
+		}
 	})
 	return st, openErr
 }

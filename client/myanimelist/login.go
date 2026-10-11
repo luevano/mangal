@@ -9,7 +9,6 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/metadata/myanimelist"
 	"github.com/luevano/mangal/v5/auth/oauth"
-	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/util/cache"
 	"golang.org/x/oauth2"
 )
@@ -99,7 +98,11 @@ func loginNew(ctx context.Context, authorize func(*oauth.MyAnimeListLoginOption)
 	if _, err := MyAnimeList(); err != nil {
 		return nil, err
 	}
-	option, err := oauth.NewMyAnimeListLoginOption(config.Metadata.MyAnimeList.ClientID.Get(), config.Metadata.MyAnimeList.ClientSecret.Get())
+	id, secret, err := cache.MyAnimeListClient()
+	if err != nil {
+		return nil, fmt.Errorf("get the myanimelist client: %w", err)
+	}
+	option, err := oauth.NewMyAnimeListLoginOption(id, secret)
 	if err != nil {
 		return nil, err
 	}
