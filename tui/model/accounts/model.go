@@ -1,10 +1,11 @@
 // Package accounts shows the accounts mangal can use: the Anilist, Kitsu and MyAnimeList
-// logins and the providers' accounts (e.g. the MangaPlus subscription).
+// logins, the providers' accounts (e.g. the MangaPlus subscription) and the Discord webhook.
 package accounts
 
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	mconfig "github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -40,6 +42,8 @@ type state struct {
 	keys    keyMap
 
 	inputting bool
+	// discord is true when the input is the Discord webhook, else the MangaPlus secret
+	discord bool
 }
 
 type loadedMsg []client.AccountEntry
@@ -85,6 +89,9 @@ func (s *state) Status() string                { return "" }
 func (s *state) Resize(size base.Size) tea.Cmd { return nil }
 
 func (s *state) Subtitle() string {
+	if s.inputting && s.discord {
+		return "the webhook url of the notifications (empty removes it)"
+	}
 	if s.inputting {
 		return "the device secret of the official app (empty removes it), see the mangoplus docs"
 	}
@@ -125,7 +132,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return s.load(ctx, false)
 	case tea.KeyMsg:
 		if s.inputting {
-			return s.updateSecret(msg)
+			return s.updateSecret(ctx, msg)
 		}
 		switch {
 		case key.Matches(msg, s.keys.refresh):
@@ -183,14 +190,20 @@ func (s *state) login() tea.Cmd {
 	case entry.Metadata == metadata.IDSourceMyAnimeList:
 		return func() tea.Msg { return myanimelist.New() }
 	case entry.Provider == mangaPlusID:
-		s.inputting = true
+		s.inputting, s.discord = true, false
+		s.secret.Prompt = "MangaPlus secret: "
+		s.secret.SetValue("")
+		return s.secret.Focus()
+	case entry.Discord:
+		s.inputting, s.discord = true, true
+		s.secret.Prompt = "Discord webhook: "
 		s.secret.SetValue("")
 		return s.secret.Focus()
 	}
 	return base.Notify("Nothing to log into for " + entry.Service)
 }
 
-func (s *state) updateSecret(msg tea.KeyMsg) tea.Cmd {
+func (s *state) updateSecret(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, s.keys.cancel):
 		s.inputting = false
@@ -200,6 +213,9 @@ func (s *state) updateSecret(msg tea.KeyMsg) tea.Cmd {
 		s.inputting = false
 		s.secret.Blur()
 		secret := strings.TrimSpace(s.secret.Value())
+		if s.discord {
+			return s.saveWebhook(ctx, secret)
+		}
 		// the keyring can take a while (D-Bus)
 		return func() tea.Msg {
 			if err := cache.SetMangaPlusSecret(secret); err != nil {
@@ -215,6 +231,25 @@ func (s *state) updateSecret(msg tea.KeyMsg) tea.Cmd {
 	var cmd tea.Cmd
 	s.secret, cmd = s.secret.Update(msg)
 	return cmd
+}
+
+// saveWebhook saves the Discord webhook and reloads the rows.
+func (s *state) saveWebhook(ctx context.Context, url string) tea.Cmd {
+	if err := mconfig.ValidateWebhookURL(url); err != nil {
+		return base.Notify(err.Error())
+	}
+	entries := slices.Clone(s.entries)
+	return base.Load(ctx, "Saving the webhook", func(context.Context) ([]client.AccountEntry, error) {
+		if err := cache.SetDiscordWebhook(url); err != nil {
+			return nil, err
+		}
+		for i, e := range entries {
+			if e.Discord {
+				entries[i] = client.DiscordAccount()
+			}
+		}
+		return entries, nil
+	}, func(entries []client.AccountEntry) tea.Msg { return loadedMsg(entries) })
 }
 
 func (s *state) View() string {

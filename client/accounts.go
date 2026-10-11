@@ -30,6 +30,8 @@ type AccountEntry struct {
 	Checked time.Time
 	// Err is why the account couldn't be fetched.
 	Err error
+	// Discord is the Discord webhook row (notifications).
+	Discord bool
 }
 
 type cachedAccount struct {
@@ -63,7 +65,26 @@ func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
 			entries = append(entries, providerAccount(ctx, accounts, l, refresh))
 		}
 	}
-	return entries, nil
+	return append(entries, DiscordAccount()), nil
+}
+
+// DiscordAccount is the Discord webhook of the notifications: saved (mangal notify webhook),
+// from the config or not set.
+func DiscordAccount() AccountEntry {
+	entry := AccountEntry{Account: libmangal.Account{Service: "Discord", Status: "not set"}, Discord: true, Checked: time.Now()}
+	saved, err := cache.DiscordWebhook()
+	switch {
+	case err != nil:
+		entry.Err = err
+	case saved != "":
+		entry.Status = "webhook set"
+	case config.Notification.Discord.WebhookURL.Get() != "":
+		entry.Status = "webhook set"
+		entry.Details = append(entry.Details, "from "+config.Notification.Discord.WebhookURL.Key)
+	default:
+		entry.Details = append(entry.Details, "l sets the webhook")
+	}
+	return entry
 }
 
 // metadataAccounts are the metadata providers' logins, by priority.

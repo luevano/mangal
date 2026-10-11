@@ -99,6 +99,27 @@ func TestAccountsListsProviders(t *testing.T) {
 	if e := entryOf(t, entries, "MangaPlus"); e.Status != "free device" || e.Provider != "mango-mangaplus" {
 		t.Errorf("mangaplus: %+v", e)
 	}
+	if e := entryOf(t, entries, "Discord"); e.Status != "not set" || !e.Discord {
+		t.Errorf("discord: %+v", e)
+	}
+}
+
+func TestDiscordAccount(t *testing.T) {
+	isolate(t)
+	defer func() { _ = config.Notification.Discord.WebhookURL.Set("") }()
+	if err := config.Notification.Discord.WebhookURL.Set("https://discord.com/api/webhooks/1/config"); err != nil {
+		t.Fatal(err)
+	}
+	if e := DiscordAccount(); e.Status != "webhook set" || len(e.Details) != 1 {
+		t.Errorf("from the config: %+v", e)
+	}
+	if err := cache.SetDiscordWebhook("https://discord.com/api/webhooks/1/saved"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cache.SetDiscordWebhook("") }()
+	if e := DiscordAccount(); e.Status != "webhook set" || len(e.Details) != 0 {
+		t.Errorf("saved: %+v", e)
+	}
 }
 
 func TestMetadataProvidersMyAnimeListLast(t *testing.T) {
