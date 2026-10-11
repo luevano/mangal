@@ -1,5 +1,5 @@
-// Package notify sends download notifications (only Discord for now). Only `mangal inline
-// download` sends them.
+// Package notify sends download notifications (only Discord for now), after `mangal inline
+// download` and, with notification.tui, TUI downloads.
 package notify
 
 import (

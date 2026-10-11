@@ -339,6 +339,8 @@ var Auth = configAuth{
 }
 
 var Notification = configNotification{
+	TUI: boolEntry("notification.tui", false,
+		"Also send the notification after a download in the TUI's download screen (by default only `mangal inline download` sends it)."),
 	IncludeExisting: boolEntry("notification.include_existing", false,
 		"If existing downloaded chapters should be included in the notification. If false and all chapters already existed, no notification is sent."),
 	IncludeDirectory: boolEntry("notification.include_directory", true,
@@ -348,7 +350,7 @@ var Notification = configNotification{
 			"Username of the message sender. If empty it will use the configured name in the server."),
 		WebhookURL: reg(entry[string, string]{
 			Key:         "notification.discord.webhook_url",
-			Description: "Webhook URL, if present discord notifications are sent after `mangal inline download` (only there, not from the TUI, scripts or the web UI).",
+			Description: "Webhook URL, if present discord notifications are sent after `mangal inline download`, and after TUI downloads with notification.tui (not from scripts or the web UI).",
 			Secret:      true,
 			Validate:    validateWebhookURL,
 		}),

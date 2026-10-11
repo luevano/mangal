@@ -17,6 +17,8 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -208,7 +210,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		s.downloading = false
 		s.updateView()
-		return s.Resize(s.size)
+		return tea.Batch(s.Resize(s.size), notifyCmd(ctx, s.batch))
 	}
 	return s.viewport.Update(msg)
 }
@@ -261,4 +263,23 @@ func (s *state) View() string {
 		return s.viewDownloading() + "\n" + s.viewport.View()
 	}
 	return s.viewport.View()
+}
+
+// notifyCmd sends the download's notification when notification.tui is on.
+func notifyCmd(ctx context.Context, batch client.Results) tea.Cmd {
+	if !config.Notification.TUI.Get() || len(batch) == 0 {
+		return nil
+	}
+	// copies: a retry resets the failed ones while this runs
+	results := make(client.Results, len(batch))
+	for i, r := range batch {
+		c := *r
+		results[i] = &c
+	}
+	return func() tea.Msg {
+		if err := notify.SendContext(ctx, results); err != nil {
+			return fmt.Errorf("send the notification: %w", err)
+		}
+		return nil
+	}
 }
