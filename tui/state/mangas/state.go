@@ -298,14 +298,14 @@ func joinNotice(a, b string) string {
 	return a + " · " + b
 }
 
-// hasMetadata is true when the manga's metadata is from Anilist or Kitsu (bound or found
+// hasMetadata is true when the manga's metadata is from a metadata provider (bound or found
 // before), not the provider's.
 func hasMetadata(meta lmmeta.Metadata) bool {
 	if meta == nil || lmmeta.Validate(meta) != nil {
 		return false
 	}
 	source := meta.ID().Source
-	return source == lmmeta.IDSourceAnilist || source == lmmeta.IDSourceKitsu
+	return source == lmmeta.IDSourceAnilist || source == lmmeta.IDSourceKitsu || source == lmmeta.IDSourceMyAnimeList
 }
 
 func (s *state) updateKeys() {
