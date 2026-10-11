@@ -56,7 +56,7 @@ func MyAnimeList() (*metadata.ProviderWithCache, error) {
 		return provider, nil
 	}
 	// not kept: the client id can be set later in the run
-	id := config.MyAnimeList.ClientID.Get()
+	id := config.Metadata.MyAnimeList.ClientID.Get()
 	if id == "" {
 		return nil, ErrNotConfigured
 	}
@@ -241,7 +241,7 @@ func logInSaved(ctx context.Context, m *myanimelist.MyAnimeList, user string, to
 // refresh gets a new token with the refresh token and saves it. A rejected refresh marks
 // the login expired.
 func refresh(ctx context.Context, user string, token *oauth2.Token) error {
-	fresh, err := oauth.RefreshMyAnimeList(oauthContext(ctx), config.MyAnimeList.ClientID.Get(), config.MyAnimeList.ClientSecret.Get(), token.RefreshToken)
+	fresh, err := oauth.RefreshMyAnimeList(oauthContext(ctx), config.Metadata.MyAnimeList.ClientID.Get(), config.Metadata.MyAnimeList.ClientSecret.Get(), token.RefreshToken)
 	if errors.Is(err, oauth.ErrRefreshRejected) {
 		if err := cache.ExpireMyAnimeListAuthData(user); err != nil {
 			return err

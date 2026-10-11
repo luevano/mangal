@@ -175,6 +175,8 @@ var Read = configRead{
 		Anilist: boolEntry("read.history.anilist", true, "Sync to Anilist reading history if logged in."),
 		Local:   boolEntry("read.history.local", true, "Save to local history."),
 		Kitsu:   boolEntry("read.history.kitsu", false, "Sync to Kitsu reading history if logged in."),
+		MyAnimeList: boolEntry("read.history.myanimelist", false,
+			"Sync to MyAnimeList reading history if logged in (mangal myanimelist)."),
 	},
 	DownloadOnRead: boolEntry("read.download_on_read", false, "Download chapter to the configured directory when opening for reading."),
 }
@@ -183,6 +185,24 @@ var Metadata = configMetadata{
 	Kitsu: configMetadataKitsu{
 		Enabled: boolEntry("metadata.kitsu.enabled", true,
 			"Search Kitsu for metadata when Anilist finds none (or fails). Kitsu often lacks the authors, such metadata isn't valid (see download.metadata.strict)."),
+	},
+	MyAnimeList: configMetadataMyAnimeList{
+		ClientID: reg(entry[string, string]{
+			Key: "metadata.myanimelist.client_id",
+			Description: "Client ID of a MyAnimeList API client, empty disables MyAnimeList. Register one at https://myanimelist.net/apiconfig " +
+				`(App Type "other", App Redirect URL "http://localhost:6969/oauth/mal/callback"), the ID is on its page.`,
+			Unmarshal: func(raw string) (string, error) { return strings.TrimSpace(raw), nil },
+			Marshal:   func(value string) (string, error) { return value, nil },
+		}),
+		ClientSecret: reg(entry[string, string]{
+			Key:         "metadata.myanimelist.client_secret",
+			Description: `Client secret of the MyAnimeList API client, only for App Types other than "other" (those have none).`,
+			Secret:      true,
+			Unmarshal:   func(raw string) (string, error) { return strings.TrimSpace(raw), nil },
+			Marshal:     func(value string) (string, error) { return value, nil },
+		}),
+		Enabled: boolEntry("metadata.myanimelist.enabled", true,
+			"Search MyAnimeList for metadata when Anilist and Kitsu find none (or fail). Only with a metadata.myanimelist.client_id."),
 	},
 }
 

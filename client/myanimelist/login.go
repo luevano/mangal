@@ -99,7 +99,7 @@ func loginNew(ctx context.Context, authorize func(*oauth.MyAnimeListLoginOption)
 	if _, err := MyAnimeList(); err != nil {
 		return nil, err
 	}
-	option, err := oauth.NewMyAnimeListLoginOption(config.MyAnimeList.ClientID.Get(), config.MyAnimeList.ClientSecret.Get())
+	option, err := oauth.NewMyAnimeListLoginOption(config.Metadata.MyAnimeList.ClientID.Get(), config.Metadata.MyAnimeList.ClientSecret.Get())
 	if err != nil {
 		return nil, err
 	}

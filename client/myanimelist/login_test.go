@@ -31,7 +31,7 @@ func TestMain(m *testing.M) {
 	os.Setenv("MANGAL_AUTH_KEYRING", "false")
 	xdg.DataHome = filepath.Join(dir, "data")
 	httpClient = func() *http.Client { return &http.Client{Transport: fake} }
-	if err := config.MyAnimeList.ClientID.Set("test-id"); err != nil {
+	if err := config.Metadata.MyAnimeList.ClientID.Set("test-id"); err != nil {
 		panic(err)
 	}
 	code := m.Run()
@@ -304,9 +304,9 @@ func TestNotConfigured(t *testing.T) {
 		malLock.Lock()
 		provider = kept
 		malLock.Unlock()
-		_ = config.MyAnimeList.ClientID.Set("test-id")
+		_ = config.Metadata.MyAnimeList.ClientID.Set("test-id")
 	}()
-	if err := config.MyAnimeList.ClientID.Set(""); err != nil {
+	if err := config.Metadata.MyAnimeList.ClientID.Set(""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := MyAnimeList(); !errors.Is(err, ErrNotConfigured) {

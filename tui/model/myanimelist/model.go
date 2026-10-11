@@ -284,7 +284,7 @@ func (s *state) View() string {
 			"MyAnimeList needs the client ID of a MyAnimeList API client:",
 			"register one at https://myanimelist.net/apiconfig (App Type \"other\",",
 			"App Redirect URL "+oauth.MyAnimeListServerCallbackURL+"),",
-			"then set "+config.MyAnimeList.ClientID.Key+" to its ID.",
+			"then set "+config.Metadata.MyAnimeList.ClientID.Key+" to its ID.",
 		)
 	case loggedIn:
 		return "Logged in as " + s.user.String()

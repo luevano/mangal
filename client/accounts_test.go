@@ -26,8 +26,8 @@ func isolate(t *testing.T) {
 	t.Cleanup(func() {
 		xdg.DataHome = dataHome
 		_ = config.Metadata.Kitsu.Enabled.Set(true)
-		_ = config.MyAnimeList.Enabled.Set(true)
-		_ = config.MyAnimeList.ClientID.Set("")
+		_ = config.Metadata.MyAnimeList.Enabled.Set(true)
+		_ = config.Metadata.MyAnimeList.ClientID.Set("")
 	})
 }
 
@@ -60,14 +60,14 @@ func TestMetadataAccountsAlwaysListed(t *testing.T) {
 		t.Errorf("unconfigured myanimelist: %+v", mal)
 	}
 
-	if err := config.MyAnimeList.ClientID.Set("some-id"); err != nil {
+	if err := config.Metadata.MyAnimeList.ClientID.Set("some-id"); err != nil {
 		t.Fatal(err)
 	}
 	if e := entryOf(t, metadataAccounts(ctx, false), "MyAnimeList"); e.Status != "not logged in" || e.Err != nil {
 		t.Errorf("configured myanimelist: %+v", e)
 	}
 
-	_ = config.MyAnimeList.Enabled.Set(false)
+	_ = config.Metadata.MyAnimeList.Enabled.Set(false)
 	_ = config.Metadata.Kitsu.Enabled.Set(false)
 	entries = metadataAccounts(ctx, false)
 	for _, service := range []string{"Kitsu", "MyAnimeList"} {
@@ -103,7 +103,7 @@ func TestAccountsListsProviders(t *testing.T) {
 
 func TestMetadataProvidersMyAnimeListLast(t *testing.T) {
 	isolate(t)
-	if err := config.MyAnimeList.ClientID.Set("some-id"); err != nil {
+	if err := config.Metadata.MyAnimeList.ClientID.Set("some-id"); err != nil {
 		t.Fatal(err)
 	}
 	metas, err := metadataProviders()
@@ -113,7 +113,7 @@ func TestMetadataProvidersMyAnimeListLast(t *testing.T) {
 	if len(metas) != 3 || metas[2].Info().Source != metadata.IDSourceMyAnimeList {
 		t.Errorf("providers %v, want myanimelist last", metas)
 	}
-	_ = config.MyAnimeList.Enabled.Set(false)
+	_ = config.Metadata.MyAnimeList.Enabled.Set(false)
 	if metas, _ := metadataProviders(); len(metas) != 2 {
 		t.Errorf("providers with myanimelist disabled %v", metas)
 	}

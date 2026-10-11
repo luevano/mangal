@@ -21,13 +21,26 @@ type configRead struct {
 }
 
 type configReadHistory struct {
-	Anilist *entry[bool, bool]
-	Local   *entry[bool, bool]
-	Kitsu   *entry[bool, bool]
+	Anilist     *entry[bool, bool]
+	Local       *entry[bool, bool]
+	Kitsu       *entry[bool, bool]
+	MyAnimeList *entry[bool, bool]
 }
 
 type configMetadata struct {
-	Kitsu configMetadataKitsu
+	Kitsu       configMetadataKitsu
+	MyAnimeList configMetadataMyAnimeList
+}
+
+type configMetadataMyAnimeList struct {
+	ClientID     *entry[string, string]
+	ClientSecret *entry[string, string]
+	Enabled      *entry[bool, bool]
+}
+
+// Configured is true when MyAnimeList can be used: enabled, with a client id.
+func (c configMetadataMyAnimeList) Configured() bool {
+	return c.Enabled.Get() && c.ClientID.Get() != ""
 }
 
 type configMetadataKitsu struct {
