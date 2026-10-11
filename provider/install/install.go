@@ -157,7 +157,7 @@ func pull(ctx context.Context, dir string, progress io.Writer) error {
 // Remove removes the provider dir named tag from dir.
 func Remove(dir, tag string) error {
 	if err := checkName(tag); err != nil {
-		return fmt.Errorf("provider %w", err)
+		return fmt.Errorf("remove provider: %w", err)
 	}
 	target := filepath.Join(dir, tag)
 	if stat, err := os.Lstat(target); err != nil || !stat.IsDir() {
