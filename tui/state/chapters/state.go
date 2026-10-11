@@ -76,9 +76,10 @@ type keyMap struct {
 }
 
 // filesMsg is where the chapters are downloaded: in the library by number and format,
-// and in the temp dir (aligned with items).
+// and in the temp dir (aligned with items); and which were read, by number.
 type filesMsg struct {
 	downloads map[float32]map[libmangal.Format]string
+	read      map[float32]bool
 	items     []*item
 	temp      []map[libmangal.Format]string
 }
@@ -338,8 +339,21 @@ func (s *state) refresh(ctx context.Context, scan bool) tea.Cmd {
 			scanner = &library.Scanner{FS: afs.Afero, Library: lib}
 		}
 		// the chapters still show without it
-		if msg.downloads, err = libraryDownloads(lib, scanner, root, c.Info(), manga, providerDirs); err != nil {
-			log.Error("library of %q: %s", manga, err)
+		m, found, err := lib.MangaFor(c.Info(), manga, providerDirs)
+		if err != nil {
+			log.Error("library manga of %q: %s", manga, err)
+		}
+		if found {
+			if msg.downloads, err = libraryDownloads(lib, scanner, root, m, providerDirs); err != nil {
+				log.Error("library of %q: %s", manga, err)
+			}
+		}
+		history, err := cache.History()
+		if err == nil {
+			msg.read, err = readChapters(history, c.Info(), manga, m.ID)
+		}
+		if err != nil {
+			log.Error("read history of %q: %s", manga, err)
 		}
 		return msg
 	}
@@ -349,6 +363,7 @@ func (s *state) setFiles(msg filesMsg) {
 	readFormat := config.Read.Format.Get()
 	for i, it := range msg.items {
 		it.setFiles(msg.downloads[it.chapter.Info().Number], msg.temp[i], readFormat)
+		it.read = msg.read[it.chapter.Info().Number]
 	}
 }
 

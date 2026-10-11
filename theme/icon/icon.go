@@ -90,6 +90,14 @@ var (
 		},
 	}
 
+	Read = icon{
+		color: color.Success,
+		symbols: symbols{
+			TypeASCII: "r",
+			TypeNerd:  "\uF06E",
+		},
+	}
+
 	Filter = icon{
 		color: color.Warning,
 		symbols: symbols{

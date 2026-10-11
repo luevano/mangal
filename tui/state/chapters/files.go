@@ -13,11 +13,7 @@ import (
 // libraryDownloads are the chapters of the manga's library folder by number and format
 // (their paths): the library is the one answer to "is it downloaded", whichever provider
 // got it. With a scanner, the folder is checked against the files first.
-func libraryDownloads(lib storage.Library, scanner *library.Scanner, root string, provider libmangal.ProviderInfo, manga mangadata.Manga, providerDirs bool) (map[float32]map[libmangal.Format]string, error) {
-	m, ok, err := lib.MangaFor(provider, manga, providerDirs)
-	if err != nil || !ok {
-		return nil, err
-	}
+func libraryDownloads(lib storage.Library, scanner *library.Scanner, root string, m storage.Manga, providerDirs bool) (map[float32]map[libmangal.Format]string, error) {
 	if scanner != nil {
 		if _, err := scanner.ScanManga(m, root, providerDirs); err != nil {
 			return nil, err
@@ -39,6 +35,16 @@ func libraryDownloads(lib storage.Library, scanner *library.Scanner, root string
 		paths[dl.Chapter][format] = dl.Path
 	}
 	return paths, nil
+}
+
+// readChapters are the chapter numbers read of the manga (under the provider's current or
+// old ids), or of its library manga (libraryManga, 0 if none) from any provider.
+func readChapters(history storage.History, provider libmangal.ProviderInfo, manga mangadata.Manga, libraryManga int64) (map[float32]bool, error) {
+	ids := []string{provider.ID}
+	for _, alias := range provider.History {
+		ids = append(ids, alias.ID)
+	}
+	return history.ReadChapters(ids, manga.Info().ID, libraryManga)
 }
 
 // tempFiles are the chapters read without download_on_read, by format, from the temp dir.

@@ -7,12 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
@@ -116,7 +118,11 @@ func TestLibraryDownloads(t *testing.T) {
 	provider := libmangal.ProviderInfo{ID: "mango-new", Name: "New", History: []libmangal.ProviderAlias{{ID: "mango-old"}}}
 
 	manga, _ := chapters(0)
-	got, err := libraryDownloads(lib, nil, "/dl", provider, manga, false)
+	m, ok, err := lib.MangaFor(provider, manga, false)
+	if err != nil || !ok {
+		t.Fatalf("library manga: %t, %v", ok, err)
+	}
+	got, err := libraryDownloads(lib, nil, "/dl", m, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,8 +131,8 @@ func TestLibraryDownloads(t *testing.T) {
 	}
 
 	other := &fakeManga{id: "other"}
-	if got, err := libraryDownloads(lib, nil, "/dl", provider, other, false); err != nil || len(got) != 0 {
-		t.Errorf("another manga: %v, %v", got, err)
+	if _, ok, err := lib.MangaFor(provider, other, false); err != nil || ok {
+		t.Errorf("another manga: %t, %v", ok, err)
 	}
 
 	// the items show the library's formats and read the download first
@@ -135,5 +141,40 @@ func TestLibraryDownloads(t *testing.T) {
 	s.setFiles(filesMsg{downloads: got, items: items, temp: []map[libmangal.Format]string{{libmangal.FormatPDF: "/tmp/1.pdf"}}})
 	if items[0].readPath == "" || len(items[0].downloaded) != 2 {
 		t.Errorf("item: read %q, downloaded %v", items[0].readPath, items[0].downloaded)
+	}
+}
+
+func TestReadMarks(t *testing.T) {
+	db, err := storage.OpenData(filepath.Join(t.TempDir(), storage.FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	history := storage.History{DB: db}
+	now := time.Unix(1, 0)
+	for _, r := range []storage.Read{
+		{Provider: "mango-old", MangaID: "berserk", Chapter: 1, Last: now},              // under the old id
+		{Provider: "mango-other", MangaID: "x", Chapter: 2, LibraryManga: 0, Last: now}, // another manga
+	} {
+		if err := history.Record(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	provider := libmangal.ProviderInfo{ID: "mango-new", History: []libmangal.ProviderAlias{{ID: "mango-old"}}}
+	manga, list := chapters(2)
+	read, err := readChapters(history, provider, manga, 0)
+	if err != nil || !read[1] || read[2] {
+		t.Fatalf("read %v, %v", read, err)
+	}
+
+	s := New(nil, manga, nil, list).(*state)
+	items := s.items()
+	s.setFiles(filesMsg{read: read, items: items, temp: make([]map[libmangal.Format]string, len(items))})
+	mark := s.renderedSep + icon.Read.Colored()
+	if title := items[0].Title(); !strings.Contains(title, mark) {
+		t.Errorf("chapter 1 not marked read: %q", title)
+	}
+	if title := items[1].Title(); strings.Contains(title, mark) {
+		t.Errorf("chapter 2 marked read: %q", title)
 	}
 }

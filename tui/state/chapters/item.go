@@ -24,6 +24,8 @@ type item struct {
 	chapter mangadata.Chapter
 	// selected means that the item is toggled on
 	selected bool
+	// read is in the read history
+	read bool
 
 	// downloaded are the library's files of the chapter by format, temp the ones read
 	// without download_on_read
@@ -65,6 +67,11 @@ func (i *item) Title() string {
 	if i.selected {
 		title.WriteString(i.renderedSep)
 		title.WriteString(icon.Mark.Colored())
+	}
+
+	if i.read {
+		title.WriteString(i.renderedSep)
+		title.WriteString(icon.Read.Colored())
 	}
 
 	if i.readPath != "" {
