@@ -8,7 +8,6 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/config"
-	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -23,8 +22,9 @@ var (
 
 // item implements list.item.
 type item struct {
-	chapter mangadata.Chapter
-	client  *libmangal.Client
+	chapter    mangadata.Chapter
+	client     *libmangal.Client
+	downloaded *downloaded
 
 	tempDownloadedFormats set.Set[libmangal.Format]
 	downloadedFormats     set.Set[libmangal.Format]
@@ -41,9 +41,8 @@ type item struct {
 	// if the read format is not available anywhere it is empty
 	readAvailablePath string
 
-	// full computed paths minus the filename
-	fullTempPath     string
-	fullDownloadPath string
+	// full computed temp path minus the filename
+	fullTempPath string
 
 	showVolumeNumber  *bool
 	showChapterNumber *bool
@@ -140,7 +139,7 @@ func (i *item) path(directory string, format libmangal.Format) string {
 	return filepath.Join(directory, i.client.ChapterName(i.chapter, format))
 }
 
-// updatePaths should only be needed if the config changes
+// updatePaths should only be needed if the config changes, downloads come from the library
 func (i *item) updatePaths() {
 	client := i.client
 	providerFilename := client.ProviderName(client.Info())
@@ -149,14 +148,6 @@ func (i *item) updatePaths() {
 
 	i.fullTempPath = filepath.Join(path.TempDir(), providerFilename, mangaFilename, volumeFilename)
 
-	// the same directory a download goes to, with a reused manga directory
-	options := config.DownloadOptions()
-	options.Directory = path.DownloadsDir()
-	downloadPath, err := client.ChapterDir(i.chapter, options)
-	if err != nil {
-		log.Log("chapter %q directory: %s", i.chapter, err)
-	}
-	i.fullDownloadPath = downloadPath
 }
 
 // updateDownloadedFormats should only be computed as needed (when the chapter
@@ -166,23 +157,13 @@ func (i *item) updateDownloadedFormats() {
 	i.downloadedFormats = set.NewMapset[libmangal.Format]()
 
 	for _, format := range libmangal.FormatValues() {
-		for k, path := range map[string]string{
-			"temp": i.path(i.fullTempPath, format),
-			"down": i.path(i.fullDownloadPath, format),
-		} {
-			exists, err := afs.Afero.Exists(path)
-			if err != nil {
-				continue
-			}
-
-			if exists {
-				switch k {
-				case "temp":
-					i.tempDownloadedFormats.Put(format)
-				case "down":
-					i.downloadedFormats.Put(format)
-				}
-			}
+		// downloads come from the library (checked against the files when the list opens)
+		if i.downloaded.path(i.chapter, format) != "" {
+			i.downloadedFormats.Put(format)
+		}
+		// reads without download_on_read only live in the temp dir
+		if exists, err := afs.Afero.Exists(i.path(i.fullTempPath, format)); err == nil && exists {
+			i.tempDownloadedFormats.Put(format)
 		}
 	}
 
@@ -218,7 +199,7 @@ func (i *item) updateReadAvailablePath() {
 
 	switch {
 	case i.downloadedFormats.Has(readFormat):
-		i.readAvailablePath = i.path(i.fullDownloadPath, readFormat)
+		i.readAvailablePath = i.downloaded.path(i.chapter, readFormat)
 	case i.tempDownloadedFormats.Has(readFormat):
 		i.readAvailablePath = i.path(i.fullTempPath, readFormat)
 	default:

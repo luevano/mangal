@@ -47,14 +47,14 @@ ON CONFLICT (path) DO UPDATE SET chapter_id = excluded.chapter_id, provider = ex
 
 // List lists the downloads of a provider and manga, empty for any, ordered by manga and chapter.
 func (d Downloads) List(provider, mangaID string) ([]Download, error) {
-	return queryDownloads(d.DB, `WHERE (? = '' OR d.provider = ?) AND (? = '' OR d.manga_id = ?)`, provider, provider, mangaID, mangaID)
+	return queryDownloads(d.DB, `WHERE (? = '' OR d.provider = ?) AND (? = '' OR d.manga_id = ?)
+ORDER BY d.manga_title, d.provider, d.manga_id, d.volume, d.chapter, d.format`, provider, provider, mangaID, mangaID)
 }
 
 func queryDownloads(db *DB, where string, args ...any) ([]Download, error) {
 	rows, err := db.Query(`SELECT d.path, coalesce(d.chapter_id, 0), d.provider, d.manga_id, d.manga_title, d.volume, d.chapter,
 	d.chapter_title, d.chapter_url, d.format, d.pages, d.downloaded
-FROM downloads d LEFT JOIN library_chapters c ON c.id = d.chapter_id `+where+`
-ORDER BY d.manga_title, d.provider, d.manga_id, d.volume, d.chapter, d.format`, args...)
+FROM downloads d LEFT JOIN library_chapters c ON c.id = d.chapter_id `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list downloads: %w", err)
 	}

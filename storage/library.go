@@ -354,7 +354,7 @@ func (l Library) sources(manga int64) ([]Source, error) {
 
 // Downloads lists the downloads of a library manga, by chapter.
 func (l Library) Downloads(manga int64) ([]Download, error) {
-	return queryDownloads(l.DB, `WHERE c.manga = ?`, manga)
+	return queryDownloads(l.DB, `WHERE c.manga = ? ORDER BY c.number, d.format, d.path`, manga)
 }
 
 // Moved updates the library after a directory was renamed from one path to another:

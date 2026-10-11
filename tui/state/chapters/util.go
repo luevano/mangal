@@ -9,15 +9,19 @@ func (s *state) actionRunningNow(action string) {
 }
 
 func (s *state) updateItem(item *item) {
+	s.downloaded.load(false)
 	item.updatePaths()
 	item.updateDownloadedFormats()
 	item.updateReadAvailablePath()
 }
 
 func (s *state) updateAllItems() {
+	s.downloaded.load(false)
 	for _, i := range s.list.Items() {
 		i := i.(*item)
-		s.updateItem(i)
+		i.updatePaths()
+		i.updateDownloadedFormats()
+		i.updateReadAvailablePath()
 	}
 }
 

@@ -40,10 +40,11 @@ type state struct {
 	confirm *confirm.Model
 	formats *format.Model
 
-	chapters []mangadata.Chapter
-	volume   mangadata.Volume // can be nil
-	manga    mangadata.Manga
-	client   *libmangal.Client
+	chapters   []mangadata.Chapter
+	volume     mangadata.Volume // can be nil
+	manga      mangadata.Manga
+	client     *libmangal.Client
+	downloaded *downloaded
 
 	selected set.Set[*item]
 

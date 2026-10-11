@@ -25,6 +25,7 @@ func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volum
 
 	_styles := defaultStyles()
 	renderedSep := _styles.sep.Render(icon.Separator.Raw())
+	downloaded := newDownloaded(client, manga)
 	listWrapper := list.New(
 		3, 1,
 		"chapter", "chapters",
@@ -36,6 +37,7 @@ func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volum
 			item := &item{
 				chapter:               chapter,
 				client:                client,
+				downloaded:            downloaded,
 				renderedSep:           renderedSep,
 				renderedVolumeNumber:  volNum,
 				renderedChapterNumber: chapNum,
@@ -62,6 +64,7 @@ func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volum
 		volume:            volume,
 		manga:             manga,
 		client:            client,
+		downloaded:        downloaded,
 		selected:          set.NewMapset[*item](),
 		renderedSep:       renderedSep,
 		confirmState:      cSDownloadNone,
