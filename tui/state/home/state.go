@@ -44,7 +44,7 @@ type loadedMsg struct {
 	providers base.State
 	// shown again: tui.skip_home only applies at the start
 	restored bool
-	notices   []string
+	notices  []string
 }
 
 func New() base.State {
