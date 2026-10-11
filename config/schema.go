@@ -180,6 +180,8 @@ type configWatch struct {
 }
 
 type configServe struct {
-	Host *entry[string, string]
-	Port *entry[int64, int]
+	Host  *entry[string, string]
+	Port  *entry[int64, int]
+	Token *entry[string, string]
+	Web   *entry[bool, bool]
 }

@@ -428,4 +428,10 @@ var Watch = configWatch{
 var Serve = configServe{
 	Host: stringEntry("serve.host", "127.0.0.1", "Address `mangal serve` listens on, 127.0.0.1 only accepts local connections."),
 	Port: intEntry("serve.port", 6977, 1, 65535, "Port `mangal serve` listens on, one per instance."),
+	Token: reg(entry[string, string]{
+		Key:         "serve.token",
+		Description: "Token the `mangal serve` API asks for (Authorization: Bearer <token>) when it listens on an address that isn't loopback, where it's required. mangal's own commands and TUI send it.",
+		Secret:      true,
+	}),
+	Web: boolEntry("serve.web", false, "Also serve the web UI (as `mangal web`) on the `mangal serve` port (`mangal serve --web`)."),
 }
