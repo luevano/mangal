@@ -13,9 +13,9 @@ import (
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/util"
-	"github.com/luevano/mangal/v5/util/afs"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/skratchdot/open-golang/open"
 )
@@ -45,144 +45,152 @@ func (i *downloadItem) Description() string {
 }
 
 type mangaState struct {
-	library storage.Library
+	list.Screen
+	files   library.Files
 	manga   storage.Manga
-	list    *list.Model
-	confirm confirmer
-	keyMap  mangaKeyMap
+	confirm *confirm.Dialog
+
+	open, scan, delete key.Binding
 }
 
-func newMangaState(lib storage.Library, manga storage.Manga) *mangaState {
-	return &mangaState{
-		library: lib,
-		manga:   manga,
-		list:    list.New(2, 1, "chapter", "chapters", []*downloadItem{}, func(i *downloadItem) _list.DefaultItem { return i }),
-		confirm: newConfirmer(),
-		keyMap:  newMangaKeyMap(),
-	}
-}
+type downloadsMsg []_list.Item
 
-func (s *mangaState) reload() tea.Cmd {
-	downloads, err := s.library.Downloads(s.manga.ID)
-	if err != nil {
-		return func() tea.Msg { return err }
-	}
-	items := make([]_list.Item, len(downloads))
-	for i, dl := range downloads {
-		items[i] = &downloadItem{download: dl}
-	}
-	return s.list.SetItems(items)
-}
-
-// mangaScannedMsg is the result of a scan, applied in Update (the list isn't touched from commands).
+// mangaScannedMsg is the result of a scan, and the manga after it.
 type mangaScannedMsg struct {
 	result library.ScanResult
 	manga  storage.Manga
 }
 
-// scan reconciles this manga with its folder, the list then shows what's really there.
-func (s *mangaState) scan() tea.Msg {
-	scanner := library.Scanner{FS: afs.Afero, Library: s.library}
-	res, err := scanner.ScanManga(s.manga, path.DownloadsDir(), config.Download.Provider.CreateDir.Get())
-	if err != nil {
-		return err
+func newMangaState(files library.Files, manga storage.Manga) *mangaState {
+	s := &mangaState{
+		files:   files,
+		manga:   manga,
+		confirm: newDialog(),
+		open:    util.Bind("open", "enter"),
+		scan:    util.Bind("scan", "s"),
+		delete:  util.Bind("delete", "d"),
 	}
-	manga := s.manga
-	if m, ok, err := s.library.MangaByID(s.manga.ID); err == nil && ok {
-		manga = m
-	}
-	return mangaScannedMsg{result: res, manga: manga}
+	s.Screen = list.NewScreen(list.New(2, 1, "chapter", "chapters", []*downloadItem{}, func(i *downloadItem) _list.DefaultItem { return i }), s.keyMap)
+	return s
 }
 
-func (s *mangaState) onScanned(msg mangaScannedMsg) tea.Cmd {
+func (s *mangaState) keyMap() help.KeyMap {
+	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete}}
+}
+
+func (s *mangaState) reload(ctx context.Context) tea.Cmd {
+	lib, id := s.files.Library, s.manga.ID
+	return base.Load(ctx, "", func(context.Context) (downloadsMsg, error) {
+		downloads, err := lib.Downloads(id)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]_list.Item, len(downloads))
+		for i, dl := range downloads {
+			items[i] = &downloadItem{download: dl}
+		}
+		return items, nil
+	}, func(items downloadsMsg) tea.Msg { return items })
+}
+
+// scanCmd reconciles this manga with its folder, the list then shows what's really there.
+func (s *mangaState) scanCmd(ctx context.Context) tea.Cmd {
+	files, manga := s.files, s.manga
+	providerDirs := config.Download.Provider.CreateDir.Get()
+	return base.Load(ctx, "", func(context.Context) (mangaScannedMsg, error) {
+		root, err := path.Ensure(files.Root)
+		if err != nil {
+			return mangaScannedMsg{}, err
+		}
+		scanner := library.Scanner{FS: files.FS, Library: files.Library}
+		res, err := scanner.ScanManga(manga, root, providerDirs)
+		if err != nil {
+			return mangaScannedMsg{}, err
+		}
+		if m, ok, err := files.Library.MangaByID(manga.ID); err == nil && ok {
+			manga = m
+		}
+		return mangaScannedMsg{result: res, manga: manga}, nil
+	}, func(msg mangaScannedMsg) tea.Msg { return msg })
+}
+
+func (s *mangaState) onScanned(ctx context.Context, msg mangaScannedMsg) tea.Cmd {
 	s.manga = msg.manga
-	cmds := []tea.Cmd{s.reload()}
 	res := msg.result
-	if len(res.Missing) != 0 {
-		cmds = append(cmds, base.Notify("the manga's folder wasn't found, a library scan looks everywhere"))
-	} else if res.Added+res.Moved+res.Removed+res.Relocated != 0 {
-		cmds = append(cmds, base.Notify(fmt.Sprintf("updated from the files: %d added, %d moved, %d removed", res.Added, res.Moved, res.Removed)))
+	switch {
+	case len(res.Missing) != 0:
+		return withNotify(s.reload(ctx), "the manga's folder wasn't found, a library scan looks everywhere")
+	case res.Added+res.Moved+res.Removed+res.Relocated != 0:
+		return withNotify(s.reload(ctx), fmt.Sprintf("updated from the files: %d added, %d moved, %d removed", res.Added, res.Moved, res.Removed))
 	}
-	return tea.Batch(cmds...)
+	return s.reload(ctx)
 }
 
-func (s *mangaState) Backable() bool  { return s.list.Unfiltered() && !s.confirm.active }
-func (s *mangaState) Inputting() bool { return s.list.Filtering() || s.confirm.active }
-func (s *mangaState) KeyMap() help.KeyMap {
-	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)
-}
+func (s *mangaState) Backable() bool    { return s.Screen.Backable() && !s.confirm.Active() }
+func (s *mangaState) Inputting() bool   { return s.Screen.Inputting() || s.confirm.Active() }
 func (s *mangaState) Title() base.Title { return base.Title{Text: s.manga.Title} }
 func (s *mangaState) Subtitle() string  { return s.manga.Path() }
-func (s *mangaState) Status() string    { return s.list.Status() }
 func (s *mangaState) Resize(size base.Size) tea.Cmd {
-	s.confirm.size = size
-	return s.list.Resize(size)
+	s.confirm.Resize(size)
+	return s.Screen.Resize(size)
 }
 
 func (s *mangaState) Init(ctx context.Context) tea.Cmd {
-	return tea.Sequence(s.list.Init(), s.scan)
+	return s.scanCmd(ctx)
 }
 
 func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if cmd, done := s.confirm.update(msg); done {
-		return cmd
+	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
+		return s.confirm.Update(msg)
 	}
-	if msg, ok := msg.(mangaScannedMsg); ok {
-		return s.onScanned(msg)
-	}
-	if msg, ok := msg.(reloadMsg); ok {
-		return tea.Batch(s.reload(), base.Notify(msg.notify))
-	}
-	if msg, ok := msg.(tea.KeyMsg); ok && !s.list.Filtering() {
+	switch msg := msg.(type) {
+	case downloadsMsg:
+		return s.List.SetItems(msg)
+	case mangaScannedMsg:
+		return s.onScanned(ctx, msg)
+	case actionMsg:
+		return msg.run(ctx)
+	case reloadMsg:
+		return withNotify(s.reload(ctx), msg.notify)
+	case tea.KeyMsg:
+		if s.List.Filtering() {
+			break
+		}
 		switch {
-		case key.Matches(msg, s.keyMap.scan):
-			return s.scan
-		case key.Matches(msg, s.keyMap.delete):
-			item, ok := s.list.SelectedItem().(*downloadItem)
+		case key.Matches(msg, s.scan):
+			if base.Busy(ctx) {
+				return nil
+			}
+			return s.scanCmd(ctx)
+		case key.Matches(msg, s.delete):
+			item, ok := s.List.SelectedItem().(*downloadItem)
 			if !ok {
 				break
 			}
-			dl := item.download
-			message := fmt.Sprintf("Delete chapter %s (%s)? The file goes to the trash.", item.Title(), dl.Format)
-			s.confirm.askDelete("Delete", message, s.View(), func() tea.Msg {
-				if err := library.DeleteDownload(afs.Afero, s.library, path.DownloadsDir(), s.manga, dl); err != nil {
-					return err
-				}
-				return reloadMsg{notify: fmt.Sprintf("deleted chapter %s (in the trash until emptied)", item.Title())}
-			})
+			files, manga, dl, title := s.files, s.manga, item.download, item.Title()
+			message := fmt.Sprintf("Delete chapter %s (%s)? The file goes to the trash.", title, dl.Format)
+			s.confirm.AskDelete("Delete", message, s.View(), action("Deleting chapter "+title, func() (string, error) {
+				return fmt.Sprintf("deleted chapter %s (in the trash until emptied)", title), files.DeleteDownload(manga, dl)
+			}))
 			return nil
-		case key.Matches(msg, s.keyMap.open):
-			if item, ok := s.list.SelectedItem().(*downloadItem); ok {
+		case key.Matches(msg, s.open):
+			if item, ok := s.List.SelectedItem().(*downloadItem); ok {
+				p := item.download.Path
 				return func() tea.Msg {
-					if err := open.Run(item.download.Path); err != nil {
-						return err
+					if err := open.Start(p); err != nil {
+						return fmt.Errorf("open %s: %w", p, err)
 					}
 					return nil
 				}
 			}
 		}
 	}
-	return s.list.Update(msg)
+	return s.List.Update(msg)
 }
 
 func (s *mangaState) View() string {
-	if s.confirm.active {
-		return s.confirm.view()
+	if s.confirm.Active() {
+		return s.confirm.View()
 	}
-	return s.list.View()
+	return s.List.View()
 }
-
-type mangaKeyMap struct {
-	open, scan, delete key.Binding
-}
-
-func newMangaKeyMap() mangaKeyMap {
-	return mangaKeyMap{
-		open:   util.Bind("open", "enter"),
-		scan:   util.Bind("scan", "s"),
-		delete: util.Bind("delete", "d"),
-	}
-}
-
-func (k mangaKeyMap) ShortHelp() []key.Binding  { return []key.Binding{k.open, k.scan, k.delete} }
-func (k mangaKeyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }

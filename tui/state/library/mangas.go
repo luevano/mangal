@@ -10,16 +10,17 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/util"
-	"github.com/luevano/mangal/v5/util/afs"
-	"github.com/luevano/mangal/v5/util/cache"
+	"github.com/spf13/afero"
 )
 
 var _ base.State = (*mangasState)(nil)
@@ -56,190 +57,255 @@ func (i *mangaItem) Description() string {
 }
 
 type mangasState struct {
-	library storage.Library
-	list    *list.Model
-	confirm confirmer
-	keep    *mangaItem
-	trash   string
-	keyMap  mangasKeyMap
+	list.Screen
+	files library.Files
+	// err is opening the library, shown by Init
+	err     error
+	confirm *confirm.Dialog
+	// keep is the manga a merge keeps, 0 if none
+	keep  int64
+	trash string
+	keys  mangasKeyMap
+}
+
+type mangasKeyMap struct {
+	confirm, scan, merge, remove, trash, delete key.Binding
+}
+
+type mangasLoadedMsg struct {
+	items []*mangaItem
+	trash string
+}
+
+// scannedMsg is a finished library scan, otherRoot a directory that has the missing mangas.
+type scannedMsg struct {
+	result    library.ScanResult
+	otherRoot string
+}
+
+type mergePlannedMsg struct {
+	keep, other storage.Manga
+	plan        library.MergePlan
+}
+
+// setRootMsg is the confirmed new download.path.
+type setRootMsg struct {
+	dir string
 }
 
 // New is the library: the downloaded mangas.
-func New() (base.State, error) {
-	_, dataDB, err := cache.DBs()
-	if err != nil {
-		return nil, err
-	}
-	s := &mangasState{
-		library: storage.Library{DB: dataDB},
-		list:    list.New(2, 1, "manga", "mangas", []*mangaItem{}, func(i *mangaItem) _list.DefaultItem { return i }),
-		confirm: newConfirmer(),
-		keyMap:  newMangasKeyMap(),
-	}
-	return s, nil
+func New() base.State {
+	files, err := client.LibraryFiles()
+	s := newMangasState(files)
+	s.err = err
+	return s
 }
 
-func (s *mangasState) reload() tea.Cmd {
-	mangas, err := s.library.Mangas()
-	if err != nil {
-		return func() tea.Msg { return err }
+func newMangasState(files library.Files) *mangasState {
+	s := &mangasState{
+		files:   files,
+		confirm: newDialog(),
+		keys: mangasKeyMap{
+			confirm: util.Bind("chapters", "enter"),
+			scan:    util.Bind("scan", "s"),
+			merge:   util.Bind("merge", "m"),
+			remove:  util.Bind("remove missing", "x"),
+			trash:   util.Bind("trash", "t"),
+			delete:  util.Bind("delete", "d"),
+		},
 	}
-	items := make([]_list.Item, len(mangas))
-	for i, m := range mangas {
-		exists, _ := afs.Afero.DirExists(m.Path())
-		item := &mangaItem{manga: m, missing: !exists}
-		if s.keep != nil && s.keep.manga.ID == m.ID {
-			item.keep = true
-			s.keep = item
+	s.Screen = list.NewScreen(list.New(2, 1, "manga", "mangas", []*mangaItem{}, func(i *mangaItem) _list.DefaultItem { return i }), s.keyMap)
+	return s
+}
+
+func (s *mangasState) keyMap() help.KeyMap {
+	k := s.keys
+	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.remove)}}
+}
+
+func (s *mangasState) reload(ctx context.Context) tea.Cmd {
+	files := s.files
+	return base.Load(ctx, "", func(context.Context) (mangasLoadedMsg, error) {
+		mangas, err := files.Library.Mangas()
+		if err != nil {
+			return mangasLoadedMsg{}, err
 		}
-		items[i] = item
-	}
-	s.trash = trashSummary()
-	return s.list.SetItems(items)
+		items := make([]*mangaItem, len(mangas))
+		for i, m := range mangas {
+			exists, _ := afero.DirExists(files.FS, m.Path())
+			items[i] = &mangaItem{manga: m, missing: !exists}
+		}
+		return mangasLoadedMsg{items: items, trash: trashSummary(files)}, nil
+	}, func(msg mangasLoadedMsg) tea.Msg { return msg })
 }
 
 // trashSummary is the size of the trash, empty if it's empty.
-func trashSummary() string {
-	batches, err := library.Trash(afs.Afero, path.DownloadsDir())
+func trashSummary(files library.Files) string {
+	batches, err := library.Trash(files.FS, files.Root)
 	if err != nil || len(batches) == 0 {
 		return ""
 	}
-	files := 0
+	n := 0
 	for _, b := range batches {
-		files += b.Files
+		n += b.Files
 	}
-	return fmt.Sprintf("%d files in the trash", files)
+	return fmt.Sprintf("%d files in the trash", n)
 }
 
-func (s *mangasState) Backable() bool  { return s.list.Unfiltered() && !s.confirm.active }
-func (s *mangasState) Inputting() bool { return s.list.Filtering() || s.confirm.active }
-func (s *mangasState) KeyMap() help.KeyMap {
-	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)
+func (s *mangasState) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
+func (s *mangasState) Inputting() bool { return s.Screen.Inputting() || s.confirm.Active() }
+func (s *mangasState) Title() base.Title {
+	return base.Title{Text: "Library"}
 }
-func (s *mangasState) Title() base.Title { return base.Title{Text: "Library"} }
-func (s *mangasState) Subtitle() string  { return s.list.Subtitle() }
+
 func (s *mangasState) Status() string {
 	if s.trash != "" {
-		return s.trash + " · " + s.list.Status()
+		return s.trash + " · " + s.List.Status()
 	}
-	return s.list.Status()
+	return s.List.Status()
 }
 
 func (s *mangasState) Resize(size base.Size) tea.Cmd {
-	s.confirm.size = size
-	return s.list.Resize(size)
-}
-
-// reloadMsg asks the list to reload from the library, in Update.
-type reloadMsg struct {
-	notify string
-}
-
-func reloaded(notify string) tea.Cmd {
-	return func() tea.Msg { return reloadMsg{notify: notify} }
+	s.confirm.Resize(size)
+	return s.Screen.Resize(size)
 }
 
 func (s *mangasState) Init(ctx context.Context) tea.Cmd {
-	return tea.Sequence(s.list.Init(), s.reload())
+	if s.err != nil {
+		err := s.err
+		return func() tea.Msg { return err }
+	}
+	return s.reload(ctx)
 }
 
 func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if cmd, done := s.confirm.update(msg); done {
-		return cmd
+	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
+		return s.confirm.Update(msg)
 	}
 	switch msg := msg.(type) {
+	case mangasLoadedMsg:
+		return s.onLoaded(msg)
 	case base.RestoredMsg:
-		return s.reload()
+		return s.reload(ctx)
 	case scannedMsg:
-		return s.onScanned(msg.result)
+		return tea.Batch(s.reload(ctx), s.onScanned(msg))
+	case mergePlannedMsg:
+		s.askMerge(msg)
+		return nil
+	case setRootMsg:
+		// in Update, the config isn't safe to write from the background
+		if err := config.WriteKey(config.Download.Path.Key, msg.dir); err != nil {
+			return func() tea.Msg { return err }
+		}
+		s.files.Root = path.Downloads()
+		return s.scanCmd(ctx)
+	case actionMsg:
+		return msg.run(ctx)
 	case reloadMsg:
-		if msg.notify == "" {
-			return s.reload()
+		if msg.merged {
+			s.keep = 0
 		}
-		return tea.Batch(s.reload(), base.Notify(msg.notify))
+		return withNotify(s.reload(ctx), msg.notify)
 	case tea.KeyMsg:
-		if s.list.Filtering() {
+		if s.List.Filtering() || s.err != nil {
 			break
 		}
-		switch {
-		case key.Matches(msg, s.keyMap.scan):
-			return s.scanCmd()
-		case key.Matches(msg, s.keyMap.trash):
-			return func() tea.Msg { return newTrashState() }
-		}
-		item, ok := s.list.SelectedItem().(*mangaItem)
-		if !ok {
-			break
-		}
-		switch {
-		case key.Matches(msg, s.keyMap.confirm):
-			return func() tea.Msg { return newMangaState(s.library, item.manga) }
-		case key.Matches(msg, s.keyMap.merge):
-			return s.mergeCmd(item)
-		case key.Matches(msg, s.keyMap.delete):
-			message := fmt.Sprintf("Delete %q? Its folder (%d chapters) goes to the trash and it leaves the library.", item.manga.Title, item.manga.Chapters)
-			if item.manga.Dir == "" {
-				message = fmt.Sprintf("Delete %q? Its %d chapters go to the trash and it leaves the library.", item.manga.Title, item.manga.Chapters)
-			}
-			s.confirm.askDelete("Delete", message, s.View(), func() tea.Msg {
-				if err := library.DeleteManga(afs.Afero, s.library, path.DownloadsDir(), item.manga); err != nil {
-					return err
-				}
-				return reloadMsg{notify: fmt.Sprintf("deleted %s (in the trash until emptied)", item.manga.Title)}
-			})
-			if s.keep == item {
-				s.keep, item.keep = nil, false
-			}
-			return nil
-		case key.Matches(msg, s.keyMap.remove):
-			if !item.missing {
-				return base.Notify("only mangas whose folder is missing can be removed from the library")
-			}
-			s.confirm.ask("Remove", fmt.Sprintf("Forget %q? Its folder is gone.", item.manga.Title), s.View(), func() tea.Msg {
-				if err := s.library.RemoveManga(item.manga.ID); err != nil {
-					return err
-				}
-				return reloadMsg{notify: "removed " + item.manga.Title}
-			})
-			return nil
+		if cmd, ok := s.updateKey(ctx, msg); ok {
+			return cmd
 		}
 	}
-	return s.list.Update(msg)
+	return s.List.Update(msg)
 }
 
-// scannedMsg is a finished library scan.
-type scannedMsg struct {
-	result library.ScanResult
-}
-
-func (s *mangasState) scanCmd() tea.Cmd {
-	return tea.Sequence(
-		base.Loading("Scanning the library"),
-		func() tea.Msg {
-			scanner := library.Scanner{FS: afs.Afero, Library: s.library}
-			res, err := scanner.Scan(path.DownloadsDir(), config.Download.Provider.CreateDir.Get())
-			if err != nil {
-				return err
-			}
-			return scannedMsg{result: res}
-		},
-		base.Loaded,
-	)
-}
-
-func (s *mangasState) onScanned(res library.ScanResult) tea.Cmd {
-	root := path.DownloadsDir()
-	if dir := library.OtherRoot(afs.Afero, res.Missing, root, config.Download.Provider.CreateDir.Get()); dir != "" {
-		message := fmt.Sprintf("%d mangas are in %s, but download.path is %s. Use %s as download.path?", len(res.Missing), dir, root, dir)
-		s.confirm.ask("Download path", message, s.View(), func() tea.Msg {
-			if err := config.WriteKey(config.Download.Path.Key, dir); err != nil {
-				return err
-			}
-			return s.scanCmd()()
-		})
-		return s.reload()
+func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
+	switch {
+	case key.Matches(msg, s.keys.scan):
+		if base.Busy(ctx) {
+			return nil, true
+		}
+		return s.scanCmd(ctx), true
+	case key.Matches(msg, s.keys.trash):
+		files := s.files
+		return func() tea.Msg { return newTrashState(files) }, true
 	}
+	item, ok := s.List.SelectedItem().(*mangaItem)
+	if !ok {
+		return nil, false
+	}
+	files := s.files
+	switch {
+	case key.Matches(msg, s.keys.confirm):
+		return func() tea.Msg { return newMangaState(files, item.manga) }, true
+	case key.Matches(msg, s.keys.merge):
+		return s.merge(ctx, item), true
+	case key.Matches(msg, s.keys.delete):
+		m := item.manga
+		message := fmt.Sprintf("Delete %q? Its folder (%d chapters) goes to the trash and it leaves the library.", m.Title, m.Chapters)
+		if m.Dir == "" {
+			message = fmt.Sprintf("Delete %q? Its %d chapters go to the trash and it leaves the library.", m.Title, m.Chapters)
+		}
+		s.confirm.AskDelete("Delete", message, s.View(), action("Deleting "+m.Title, func() (string, error) {
+			return fmt.Sprintf("deleted %s (in the trash until emptied)", m.Title), files.DeleteManga(m)
+		}))
+		return nil, true
+	case key.Matches(msg, s.keys.remove):
+		if !item.missing {
+			return base.Notify("only mangas whose folder is missing can be removed from the library"), true
+		}
+		m := item.manga
+		s.confirm.Ask("Remove", fmt.Sprintf("Forget %q? Its folder is gone.", m.Title), s.View(), action("Removing "+m.Title, func() (string, error) {
+			return "removed " + m.Title, files.Library.RemoveManga(m.ID)
+		}))
+		return nil, true
+	}
+	return nil, false
+}
 
+func (s *mangasState) onLoaded(msg mangasLoadedMsg) tea.Cmd {
+	s.trash = msg.trash
+	kept := false
+	items := make([]_list.Item, len(msg.items))
+	for i, item := range msg.items {
+		if s.keep != 0 && item.manga.ID == s.keep {
+			item.keep, kept = true, true
+		}
+		items[i] = item
+	}
+	// e.g. it was deleted
+	if !kept {
+		s.keep = 0
+	}
+	return s.List.SetItems(items)
+}
+
+func (s *mangasState) scanCmd(ctx context.Context) tea.Cmd {
+	files := s.files
+	providerDirs := config.Download.Provider.CreateDir.Get()
+	return base.Load(ctx, "Scanning the library", func(context.Context) (scannedMsg, error) {
+		root, err := path.Ensure(files.Root)
+		if err != nil {
+			return scannedMsg{}, err
+		}
+		scanner := library.Scanner{FS: files.FS, Library: files.Library}
+		res, err := scanner.Scan(root, providerDirs)
+		if err != nil {
+			return scannedMsg{}, err
+		}
+		return scannedMsg{result: res, otherRoot: library.OtherRoot(files.FS, res.Missing, root, providerDirs)}, nil
+	}, func(msg scannedMsg) tea.Msg { return msg })
+}
+
+func (s *mangasState) onScanned(msg scannedMsg) tea.Cmd {
+	if dir := msg.otherRoot; dir != "" {
+		message := fmt.Sprintf("%d mangas are in %s, but download.path is %s. Use %s as download.path?", len(msg.result.Missing), dir, s.files.Root, dir)
+		s.confirm.Ask("Download path", message, s.View(), func() tea.Msg { return setRootMsg{dir: dir} })
+		return nil
+	}
+	return base.Viewport("Library scan", scanReport(msg.result), color.Accent)
+}
+
+func scanReport(res library.ScanResult) string {
 	report := fmt.Sprintf("Added %d, moved %d, removed %d chapters.\nFound %d moved manga folders, %d new.",
 		res.Added, res.Moved, res.Removed, res.Relocated, res.New)
 	if len(res.Missing) != 0 {
@@ -254,61 +320,49 @@ func (s *mangasState) onScanned(res library.ScanResult) tea.Cmd {
 			report += "\n  " + f
 		}
 	}
-	return tea.Batch(s.reload(), base.Viewport("Library scan", report, color.Accent))
+	return report
 }
 
-func (s *mangasState) mergeCmd(item *mangaItem) tea.Cmd {
+// merge marks the manga to keep, the next one is merged into it.
+func (s *mangasState) merge(ctx context.Context, item *mangaItem) tea.Cmd {
 	switch {
-	case s.keep == nil:
-		s.keep, item.keep = item, true
+	case s.keep == 0:
+		s.keep, item.keep = item.manga.ID, true
 		return base.Notify(fmt.Sprintf("keeping %q, select the manga to merge into it and press m", item.manga.Title))
-	case s.keep == item:
-		s.keep, item.keep = nil, false
+	case s.keep == item.manga.ID:
+		s.keep, item.keep = 0, false
 		return base.Notify("merge cancelled")
 	}
-	keep := s.keep
-	plan, err := library.PlanMerge(afs.Afero, s.library, keep.manga, item.manga)
-	if err != nil {
-		return func() tea.Msg { return err }
-	}
-	message := fmt.Sprintf("Merge %q into %q? %d chapters move, %d already there go to the trash.",
-		item.manga.Title, keep.manga.Title, len(plan.Moves), len(plan.Trashed))
-	s.confirm.ask("Merge", message, s.View(), func() tea.Msg {
-		if err := library.ApplyMerge(afs.Afero, s.library, path.DownloadsDir(), plan); err != nil {
-			return err
+	var keep storage.Manga
+	for _, i := range s.List.Items() {
+		if i := i.(*mangaItem); i.manga.ID == s.keep {
+			keep = i.manga
 		}
-		s.keep = nil
-		return reloadMsg{notify: "merged into " + keep.manga.Title}
+	}
+	if base.Busy(ctx) {
+		return nil
+	}
+	files, other := s.files, item.manga
+	return base.Load(ctx, "Planning the merge", func(context.Context) (mergePlannedMsg, error) {
+		plan, err := files.PlanMerge(keep, other)
+		return mergePlannedMsg{keep: keep, other: other, plan: plan}, err
+	}, func(msg mergePlannedMsg) tea.Msg { return msg })
+}
+
+func (s *mangasState) askMerge(msg mergePlannedMsg) {
+	message := fmt.Sprintf("Merge %q into %q? %d chapters move, %d already there go to the trash.",
+		msg.other.Title, msg.keep.Title, len(msg.plan.Moves), len(msg.plan.Trashed))
+	files := s.files
+	s.confirm.Ask("Merge", message, s.View(), func() tea.Msg {
+		return actionMsg{label: "Merging", do: func() (reloadMsg, error) {
+			return reloadMsg{notify: "merged into " + msg.keep.Title, merged: true}, files.ApplyMerge(msg.plan)
+		}}
 	})
-	return nil
 }
 
 func (s *mangasState) View() string {
-	if s.confirm.active {
-		return s.confirm.view()
+	if s.confirm.Active() {
+		return s.confirm.View()
 	}
-	return s.list.View()
-}
-
-type mangasKeyMap struct {
-	confirm, scan, merge, remove, trash, delete key.Binding
-}
-
-func newMangasKeyMap() mangasKeyMap {
-	return mangasKeyMap{
-		confirm: util.Bind("chapters", "enter"),
-		scan:    util.Bind("scan", "s"),
-		merge:   util.Bind("merge", "m"),
-		remove:  util.Bind("remove missing", "x"),
-		trash:   util.Bind("trash", "t"),
-		delete:  util.Bind("delete", "d"),
-	}
-}
-
-func (k mangasKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash}
-}
-
-func (k mangasKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{append(k.ShortHelp(), k.remove)}
+	return s.List.View()
 }

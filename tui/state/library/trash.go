@@ -9,11 +9,10 @@ import (
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/library"
-	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/util"
-	"github.com/luevano/mangal/v5/util/afs"
 )
 
 var _ base.State = (*trashState)(nil)
@@ -29,80 +28,85 @@ func (i *batchItem) Description() string {
 }
 
 type trashState struct {
-	list    *list.Model
-	confirm confirmer
-	keyMap  trashKeyMap
+	list.Screen
+	files   library.Files
+	confirm *confirm.Dialog
+	empty   key.Binding
 }
 
-func newTrashState() *trashState {
-	return &trashState{
-		list:    list.New(2, 1, "trashed batch", "trashed batches", []*batchItem{}, func(i *batchItem) _list.DefaultItem { return i }),
-		confirm: newConfirmer(),
-		keyMap:  trashKeyMap{empty: util.Bind("empty", "e")},
+type trashLoadedMsg []_list.Item
+
+func newTrashState(files library.Files) *trashState {
+	s := &trashState{
+		files:   files,
+		confirm: newDialog(),
+		empty:   util.Bind("empty", "e"),
 	}
+	s.Screen = list.NewScreen(list.New(2, 1, "trashed batch", "trashed batches", []*batchItem{}, func(i *batchItem) _list.DefaultItem { return i }), s.keyMap)
+	return s
 }
 
-func (s *trashState) reload() tea.Cmd {
-	batches, err := library.Trash(afs.Afero, path.DownloadsDir())
-	if err != nil {
-		return func() tea.Msg { return err }
-	}
-	items := make([]_list.Item, len(batches))
-	for i, b := range batches {
-		items[i] = &batchItem{batch: b}
-	}
-	return s.list.SetItems(items)
+func (s *trashState) keyMap() help.KeyMap { return util.KeyMap{Short: []key.Binding{s.empty}} }
+
+func (s *trashState) reload(ctx context.Context) tea.Cmd {
+	return base.Load(ctx, "", func(context.Context) (trashLoadedMsg, error) {
+		batches, err := library.Trash(s.files.FS, s.files.Root)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]_list.Item, len(batches))
+		for i, b := range batches {
+			items[i] = &batchItem{batch: b}
+		}
+		return items, nil
+	}, func(items trashLoadedMsg) tea.Msg { return items })
 }
 
-func (s *trashState) Backable() bool  { return s.list.Unfiltered() && !s.confirm.active }
-func (s *trashState) Inputting() bool { return s.list.Filtering() || s.confirm.active }
-func (s *trashState) KeyMap() help.KeyMap {
-	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)
-}
+func (s *trashState) Backable() bool    { return s.Screen.Backable() && !s.confirm.Active() }
+func (s *trashState) Inputting() bool   { return s.Screen.Inputting() || s.confirm.Active() }
 func (s *trashState) Title() base.Title { return base.Title{Text: "Trash"} }
-func (s *trashState) Subtitle() string  { return "replaced by merges, emptying deletes them for good" }
-func (s *trashState) Status() string    { return s.list.Status() }
+func (s *trashState) Subtitle() string {
+	return "deleted chapters and mangas, and the copies merges replaced; emptying deletes them for good"
+}
 func (s *trashState) Resize(size base.Size) tea.Cmd {
-	s.confirm.size = size
-	return s.list.Resize(size)
+	s.confirm.Resize(size)
+	return s.Screen.Resize(size)
 }
 
 func (s *trashState) Init(ctx context.Context) tea.Cmd {
-	return tea.Sequence(s.list.Init(), s.reload())
+	return s.reload(ctx)
 }
 
 func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if cmd, done := s.confirm.update(msg); done {
-		return cmd
+	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
+		return s.confirm.Update(msg)
 	}
-	if msg, ok := msg.(reloadMsg); ok {
-		return tea.Batch(s.reload(), base.Notify(msg.notify))
-	}
-	if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, s.keyMap.empty) && !s.list.Filtering() {
-		if len(s.list.Items()) == 0 {
+	switch msg := msg.(type) {
+	case trashLoadedMsg:
+		return s.List.SetItems(msg)
+	case actionMsg:
+		return msg.run(ctx)
+	case reloadMsg:
+		return withNotify(s.reload(ctx), msg.notify)
+	case tea.KeyMsg:
+		if s.List.Filtering() || !key.Matches(msg, s.empty) {
+			break
+		}
+		if len(s.List.Items()) == 0 {
 			return base.Notify("the trash is empty")
 		}
-		s.confirm.ask("Empty the trash", "Delete everything in the trash? It can't be undone.", s.View(), func() tea.Msg {
-			if err := library.EmptyTrash(afs.Afero, path.DownloadsDir()); err != nil {
-				return err
-			}
-			return reloadMsg{notify: "trash emptied"}
-		})
+		files := s.files
+		s.confirm.Ask("Empty the trash", "Delete everything in the trash? It can't be undone.", s.View(), action("Emptying the trash", func() (string, error) {
+			return "trash emptied", library.EmptyTrash(files.FS, files.Root)
+		}))
 		return nil
 	}
-	return s.list.Update(msg)
+	return s.List.Update(msg)
 }
 
 func (s *trashState) View() string {
-	if s.confirm.active {
-		return s.confirm.view()
+	if s.confirm.Active() {
+		return s.confirm.View()
 	}
-	return s.list.View()
+	return s.List.View()
 }
-
-type trashKeyMap struct {
-	empty key.Binding
-}
-
-func (k trashKeyMap) ShortHelp() []key.Binding  { return []key.Binding{k.empty} }
-func (k trashKeyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }

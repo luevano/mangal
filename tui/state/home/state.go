@@ -104,13 +104,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 				return s.providersState
 			}
 		case key.Matches(msg, s.keyMap.library):
-			return func() tea.Msg {
-				state, err := library.New()
-				if err != nil {
-					return err
-				}
-				return state
-			}
+			return func() tea.Msg { return library.New() }
 		case key.Matches(msg, s.keyMap.accounts):
 			return func() tea.Msg {
 				return accounts.New(false)
