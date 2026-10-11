@@ -3,7 +3,6 @@ package util
 import (
 	"fmt"
 
-	orderedmap "github.com/wk8/go-ordered-map/v2"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -57,33 +56,23 @@ func ToGoValue(value lua.LValue) any {
 		return string(value.(lua.LString))
 	case lua.LTTable:
 		table := value.(*lua.LTable)
-		om := orderedmap.New[any, any]()
 
-		var asMap = make(map[any]any)
-
-		table.ForEach(func(key lua.LValue, value lua.LValue) {
-			k, v := ToGoValue(key), ToGoValue(value)
-			asMap[k] = v
-			om.Set(k, v)
-		})
-
-		// check if we can convert table to slice.
-		// if not, return as map.
-		var (
-			prev    float64 = 0
-			asSlice []any
-		)
-		for pair := om.Oldest(); pair != nil; pair = pair.Next() {
-			asNum, ok := pair.Key.(float64)
-			if !ok || asNum != prev+1 {
-				return asMap
+		// a sequence 1..n is a slice, anything else a map
+		var count int
+		table.ForEach(func(lua.LValue, lua.LValue) { count++ })
+		if n := table.Len(); n == count {
+			slice := make([]any, n)
+			for i := range n {
+				slice[i] = ToGoValue(table.RawGetInt(i + 1))
 			}
-
-			prev = asNum
-			asSlice = append(asSlice, pair.Value)
+			return slice
 		}
 
-		return asSlice
+		m := make(map[any]any, count)
+		table.ForEach(func(key lua.LValue, value lua.LValue) {
+			m[ToGoValue(key)] = ToGoValue(value)
+		})
+		return m
 	case lua.LTUserData:
 		return value.(*lua.LUserData).Value
 	default:
