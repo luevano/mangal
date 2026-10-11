@@ -265,10 +265,10 @@ func (s *Service) Add(ctx context.Context, opts AddOptions) (Watch, error) {
 		MangaID:  manga.Info().ID,
 		Title:    manga.Info().Title,
 		Enabled:  true,
-		Interval:  storage.Duration(opts.Interval),
-		Gaps:      s.Options.Gaps,
-		From:      opts.From,
-		Added:     s.now(),
+		Interval: storage.Duration(opts.Interval),
+		Gaps:     s.Options.Gaps,
+		From:     opts.From,
+		Added:    s.now(),
 	}
 	if opts.Gaps != nil {
 		w.Gaps = *opts.Gaps
@@ -310,9 +310,9 @@ func (s *Service) addOffline(opts AddOptions) (Watch, error) {
 		MangaID:  id,
 		Title:    title,
 		Interval: storage.Duration(opts.Interval),
-		Gaps:      s.Options.Gaps,
-		From:      opts.From,
-		Added:     s.now(),
+		Gaps:     s.Options.Gaps,
+		From:     opts.From,
+		Added:    s.now(),
 	}
 	if opts.Enabled != nil {
 		w.Enabled = *opts.Enabled

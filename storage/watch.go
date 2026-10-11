@@ -413,7 +413,7 @@ func scanCheckRun(rows *sql.Rows) (CheckRun, error) {
 // Runs lists the check runs, latest first, with their watch runs and chapters.
 func (s Watches) Runs(f RunFilter) ([]CheckRun, error) {
 	query := `SELECT id, kind, started, finished, watches, new_chapters, errors FROM check_runs
-WHERE started >= ?1 AND (?2 = 0 AND ?3 = '' AND ?4 = '' OR EXISTS (SELECT 1 FROM watch_runs w WHERE w.check_run = check_runs.id AND `+runFilterWhere+`))
+WHERE started >= ?1 AND (?2 = 0 AND ?3 = '' AND ?4 = '' OR EXISTS (SELECT 1 FROM watch_runs w WHERE w.check_run = check_runs.id AND ` + runFilterWhere + `))
 ORDER BY started DESC, id DESC`
 	args := []any{unix(f.Since), f.Watch, f.Provider, f.MangaID}
 	if f.Limit > 0 {
