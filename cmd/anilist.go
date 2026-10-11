@@ -102,7 +102,7 @@ func manualLogin(cmd *cobra.Command, in *bufio.Reader, browser bool) oauth.Manua
 			fmt.Fprintln(out, "it ends up on (it won't load) and press enter:")
 		},
 		BadPaste: func(err error) {
-			fmt.Fprintf(out, "%s, paste it again:\n", err)
+			fmt.Fprintf(out, "Can't use that (%s), paste the address again:\n", err)
 		},
 	}
 }

@@ -32,7 +32,11 @@ func testLogin(t *testing.T, secret string, browse func(base string)) (*AnilistL
 	return o, &ln
 }
 
-var noRedirects = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+// noKeepAlive keeps the transport from dialing spare connections, the server's shutdown
+// waits seconds for those
+var noKeepAlive = &http.Transport{DisableKeepAlives: true}
+
+var noRedirects = &http.Client{Transport: noKeepAlive, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
 // loginState follows the login page to AniList's url and returns its state.
 func loginState(t *testing.T, base string) string {
@@ -51,7 +55,7 @@ func loginState(t *testing.T, base string) string {
 }
 
 func get(t *testing.T, u string) int {
-	res, err := http.Get(u)
+	res, err := (&http.Client{Transport: noKeepAlive}).Get(u)
 	if err != nil {
 		t.Error(err)
 		return 0

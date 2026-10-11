@@ -87,3 +87,18 @@ func TestAnilistManualImplicit(t *testing.T) {
 		t.Errorf("got %v, want ErrBadPaste", err)
 	}
 }
+
+func TestManualPastedDenialEnds(t *testing.T) {
+	o, err := NewMyAnimeListLoginOption("id", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.server.listen = func() (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") }
+	pasted := make(chan string, 1)
+	pasted <- MyAnimeListServerCallbackURL + "?error=access_denied"
+	var providerErr *ProviderError
+	err = o.AuthorizeManual(context.Background(), Manual{Pasted: pasted, Show: func(string) {}, BadPaste: func(error) { t.Error("denial taken as a bad paste") }})
+	if !errors.As(err, &providerErr) || providerErr.Code != "access_denied" {
+		t.Errorf("got %v, want the denial", err)
+	}
+}

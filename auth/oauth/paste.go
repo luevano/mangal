@@ -9,7 +9,7 @@ import (
 )
 
 // ErrBadPaste is a paste that is neither the redirected address nor a code (or token).
-var ErrBadPaste = errors.New("oauth: paste the address the browser ended up on, or the code in it")
+var ErrBadPaste = errors.New("oauth: neither the redirected address nor a code")
 
 // pasted is a parsed paste: the code of a code grant, or the token of an implicit grant.
 type pasted struct {

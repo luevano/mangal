@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -137,7 +138,9 @@ func authorize(ctx context.Context, f flow, s server, manual *Manual) (*oauth2.T
 				continue
 			}
 			token, err := f.paste(ctx, state, input)
-			if err != nil && manual.BadPaste != nil && ctx.Err() == nil {
+			// the provider's answer (e.g. denied) ends the login
+			var providerErr *ProviderError
+			if err != nil && manual.BadPaste != nil && ctx.Err() == nil && !errors.As(err, &providerErr) {
 				manual.BadPaste(err)
 				continue
 			}
@@ -217,9 +220,19 @@ func codeGrantHandler(ctx context.Context, loginPath, callbackPath, authURL stri
 	return mux
 }
 
-func providerError(e, description string) error {
-	if description != "" {
-		return fmt.Errorf("oauth: %s: %s", e, description)
+// ProviderError is the provider's answer instead of a code or token (e.g. access_denied).
+type ProviderError struct {
+	Code        string
+	Description string
+}
+
+func (e *ProviderError) Error() string {
+	if e.Description != "" {
+		return fmt.Sprintf("oauth: %s: %s", e.Code, e.Description)
 	}
-	return fmt.Errorf("oauth: %s", e)
+	return "oauth: " + e.Code
+}
+
+func providerError(e, description string) error {
+	return &ProviderError{Code: e, Description: description}
 }
