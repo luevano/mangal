@@ -109,6 +109,9 @@ func formatLast(n *float32) string {
 }
 
 var watchAddArgs = struct {
+	Offline   bool
+	Title     string
+	Enabled   bool
 	Selector  string
 	AnilistID int
 	From      float32
@@ -119,6 +122,9 @@ var watchAddArgs = struct {
 func init() {
 	watchCmd.AddCommand(watchAddCmd)
 	f := watchAddCmd.Flags()
+	f.BoolVar(&watchAddArgs.Offline, "offline", false, "Add it as given (mid:<id>, --title) without asking the provider, which needn't be installed; paused unless --enabled")
+	f.StringVar(&watchAddArgs.Title, "title", "", "Title of an --offline watch (default: the id)")
+	f.BoolVar(&watchAddArgs.Enabled, "enabled", false, "An --offline watch starts enabled (checked once its provider is installed)")
 	f.StringVarP(&watchAddArgs.Selector, "manga-selector", "m", "exact", "Manga selector of the search (first|last|exact|closest|<index>)")
 	f.IntVarP(&watchAddArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind (its metadata is used for the downloads)")
 	f.Float32Var(&watchAddArgs.From, "from", 0, "Treat the chapters up to this number as downloaded (read elsewhere)")
@@ -148,6 +154,11 @@ ones after --from.`,
 			Selector:  watchAddArgs.Selector,
 			AnilistID: watchAddArgs.AnilistID,
 			Interval:  watchAddArgs.Interval,
+			Offline:   watchAddArgs.Offline,
+			Title:     watchAddArgs.Title,
+		}
+		if watchAddArgs.Offline {
+			opts.Enabled = &watchAddArgs.Enabled
 		}
 		if cmd.Flags().Changed("from") {
 			opts.From = &watchAddArgs.From
@@ -159,7 +170,14 @@ ones after --from.`,
 		if err != nil {
 			return err
 		}
-		successf(cmd, "watching %q from %s (id %d), last downloaded %s", w.Title, w.Provider, w.ID, formatLast(w.LastDownloaded))
+		state := ""
+		switch {
+		case !w.Enabled:
+			state = ", paused"
+		case w.ProviderMissing:
+			state = ", provider missing"
+		}
+		successf(cmd, "watching %q from %s (id %d), last downloaded %s%s", w.Title, w.Provider, w.ID, formatLast(w.LastDownloaded), state)
 		return nil
 	},
 }
@@ -207,8 +225,11 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 	fmt.Fprintln(tw, "ID\tPROVIDER\tTITLE\tLAST\tCHECKED\tNEXT\tERRORS")
 	for _, w := range watches {
 		next := formatTime(w.NextCheck)
-		if !w.Enabled {
+		switch {
+		case !w.Enabled:
 			next = "paused"
+		case w.ProviderMissing:
+			next = "provider missing"
 		}
 		errs := "-"
 		if w.Failures > 0 {
@@ -276,10 +297,17 @@ func pauseCmd(resume bool) *cobra.Command {
 	if resume {
 		use, short, done = "resume", "Resume paused watches", "resumed"
 	}
-	return &cobra.Command{
-		Use:   use + " <id>...",
+	var provider string
+	c := &cobra.Command{
+		Use:   use + " <id>... | --provider <id>",
 		Short: short,
-		Args:  cobra.MinimumNArgs(1),
+		Long:  short + `; --provider for every watch of a provider (e.g. while the site is broken).`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if provider == "" {
+				return cobra.MinimumNArgs(1)(cmd, args)
+			}
+			return cobra.NoArgs(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ids, err := parseIDs(args)
 			if err != nil {
@@ -288,6 +316,21 @@ func pauseCmd(resume bool) *cobra.Command {
 			svc, err := newWatchManager(cmd)
 			if err != nil {
 				return err
+			}
+			if provider != "" {
+				all, err := svc.List(cmd.Context())
+				if err != nil {
+					return err
+				}
+				for _, w := range all {
+					if w.Provider == provider && w.Enabled != resume {
+						ids = append(ids, w.ID)
+					}
+				}
+				if len(ids) == 0 {
+					successf(cmd, "no watches of %s to %s", provider, use)
+					return nil
+				}
 			}
 			for _, id := range ids {
 				w, err := svc.SetEnabled(cmd.Context(), id, resume)
@@ -299,6 +342,9 @@ func pauseCmd(resume bool) *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().StringVar(&provider, "provider", "", "Every watch of this provider")
+	_ = c.RegisterFlagCompletionFunc("provider", completionProviderIDs)
+	return c
 }
 
 var watchSetArgs = struct {
