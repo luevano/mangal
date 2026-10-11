@@ -1,0 +1,131 @@
+package watches
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
+	_list "github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/list"
+	"github.com/luevano/mangal/v5/tui/util"
+)
+
+var _ base.State = (*detailsState)(nil)
+
+// detailsState is a watch: its settings and the history of its checks.
+type detailsState struct {
+	list.Screen
+	manager watch.Manager
+	w       watch.Watch
+	backoff int
+	size    base.Size
+	now     func() time.Time
+
+	open, edit, pause, refresh key.Binding
+}
+
+type detailsMsg struct {
+	w    watch.Watch
+	runs []watch.CheckRun
+}
+
+func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState {
+	s := &detailsState{
+		manager: m,
+		w:       w,
+		backoff: backoff,
+		now:     time.Now,
+		open:    util.Bind("details", "enter"),
+		edit:    util.Bind("edit", "e"),
+		pause:   util.Bind("pause/resume", "p"),
+		refresh: util.Bind("refresh", "r"),
+	}
+	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
+	return s
+}
+
+func (s *detailsState) keyMap() help.KeyMap {
+	return util.KeyMap{Short: []key.Binding{s.open, s.edit, s.pause, s.refresh}}
+}
+
+func (s *detailsState) Title() base.Title { return base.Title{Text: s.w.Title} }
+
+func (s *detailsState) header() string {
+	return settings(s.w, s.backoff, s.now()) + "\n"
+}
+
+func (s *detailsState) Resize(size base.Size) tea.Cmd {
+	s.size = size
+	size.Height = max(1, size.Height-lipgloss.Height(s.header())-1)
+	return s.Screen.Resize(size)
+}
+
+func (s *detailsState) Init(ctx context.Context) tea.Cmd { return s.reload(ctx, "Loading the checks") }
+
+func (s *detailsState) reload(ctx context.Context, label string) tea.Cmd {
+	m, id := s.manager, s.w.ID
+	return base.Load(ctx, label, func(ctx context.Context) (detailsMsg, error) {
+		w, err := m.Get(ctx, id)
+		if err != nil {
+			return detailsMsg{}, err
+		}
+		runs, err := m.Runs(ctx, watch.RunFilter{Watch: id, Limit: maxRuns})
+		return detailsMsg{w: w, runs: runs}, err
+	}, func(msg detailsMsg) tea.Msg { return msg })
+}
+
+// historyItems are the watch's checks in the runs, latest first.
+func historyItems(id int64, runs []watch.CheckRun) []_list.Item {
+	var items []_list.Item
+	for _, run := range runs {
+		for _, r := range run.Results {
+			if r.Watch == id {
+				items = append(items, &runItem{r: r, kind: run.Kind})
+			}
+		}
+	}
+	return items
+}
+
+func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
+	switch msg := msg.(type) {
+	case detailsMsg:
+		s.w = msg.w
+		return tea.Batch(s.List.SetItems(historyItems(s.w.ID, msg.runs)), s.Resize(s.size))
+	case base.RestoredMsg:
+		return s.reload(ctx, "")
+	case actionMsg:
+		return base.Load(ctx, msg.label, msg.do, func(notify string) tea.Msg { return changedMsg{notify: notify} })
+	case changedMsg:
+		return tea.Batch(s.reload(ctx, ""), base.Notify(msg.notify))
+	case tea.KeyMsg:
+		if s.List.Filtering() {
+			break
+		}
+		m, w := s.manager, s.w
+		switch {
+		case key.Matches(msg, s.refresh):
+			return s.reload(ctx, "Refreshing")
+		case key.Matches(msg, s.edit):
+			return func() tea.Msg { return newEditState(m, w) }
+		case key.Matches(msg, s.pause):
+			return pauseCmd(m, w)
+		case key.Matches(msg, s.open):
+			if i, ok := s.List.SelectedItem().(*runItem); ok {
+				return showRun(i.r)
+			}
+			return nil
+		}
+	}
+	return s.List.Update(msg)
+}
+
+func (s *detailsState) View() string {
+	return strings.Join([]string{s.header(), s.List.View()}, "\n")
+}
