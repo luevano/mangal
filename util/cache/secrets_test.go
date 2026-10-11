@@ -71,8 +71,16 @@ func TestAPIClientsBesideLogins(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	before, err := AuthFingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := SetMyAnimeListClient("mal-id", "mal-secret"); err != nil {
 		t.Fatal(err)
+	}
+	// mangal serve reloads the providers on a change
+	if after, err := AuthFingerprint(); err != nil || after == before {
+		t.Errorf("auth fingerprint unchanged by a new client (%v)", err)
 	}
 	if err := SetAnilistClient("al-id", ""); err != nil {
 		t.Fatal(err)
