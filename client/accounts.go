@@ -7,6 +7,8 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/client/kitsu"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -19,6 +21,8 @@ type AccountEntry struct {
 	libmangal.Account
 	// Provider is the provider id, empty for metadata providers (e.g. Anilist).
 	Provider string
+	// Metadata is the metadata provider's source, zero for providers.
+	Metadata metadata.IDSource
 	// Checked is when the account was fetched, it may come from the cache.
 	Checked time.Time
 	// Err is why the account couldn't be fetched.
@@ -30,10 +34,10 @@ type cachedAccount struct {
 	Checked time.Time
 }
 
-// Accounts lists the Anilist login and the accounts of the providers that have one,
+// Accounts lists the Anilist and Kitsu logins and the accounts of the providers that have one,
 // cached for accountsTTL unless refresh.
 func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
-	entries := []AccountEntry{anilistAccount(ctx, refresh)}
+	entries := []AccountEntry{anilistAccount(ctx, refresh), kitsuAccount(ctx, refresh)}
 
 	loaders, err := manager.Loaders()
 	if err != nil {
@@ -78,14 +82,14 @@ func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
 func anilistAccount(ctx context.Context, refresh bool) AccountEntry {
 	ani, err := anilist.Anilist()
 	if err != nil {
-		return AccountEntry{Account: libmangal.Account{Service: "Anilist"}, Checked: time.Now(), Err: err}
+		return AccountEntry{Account: libmangal.Account{Service: "Anilist"}, Metadata: metadata.IDSourceAnilist, Checked: time.Now(), Err: err}
 	}
 	if refresh {
 		_ = anilist.CheckLogin(ctx)
 	} else {
 		_ = anilist.EnsureLogin(ctx)
 	}
-	entry := AccountEntry{Account: metadata.AccountOf(ani), Checked: time.Now()}
+	entry := AccountEntry{Account: metadata.AccountOf(ani), Metadata: metadata.IDSourceAnilist, Checked: time.Now()}
 	login, found, err := anilist.SavedLogin()
 	switch {
 	case err != nil:
@@ -98,6 +102,36 @@ func anilistAccount(ctx context.Context, refresh bool) AccountEntry {
 		entry.Details = append(entry.Details, "l logs in again")
 	case login.Err != nil:
 		entry.User, entry.Status, entry.Expires, entry.Err = login.User, "not checked", login.Expires, login.Err
+	}
+	return entry
+}
+
+// kitsuAccount is the Kitsu login, like anilistAccount. Its token is refreshed when it
+// expires, so there's no expiry shown.
+func kitsuAccount(ctx context.Context, refresh bool) AccountEntry {
+	k, err := kitsu.Kitsu()
+	if err != nil {
+		return AccountEntry{Account: libmangal.Account{Service: "Kitsu"}, Metadata: metadata.IDSourceKitsu, Checked: time.Now(), Err: err}
+	}
+	if refresh {
+		_ = kitsu.CheckLogin(ctx)
+	} else {
+		_ = kitsu.EnsureLogin(ctx)
+	}
+	entry := AccountEntry{Account: metadata.AccountOf(k), Metadata: metadata.IDSourceKitsu, Checked: time.Now()}
+	login, found, err := kitsu.SavedLogin()
+	switch {
+	case err != nil:
+		entry.Err = err
+	case !found, k.Authenticated():
+	case login.Expired():
+		entry.User, entry.Status = login.User, "expired"
+		entry.Details = append(entry.Details, "l logs in again")
+	case login.Err != nil:
+		entry.User, entry.Status, entry.Err = login.User, "not checked", login.Err
+	}
+	if !config.Metadata.Kitsu.Enabled.Get() {
+		entry.Details = append(entry.Details, "unused, metadata.kitsu.enabled is off")
 	}
 	return entry
 }

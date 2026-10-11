@@ -1,5 +1,5 @@
-// Package accounts shows the accounts mangal uses: the Anilist login and the providers'
-// accounts (e.g. the MangaPlus subscription).
+// Package accounts shows the accounts mangal uses: the Anilist and Kitsu logins and the
+// providers' accounts (e.g. the MangaPlus subscription).
 package accounts
 
 import (
@@ -15,11 +15,13 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/anilist"
+	"github.com/luevano/mangal/v5/tui/model/kitsu"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -118,7 +120,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		s.table.SetHeight(len(msg) + 1)
 		return nil
 	case base.RestoredMsg:
-		// e.g. after the Anilist login
+		// e.g. after the Anilist or Kitsu login
 		return s.load(ctx, false)
 	case tea.KeyMsg:
 		if s.inputting {
@@ -172,10 +174,12 @@ func (s *state) login() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	switch entry.Provider {
-	case "":
+	switch {
+	case entry.Metadata == metadata.IDSourceAnilist:
 		return func() tea.Msg { return anilist.New() }
-	case mangaPlusID:
+	case entry.Metadata == metadata.IDSourceKitsu:
+		return func() tea.Msg { return kitsu.New() }
+	case entry.Provider == mangaPlusID:
 		s.inputting = true
 		s.secret.SetValue("")
 		return s.secret.Focus()

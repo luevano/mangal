@@ -161,9 +161,9 @@ The TUI has the same under `l` on the home screen, where `d` deletes a manga or 
 mangal accounts
 ```
 
-Shows the Anilist login and the provider accounts (e.g. the MangaPlus subscription), `a` on the TUI home. From there you can log into Anilist or set the MangaPlus secret. mangal tells you when the Anilist login expires.
+Shows the Anilist and Kitsu logins and the provider accounts (e.g. the MangaPlus subscription), `a` on the TUI home. From there you can log into Anilist or Kitsu or set the MangaPlus secret. mangal tells you when the Anilist login expires.
 
-Metadata comes from [Anilist](https://anilist.co) (or the provider) and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config. Log in with `mangal anilist` to also sync the reading progress when reading from the TUI.
+Metadata comes from [Anilist](https://anilist.co), then [Kitsu](https://kitsu.app) when Anilist finds nothing (`metadata.kitsu.enabled`), or the provider, and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config. Log in with `mangal anilist` to also sync the reading progress when reading from the TUI; `mangal kitsu` and `read.history.kitsu = true` do the same for Kitsu.
 
 ### Templates
 
