@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -151,6 +153,7 @@ func newTestService(t *testing.T) (*watch.Service, *fakeSource) {
 		},
 		Now:     time.Now,
 		OnError: func(err error) { t.Errorf("unexpected: %s", err) },
+		Events:  watch.NewHub(),
 	}
 	return svc, src
 }
@@ -306,7 +309,8 @@ func TestAPICheck(t *testing.T) {
 	}
 	<-started
 	var st watch.Status
-	if code := s.call(t, "GET", "/api/status", "", &st); code != http.StatusOK || !st.Server || !st.Checking || st.Run != resp.Run || st.Version != "test" {
+	if code := s.call(t, "GET", "/api/status", "", &st); code != http.StatusOK || !st.Server || !st.Checking || st.Run != resp.Run || st.Version != "test" ||
+		len(st.Providers) != 1 || st.Providers[0].Provider != "fake" || st.Providers[0].Watch != w.ID || st.Providers[0].Run != resp.Run {
 		t.Errorf("status: %d %+v", code, st)
 	}
 	var e watch.ErrorResponse
@@ -481,5 +485,154 @@ func TestErrorBody(t *testing.T) {
 	var e watch.ErrorResponse
 	if err := json.NewDecoder(bytes.NewReader(rec.Body.Bytes())).Decode(&e); err != nil || rec.Code != http.StatusConflict || e.Code != watch.CodeBusy || !strings.Contains(e.Error, "busy") {
 		t.Errorf("%d %+v %v", rec.Code, e, err)
+	}
+}
+
+// readSSE reads the events of an event stream until stop says so.
+func readSSE(t *testing.T, body io.Reader, stop func(id string, e watch.LiveEvent) bool) {
+	t.Helper()
+	sc := bufio.NewScanner(body)
+	id := ""
+	for sc.Scan() {
+		line := sc.Text()
+		if v, ok := strings.CutPrefix(line, "id: "); ok {
+			id = v
+		}
+		if v, ok := strings.CutPrefix(line, "data: "); ok {
+			var e watch.LiveEvent
+			if err := json.Unmarshal([]byte(v), &e); err != nil {
+				t.Fatalf("event %q: %s", v, err)
+			}
+			if fmt.Sprint(e.Seq) != id {
+				t.Errorf("id %s of event %d", id, e.Seq)
+			}
+			if stop(id, e) {
+				return
+			}
+		}
+	}
+	t.Fatalf("stream ended: %v", sc.Err())
+}
+
+func TestAPIEvents(t *testing.T) {
+	s := newTestServer(t, "tok")
+	ctx := context.Background()
+	r := watch.NewRemote(s.URL, "tok")
+	r.PollInterval = 10 * time.Millisecond
+	w, err := r.Add(ctx, watch.AddOptions{Provider: "fake", MangaID: "opm"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	block := make(chan struct{})
+	started := make(chan struct{})
+	s.src.mu.Lock()
+	s.src.block, s.src.started = block, started
+	s.src.mu.Unlock()
+	var resp watch.CheckResponse
+	req, _ := http.NewRequest("POST", s.URL+"/api/check", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer tok")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = json.NewDecoder(res.Body).Decode(&resp)
+	res.Body.Close()
+	<-started
+
+	// connected mid-run: what happened so far
+	get := func(since string) *http.Response {
+		req, _ := http.NewRequest("GET", s.URL+"/api/events"+since, nil)
+		req.Header.Set("Authorization", "Bearer tok")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil || res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/event-stream" {
+			t.Fatalf("events: %v %+v", err, res)
+		}
+		return res
+	}
+	res = get("")
+	var kinds []string
+	foundID := ""
+	readSSE(t, res.Body, func(id string, e watch.LiveEvent) bool {
+		if e.Run != resp.Run {
+			t.Errorf("event of run %d", e.Run)
+		}
+		kinds = append(kinds, e.Kind)
+		if e.Kind == watch.LiveFound {
+			foundID = id
+			if e.Watch != w.ID || e.Provider != "fake" || !strings.Contains(e.Message, "3 to download") {
+				t.Errorf("found %+v", e)
+			}
+		}
+		return e.Kind == watch.LiveFound
+	})
+	res.Body.Close()
+	if !slices.Equal(kinds, []string{watch.LiveRunStart, watch.LiveProviderStart, watch.LiveStart, watch.LiveFound}) {
+		t.Errorf("kinds %v", kinds)
+	}
+
+	// the remote subscription, and a reconnection after the found event
+	sub, err := r.Subscribe(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res = get("?since=" + foundID)
+	defer res.Body.Close()
+	close(block)
+	first := true
+	readSSE(t, res.Body, func(id string, e watch.LiveEvent) bool {
+		if first && e.Kind != watch.LiveDone {
+			t.Errorf("after the found event: %+v", e)
+		}
+		first = false
+		return e.Kind == watch.LiveRunDone
+	})
+	var subKinds []string
+	for e := range sub {
+		subKinds = append(subKinds, e.Kind)
+		if e.Kind == watch.LiveRunDone {
+			break
+		}
+	}
+	if len(subKinds) != 7 || subKinds[0] != watch.LiveRunStart || subKinds[4] != watch.LiveDone {
+		t.Errorf("subscription %v", subKinds)
+	}
+
+	if _, err := watch.NewRemote(s.URL, "").Subscribe(ctx); err == nil {
+		t.Error("subscribed without the token")
+	}
+}
+
+// TestCLIWhileServing: a `watch check` of another process (another Service on the same
+// data db) can't check the provider the server checks, and sees it only as locked.
+func TestCLIWhileServing(t *testing.T) {
+	s := newTestServer(t, "")
+	var w watch.Watch
+	if code := s.call(t, "POST", "/api/watches", `{"provider":"fake","manga_id":"opm"}`, &w); code != http.StatusCreated {
+		t.Fatal(code)
+	}
+	block := make(chan struct{})
+	started := make(chan struct{})
+	s.src.mu.Lock()
+	s.src.block, s.src.started = block, started
+	s.src.mu.Unlock()
+	var resp watch.CheckResponse
+	if code := s.call(t, "POST", "/api/check", `{}`, &resp); code != http.StatusAccepted {
+		t.Fatal(code)
+	}
+	<-started
+	cli := *s.svc
+	cli.Events = watch.NewHub()
+	ctx := context.Background()
+	if _, err := cli.Check(ctx, []int64{w.ID}, watch.CheckOptions{}); !errors.Is(err, watch.ErrBusy) {
+		t.Errorf("cli check while serving: %v", err)
+	}
+	st, err := cli.Status(ctx)
+	if ps, ok := st.Provider("fake"); err != nil || !ok || ps.Watch != 0 || ps.PID == 0 {
+		t.Errorf("cli status %+v %v", st, err)
+	}
+	close(block)
+	waitRun(t, s, resp.Run)
+	if _, err := cli.Check(ctx, []int64{w.ID}, watch.CheckOptions{}); err != nil {
+		t.Errorf("cli check after: %v", err)
 	}
 }

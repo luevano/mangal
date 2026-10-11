@@ -128,6 +128,13 @@ func (h *Hub) Subscribe(ctx context.Context) <-chan LiveEvent {
 	return ch
 }
 
+// Seq is the Seq of the last event.
+func (h *Hub) Seq() uint64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.seq
+}
+
 // Recent are the kept events, by Seq.
 func (h *Hub) Recent() []LiveEvent {
 	h.mu.Lock()

@@ -73,7 +73,7 @@ func (l logger) Errorf(format string, a ...any) {
 	l.print("error: ", fmt.Sprintf(format, a...))
 }
 
-// Run serves until ctx is cancelled (SIGTERM, ctrl+c): the running check is cancelled
+// Run serves until ctx is cancelled (SIGTERM, ctrl+c): the running checks are cancelled
 // (the chapter being downloaded finished or dropped) and recorded, then the server stops.
 // It logs to out and the log file.
 func Run(ctx context.Context, args Args, out io.Writer) error {
@@ -269,7 +269,7 @@ func (r *reloader) reload() checker {
 		}
 		if err != nil {
 			r.log.Warnf("re-read the config: %s", err)
-			return svc
+			return serviceChecker{svc}
 		}
 		values[key] = v
 	}
@@ -287,13 +287,13 @@ func (r *reloader) reload() checker {
 	}
 	r.last = values
 	if len(changed) == 0 {
-		return svc
+		return serviceChecker{svc}
 	}
 	r.log.Infof("config changed: %s", strings.Join(changed, ", "))
 	next := *svc
 	next.Options = optionsFrom(svc.Options, values)
 	r.current.Store(&next)
-	return &next
+	return serviceChecker{&next}
 }
 
 // optionsFrom are the options with the watch.* values (as config.Parse returns them).

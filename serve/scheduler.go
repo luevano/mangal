@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/luevano/mangal/v5/client"
@@ -16,12 +17,21 @@ type checker interface {
 	List(ctx context.Context) ([]watch.Watch, error)
 	GapsDue(w storage.Watch, now time.Time) bool
 	Check(ctx context.Context, ids []int64, opts watch.CheckOptions) (watch.Report, error)
+	// Parallel is how many providers are checked at once (watch.parallel_providers).
+	Parallel() int
 }
 
-// Scheduler checks the watches when they're due: every cycle (at most MaxSleep apart, or
-// when the earliest watch is due) the due ones are checked in a scheduled run, then the
-// ones whose gap filling is due in a gaps run. A run that finds another check running
-// (ErrBusy, e.g. `mangal watch check`) is tried again the next cycle.
+// serviceChecker is the checker of a watch.Service.
+type serviceChecker struct{ *watch.Service }
+
+func (c serviceChecker) Parallel() int { return c.Options.ParallelProviders }
+
+// Scheduler checks the watches when they're due, each provider on its own: every cycle
+// (at most MaxSleep apart, when the earliest watch is due, or when a provider's run ends)
+// each provider with due watches gets a scheduled run of them, then a gaps run of the
+// ones whose gap filling is due, up to Parallel providers at once. A provider another
+// check has (ErrBusy, e.g. `mangal watch check` or an API check) or whose run failed is
+// tried again after MaxSleep.
 type Scheduler struct {
 	// Checker is the watch service to use for a cycle (its options may change between
 	// cycles).
@@ -33,14 +43,21 @@ type Scheduler struct {
 	MaxSleep time.Duration
 	// Log is told what happens.
 	Log logger
-	// Runs tracks the running check.
+	// Runs tracks the running checks.
 	Runs *runs
 
 	wake chan struct{}
+
+	mu sync.Mutex
+	// running are the providers being checked by the scheduler
+	running map[string]bool
+	// retry are the providers not to check again before then
+	retry map[string]time.Time
+	wg    sync.WaitGroup
 }
 
-// minSleep keeps a watch that stays due (e.g. its checks keep being skipped) from being
-// checked in a loop.
+// minSleep keeps a provider whose watches stay due (e.g. their checks keep being skipped)
+// from being checked in a loop.
 const minSleep = 5 * time.Second
 
 func newScheduler(c func() checker, log logger, r *runs) *Scheduler {
@@ -52,10 +69,13 @@ func newScheduler(c func() checker, log logger, r *runs) *Scheduler {
 		Log:      log,
 		Runs:     r,
 		wake:     make(chan struct{}, 1),
+		running:  map[string]bool{},
+		retry:    map[string]time.Time{},
 	}
 }
 
-// Wake makes the scheduler look at the watches now (one was added or changed).
+// Wake makes the scheduler look at the watches now (one was added or changed, a provider
+// is free).
 func (s *Scheduler) Wake() {
 	select {
 	case s.wake <- struct{}{}:
@@ -63,9 +83,10 @@ func (s *Scheduler) Wake() {
 	}
 }
 
-// Run schedules until ctx is cancelled, which also cancels the running check (it records
-// what it got).
+// Run schedules until ctx is cancelled, which also cancels the running checks (they
+// record what they got); it returns once they're done.
 func (s *Scheduler) Run(ctx context.Context) {
+	defer s.wg.Wait()
 	for {
 		sleep := s.cycle(ctx)
 		if ctx.Err() != nil {
@@ -80,7 +101,12 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}
 }
 
-// cycle checks what's due and says how long to sleep.
+// work is what a provider's run checks.
+type work struct {
+	due, gaps []int64
+}
+
+// cycle starts the runs of the providers with something due and says how long to sleep.
 func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 	c := s.Checker()
 	now := s.Now()
@@ -89,50 +115,88 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 		s.Log.Errorf("list the watches: %s", err)
 		return s.MaxSleep
 	}
-	var due, gaps []int64
+	var providers []string
+	todo := map[string]*work{}
+	add := func(provider string) *work {
+		if w, ok := todo[provider]; ok {
+			return w
+		}
+		providers = append(providers, provider)
+		todo[provider] = &work{}
+		return todo[provider]
+	}
 	for _, w := range all {
 		switch {
-		case !w.Enabled:
+		case !w.Enabled || w.ProviderMissing:
 		case !w.NextCheck.After(now):
-			due = append(due, w.ID)
+			add(w.Provider).due = append(add(w.Provider).due, w.ID)
 		case c.GapsDue(w.Watch, now):
-			gaps = append(gaps, w.ID)
+			add(w.Provider).gaps = append(add(w.Provider).gaps, w.ID)
 		}
 	}
-	ok := true
-	if len(due) > 0 {
-		ok = s.check(ctx, c, due, watch.CheckOptions{Kind: watch.KindScheduled})
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	parallel := max(1, c.Parallel())
+	for _, p := range providers {
+		if ctx.Err() != nil || len(s.running) >= parallel {
+			break
+		}
+		if s.running[p] || now.Before(s.retry[p]) {
+			continue
+		}
+		s.running[p] = true
+		s.wg.Add(1)
+		go s.runProvider(ctx, c, p, *todo[p])
 	}
-	if len(gaps) > 0 && ctx.Err() == nil {
-		ok = s.check(ctx, c, gaps, watch.CheckOptions{Kind: watch.KindGaps, Gaps: true}) && ok
-	}
-	sleep := s.MaxSleep
 	if ctx.Err() != nil {
 		return 0
 	}
-	if !ok {
-		// busy or broken, the due watches stay due: next cycle
-		return sleep
-	}
-	if len(due) > 0 || len(gaps) > 0 {
-		if all, err = c.List(ctx); err != nil {
-			return sleep
-		}
-	}
-	now = s.Now()
+
+	// until the earliest watch of a provider that can start is due; a running provider,
+	// or one waiting for a free slot, wakes it when its run ends
+	full := len(s.running) >= parallel
+	sleep := s.MaxSleep
 	for _, w := range all {
-		if w.Enabled {
-			sleep = min(sleep, w.NextCheck.Sub(now))
+		if !w.Enabled || w.ProviderMissing || s.running[w.Provider] || (full && !w.NextCheck.After(now)) {
+			continue
 		}
+		next := w.NextCheck
+		if r := s.retry[w.Provider]; next.Before(r) {
+			next = r
+		}
+		sleep = min(sleep, next.Sub(now))
 	}
 	return max(sleep, minSleep)
 }
 
+// runProvider checks the provider's due watches, then the ones whose gaps are due.
+func (s *Scheduler) runProvider(ctx context.Context, c checker, provider string, w work) {
+	defer s.wg.Done()
+	ok := true
+	if len(w.due) > 0 {
+		ok = s.check(ctx, c, provider, w.due, watch.CheckOptions{Kind: watch.KindScheduled})
+	}
+	if len(w.gaps) > 0 && ctx.Err() == nil {
+		ok = s.check(ctx, c, provider, w.gaps, watch.CheckOptions{Kind: watch.KindGaps, Gaps: true}) && ok
+	}
+	s.mu.Lock()
+	delete(s.running, provider)
+	wait := minSleep
+	if !ok {
+		// busy or broken: the due watches stay due
+		wait = s.MaxSleep
+	}
+	s.retry[provider] = s.Now().Add(wait)
+	s.mu.Unlock()
+	s.Wake()
+}
+
 // check runs one check, logging it, false when it couldn't run.
-func (s *Scheduler) check(ctx context.Context, c checker, ids []int64, opts watch.CheckOptions) bool {
+func (s *Scheduler) check(ctx context.Context, c checker, provider string, ids []int64, opts watch.CheckOptions) bool {
 	opts.OnRun = func(run storage.CheckRun) {
 		s.Runs.start(run.ID, nil)
-		s.Log.Infof("%s check %d: %s", run.Kind, run.ID, stringutil.Quantify(len(ids), "watch", "watches"))
+		s.Log.Infof("%s check %d of %s: %s", run.Kind, run.ID, provider, stringutil.Quantify(len(ids), "watch", "watches"))
 	}
 	opts.OnEvent = logEvents(s.Log, false)
 	report, err := c.Check(ctx, ids, opts)
@@ -141,9 +205,9 @@ func (s *Scheduler) check(ctx context.Context, c checker, ids []int64, opts watc
 	}
 	switch {
 	case errors.Is(err, watch.ErrBusy):
-		s.Log.Infof("%s check of %s postponed: %s", opts.Kind, stringutil.Quantify(len(ids), "watch", "watches"), err)
+		s.Log.Infof("%s check of %s postponed: %s", opts.Kind, provider, err)
 	case err != nil:
-		s.Log.Errorf("%s check: %s", opts.Kind, err)
+		s.Log.Errorf("%s check of %s: %s", opts.Kind, provider, err)
 	default:
 		logReport(s.Log, report)
 		return true

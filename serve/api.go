@@ -1,12 +1,16 @@
 package serve
 
 import (
+	"cmp"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,18 +21,21 @@ import (
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
-// runs tracks the check runs of the server: the running one and how to cancel the ones
+// runs tracks the check runs of the server: the running ones and how to cancel the ones
 // asked through the API.
 type runs struct {
 	mu      sync.Mutex
-	current int64
+	current map[int64]bool
 	cancels map[int64]context.CancelFunc
 }
 
 func (r *runs) start(id int64, cancel context.CancelFunc) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.current = id
+	if r.current == nil {
+		r.current = map[int64]bool{}
+	}
+	r.current[id] = true
 	if cancel != nil {
 		if r.cancels == nil {
 			r.cancels = map[int64]context.CancelFunc{}
@@ -40,16 +47,17 @@ func (r *runs) start(id int64, cancel context.CancelFunc) {
 func (r *runs) done(id int64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.current == id {
-		r.current = 0
-	}
+	delete(r.current, id)
 	delete(r.cancels, id)
 }
 
-func (r *runs) running() int64 {
+// running are the running check runs, by id.
+func (r *runs) running() []int64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.current
+	ids := slices.Collect(maps.Keys(r.current))
+	slices.Sort(ids)
+	return ids
 }
 
 func (r *runs) cancel(id int64) bool {
@@ -104,6 +112,7 @@ func (a *API) Register(mux *http.ServeMux) {
 	handle("GET /api/runs", a.runs)
 	handle("GET /api/runs/{id}", a.run)
 	handle("POST /api/runs/{id}/cancel", a.cancel)
+	handle("GET /api/events", a.events)
 }
 
 func (a *API) auth(next http.Handler) http.Handler {
@@ -192,7 +201,10 @@ func (a *API) status(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	st.Server, st.Address, st.Version, st.Started = true, a.Info.Address, a.Info.Version, a.Info.Started
-	st.Run = a.Runs.running()
+	st.Runs = a.Runs.running()
+	if len(st.Runs) > 0 {
+		st.Run = st.Runs[0]
+	}
 	writeJSON(w, http.StatusOK, st)
 	return nil
 }
@@ -322,7 +334,7 @@ func (a *API) check(w http.ResponseWriter, r *http.Request) error {
 
 	// runs in the server, not cancelled with the request
 	ctx, cancel := context.WithCancel(a.ctx)
-	started := make(chan int64, 1)
+	started := make(chan watch.CheckResponse, 1)
 	failed := make(chan error, 1)
 	ended := make(chan struct{})
 	a.checks.Add(1)
@@ -331,8 +343,10 @@ func (a *API) check(w http.ResponseWriter, r *http.Request) error {
 		defer close(ended)
 		defer cancel()
 		var id int64
+		var busy []string
 		report, err := m.Check(ctx, req.IDs, watch.CheckOptions{Kind: kind, Gaps: req.Gaps,
 			OnEvent: logEvents(a.Log, false),
+			OnBusy:  func(providers []string) { busy = providers },
 			OnRun: func(run storage.CheckRun) {
 				id = run.ID
 				a.Runs.start(id, cancel)
@@ -340,8 +354,11 @@ func (a *API) check(w http.ResponseWriter, r *http.Request) error {
 				if len(req.IDs) > 0 {
 					what = stringutil.Quantify(len(req.IDs), "watch", "watches")
 				}
+				if len(busy) > 0 {
+					what += " (busy, skipped: " + strings.Join(busy, ", ") + ")"
+				}
 				a.Log.Infof("%s check %d (asked through the API): %s", run.Kind, id, what)
-				started <- id
+				started <- watch.CheckResponse{Run: id, Busy: busy}
 			},
 		})
 		if id != 0 {
@@ -357,15 +374,15 @@ func (a *API) check(w http.ResponseWriter, r *http.Request) error {
 		}
 	}()
 	select {
-	case id := <-started:
-		writeJSON(w, http.StatusAccepted, watch.CheckResponse{Run: id})
+	case resp := <-started:
+		writeJSON(w, http.StatusAccepted, resp)
 		return nil
 	case err := <-failed:
 		return err
 	case <-ended:
 		select {
-		case id := <-started:
-			writeJSON(w, http.StatusAccepted, watch.CheckResponse{Run: id})
+		case resp := <-started:
+			writeJSON(w, http.StatusAccepted, resp)
 			return nil
 		case err := <-failed:
 			return err
@@ -434,6 +451,71 @@ func (a *API) cancel(w http.ResponseWriter, r *http.Request) error {
 	a.Log.Infof("check %d cancelled through the API", id)
 	w.WriteHeader(http.StatusAccepted)
 	return nil
+}
+
+// eventsPing is how often the event stream sends a keep-alive.
+var eventsPing = 30 * time.Second
+
+// events streams the live events of the checks as server-sent events (id: the event's
+// Seq, data: its JSON): the recent ones of the running checks first, after the Seq in
+// ?since= or Last-Event-ID (a reconnection), then each one as it happens.
+func (a *API) events(w http.ResponseWriter, r *http.Request) error {
+	var since uint64
+	if s := cmp.Or(r.URL.Query().Get("since"), r.Header.Get("Last-Event-ID")); s != "" {
+		n, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return badRequest("since: %q isn't an event id", s)
+		}
+		since = n
+	}
+	m := a.Manager()
+	if svc, ok := m.(*watch.Service); ok && svc.Events != nil && since > svc.Events.Seq() {
+		// the server restarted since: everything is new
+		since = 0
+	}
+	events, err := m.Subscribe(r.Context())
+	if err != nil {
+		return err
+	}
+	rc := http.NewResponseController(w)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	if _, err := io.WriteString(w, ": mangal serve events\n\n"); err != nil {
+		return nil
+	}
+	_ = rc.Flush()
+	ping := time.NewTicker(eventsPing)
+	defer ping.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return nil
+		case <-ping.C:
+			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
+				return nil
+			}
+		case e, ok := <-events:
+			if !ok {
+				// too far behind: the client reconnects from its last event
+				return nil
+			}
+			if e.Seq <= since {
+				continue
+			}
+			b, err := json.Marshal(e)
+			if err != nil {
+				return nil
+			}
+			if _, err := fmt.Fprintf(w, "id: %d\ndata: %s\n\n", e.Seq, b); err != nil {
+				return nil
+			}
+		}
+		if err := rc.Flush(); err != nil {
+			return nil
+		}
+	}
 }
 
 // parseDuration is a duration that also takes days ("7d", "1.5d").
