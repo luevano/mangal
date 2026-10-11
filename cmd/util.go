@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 func successf(cmd *cobra.Command, format string, a ...any) {
@@ -43,4 +45,29 @@ func completionConfigKeys(_ *cobra.Command, _ []string, toComplete string) ([]st
 	})
 
 	return filtered, cobra.ShellCompDirectiveDefault
+}
+
+// confirm asks a yes/no question in the terminal, no (without asking) if it isn't one.
+func confirm(cmd *cobra.Command, question string) bool {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return false
+	}
+	cmd.Printf("%s [y/N] ", question)
+	answer, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes"
+}
+
+// humanSize is a byte size like 12.3 MB.
+func humanSize(n int64) string {
+	const unit = 1000
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "kMGTPE"[exp])
 }
