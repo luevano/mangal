@@ -1,21 +1,23 @@
 package format
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/tui/base"
 )
 
 func backCmd() tea.Msg {
 	return BackMsg{}
 }
 
-func (m *Model) setFormatForCmd(what forWhat, format libmangal.Format) tea.Cmd {
-	return func() tea.Msg {
-		if err := config.CreateFile(); err != nil {
-			return err
-		}
-		var err error
+// setFormat writes the format to the config file. It runs in Update: the items read the
+// config to render.
+func (m *Model) setFormat(what forWhat, format libmangal.Format) tea.Cmd {
+	err := config.CreateFile()
+	if err == nil {
 		switch what {
 		case forRead:
 			err = config.Read.Format.Write(format)
@@ -26,6 +28,9 @@ func (m *Model) setFormatForCmd(what forWhat, format libmangal.Format) tea.Cmd {
 				err = config.Download.Format.Write(format)
 			}
 		}
-		return err
 	}
+	if err != nil {
+		return func() tea.Msg { return fmt.Errorf("set the %s format: %w", what, err) }
+	}
+	return base.Notify(fmt.Sprintf("%s format set to %s", what, format))
 }

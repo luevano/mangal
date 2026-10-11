@@ -45,11 +45,11 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		i, _ := m.list.SelectedItem().(*item)
 		switch {
 		case key.Matches(msg, m.keyMap.setRead):
-			return m.setFormatForCmd(forRead, i.format)
+			return m.setFormat(forRead, i.format)
 		case key.Matches(msg, m.keyMap.setDownload):
-			return m.setFormatForCmd(forDownload, i.format)
+			return m.setFormat(forDownload, i.format)
 		case key.Matches(msg, m.keyMap.setBoth):
-			return m.setFormatForCmd(forBoth, i.format)
+			return m.setFormat(forBoth, i.format)
 		case key.Matches(msg, m.keyMap.back):
 			return backCmd
 		}
