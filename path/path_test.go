@@ -61,3 +61,17 @@ func TestKeysSorted(t *testing.T) {
 		}
 	}
 }
+
+func TestDataPath(t *testing.T) {
+	if got := Data(); filepath.Base(got) != "mangal" {
+		t.Errorf("default %q", got)
+	}
+	dir := filepath.Join(t.TempDir(), "data2")
+	if err := config.Data.Path.Set(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = config.Data.Path.Set("") }()
+	if got := Data(); got != dir {
+		t.Errorf("got %q, want data.path %q", got, dir)
+	}
+}

@@ -63,8 +63,12 @@ func Cache() string {
 	return config.Cache.Path.Get()
 }
 
-// Data is where mangal keeps data that isn't cache (e.g. its database).
+// Data is where mangal keeps data that isn't cache (its database): data.path, or the XDG
+// data directory.
 func Data() string {
+	if dir := config.Data.Path.Get(); dir != "" {
+		return dir
+	}
 	return filepath.Join(xdg.DataHome, meta.AppName)
 }
 
