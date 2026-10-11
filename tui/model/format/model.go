@@ -35,26 +35,22 @@ func (m *Model) Init() tea.Cmd {
 }
 
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if m.list.FilterState() == _list.Filtering {
-			goto end
-		}
-
-		// guaranteed to always have items
-		i, _ := m.list.SelectedItem().(*item)
-		switch {
-		case key.Matches(msg, m.keyMap.setRead):
-			return m.setFormat(forRead, i.format)
-		case key.Matches(msg, m.keyMap.setDownload):
-			return m.setFormat(forDownload, i.format)
-		case key.Matches(msg, m.keyMap.setBoth):
-			return m.setFormat(forBoth, i.format)
-		case key.Matches(msg, m.keyMap.back):
-			return backCmd
-		}
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok || m.list.FilterState() == _list.Filtering {
+		return m.list.Update(msg)
 	}
-end:
+	// guaranteed to always have items
+	i, _ := m.list.SelectedItem().(*item)
+	switch {
+	case key.Matches(keyMsg, m.keyMap.setRead):
+		return m.setFormat(forRead, i.format)
+	case key.Matches(keyMsg, m.keyMap.setDownload):
+		return m.setFormat(forDownload, i.format)
+	case key.Matches(keyMsg, m.keyMap.setBoth):
+		return m.setFormat(forBoth, i.format)
+	case key.Matches(keyMsg, m.keyMap.back):
+		return backCmd
+	}
 	return m.list.Update(msg)
 }
 

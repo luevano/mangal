@@ -63,23 +63,13 @@ func (m *Model) Init() tea.Cmd {
 }
 
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if m.FilterState() == list.Filtering {
-			goto end
-		}
-
-		switch {
-		case key.Matches(msg, m.KeyMap.Reverse):
-			slices.Reverse(m.Items())
-			return tea.Sequence(
-				m.SetItems(m.Items()),
-				base.Notify("Reversed"),
-			)
-		}
+	if msg, ok := msg.(tea.KeyMsg); ok && m.FilterState() != list.Filtering && key.Matches(msg, m.KeyMap.Reverse) {
+		slices.Reverse(m.Items())
+		return tea.Sequence(
+			m.SetItems(m.Items()),
+			base.Notify("Reversed"),
+		)
 	}
-
-end:
 	list, cmd := m.Model.Update(msg)
 	m.Model = list
 	return cmd
