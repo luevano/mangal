@@ -2,13 +2,15 @@ package home
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -18,107 +20,99 @@ import (
 	"github.com/luevano/mangal/v5/tui/state/library"
 	"github.com/luevano/mangal/v5/tui/state/migrate"
 	"github.com/luevano/mangal/v5/tui/state/providers"
+	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
 var _ base.State = (*state)(nil)
 
-// state implements base.state.
 type state struct {
-	providersState base.State
-	keyMap         keyMap
+	// providers is kept, it's shown again with its loaded marks
+	providers base.State
+
+	confirm,
+	library,
+	accounts,
+	migrate key.Binding
 }
 
-// Backable implements base.State.
-func (s *state) Backable() bool {
-	return false
+// loadedMsg are the providers, with what to tell about them.
+type loadedMsg struct {
+	providers base.State
+	notices   []string
 }
 
-// Inputting implements base.State.
-func (s *state) Inputting() bool {
-	return false
+func New() base.State {
+	return &state{
+		confirm:  util.Bind("providers", "enter"),
+		library:  util.Bind("library", "l"),
+		accounts: util.Bind("accounts", "a"),
+		migrate:  util.Bind("migrate", "M"),
+	}
 }
 
-// KeyMap implements base.State.
+func (s *state) Backable() bool                { return false }
+func (s *state) Inputting() bool               { return false }
+func (s *state) Title() base.Title             { return base.Title{Text: "Home"} }
+func (s *state) Subtitle() string              { return "" }
+func (s *state) Status() string                { return "" }
+func (s *state) Resize(size base.Size) tea.Cmd { return nil }
+
 func (s *state) KeyMap() help.KeyMap {
-	return s.keyMap
+	return util.KeyMap{Short: []key.Binding{s.confirm, s.library, s.accounts, s.migrate}}
 }
 
-// Title implements base.State.
-func (s *state) Title() base.Title {
-	return base.Title{Text: "Home"}
-}
-
-// Subtitle implements base.State.
-func (*state) Subtitle() string {
-	return ""
-}
-
-// Status implements base.State.
-func (s *state) Status() string {
-	return ""
-}
-
-// Resize implements base.State.
-func (s *state) Resize(size base.Size) tea.Cmd {
-	return nil
-}
-
-// Init implements base.State.
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	var loaders []libmangal.ProviderLoader
-	return tea.Sequence(
-		base.Loading("Loading providers"),
-		func() tea.Msg {
-			var err error
-			loaders, err = manager.Loaders()
-			if err != nil {
-				return err
+	return base.Load(ctx, "Loading providers", func(context.Context) (loadedMsg, error) {
+		loaders, problems, err := manager.Load()
+		if err != nil {
+			return loadedMsg{}, err
+		}
+		var notices []string
+		if len(problems) != 0 {
+			lines := make([]string, len(problems))
+			for i, p := range problems {
+				log.Warn("skipped %s", p)
+				lines[i] = "  " + p.Error()
 			}
-			s.providersState = providers.New(loaders)
-			return nil
-		},
-		base.Loaded,
-		func() tea.Msg {
-			if _, notice, err := cache.OldIDsNotice(loaders); err == nil && notice != "" {
-				return base.Viewport("Notice", notice, color.Warning)()
-			}
-			if config.TUI.SkipHome.Get() {
-				return s.providersState
-			}
-			return base.Notify("Providers loaded")()
-		},
-	)
+			notices = append(notices, fmt.Sprintf("Skipped %d providers that can't be loaded:\n%s", len(problems), strings.Join(lines, "\n")))
+		}
+		if _, notice, err := cache.OldIDsNotice(loaders); err == nil && notice != "" {
+			notices = append(notices, notice)
+		}
+		return loadedMsg{providers: providers.New(loaders), notices: notices}, nil
+	}, func(msg loadedMsg) tea.Msg { return msg })
 }
 
-// Update implements base.State.
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
+	case loadedMsg:
+		s.providers = msg.providers
+		if len(msg.notices) != 0 {
+			return base.Viewport("Notice", strings.Join(msg.notices, "\n\n"), color.Warning)
+		}
+		if config.TUI.SkipHome.Get() {
+			return func() tea.Msg { return s.providers }
+		}
+		return base.Notify("Providers loaded")
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, s.keyMap.confirm):
-			if s.providersState == nil {
+		case key.Matches(msg, s.confirm):
+			if s.providers == nil {
 				return base.Notify("Providers not yet loaded")
 			}
-			return func() tea.Msg {
-				return s.providersState
-			}
-		case key.Matches(msg, s.keyMap.library):
+			return func() tea.Msg { return s.providers }
+		case key.Matches(msg, s.library):
 			return func() tea.Msg { return library.New() }
-		case key.Matches(msg, s.keyMap.accounts):
-			return func() tea.Msg {
-				return accounts.New(false)
-			}
-		case key.Matches(msg, s.keyMap.migrate):
-			return func() tea.Msg {
-				return migrate.New()
-			}
+		case key.Matches(msg, s.accounts):
+			return func() tea.Msg { return accounts.New(false) }
+		case key.Matches(msg, s.migrate):
+			return func() tea.Msg { return migrate.New() }
 		}
 	}
 	return nil
 }
 
-// View implements base.State.
 func (s *state) View() string {
 	return lipgloss.JoinVertical(lipgloss.Center, style.Bold.Accent.Render(meta.Logo), "\n"+meta.Versions())
 }
