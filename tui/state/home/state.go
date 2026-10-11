@@ -22,6 +22,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/state/providers"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/cache"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 var _ base.State = (*state)(nil)
@@ -75,7 +76,7 @@ func (s *state) Init(ctx context.Context) tea.Cmd {
 				log.Warn("skipped %s", p)
 				lines[i] = "  " + p.Error()
 			}
-			notices = append(notices, fmt.Sprintf("Skipped %d providers that can't be loaded:\n%s", len(problems), strings.Join(lines, "\n")))
+			notices = append(notices, fmt.Sprintf("Skipped %s that can't be loaded:\n%s", stringutil.Quantify(len(problems), "provider", "providers"), strings.Join(lines, "\n")))
 		}
 		if _, notice, err := cache.OldIDsNotice(loaders); err == nil && notice != "" {
 			notices = append(notices, notice)
