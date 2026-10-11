@@ -75,12 +75,6 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		return m.update(msg.msg)
-	case LoadingMsg:
-		if msg.Message == "" {
-			m.stopLoad(legacyLoadID)
-			return nil
-		}
-		return m.startLoad(loadStartMsg{id: legacyLoadID, label: msg.Message})
 	case NotificationMsg:
 		return m.notify(msg.Message, m.notificationDefaultDuration)
 	case NotificationWithDurationMsg:
@@ -206,7 +200,7 @@ func (m *model) updateSpinner(msg spinner.TickMsg) tea.Cmd {
 
 // startLoad shows the label of a load (a running one keeps its place).
 func (m *model) startLoad(load loadStartMsg) tea.Cmd {
-	if load.label == "" && load.id != legacyLoadID {
+	if load.label == "" {
 		return nil
 	}
 	wasIdle := len(m.loads) == 0

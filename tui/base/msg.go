@@ -25,13 +25,6 @@ type notificationTimeoutMsg struct {
 	id int
 }
 
-// LoadingMsg shows a loading message, an empty one hides it.
-//
-// Deprecated: use Load.
-type LoadingMsg struct {
-	Message string
-}
-
 // RestoredMsg is sent when going back to the state.
 type RestoredMsg struct{}
 

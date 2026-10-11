@@ -11,9 +11,6 @@ import (
 
 var loadIDs atomic.Int64
 
-// legacyLoadID is the loading message of Loading/Loaded.
-const legacyLoadID = 0
-
 type loadStartMsg struct {
 	id    int64
 	label string

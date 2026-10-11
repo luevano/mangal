@@ -46,10 +46,6 @@ func (m *Model) preRender() {
 	m.view = lipgloss.JoinVertical(lipgloss.Left, title, " ", message, " ", helpStr)
 }
 
-func (m *Model) Init() tea.Cmd {
-	return nil
-}
-
 type answer int
 
 const (
@@ -68,17 +64,6 @@ func (m *Model) answer(msg tea.Msg) answer {
 		}
 	}
 	return noAnswer
-}
-
-// Update answers with a YesMsg or a NoMsg.
-func (m *Model) Update(msg tea.Msg) tea.Cmd {
-	switch m.answer(msg) {
-	case answerYes:
-		return yesCmd
-	case answerNo:
-		return noCmd
-	}
-	return nil
 }
 
 func (m *Model) View() string {

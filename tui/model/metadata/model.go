@@ -71,29 +71,3 @@ func codePrefix(id metadata.ID) string {
 	}
 	return "[" + string(id.Code) + "] "
 }
-
-// Model keeps a manga's metadata for a screen.
-//
-// Deprecated: use the funcs (Badge, ShowCmd) with the manga's metadata.
-type Model struct {
-	meta     metadata.Metadata
-	ShowFull bool
-}
-
-// New is a Model of meta.
-//
-// Deprecated: use the funcs (Badge, ShowCmd) with the manga's metadata.
-func New(meta metadata.Metadata) *Model {
-	return &Model{meta: meta}
-}
-
-// SetMetadata replaces the metadata.
-func (m *Model) SetMetadata(meta metadata.Metadata) {
-	m.meta = meta
-}
-
-func (m *Model) Title() string            { return Title(m.meta) }
-func (m *Model) Color() lipgloss.Color    { return Color(m.meta) }
-func (m *Model) View() string             { return Badge(m.meta, m.ShowFull) }
-func (m *Model) RenderMetadata() string   { return Details(m.meta) }
-func (m *Model) ShowMetadataCmd() tea.Cmd { return ShowCmd(m.meta) }
