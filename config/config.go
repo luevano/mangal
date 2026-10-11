@@ -384,7 +384,7 @@ var Providers = configProviders{
 
 var Auth = configAuth{
 	Keyring: boolEntry("auth.keyring", false,
-		"Keep the logins and secrets (Anilist/Kitsu/MyAnimeList tokens, MangaPlus secrets) in the OS keyring (Secret Service on Linux, Keychain on macOS, Credential Manager on Windows) instead of mangal's database. They move on the next run after changing it."),
+		"Keep the logins and secrets (Anilist/Kitsu/MyAnimeList tokens and API clients, MangaPlus secrets, Discord webhook, serve token) in the OS keyring (Secret Service on Linux, Keychain on macOS, Credential Manager on Windows) instead of mangal's database. They move on the next run after changing it."),
 }
 
 var Notification = configNotification{
