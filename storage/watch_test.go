@@ -227,4 +227,19 @@ func TestLock(t *testing.T) {
 	} else {
 		_ = l.Unlock()
 	}
+
+	// a holder of this host that doesn't run anymore loses it at once
+	dead, err := watches.Lock("check", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.Exec(`UPDATE locks SET pid = 0`); err != nil {
+		t.Fatal(err)
+	}
+	if l, err := watches.Lock("check", time.Minute); err != nil {
+		t.Errorf("lock of a dead process not taken: %v", err)
+	} else {
+		_ = l.Unlock()
+	}
+	_ = dead.Unlock()
 }

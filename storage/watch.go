@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/luevano/mangal/v5/util/proc"
 )
 
 // Watches are the mangas mangal keeps up to date and the history of their checks, in the
@@ -489,7 +491,8 @@ func (e *LockError) Error() string {
 func (e *LockError) Is(target error) bool { return target == ErrLocked }
 
 // Lock takes the named lock, a *LockError if someone else holds it and its heartbeat is
-// newer than stale.
+// newer than stale. A lock held by a process of this host that doesn't run anymore is
+// taken over right away.
 func (s Watches) Lock(name string, stale time.Duration) (*Lock, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -506,6 +509,7 @@ func (s Watches) Lock(name string, stale time.Duration) (*Lock, error) {
 		case errors.Is(err, sql.ErrNoRows):
 		case err != nil:
 			return err
+		case h.Host == host && !proc.Alive(h.PID):
 		case now.Sub(time.Unix(heartbeat, 0)) < stale:
 			h.Acquired, h.Heartbeat = time.Unix(acquired, 0), time.Unix(heartbeat, 0)
 			return &LockError{Name: name, Holder: h}
