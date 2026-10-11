@@ -524,6 +524,22 @@ ON CONFLICT (name) DO UPDATE SET token = excluded.token, pid = excluded.pid, hos
 	return &Lock{Name: name, token: token, db: s.DB}, nil
 }
 
+// Holder is who holds the named lock, false when nobody does (or its heartbeat is older
+// than stale).
+func (s Watches) Holder(name string, stale time.Duration) (LockHolder, bool, error) {
+	var h LockHolder
+	var acquired, heartbeat int64
+	err := s.DB.QueryRow(`SELECT pid, host, acquired, heartbeat FROM locks WHERE name = ?`, name).Scan(&h.PID, &h.Host, &acquired, &heartbeat)
+	if errors.Is(err, sql.ErrNoRows) {
+		return h, false, nil
+	}
+	if err != nil {
+		return h, false, fmt.Errorf("lock %s: %w", name, err)
+	}
+	h.Acquired, h.Heartbeat = time.Unix(acquired, 0), time.Unix(heartbeat, 0)
+	return h, time.Since(h.Heartbeat) < stale, nil
+}
+
 // Heartbeat keeps the lock alive, an error if it was lost (taken over as stale).
 func (l *Lock) Heartbeat() error {
 	res, err := l.db.Exec(`UPDATE locks SET heartbeat = ? WHERE name = ? AND token = ?`, time.Now().Unix(), l.Name, l.token)
