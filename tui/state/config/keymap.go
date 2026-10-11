@@ -6,6 +6,7 @@ import (
 )
 
 type keyMap struct {
+	expandAll,
 	change,
 	reset,
 	save,
@@ -20,6 +21,7 @@ type keyMap struct {
 
 func newKeyMap() keyMap {
 	return keyMap{
+		expandAll: util.Bind("expand/collapse all", "E"),
 		change:    util.BindNamedKey("enter/space", "change", "enter", " "),
 		reset:     util.Bind("reset to default", "r"),
 		save:      util.Bind("save", "enter"),

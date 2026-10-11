@@ -16,9 +16,24 @@ var _ list.DefaultItem = item{}
 // sections in the order shown, the others after them by name.
 var sections = []string{"download", "read", "providers", "metadata", "notification", "tui", "cache", "auth", "icons", "cli"}
 
-// item is a config key.
+// summaries say what each section holds, on the section list.
+var summaries = map[string]string{
+	"download":     "where and how chapters are saved: path, format, names, metadata files",
+	"read":         "reading from the TUI: format, history, progress sync",
+	"providers":    "manga sources: filters, mirrors, FlareSolverr, MangaPlus",
+	"metadata":     "Kitsu and MyAnimeList, after Anilist",
+	"notification": "Discord notifications after downloads",
+	"tui":          "how the TUI looks and behaves",
+	"cache":        "how long searches, lists and mirrors are kept",
+	"auth":         "where logins and secrets are kept",
+	"icons":        "the icon set",
+	"cli":          "command line output",
+}
+
+// item is a config key. Under its section's header it's indented, without the section prefix.
 type item struct {
-	key string
+	key    string
+	prefix string
 }
 
 func (i item) section() string {
@@ -32,7 +47,11 @@ func (i item) FilterValue() string { return i.key }
 // Title implements list.DefaultItem. It's plain text: the list underlines the filter
 // matches by their position in the key.
 func (i item) Title() string {
-	title := i.key + " = " + displayValue(i.key)
+	title := i.key
+	if i.prefix != "" {
+		title = "  " + strings.TrimPrefix(i.key, i.prefix)
+	}
+	title += " = " + displayValue(i.key)
 	if isDefault(i.key) {
 		title += "  (default)"
 	}
@@ -45,7 +64,58 @@ func (i item) Title() string {
 // Description implements list.DefaultItem.
 func (i item) Description() string {
 	description, _ := mconfig.Description(i.key)
+	if i.prefix != "" {
+		description = "  " + description
+	}
 	return description
+}
+
+// sectionItem is a section's header, its keys listed under it when expanded.
+type sectionItem struct {
+	name     string
+	keys     []string
+	expanded bool
+}
+
+// FilterValue implements list.Item.
+func (i sectionItem) FilterValue() string { return i.name }
+
+// Title implements list.DefaultItem.
+func (i sectionItem) Title() string {
+	arrow := "▸ "
+	if i.expanded {
+		arrow = "▾ "
+	}
+	changed := 0
+	for _, key := range i.keys {
+		if !isDefault(key) {
+			changed++
+		}
+	}
+	title := fmt.Sprintf("%s%s  (%d keys", arrow, i.name, len(i.keys))
+	if len(i.keys) == 1 {
+		title = fmt.Sprintf("%s%s  (1 key", arrow, i.name)
+	}
+	if changed > 0 {
+		title += fmt.Sprintf(", %d changed", changed)
+	}
+	return title + ")"
+}
+
+// Description implements list.DefaultItem.
+func (i sectionItem) Description() string { return summaries[i.name] }
+
+// sectionItems are the sections in order, with their keys.
+func sectionItems(keys []string) []sectionItem {
+	var sections []sectionItem
+	for _, i := range sortedItems(keys) {
+		if n := len(sections); n > 0 && sections[n-1].name == i.section() {
+			sections[n-1].keys = append(sections[n-1].keys, i.key)
+			continue
+		}
+		sections = append(sections, sectionItem{name: i.section(), keys: []string{i.key}})
+	}
+	return sections
 }
 
 // sortedItems are the keys by section.

@@ -246,3 +246,70 @@ func TestEveryKeyListed(t *testing.T) {
 		t.Errorf("first key %q", first.key)
 	}
 }
+
+// visible are the rows: "section:name" for headers, the key otherwise.
+func visible(s *state) []string {
+	var rows []string
+	for _, row := range s.list.VisibleItems() {
+		rows = append(rows, rowID(row))
+	}
+	return rows
+}
+
+func TestSectionsExpand(t *testing.T) {
+	s, _, _ := newTest(t, "")
+	rows := visible(s)
+	for _, row := range rows {
+		if !strings.HasPrefix(row, "section:") {
+			t.Fatalf("collapsed sections show %q", row)
+		}
+	}
+	if rows[0] != "section:download" {
+		t.Fatalf("first section %q", rows[0])
+	}
+
+	// enter on a header expands it in place, again collapses it
+	press(s, "enter")
+	rows = visible(s)
+	if rows[0] != "section:download" || rows[1] != "download.chapter.name_template" || rows[len(rows)-1] != "section:cli" {
+		t.Errorf("expanded download: %v", rows)
+	}
+	press(s, "enter")
+	if got := len(visible(s)); got != len(sectionItems(mconfig.Keys())) {
+		t.Errorf("collapsed again: %d rows", got)
+	}
+
+	// E expands every section, again collapses them all
+	press(s, "E")
+	if got := len(visible(s)); got != len(sectionItems(mconfig.Keys()))+len(mconfig.Keys()) {
+		t.Errorf("expanded all: %d rows", got)
+	}
+	press(s, "E")
+	if got := len(visible(s)); got != len(sectionItems(mconfig.Keys())) {
+		t.Errorf("collapsed all: %d rows", got)
+	}
+}
+
+func TestSearchCollapsedSections(t *testing.T) {
+	s, _, _ := newTest(t, "")
+	// / lists every key, the collapsed sections' too (the list filters them as typed)
+	press(s, "/")
+	if !s.searching || len(s.list.Items()) != len(mconfig.Keys()) {
+		t.Fatalf("searching %t, %d rows", s.searching, len(s.list.Items()))
+	}
+	press(s, "esc")
+	s.Filter("parallelism")
+	if rows := visible(s); len(rows) == 0 || rows[0] != "providers.parallelism" {
+		t.Fatalf("search: %v", rows)
+	}
+	// esc ends the search, the sections as they were (all collapsed)
+	press(s, "esc")
+	if s.searching {
+		t.Error("still searching")
+	}
+	for _, row := range visible(s) {
+		if !strings.HasPrefix(row, "section:") {
+			t.Fatalf("after the search %q shows", row)
+		}
+	}
+}

@@ -40,8 +40,13 @@ const (
 const detailsHeight = 7
 
 type state struct {
+	// list has the section headers and the keys of the expanded ones, or every key while
+	// searching
 	list *list.Model
-	mode mode
+	// expanded sections, searching is a search through every key (collapsed ones too)
+	expanded  map[string]bool
+	searching bool
+	mode      mode
 	// key being edited or mapped
 	key   string
 	input textinput.Model
@@ -72,19 +77,92 @@ type mapEditor struct {
 func New(filter string) base.State {
 	keys := mconfig.Keys()
 	l := list.New(2, 0, "key", "keys", sortedItems(keys), func(i item) _list.DefaultItem { return i })
-	l.KeyMap.Reverse.SetEnabled(false)
 	input := textinput.New()
 	input.Prompt = icon.Item.Raw() + " "
 	input.PromptStyle = style.Bold.Accent
 	s := &state{
-		list:   l,
-		input:  input,
-		keys:   newKeyMap(),
-		write:  writeKey,
-		reload: base.ReloadProviders,
+		list:     l,
+		expanded: map[string]bool{},
+		input:    input,
+		keys:     newKeyMap(),
+		write:    writeKey,
+		reload:   base.ReloadProviders,
 	}
+	s.showRows()
 	s.Filter(filter)
 	return s
+}
+
+// rows are the section headers with the keys of the expanded ones, or every key while
+// searching.
+func (s *state) rows() []_list.Item {
+	var rows []_list.Item
+	for _, section := range sectionItems(mconfig.Keys()) {
+		if !s.searching {
+			section.expanded = s.expanded[section.name]
+			rows = append(rows, section)
+			if !section.expanded {
+				continue
+			}
+		}
+		for _, key := range section.keys {
+			i := item{key: key}
+			if !s.searching && key != section.name {
+				i.prefix = section.name + "."
+			}
+			rows = append(rows, i)
+		}
+	}
+	return rows
+}
+
+// rowID is what a row is (a key, or a section header), to keep it selected.
+func rowID(row _list.Item) string {
+	switch r := row.(type) {
+	case item:
+		return r.key
+	case sectionItem:
+		return "section:" + r.name
+	}
+	return ""
+}
+
+// showRows lists the rows again, the selected one kept (or its section's header).
+func (s *state) showRows() tea.Cmd {
+	selected := rowID(s.list.SelectedItem())
+	cmd := s.list.SetItems(s.rows())
+	// SetItems enables it again
+	s.list.KeyMap.Reverse.SetEnabled(false)
+	section, _, _ := strings.Cut(strings.TrimPrefix(selected, "section:"), ".")
+	for n, row := range s.list.Items() {
+		if id := rowID(row); id == selected || (id == "section:"+section && !s.expanded[section]) {
+			s.list.Select(n)
+			break
+		}
+	}
+	return cmd
+}
+
+// search lists every key for a search through all of them.
+func (s *state) search() tea.Cmd {
+	if s.searching {
+		return nil
+	}
+	s.searching = true
+	return s.showRows()
+}
+
+// toggleAll expands every section, or collapses them all when they all are.
+func (s *state) toggleAll() tea.Cmd {
+	sections := sectionItems(mconfig.Keys())
+	all := true
+	for _, section := range sections {
+		all = all && s.expanded[section.name]
+	}
+	for _, section := range sections {
+		s.expanded[section.name] = !all
+	}
+	return s.showRows()
 }
 
 func writeKey(key string, raw any) error {
@@ -94,7 +172,7 @@ func writeKey(key string, raw any) error {
 	return mconfig.WriteKey(key, raw)
 }
 
-// Filter implements base.ConfigWindow.
+// Filter implements base.ConfigWindow: a search through every key.
 func (s *state) Filter(filter string) tea.Cmd {
 	s.mode = browsing
 	s.err = ""
@@ -102,6 +180,7 @@ func (s *state) Filter(filter string) tea.Cmd {
 		s.list.ResetFilter()
 		return nil
 	}
+	s.search()
 	s.list.SetFilterText(filter)
 	// the key itself first, the fuzzy matches after it
 	for n, i := range s.list.VisibleItems() {
@@ -115,7 +194,10 @@ func (s *state) Filter(filter string) tea.Cmd {
 func (s *state) Title() base.Title { return base.Title{Text: "Config"} }
 
 func (s *state) Subtitle() string {
-	return s.list.Subtitle() + " in " + mconfig.Path
+	if s.searching {
+		return s.list.Subtitle() + ", every section"
+	}
+	return fmt.Sprintf("%d keys in %s", len(mconfig.Keys()), mconfig.Path)
 }
 
 func (s *state) Status() string { return s.list.Status() }
@@ -136,7 +218,7 @@ func (s *state) KeyMap() help.KeyMap {
 		}
 		return util.KeyMap{Short: []key.Binding{s.keys.add, s.keys.editEntry, s.keys.remove, s.keys.up, s.keys.down, s.keys.close}}
 	}
-	return base.CombinedKeyMap(util.KeyMap{Short: []key.Binding{s.keys.change, s.keys.reset}}, s.list.KeyMap)
+	return base.CombinedKeyMap(util.KeyMap{Short: []key.Binding{s.keys.change, s.keys.reset, s.keys.expandAll}}, s.list.KeyMap)
 }
 
 func (s *state) Resize(size base.Size) tea.Cmd {
@@ -160,6 +242,17 @@ func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
 		return s.updateMapping(msg)
 	}
 	if msg, ok := msg.(tea.KeyMsg); ok && !s.list.Filtering() {
+		if section, ok := s.list.SelectedItem().(sectionItem); ok && key.Matches(msg, s.keys.change) {
+			s.expanded[section.name] = !s.expanded[section.name]
+			return s.showRows()
+		}
+		switch {
+		case key.Matches(msg, s.keys.expandAll) && !s.searching:
+			return s.toggleAll()
+		case key.Matches(msg, s.list.KeyMap.List.Filter) && s.list.Unfiltered():
+			// the search goes through every key, the collapsed sections' too
+			return tea.Batch(s.search(), s.list.Update(msg))
+		}
 		k, ok := s.selected()
 		confirmed := s.confirmReset == k
 		s.confirmReset = ""
@@ -177,7 +270,13 @@ func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
 			return cmd
 		}
 	}
-	return s.list.Update(msg)
+	cmd := s.list.Update(msg)
+	if s.searching && s.list.Unfiltered() && !s.list.Filtering() {
+		// the search ended (esc): back to the sections as they were
+		s.searching = false
+		return tea.Batch(cmd, s.showRows())
+	}
+	return cmd
 }
 
 // change toggles a bool, cycles an enum, or opens the editor of the key.
