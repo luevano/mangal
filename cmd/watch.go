@@ -226,6 +226,8 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 	for _, w := range watches {
 		next := formatTime(w.NextCheck)
 		switch {
+		case !w.Enabled && w.ProviderMissing:
+			next = "paused, provider missing"
 		case !w.Enabled:
 			next = "paused"
 		case w.ProviderMissing:
@@ -237,7 +239,7 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 		} else if w.LastError != "" {
 			errs = firstLine(w.LastError, 60)
 		}
-		title := w.Title
+		title := firstLine(w.Title, 50)
 		if w.Gaps {
 			title += " (gaps)"
 		}

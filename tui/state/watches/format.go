@@ -51,6 +51,8 @@ func formatNumber(n *float32) string {
 // a row), due or in how long.
 func nextCheck(w watch.Watch, backoff int, now time.Time) string {
 	switch {
+	case !w.Enabled && w.ProviderMissing:
+		return "paused, provider missing"
 	case !w.Enabled:
 		return "paused"
 	case w.ProviderMissing:
