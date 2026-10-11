@@ -193,23 +193,8 @@ curl -X POST 127.0.0.1:6977/api/check -d '{"ids": [1]}'     # 202 {"run": N}, 40
 curl 127.0.0.1:6977/api/runs/N
 ```
 
-As a systemd service (`/etc/systemd/system/mangal.service`, logs in `journalctl -u mangal`):
-
-```ini
-[Unit]
-Description=mangal serve
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-Type=simple
-User=mangal
-ExecStart=/usr/local/bin/mangal serve
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-```
+As a systemd service: [`mangal.service`](mangal.service) (copy it to `/etc/systemd/system/`, set
+`User` and the mangal path, `systemctl enable --now mangal`; logs in `journalctl -u mangal`).
 
 One server per config: a second instance (e.g. other mangas into another directory) uses another
 config file with its own `data.path`, `download.path` (and `cache.path`) and `serve.port`, and

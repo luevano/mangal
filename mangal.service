@@ -1,0 +1,18 @@
+# mangal serve as a systemd service: checks the watched mangas on a schedule (see the README,
+# Headless). Copy it to /etc/systemd/system/, set User and the mangal path, then
+#   systemctl enable --now mangal
+# Logs: journalctl -u mangal. Another instance: a copy with ExecStart=... --config <file> serve.
+[Unit]
+Description=mangal serve (watched mangas)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=mangal
+ExecStart=/usr/local/bin/mangal serve
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
