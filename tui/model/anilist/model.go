@@ -113,7 +113,7 @@ func (s *state) Title() base.Title {
 
 func (s *state) Subtitle() string {
 	if s.phase == form {
-		return "the id and secret of an Anilist API client, the login opens in the browser"
+		return "the id and secret of an Anilist API client, the login opens in the browser (none here? mangal anilist login)"
 	}
 	return ""
 }
