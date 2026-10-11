@@ -62,7 +62,7 @@ func New(ctx context.Context, standalone bool) *Model {
 			{Title: "Service", Width: 12},
 			{Title: "User", Width: 16},
 			{Title: "Status", Width: 14},
-			{Title: "Renews/expires", Width: 14},
+			{Title: "Renews/expires", Width: 15},
 			{Title: "Notes", Width: 30},
 			{Title: "Checked", Width: 10},
 		}),
