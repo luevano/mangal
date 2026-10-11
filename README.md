@@ -179,9 +179,14 @@ mangal watch log --since 7d      # what each check got
 mangal notify webhook            # Discord message per manga with new chapters (watch.notify)
 ```
 
-`mangal serve` keeps running and checks each watch when it's due (`watch.interval`, 4h by default,
-or the watch's own), each provider in its own run (`watch.parallel_providers` at once, a provider
-never twice, also against a `mangal watch check` elsewhere); the `watch.*` settings are re-read from the config file
+`mangal serve` keeps running and checks the watches on a cron schedule in local time
+(`watch.schedule`, `0 */4 * * *` = every 4 hours on the hour by default; also `@hourly`, `@daily`,
+`@weekly`, `@every 90m`; a watch can have its own: `watch add/set --schedule`). The ticks don't
+depend on when it started: a watch is due once a tick passed since its last check (a tick missed
+while it was down runs once at start), failing watches skip ticks (`watch.backoff`), gap filling
+has its own schedule (`watch.gap_schedule`, off by default). Each provider has its own run
+(`watch.parallel_providers` at once, a provider never twice, also against a `mangal watch check`
+elsewhere); the `watch.*` settings are re-read from the config file
 every minute. It serves a JSON API on `127.0.0.1:6977` (`serve.host`, `serve.port`) that the TUI
 and the `mangal watch` commands use while it runs; `--web` (`serve.web`) also serves the web UI
 there. On an address that isn't loopback the API needs a token: set `serve.token` (or
