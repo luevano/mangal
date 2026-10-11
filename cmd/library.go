@@ -1,14 +1,17 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
@@ -163,6 +166,7 @@ var libraryDownloadsCmd = &cobra.Command{
 func init() {
 	libraryCmd.AddCommand(libraryLsCmd)
 	libraryCmd.AddCommand(libraryScanCmd)
+	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Check, "check", false, "Check the metadata ids of the folders without a .libmangal.json on AniList and Kitsu")
 	libraryCmd.AddCommand(libraryMergeCmd)
 	libraryMergeCmd.Flags().BoolVar(&libraryMergeArgs.Apply, "apply", false, "Merge, instead of only listing what would happen")
 	libraryCmd.AddCommand(libraryTrashCmd)
@@ -221,12 +225,22 @@ func printTrash(cmd *cobra.Command) {
 	cmd.Printf("\n%d files (%s) in the trash, \"mangal library trash empty\" deletes them\n", files, humanSize(size))
 }
 
+var libraryScanArgs = struct {
+	Check bool
+}{}
+
 var libraryScanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Check the library against the files",
 	Long: `Check the library against the downloaded files: moved manga folders and chapter files
 are found again, deleted ones forgotten, files nobody recorded (e.g. copied by hand) added,
-and manga folders with a .libmangal.json that aren't in the library yet are added.`,
+and manga folders that aren't in the library yet are added: with a .libmangal.json, or
+else guessed from their series.json, chapters and name (with the metadata id of an
+"[alid-N]" tag).
+
+--check looks the guessed ids up on AniList and Kitsu and lists those not found or
+whose manga doesn't look like the folder's, and suggests an AniList id for the folders
+without any. It only reports, a download from a provider links the folder for good.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		lib, err := libraryOf()
@@ -278,9 +292,59 @@ and manga folders with a .libmangal.json that aren't in the library yet are adde
 				cmd.Println("removed")
 			}
 		}
+		if libraryScanArgs.Check {
+			if err := checkIDs(cmd, lib); err != nil {
+				return err
+			}
+		}
 		printTrash(cmd)
 		return nil
 	},
+}
+
+// checkIDs reports the metadata ids of the adopted folders that look wrong.
+func checkIDs(cmd *cobra.Command, lib storage.Library) error {
+	mangas, err := lib.Mangas()
+	if err != nil {
+		return err
+	}
+	checker, err := idChecker(cmd.Context())
+	if err != nil {
+		return err
+	}
+	checks, err := checker.Check(cmd.Context(), mangas)
+	if err != nil {
+		return err
+	}
+	if len(checks) == 0 {
+		cmd.Println("the ids of the folders without a .libmangal.json look right")
+		return nil
+	}
+	cmd.Printf("check the ids of %d folders without a .libmangal.json:\n", len(checks))
+	for _, c := range checks {
+		cmd.Println("  " + c.String())
+	}
+	return nil
+}
+
+// idChecker checks AniList and Kitsu ids, and suggests AniList ones.
+func idChecker(ctx context.Context) (library.IDChecker, error) {
+	ani, err := anilist.Anilist()
+	if err != nil {
+		return library.IDChecker{}, err
+	}
+	_ = anilist.EnsureLogin(ctx)
+	checker := library.IDChecker{
+		FS:        afs.Afero,
+		Providers: map[metadata.IDSource]library.IDProvider{metadata.IDSourceAnilist: ani},
+		Suggest:   ani,
+	}
+	kt, err := kitsu.Kitsu()
+	if err != nil {
+		return library.IDChecker{}, err
+	}
+	checker.Providers[metadata.IDSourceKitsu] = kt
+	return checker, nil
 }
 
 var libraryMergeArgs = struct {
