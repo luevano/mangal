@@ -127,6 +127,9 @@ func RunDownload(ctx context.Context, args Args) error {
 				continue
 			}
 
+			if ch.Down.Skipped != "" {
+				fmt.Fprintf(os.Stderr, "warning: chapter %s skipped: %s\n", ch.Chapter, ch.Down.Skipped)
+			}
 			if args.JSONOutput {
 				dc, err := json.Marshal(ch.Down)
 				if err != nil {

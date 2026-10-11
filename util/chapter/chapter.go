@@ -53,6 +53,9 @@ func (c Chapter) Render(normal, toDownload, succeed, failed, warning lipgloss.St
 	default: // exists or other
 		status = toDownload.Render(status)
 	}
+	if c.Down.Skipped != "" {
+		status = warning.Render("s: skipped, " + c.Down.Skipped)
+	}
 	str = s.Render(str+" - ") + status + s.Render(" - f: "+c.Down.Filename)
 	return str
 }

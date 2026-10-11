@@ -71,7 +71,7 @@ func OldIDsNotice(loaders []libmangal.ProviderLoader) (short, long string, err e
 	var renames, details []string
 	for _, id := range oldIDs {
 		renames = append(renames, fmt.Sprintf("%s is now %s", id.Old, id.New))
-		details = append(details, fmt.Sprintf("- %s is now %s (%s): %d library entries, %d downloads, %d cache entries", id.Old, id.New, id.Name, id.MangaDirs, id.Downloads, id.Cache))
+		details = append(details, fmt.Sprintf("- %s is now %s (%s): %d library mangas, %d downloads, %d cache entries", id.Old, id.New, id.Name, id.Sources, id.Downloads, id.Cache))
 	}
 	short = fmt.Sprintf("data under old provider ids (%s), run %q to update it", strings.Join(renames, ", "), "mangal migrate")
 	long = "Some data still uses old provider ids:\n\n" + strings.Join(details, "\n") + `

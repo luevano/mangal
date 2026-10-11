@@ -95,7 +95,9 @@ func NewClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal
 	if err != nil {
 		return nil, err
 	}
-	options.MangaDirIndex = storage.MangaDirs{DB: dataDB}
+	library := storage.Library{DB: dataDB}
+	options.MangaDirIndex = library
+	options.ChapterIndex = library
 
 	client, err := libmangal.NewClientContext(ctx, loader, options)
 	if err != nil {

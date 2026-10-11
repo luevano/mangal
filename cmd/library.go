@@ -96,7 +96,7 @@ templates give them. Only lists the renames unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		index := storage.MangaDirs{DB: dataDB}
+		index := storage.Library{DB: dataDB}
 		for i, err := range library.Apply(afs.Afero, renames) {
 			r := renames[i]
 			if err != nil {

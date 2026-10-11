@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"encoding/json"
 	"fmt"
 	"slices"
 
@@ -15,8 +14,8 @@ var providerTables = []string{TableMangaSearches, TableVolumes, TableChapters, T
 // (in its libmangal.ProviderInfo.History).
 type OldID struct {
 	Old, New, Name string
-	// MangaDirs is how many library index entries use the old id.
-	MangaDirs int
+	// Sources is how many library mangas were downloaded from the old id.
+	Sources int
 	// Downloads is how many downloaded chapters use the old id.
 	Downloads int
 	// Cache is how many cache entries use the old id (dropped when migrating).
@@ -36,12 +35,12 @@ func FindOldIDs(cache, data *DB, loaders []libmangal.ProviderLoader) ([]OldID, e
 			counts[id] = &OldID{Old: id, New: loader.Info().ID, Name: loader.Info().Name}
 			order = append(order, id)
 		}
-		counts[id].MangaDirs += dirs
+		counts[id].Sources += dirs
 		counts[id].Downloads += downloads
 		counts[id].Cache += entries
 	}
 
-	if err := countBy(data, `SELECT provider, count(*) FROM manga_dirs GROUP BY provider`, func(id string, n int) { add(id, n, 0, 0) }); err != nil {
+	if err := countBy(data, `SELECT provider, count(*) FROM library_sources GROUP BY provider`, func(id string, n int) { add(id, n, 0, 0) }); err != nil {
 		return nil, err
 	}
 	if err := countBy(data, `SELECT provider, count(*) FROM downloads GROUP BY provider`, func(id string, n int) { add(id, 0, n, 0) }); err != nil {
@@ -78,11 +77,15 @@ func countBy(db *DB, query string, f func(string, int)) error {
 	return rows.Err()
 }
 
-// MigrateOldIDs moves the library index entries and downloads of each old id to its new id and drops
+// MigrateOldIDs moves the library sources and downloads of each old id to its new id and drops
 // its cache entries (they're rebuilt under the new id).
 func MigrateOldIDs(cache, data *DB, oldIDs []OldID) error {
 	for _, id := range oldIDs {
-		if err := migrateMangaDirs(data, id); err != nil {
+		// a source already under the new id wins
+		if _, err := data.Exec(`DELETE FROM library_sources WHERE provider = ? AND manga_id IN (SELECT manga_id FROM library_sources WHERE provider = ?)`, id.Old, id.New); err != nil {
+			return fmt.Errorf("migrate %s: %w", id.Old, err)
+		}
+		if _, err := data.Exec(`UPDATE library_sources SET provider = ? WHERE provider = ?`, id.New, id.Old); err != nil {
 			return fmt.Errorf("migrate %s: %w", id.Old, err)
 		}
 		if _, err := data.Exec(`UPDATE downloads SET provider = ? WHERE provider = ?`, id.New, id.Old); err != nil {
@@ -95,48 +98,4 @@ func MigrateOldIDs(cache, data *DB, oldIDs []OldID) error {
 		}
 	}
 	return nil
-}
-
-func migrateMangaDirs(data *DB, id OldID) error {
-	tx, err := data.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	rows, err := tx.Query(`SELECT parent, name, info FROM manga_dirs WHERE provider = ?`, id.Old)
-	if err != nil {
-		return err
-	}
-	type row struct {
-		parent, name string
-		info         libmangal.MangaDirInfo
-	}
-	var update []row
-	for rows.Next() {
-		var r row
-		var raw []byte
-		if err := rows.Scan(&r.parent, &r.name, &raw); err != nil {
-			rows.Close()
-			return err
-		}
-		if err := json.Unmarshal(raw, &r.info); err != nil {
-			rows.Close()
-			return err
-		}
-		update = append(update, r)
-	}
-	rows.Close()
-
-	for _, r := range update {
-		r.info.Provider = id.New
-		raw, err := json.Marshal(r.info)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`UPDATE manga_dirs SET provider = ?, info = ? WHERE parent = ? AND name = ?`, id.New, raw, r.parent, r.name); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
 }

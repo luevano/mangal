@@ -59,19 +59,30 @@ func kvTable(name string) string {
 ) WITHOUT ROWID`
 }
 
+// Migration changes the schema of a database, in a transaction.
+type Migration func(tx *sql.Tx) error
+
+// sqlMigration runs the statements.
+func sqlMigration(statements string) Migration {
+	return func(tx *sql.Tx) error {
+		_, err := tx.Exec(statements)
+		return err
+	}
+}
+
 // cacheMigrations are applied in order, the database's user_version is how many were.
-var cacheMigrations = []string{
+var cacheMigrations = []Migration{sqlMigration(
 	kvTable(TableMangaSearches) + ";" +
 		kvTable(TableVolumes) + ";" +
 		kvTable(TableChapters) + ";" +
 		kvTable(TableMetadataSearches) + ";" +
 		kvTable(TableMetadata) + ";" +
 		kvTable(TableLuaHTTP) + ";" +
-		kvTable(TableOther),
+		kvTable(TableOther)),
 }
 
-var dataMigrations = []string{
-	kvTable(TableTitleBindings) + ";" +
+var dataMigrations = []Migration{
+	sqlMigration(kvTable(TableTitleBindings) + ";" +
 		kvTable(TableAuthTokens) + ";" +
 		kvTable(TableAuthHistory) + ";" +
 		kvTable(TableSearchHistory) + ";" +
@@ -84,8 +95,8 @@ var dataMigrations = []string{
 	updated  INTEGER NOT NULL,
 	PRIMARY KEY (parent, name)
 );
-CREATE INDEX manga_dirs_provider ON manga_dirs (provider)`,
-	`CREATE TABLE downloads (
+CREATE INDEX manga_dirs_provider ON manga_dirs (provider)`),
+	sqlMigration(`CREATE TABLE downloads (
 	path          TEXT PRIMARY KEY,
 	provider      TEXT NOT NULL,
 	manga_id      TEXT NOT NULL,
@@ -98,7 +109,8 @@ CREATE INDEX manga_dirs_provider ON manga_dirs (provider)`,
 	pages         INTEGER NOT NULL,
 	downloaded    INTEGER NOT NULL
 );
-CREATE INDEX downloads_manga ON downloads (provider, manga_id)`,
+CREATE INDEX downloads_manga ON downloads (provider, manga_id)`),
+	migrateLibrary,
 }
 
 // DB is an open SQLite database.
@@ -108,11 +120,11 @@ type DB struct {
 }
 
 // Open opens (creating it if needed) the database at path and applies the migrations.
-func Open(path string, migrations []string) (*DB, error) {
+func Open(path string, migrations []Migration) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	dsn := "file:" + path + "?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
+	dsn := "file:" + path + "?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)"
 	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
@@ -128,7 +140,7 @@ func Open(path string, migrations []string) (*DB, error) {
 	return db, nil
 }
 
-func (db *DB) migrate(migrations []string) error {
+func (db *DB) migrate(migrations []Migration) error {
 	var version int
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
@@ -141,7 +153,7 @@ func (db *DB) migrate(migrations []string) error {
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(migrations[i]); err != nil {
+		if err := migrations[i](tx); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("migration %d: %w", i+1, err)
 		}

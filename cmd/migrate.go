@@ -53,7 +53,7 @@ Only lists what would change unless --apply is set.`,
 		}
 
 		for _, id := range oldIDs {
-			cmd.Printf("%s -> %s (%s): %d library entries, %d downloads, %d cache entries (dropped)\n", id.Old, id.New, id.Name, id.MangaDirs, id.Downloads, id.Cache)
+			cmd.Printf("%s -> %s (%s): %d library mangas, %d downloads, %d cache entries (dropped)\n", id.Old, id.New, id.Name, id.Sources, id.Downloads, id.Cache)
 		}
 		for _, marker := range markers {
 			cmd.Printf("%s: %s -> %s\n", marker.Dir, marker.Old, marker.New)
