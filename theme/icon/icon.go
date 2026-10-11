@@ -26,14 +26,6 @@ func (i icon) Raw() string {
 }
 
 var (
-	Confirm = icon{
-		color: color.Accent,
-		symbols: symbols{
-			TypeASCII: "?",
-			TypeNerd:  "\uEB32",
-		},
-	}
-
 	Progress = icon{
 		color: color.Accent,
 		symbols: symbols{
@@ -90,22 +82,6 @@ var (
 		},
 	}
 
-	Recent = icon{
-		color: color.Secondary,
-		symbols: symbols{
-			TypeASCII: "~",
-			TypeNerd:  "\uF017",
-		},
-	}
-
-	Read = icon{
-		color: color.Secondary,
-		symbols: symbols{
-			TypeASCII: "r",
-			TypeNerd:  "\U000F0447",
-		},
-	}
-
 	Available = icon{
 		color: color.Secondary,
 		symbols: symbols{
@@ -138,38 +114,6 @@ var (
 		},
 	}
 
-	LeftHardDivider = icon{
-		color: color.Accent,
-		symbols: symbols{
-			TypeASCII: ">",
-			TypeNerd:  "\uE0B0",
-		},
-	}
-
-	LeftSoftDivider = icon{
-		color: color.Accent,
-		symbols: symbols{
-			TypeASCII: ">",
-			TypeNerd:  "\uE0B1",
-		},
-	}
-
-	RightHardDivider = icon{
-		color: color.Accent,
-		symbols: symbols{
-			TypeASCII: "<",
-			TypeNerd:  "\uE0B2",
-		},
-	}
-
-	RightSoftDivider = icon{
-		color: color.Accent,
-		symbols: symbols{
-			TypeASCII: "<",
-			TypeNerd:  "\uE0B3",
-		},
-	}
-
 	Ellipsis = icon{
 		color: lipgloss.NoColor{},
 		symbols: symbols{
@@ -183,14 +127,6 @@ var (
 		symbols: symbols{
 			TypeASCII: "-",
 			TypeNerd:  "•", // not really nerd font
-		},
-	}
-
-	BreadcrumbSep = icon{
-		color: color.Warning,
-		symbols: symbols{
-			TypeASCII: "/",
-			TypeNerd:  "/", // not really nerd font
 		},
 	}
 )
