@@ -3,6 +3,7 @@ package watches
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -54,7 +55,23 @@ func (f *fakeManager) Stale(ctx context.Context, since time.Duration) ([]watch.W
 	return nil, nil
 }
 func (f *fakeManager) Runs(ctx context.Context, filter watch.RunFilter) ([]watch.CheckRun, error) {
-	return f.runs, nil
+	if filter.Provider == "" {
+		return f.runs, nil
+	}
+	var runs []watch.CheckRun
+	for _, run := range f.runs {
+		var results []storage.WatchRun
+		for _, r := range run.Results {
+			if r.Provider == filter.Provider {
+				results = append(results, r)
+			}
+		}
+		if len(results) != 0 {
+			run.Results = results
+			runs = append(runs, run)
+		}
+	}
+	return runs, nil
 }
 func (f *fakeManager) RunDetails(ctx context.Context, id int64) (watch.CheckRun, error) {
 	return watch.CheckRun{}, nil
@@ -83,13 +100,13 @@ func testManager() *fakeManager {
 		},
 		runs: []watch.CheckRun{
 			{ID: 2, Kind: watch.KindManual, Started: now.Add(-2 * time.Hour), Results: []storage.WatchRun{
-				{Watch: 1, Title: "Berserk", Status: storage.StatusNew, Started: now.Add(-2 * time.Hour), From: ptr(377),
+				{Watch: 1, Title: "Berserk", Provider: "mango-mangapill", Status: storage.StatusNew, Started: now.Add(-2 * time.Hour), From: ptr(377),
 					Chapters: []storage.RunChapter{{Number: 378, Title: "A"}, {Number: 379}, {Number: 380}}},
-				{Watch: 3, Title: "Frieren", Status: storage.StatusSkipped},
+				{Watch: 3, Title: "Frieren", Provider: "mango-mangaplus", Status: storage.StatusSkipped},
 			}},
 			{ID: 1, Kind: watch.KindScheduled, Started: now.Add(-6 * time.Hour), Results: []storage.WatchRun{
-				{Watch: 1, Title: "Berserk", Status: storage.StatusNone},
-				{Watch: 3, Title: "Frieren", Status: storage.StatusError, Error: "timeout"},
+				{Watch: 1, Title: "Berserk", Provider: "mango-mangapill", Status: storage.StatusNone},
+				{Watch: 3, Title: "Frieren", Provider: "mango-mangaplus", Status: storage.StatusError, Error: "timeout"},
 			}},
 		},
 	}
@@ -299,5 +316,148 @@ func TestCheckError(t *testing.T) {
 	m := &fakeManager{checkErr: errors.New("db gone")}
 	if _, ok := checkCmd(context.Background(), m, nil, watch.CheckOptions{})().(error); !ok {
 		t.Error("a failed check isn't an error msg")
+	}
+}
+
+func TestSetFind(t *testing.T) {
+	a := watch.Watch{Watch: storage.Watch{ID: 1, Provider: "p", MangaID: "1", LibraryManga: 7}}
+	b := watch.Watch{Watch: storage.Watch{ID: 2, Provider: "q", MangaID: "9"}}
+	set := NewSet([]watch.Watch{a, b})
+	if w, ok := set.Find("q", "9"); !ok || w.ID != 2 {
+		t.Errorf("Find: %+v %v", w, ok)
+	}
+	m := storage.Manga{ID: 7, Sources: []storage.Source{{Provider: "p", MangaID: "1"}, {Provider: "q", MangaID: "9"}}}
+	if got := set.ForLibrary(m); len(got) != 2 || got[0].ID != 1 || got[1].ID != 2 {
+		t.Errorf("ForLibrary: %+v", got)
+	}
+}
+
+func TestJump(t *testing.T) {
+	msg, ok := JumpCmd(nil, "w watches it")().(base.NotificationMsg)
+	if !ok || msg.Message != "Not watched, w watches it" {
+		t.Errorf("not watched: %#v", msg)
+	}
+	m := testManager()
+	// the enabled one of the library manga's watches
+	got := JumpCmd([]watch.Watch{m.watches[1], m.watches[2]}, "")()
+	d, ok := got.(*detailsState)
+	if !ok || d.w.ID != 3 || d.manager != nil {
+		t.Fatalf("jump: got %#v", got)
+	}
+	// keys needing the manager wait for it
+	if cmd := d.Update(context.Background(), press("e")); cmd != nil {
+		t.Error("e before connecting")
+	}
+	d.Update(context.Background(), detailsMsg{manager: m, w: m.watches[2], runs: m.runs})
+	if d.manager != m || len(d.List.Items()) != 2 {
+		t.Errorf("loaded: manager %v, %d checks", d.manager, len(d.List.Items()))
+	}
+	if _, ok := d.Update(context.Background(), press("v"))().(*historyState); !ok {
+		t.Error("v on the details isn't the history")
+	}
+}
+
+func TestLibraryLink(t *testing.T) {
+	found := storage.Manga{ID: 7, Title: "Berserk"}
+	orig := findLibrary
+	t.Cleanup(func() { findLibrary = orig })
+	findLibrary = func(w watch.Watch) (storage.Manga, bool, error) {
+		return found, w.LibraryManga == 7, nil
+	}
+	var opened storage.Manga
+	screen := func(m storage.Manga) (base.State, error) {
+		opened = m
+		return newRunsState(nil), nil
+	}
+
+	w := watch.Watch{Watch: storage.Watch{Title: "Dandadan"}}
+	msg, err := libraryScreen(screen, w)
+	if n, ok := msg.(base.NotificationMsg); err != nil || !ok || !strings.Contains(n.Message, "Dandadan isn't in the library") {
+		t.Errorf("missing: %#v, %v", msg, err)
+	}
+	w.LibraryManga = 7
+	if msg, err := libraryScreen(screen, w); err != nil || msg == nil || opened.ID != 7 {
+		t.Errorf("linked: %#v, %v, opened %+v", msg, err, opened)
+	}
+
+	origScreen := LibraryScreen
+	LibraryScreen = screen
+	t.Cleanup(func() { LibraryScreen = origScreen })
+	if cmd := loaded(t, testManager()).Update(context.Background(), press("L")); cmd == nil {
+		t.Error("L on a watch does nothing")
+	}
+}
+
+func TestProviderHistory(t *testing.T) {
+	m := testManager()
+	ctx := context.Background()
+	msg, err := loadHistory(ctx, m, "mango-mangaplus")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"mango-mangapill", "mango-mangaplus"}; !slices.Equal(msg.providers, want) {
+		t.Errorf("providers %v, want %v", msg.providers, want)
+	}
+	var titles []string
+	for _, i := range msg.items {
+		titles = append(titles, i.(*runItem).Title())
+	}
+	// latest first, only the provider's
+	want := []string{formatTime(time.Time{}) + " · Frieren · skipped", formatTime(time.Time{}) + " · Frieren · error"}
+	if !slices.Equal(titles, want) {
+		t.Errorf("history %q, want %q", titles, want)
+	}
+
+	// v on Dandadan: its provider's
+	s := loaded(t, m)
+	s.List.Select(1)
+	h, ok := s.Update(ctx, press("v"))().(*historyState)
+	if !ok || h.provider != "mango-mangaplus" {
+		t.Fatalf("v: got %#v", h)
+	}
+	h.Update(ctx, msg)
+	if len(h.List.Items()) != 2 || !strings.Contains(h.Subtitle(), "mango-mangaplus") {
+		t.Errorf("history screen: %d items, subtitle %q", len(h.List.Items()), h.Subtitle())
+	}
+	// tab: every provider after the last one, then the first
+	h.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
+	if h.provider != "" {
+		t.Errorf("tab: %q", h.provider)
+	}
+	h.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
+	if h.provider != "mango-mangapill" {
+		t.Errorf("tab again: %q", h.provider)
+	}
+	// a late result of the provider left behind is dropped
+	h.Update(ctx, msg)
+	if len(h.List.Items()) != 2 || !strings.Contains(h.Subtitle(), "mango-mangapill") {
+		t.Errorf("subtitle %q", h.Subtitle())
+	}
+}
+
+func TestProviderFilter(t *testing.T) {
+	m := testManager()
+	m.watches = append(m.watches, watch.Watch{Watch: storage.Watch{ID: 4, Title: "Akira", Provider: "mango-mangapill", Enabled: true}})
+	s := loaded(t, m)
+	ctx := context.Background()
+	titles := func() []string {
+		var titles []string
+		for _, i := range s.List.Items() {
+			titles = append(titles, i.(*item).w.Title)
+		}
+		return titles
+	}
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
+	if got := titles(); !slices.Equal(got, []string{"Berserk", "Akira"}) || !strings.Contains(s.Subtitle(), "mango-mangapill") {
+		t.Errorf("mangapill: %v, %q", got, s.Subtitle())
+	}
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
+	if got := titles(); !slices.Equal(got, []string{"Dandadan", "Frieren"}) {
+		t.Errorf("mangaplus: %v", got)
+	}
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
+	s.Update(ctx, press("o"))
+	if got := titles(); !slices.Equal(got, []string{"Akira", "Berserk", "Dandadan", "Frieren"}) || !strings.Contains(s.Subtitle(), "by provider") {
+		t.Errorf("by provider: %v, %q", got, s.Subtitle())
 	}
 }

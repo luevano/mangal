@@ -27,28 +27,37 @@ type runItem struct {
 	r storage.WatchRun
 	// kind is the check run's, shown in a watch's history
 	kind string
-	// watchTitle shows the manga, in a run's results
+	// watchTitle shows the manga, in a run's results and a provider's history
 	watchTitle bool
+	// started shows when, in the histories
+	started bool
 }
 
-func (i *runItem) FilterValue() string { return i.r.Title + " " + i.r.Status }
+func (i *runItem) FilterValue() string {
+	return strings.Join([]string{i.r.Title, i.r.Provider, result(i.r), i.kind, formatTime(i.r.Started), chapterNumbers(i.r)}, " ")
+}
 
 func (i *runItem) Title() string {
 	res := result(i.r)
 	if len(i.r.Chapters) != 0 {
 		res += " (" + chapterNumbers(i.r) + ")"
 	}
-	if i.watchTitle {
-		return i.r.Title + " · " + res
+	var parts []string
+	if i.started {
+		parts = append(parts, formatTime(i.r.Started))
 	}
-	return formatTime(i.r.Started) + " · " + res
+	if i.watchTitle {
+		parts = append(parts, i.r.Title)
+	}
+	return strings.Join(append(parts, res), " · ")
 }
 
 func (i *runItem) Description() string {
 	var parts []string
 	if i.watchTitle {
 		parts = append(parts, i.r.Provider)
-	} else if i.kind != "" {
+	}
+	if i.kind != "" {
 		parts = append(parts, i.kind)
 	}
 	parts = append(parts, "from "+formatNumber(i.r.From))
@@ -101,18 +110,19 @@ type runsState struct {
 	manager watch.Manager
 	open    key.Binding
 	refresh key.Binding
+	history key.Binding
 }
 
 type runsMsg []watch.CheckRun
 
 func newRunsState(m watch.Manager) *runsState {
-	s := &runsState{manager: m, open: util.Bind("results", "enter"), refresh: util.Bind("refresh", "r")}
+	s := &runsState{manager: m, open: util.Bind("results", "enter"), refresh: util.Bind("refresh", "r"), history: util.Bind("history", "v")}
 	s.Screen = list.NewScreen(list.New(2, 1, "check run", "check runs", []*checkRunItem{}, func(i *checkRunItem) _list.DefaultItem { return i }), s.keyMap)
 	return s
 }
 
 func (s *runsState) keyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.open, s.refresh}}
+	return util.KeyMap{Short: []key.Binding{s.open, s.history, s.refresh}}
 }
 
 func (s *runsState) Title() base.Title { return base.Title{Text: "Check runs"} }
@@ -141,6 +151,9 @@ func (s *runsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		switch {
 		case key.Matches(msg, s.refresh):
 			return s.reload(ctx, "Refreshing")
+		case key.Matches(msg, s.history):
+			m := s.manager
+			return func() tea.Msg { return newHistoryState(m, "") }
 		case key.Matches(msg, s.open):
 			if i, ok := s.List.SelectedItem().(*checkRunItem); ok {
 				m, id := s.manager, i.run.ID
@@ -160,19 +173,26 @@ type runState struct {
 	manager watch.Manager
 	id      int64
 	run     watch.CheckRun
-	open    key.Binding
+
+	open, history, library key.Binding
 }
 
 type runMsg watch.CheckRun
 
 func newRunState(m watch.Manager, id int64) *runState {
-	s := &runState{manager: m, id: id, open: util.Bind("details", "enter")}
+	s := &runState{
+		manager: m,
+		id:      id,
+		open:    util.Bind("details", "enter"),
+		history: util.Bind("provider history", "v"),
+		library: util.Bind("library manga", "L"),
+	}
 	s.Screen = list.NewScreen(list.New(2, 1, "watch", "watches", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
 	return s
 }
 
 func (s *runState) keyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.open}}
+	return util.KeyMap{Short: []key.Binding{s.open, s.library, s.history}}
 }
 
 func (s *runState) Title() base.Title {
@@ -204,12 +224,31 @@ func (s *runState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		return s.List.SetItems(items)
 	case tea.KeyMsg:
-		if !s.List.Filtering() && key.Matches(msg, s.open) {
-			if i, ok := s.List.SelectedItem().(*runItem); ok {
-				return showRun(i.r)
-			}
-			return nil
+		if s.List.Filtering() {
+			break
+		}
+		if cmd, ok := runItemKey(ctx, msg, s.List, s.manager, s.open, s.library, s.history); ok {
+			return cmd
 		}
 	}
 	return s.List.Update(msg)
+}
+
+// runItemKey handles the keys on the selected check of a list of checks: open shows it,
+// library opens its library manga, history its provider's history.
+func runItemKey(ctx context.Context, msg tea.KeyMsg, l *list.Model, m watch.Manager, open, library, history key.Binding) (tea.Cmd, bool) {
+	i, ok := l.SelectedItem().(*runItem)
+	if !ok {
+		return nil, key.Matches(msg, open, library, history)
+	}
+	r := i.r
+	switch {
+	case key.Matches(msg, open):
+		return showRun(r), true
+	case key.Matches(msg, library):
+		return libraryCmd(ctx, watch.Watch{Watch: storage.Watch{ID: r.Watch, Provider: r.Provider, MangaID: r.MangaID, Title: r.Title}}), true
+	case key.Matches(msg, history):
+		return func() tea.Msg { return newHistoryState(m, r.Provider) }, true
+	}
+	return nil, false
 }

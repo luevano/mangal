@@ -5,8 +5,11 @@ package watches
 import (
 	"context"
 	"fmt"
+	"slices"
+	"time"
 
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/storage"
@@ -42,10 +45,11 @@ func managerName(st watch.Status) string {
 	return "server at " + st.Address
 }
 
-// Set is the watched mangas, for the marks of the manga lists.
+// Set is the watched mangas, for the marks of the manga lists and the jumps to their
+// watch.
 type Set struct {
-	byManga   map[string]bool
-	byLibrary map[int64]bool
+	byManga   map[string]watch.Watch
+	byLibrary map[int64][]watch.Watch
 }
 
 func mangaKey(provider, mangaID string) string {
@@ -54,11 +58,11 @@ func mangaKey(provider, mangaID string) string {
 
 // NewSet is the set of the watches.
 func NewSet(watches []watch.Watch) Set {
-	s := Set{byManga: map[string]bool{}, byLibrary: map[int64]bool{}}
+	s := Set{byManga: map[string]watch.Watch{}, byLibrary: map[int64][]watch.Watch{}}
 	for _, w := range watches {
-		s.byManga[mangaKey(w.Provider, w.MangaID)] = true
+		s.byManga[mangaKey(w.Provider, w.MangaID)] = w
 		if w.LibraryManga != 0 {
-			s.byLibrary[w.LibraryManga] = true
+			s.byLibrary[w.LibraryManga] = append(s.byLibrary[w.LibraryManga], w)
 		}
 	}
 	return s
@@ -66,20 +70,32 @@ func NewSet(watches []watch.Watch) Set {
 
 // Has is true when the provider's manga is watched.
 func (s Set) Has(provider, mangaID string) bool {
-	return s.byManga[mangaKey(provider, mangaID)]
+	_, ok := s.Find(provider, mangaID)
+	return ok
+}
+
+// Find is the watch of the provider's manga.
+func (s Set) Find(provider, mangaID string) (watch.Watch, bool) {
+	w, ok := s.byManga[mangaKey(provider, mangaID)]
+	return w, ok
 }
 
 // HasLibrary is true when the library manga, or one of its sources, is watched.
 func (s Set) HasLibrary(m storage.Manga) bool {
-	if s.byLibrary[m.ID] {
-		return true
-	}
+	return len(s.ForLibrary(m)) != 0
+}
+
+// ForLibrary are the watches of the library manga: downloading into it, or of one of its
+// sources.
+func (s Set) ForLibrary(m storage.Manga) []watch.Watch {
+	list := slices.Clone(s.byLibrary[m.ID])
 	for _, src := range m.Sources {
-		if s.Has(src.Provider, src.MangaID) {
-			return true
+		w, ok := s.Find(src.Provider, src.MangaID)
+		if ok && !slices.ContainsFunc(list, func(o watch.Watch) bool { return o.ID == w.ID }) {
+			list = append(list, w)
 		}
 	}
-	return false
+	return list
 }
 
 // Watched loads the set of watched mangas, run it in a base.Load. The marks aren't
@@ -103,4 +119,13 @@ func watched(ctx context.Context) ([]watch.Watch, error) {
 // Mark is the mark of a watched manga in the manga lists.
 func Mark() string {
 	return style.Italic.Accent.Render("(watched)")
+}
+
+// Describe is the watch's state in a line: its provider and when it's checked next.
+func Describe(w watch.Watch) string {
+	next := nextCheck(w, config.Watch.Backoff.Get(), time.Now())
+	if w.Enabled && !w.ProviderMissing {
+		next = "next check " + next
+	}
+	return "watched on " + w.Provider + ": " + next
 }

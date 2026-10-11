@@ -21,23 +21,27 @@ var _ base.State = (*detailsState)(nil)
 // detailsState is a watch: its settings and the history of its checks.
 type detailsState struct {
 	list.Screen
+	// manager is nil until connected, when opened from another screen
 	manager watch.Manager
+	connect connector
 	w       watch.Watch
 	backoff int
 	size    base.Size
 	now     func() time.Time
 
-	open, edit, pause, refresh key.Binding
+	open, edit, pause, refresh, library, history key.Binding
 }
 
 type detailsMsg struct {
-	w    watch.Watch
-	runs []watch.CheckRun
+	manager watch.Manager
+	w       watch.Watch
+	runs    []watch.CheckRun
 }
 
 func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState {
 	s := &detailsState{
 		manager: m,
+		connect: Connect,
 		w:       w,
 		backoff: backoff,
 		now:     time.Now,
@@ -45,13 +49,16 @@ func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState 
 		edit:    util.Bind("edit", "e"),
 		pause:   util.Bind("pause/resume", "p"),
 		refresh: util.Bind("refresh", "r"),
+		library: util.Bind("library manga", "L"),
+		history: util.Bind("provider history", "v"),
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
 	return s
 }
 
 func (s *detailsState) keyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.open, s.edit, s.pause, s.refresh}}
+	short := []key.Binding{s.open, s.edit, s.pause, s.library, s.history}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, s.refresh)}}
 }
 
 func (s *detailsState) Title() base.Title { return base.Title{Text: s.w.Title} }
@@ -69,14 +76,20 @@ func (s *detailsState) Resize(size base.Size) tea.Cmd {
 func (s *detailsState) Init(ctx context.Context) tea.Cmd { return s.reload(ctx, "Loading the checks") }
 
 func (s *detailsState) reload(ctx context.Context, label string) tea.Cmd {
-	m, id := s.manager, s.w.ID
+	m, connect, id := s.manager, s.connect, s.w.ID
 	return base.Load(ctx, label, func(ctx context.Context) (detailsMsg, error) {
+		var err error
+		if m == nil {
+			if m, err = connect(ctx); err != nil {
+				return detailsMsg{}, err
+			}
+		}
 		w, err := m.Get(ctx, id)
 		if err != nil {
 			return detailsMsg{}, err
 		}
 		runs, err := m.Runs(ctx, watch.RunFilter{Watch: id, Limit: maxRuns})
-		return detailsMsg{w: w, runs: runs}, err
+		return detailsMsg{manager: m, w: w, runs: runs}, err
 	}, func(msg detailsMsg) tea.Msg { return msg })
 }
 
@@ -86,7 +99,7 @@ func historyItems(id int64, runs []watch.CheckRun) []_list.Item {
 	for _, run := range runs {
 		for _, r := range run.Results {
 			if r.Watch == id {
-				items = append(items, &runItem{r: r, kind: run.Kind})
+				items = append(items, &runItem{r: r, kind: run.Kind, started: true})
 			}
 		}
 	}
@@ -96,7 +109,7 @@ func historyItems(id int64, runs []watch.CheckRun) []_list.Item {
 func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case detailsMsg:
-		s.w = msg.w
+		s.manager, s.w = msg.manager, msg.w
 		return tea.Batch(s.List.SetItems(historyItems(s.w.ID, msg.runs)), s.Resize(s.size))
 	case base.RestoredMsg:
 		return s.reload(ctx, "")
@@ -112,6 +125,12 @@ func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		switch {
 		case key.Matches(msg, s.refresh):
 			return s.reload(ctx, "Refreshing")
+		case key.Matches(msg, s.library):
+			return libraryCmd(ctx, w)
+		case m == nil:
+			// still connecting, the keys below need the manager
+		case key.Matches(msg, s.history):
+			return func() tea.Msg { return newHistoryState(m, w.Provider) }
 		case key.Matches(msg, s.edit):
 			return func() tea.Msg { return newEditState(m, w) }
 		case key.Matches(msg, s.pause):

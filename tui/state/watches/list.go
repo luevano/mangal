@@ -1,9 +1,11 @@
 package watches
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -87,11 +89,19 @@ type listState struct {
 	closed bool
 	now    func() time.Time
 
+	// watches and last are the loaded ones, the items those of provider (all when empty),
+	// sorted by provider when byProvider
+	watches    []watch.Watch
+	last       map[int64]storage.WatchRun
+	provider   string
+	byProvider bool
+
 	keys listKeyMap
 }
 
 type listKeyMap struct {
-	details, check, checkDue, pause, pauseProvider, delete, edit, gaps, refresh, runs key.Binding
+	details, check, checkDue, pause, pauseProvider, delete, edit, gaps, refresh, runs,
+	library, history, nextProvider, group key.Binding
 }
 
 type loadedMsg struct {
@@ -134,6 +144,10 @@ func newListState(connect connector) *listState {
 			gaps:          util.Bind("check gaps", "g"),
 			refresh:       util.Bind("refresh", "r"),
 			runs:          util.Bind("runs", "h"),
+			library:       util.Bind("library manga", "L"),
+			history:       util.Bind("provider history", "v"),
+			nextProvider:  util.Bind("next provider", "tab"),
+			group:         util.Bind("group by provider", "o"),
 		},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "watch", "watches", []*item{}, func(i *item) _list.DefaultItem { return i }), s.keyMap)
@@ -151,7 +165,11 @@ func (s *listState) KeyMap() help.KeyMap {
 func (s *listState) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.details, k.check, k.pause, k.edit, k.runs}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{short, {k.checkDue, k.gaps, k.pauseProvider, k.delete, k.refresh}}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{
+		short,
+		{k.checkDue, k.gaps, k.pauseProvider, k.delete, k.refresh},
+		{k.library, k.history, k.nextProvider, k.group},
+	}}
 }
 
 func (s *listState) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
@@ -162,6 +180,12 @@ func (s *listState) Title() base.Title {
 
 func (s *listState) Subtitle() string {
 	parts := []string{s.List.Subtitle()}
+	if s.provider != "" {
+		parts = append(parts, s.provider)
+	}
+	if s.byProvider {
+		parts = append(parts, "by provider")
+	}
 	if s.manager != nil {
 		parts = append(parts, managerName(s.status))
 	}
@@ -282,16 +306,39 @@ func (s *listState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 func (s *listState) onLoaded(msg loadedMsg) tea.Cmd {
 	s.manager, s.status = msg.manager, msg.status
+	s.watches, s.last = msg.watches, msg.last
+	return s.setItems()
+}
+
+// shown are the watches of the provider filter, in the order chosen.
+func (s *listState) shown() []watch.Watch {
+	var shown []watch.Watch
+	for _, w := range s.watches {
+		if s.provider == "" || w.Provider == s.provider {
+			shown = append(shown, w)
+		}
+	}
+	if s.byProvider {
+		slices.SortStableFunc(shown, func(a, b watch.Watch) int {
+			return cmp.Or(cmp.Compare(a.Provider, b.Provider), cmp.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title)))
+		})
+	}
+	return shown
+}
+
+// setItems shows the loaded watches, the selected one stays selected.
+func (s *listState) setItems() tea.Cmd {
 	now := s.now()
 	selected := int64(0)
 	if i, ok := s.List.SelectedItem().(*item); ok {
 		selected = i.w.ID
 	}
-	items := make([]_list.Item, len(msg.watches))
+	shown := s.shown()
+	items := make([]_list.Item, len(shown))
 	index := 0
-	for i, w := range msg.watches {
+	for i, w := range shown {
 		it := &item{w: w, backoff: s.backoff, now: now}
-		if r, ok := msg.last[w.ID]; ok {
+		if r, ok := s.last[w.ID]; ok {
 			it.last = &r
 		}
 		if w.ID == selected {
@@ -305,9 +352,19 @@ func (s *listState) onLoaded(msg loadedMsg) tea.Cmd {
 	return cmd
 }
 
+// providers are the providers of the loaded watches, sorted.
+func (s *listState) providers() []string {
+	var providers []string
+	for _, w := range s.watches {
+		providers = append(providers, w.Provider)
+	}
+	slices.Sort(providers)
+	return slices.Compact(providers)
+}
+
 func (s *listState) updateKeys() {
 	enable := len(s.List.Items()) != 0
-	for _, k := range []*key.Binding{&s.keys.details, &s.keys.check, &s.keys.checkDue, &s.keys.pause, &s.keys.pauseProvider, &s.keys.delete, &s.keys.edit, &s.keys.gaps} {
+	for _, k := range []*key.Binding{&s.keys.details, &s.keys.check, &s.keys.checkDue, &s.keys.pause, &s.keys.pauseProvider, &s.keys.delete, &s.keys.edit, &s.keys.gaps, &s.keys.library, &s.keys.history} {
 		k.SetEnabled(enable)
 	}
 }
@@ -319,6 +376,12 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		return s.reload(ctx, "Refreshing"), true
 	case key.Matches(msg, s.keys.runs):
 		return func() tea.Msg { return newRunsState(m) }, true
+	case key.Matches(msg, s.keys.nextProvider):
+		s.provider = nextProvider(s.providers(), s.provider)
+		return s.setItems(), true
+	case key.Matches(msg, s.keys.group):
+		s.byProvider = !s.byProvider
+		return s.setItems(), true
 	case key.Matches(msg, s.keys.checkDue):
 		var due []int64
 		now := s.now()
@@ -343,6 +406,10 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		return func() tea.Msg { return newDetailsState(m, w, backoff) }, true
 	case key.Matches(msg, s.keys.edit):
 		return func() tea.Msg { return newEditState(m, w) }, true
+	case key.Matches(msg, s.keys.library):
+		return libraryCmd(ctx, w), true
+	case key.Matches(msg, s.keys.history):
+		return func() tea.Msg { return newHistoryState(m, w.Provider) }, true
 	case key.Matches(msg, s.keys.check):
 		return s.check(ctx, []int64{w.ID}, watch.CheckOptions{}, w.Title), true
 	case key.Matches(msg, s.keys.gaps):
