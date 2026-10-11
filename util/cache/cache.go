@@ -67,6 +67,12 @@ func CacheStore(dbName, bucketName string) (gokv.Store, error) {
 		return storage.KV{DB: cacheDB, Table: storage.TableVolumes, Owner: dbName, TTL: ttl}, nil
 	case bucketName == mango.CacheBucketNameChapters:
 		return storage.KV{DB: cacheDB, Table: storage.TableChapters, Owner: dbName, TTL: ttl}, nil
+	case bucketName == mango.CacheBucketNameMirrors:
+		mirrorTTL, err := time.ParseDuration(config.Cache.MirrorTTL.Get())
+		if err != nil {
+			return nil, err
+		}
+		return storage.KV{DB: cacheDB, Table: storage.TableOther, Owner: dbName + "/" + bucketName, TTL: mirrorTTL}, nil
 	case bucketName == dbName:
 		// luaprovider caches http responses with the provider id as the bucket
 		return storage.KV{DB: cacheDB, Table: storage.TableLuaHTTP, Owner: dbName, TTL: ttl}, nil

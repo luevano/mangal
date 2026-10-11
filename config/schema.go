@@ -107,14 +107,16 @@ type configProviders struct {
 	Path        *entry[string, string]
 	Parallelism *entry[int64, uint8]
 	Headless    configProvidersHeadless
+	Mirrors     *entry[map[string]any, map[string]string]
 	Filter      configProvidersFilter
 	MangaDex    configProvidersMangaDex
 	MangaPlus   configProvidersMangaPlus
 }
 
 type configCache struct {
-	Path *entry[string, string]
-	TTL  *entry[string, string]
+	Path      *entry[string, string]
+	TTL       *entry[string, string]
+	MirrorTTL *entry[string, string]
 }
 
 type configProvidersHeadless struct {

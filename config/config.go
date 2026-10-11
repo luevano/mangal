@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"io/fs"
+	"net/url"
 	"path/filepath"
 	"runtime"
 	"text/template"
@@ -95,6 +96,15 @@ func initConfig() config {
 				Key:         "cache.ttl",
 				Default:     "24h",
 				Description: `Time to live. A duration string is a possibly signed sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "-1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".`,
+				Validate: func(s string) error {
+					_, err := time.ParseDuration(s)
+					return err
+				},
+			}),
+			MirrorTTL: reg(entry[string, string]{
+				Key:         "cache.mirror_ttl",
+				Default:     "24h",
+				Description: "How long a provider keeps using the mirror that worked when its website was down, before trying its preferred one (providers.mirrors) or website again. Same format as cache.ttl.",
 				Validate: func(s string) error {
 					_, err := time.ParseDuration(s)
 					return err
@@ -433,6 +443,38 @@ func initConfig() config {
 					Description: "Flaresolverr URL to use for headless providers.",
 				}),
 			},
+			Mirrors: reg(entry[map[string]any, map[string]string]{
+				Key:         "providers.mirrors",
+				Default:     map[string]string{},
+				Description: "Preferred website by provider id, its website or one of its mirrors (see mangal providers), e.g. mango-mangakakalot = 'https://www.mangakakalove.com/'. When it's down the others are tried.",
+				Unmarshal: func(raw map[string]any) (map[string]string, error) {
+					mirrors := make(map[string]string, len(raw))
+					for id, v := range raw {
+						s, ok := v.(string)
+						if !ok {
+							return nil, fmt.Errorf("mirror of %q: expected a string, got %T", id, v)
+						}
+						mirrors[id] = s
+					}
+					return mirrors, nil
+				},
+				Marshal: func(mirrors map[string]string) (map[string]any, error) {
+					raw := make(map[string]any, len(mirrors))
+					for id, s := range mirrors {
+						raw[id] = s
+					}
+					return raw, nil
+				},
+				Validate: func(mirrors map[string]string) error {
+					for id, mirror := range mirrors {
+						u, err := url.Parse(mirror)
+						if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+							return fmt.Errorf("mirror of %q: %q isn't an http(s) url", id, mirror)
+						}
+					}
+					return nil
+				},
+			}),
 			Filter: configProvidersFilter{
 				NSFW: reg(entry[bool, bool]{
 					Key:         "providers.filter.nsfw",

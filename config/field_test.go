@@ -67,3 +67,32 @@ func TestEnvOverride(t *testing.T) {
 		t.Errorf("got %q, want the env value", got)
 	}
 }
+
+func TestMirrors(t *testing.T) {
+	Path = filepath.Join(t.TempDir(), "mangal.toml")
+	toml := "[providers.mirrors]\nmango-mangakakalot = 'https://www.mangakakalove.com/'\n"
+	if err := os.WriteFile(Path, []byte(toml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Load(Path); err != nil {
+		t.Fatal(err)
+	}
+	if got := Providers.Mirrors.Get()["mango-mangakakalot"]; got != "https://www.mangakakalove.com/" {
+		t.Fatalf("got %q", got)
+	}
+
+	if err := SetMirror("mango-manganato", "https://www.nelomanga.net/"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetMirror("mango-mangakakalot", ""); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(Path)
+	if file := string(data); !strings.Contains(file, "mango-manganato = 'https://www.nelomanga.net/'") || strings.Contains(file, "mangakakalove") {
+		t.Errorf("want only the manganato mirror:\n%s", file)
+	}
+
+	if err := Validate(Providers.Mirrors.Key, map[string]any{"mango-x": "not a url"}); err == nil {
+		t.Error("invalid mirror: no error")
+	}
+}

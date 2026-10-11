@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/adrg/xdg"
@@ -133,8 +134,16 @@ func Load(path string) error {
 	}
 
 	// validate all values now that the config was read
-	for _, key := range viper.AllKeys() {
+	keys := viper.AllKeys()
+	for _, key := range keys {
 		if !Exists(key) {
+			// a table entry (providers.mirrors.<id>): the table is the key
+			if parent, ok := mapParent(key); ok {
+				if !slices.Contains(keys, parent) {
+					keys = append(keys, parent)
+				}
+				continue
+			}
 			fmt.Printf("Config key %q is not supported, update config file\n", key)
 			continue
 		}
@@ -150,6 +159,17 @@ func Load(path string) error {
 		}
 	}
 	return nil
+}
+
+// mapParent is the registered key key is an entry of, if any (for map values, which viper
+// lists by entry).
+func mapParent(key string) (string, bool) {
+	for i := strings.LastIndex(key, "."); i > 0; i = strings.LastIndex(key[:i], ".") {
+		if Exists(key[:i]) {
+			return key[:i], true
+		}
+	}
+	return "", false
 }
 
 // WriteKey sets the key and writes only that key to the existing config file, the rest of the file
