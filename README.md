@@ -87,7 +87,7 @@ mangal -h
 
 ### Config
 
-Mangal contains sensitive defaults that can be edited with some command flags or by editing a config file. By default no config is written to disk, to write the default config to disk run:
+Mangal comes with sensible defaults that can be changed in the config file, with environment variables (`MANGAL_` and the key in upper case with `_` for `.`, e.g. `MANGAL_DOWNLOAD_PATH`) or with some command flags. By default no config is written to disk, to write the default config to disk run:
 
 ```sh
 mangal config write
