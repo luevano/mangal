@@ -4,12 +4,15 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/tui/model/metadata"
+	"github.com/luevano/mangal/v5/tui/state/watches"
 )
 
 var _ list.DefaultItem = (*item)(nil)
 
 type item struct {
 	manga mangadata.Manga
+	// watched marks it
+	watched bool
 
 	extraInfo     *bool
 	fullExtraInfo *bool
@@ -23,13 +26,17 @@ func (i *item) FilterValue() string {
 }
 
 func (i *item) Title() string {
+	title := i.FilterValue()
+	if i.watched {
+		title += " " + watches.Mark()
+	}
 	switch {
 	case !*i.extraInfo:
-		return i.FilterValue()
+		return title
 	case *i.fullExtraInfo:
-		return i.FilterValue() + i.renderedFullMeta
+		return title + i.renderedFullMeta
 	default:
-		return i.FilterValue() + i.renderedMeta
+		return title + i.renderedMeta
 	}
 }
 

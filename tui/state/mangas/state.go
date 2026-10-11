@@ -23,6 +23,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/state/anilist"
 	"github.com/luevano/mangal/v5/tui/state/chapters"
 	"github.com/luevano/mangal/v5/tui/state/volumes"
+	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -36,6 +37,8 @@ type state struct {
 	// the items point to these
 	extraInfo     bool
 	fullExtraInfo bool
+	// watched are the watched mangas, for the marks
+	watched watches.Set
 
 	keys keyMap
 }
@@ -46,6 +49,7 @@ type keyMap struct {
 	anilist,
 	metadata,
 	info,
+	watch,
 	toggleFullMeta key.Binding
 }
 
@@ -74,6 +78,7 @@ func New(client *libmangal.Client) base.State {
 			anilist:        util.Bind("anilist", "A"),
 			metadata:       util.Bind("metadata", "m"),
 			info:           util.Bind("info", "i"),
+			watch:          util.Bind("watch", "w"),
 			toggleFullMeta: util.Bind("toggle full meta", "M"),
 		},
 	}
@@ -91,8 +96,8 @@ func New(client *libmangal.Client) base.State {
 func (s *state) KeyMap() help.KeyMap {
 	k := s.keys
 	return base.CombinedKeyMap(util.KeyMap{
-		Short: []key.Binding{k.confirm, k.search, k.anilist, k.metadata, k.info},
-		Full:  [][]key.Binding{{k.confirm, k.search, k.info}, {k.anilist, k.metadata, k.toggleFullMeta}},
+		Short: []key.Binding{k.confirm, k.search, k.anilist, k.metadata, k.watch},
+		Full:  [][]key.Binding{{k.confirm, k.search, k.info, k.watch}, {k.anilist, k.metadata, k.toggleFullMeta}},
 	}, s.ListKeyMap())
 }
 
@@ -108,7 +113,22 @@ func (s *state) Subtitle() string {
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	return tea.Batch(s.Screen.Init(ctx), s.Search.Focus(), loginCmd(ctx))
+	return tea.Batch(s.Screen.Init(ctx), s.Search.Focus(), loginCmd(ctx), watchedCmd(ctx))
+}
+
+type watchedMsg watches.Set
+
+func watchedCmd(ctx context.Context) tea.Cmd {
+	return base.Load(ctx, "", watches.Watched, func(set watches.Set) tea.Msg { return watchedMsg(set) })
+}
+
+// markWatched marks the watched items.
+func (s *state) markWatched() {
+	id := s.client.Info().ID
+	for _, i := range s.List.Items() {
+		i := i.(*item)
+		i.watched = s.watched.Has(id, i.manga.Info().ID)
+	}
 }
 
 // loginCmd logs into Anilist while the user types, for the metadata search. A cancelled
@@ -129,8 +149,13 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case resultsMsg:
 		cmd := s.SetResults(msg)
+		s.markWatched()
 		s.updateKeys()
 		return cmd
+	case watchedMsg:
+		s.watched = watches.Set(msg)
+		s.markWatched()
+		return nil
 	case openedMsg:
 		return s.onOpened(msg)
 	case search.SearchMsg:
@@ -145,7 +170,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		for _, i := range s.List.Items() {
 			i.(*item).renderMetadata()
 		}
-		return nil
+		// e.g. watched with w
+		return watchedCmd(ctx)
 	case tea.KeyMsg:
 		if s.Inputting() {
 			break
@@ -185,6 +211,8 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
 		return anilist.Open(s.client, i.manga), true
 	case key.Matches(msg, s.keys.metadata):
 		return metadata.ShowManga(i.manga), true
+	case key.Matches(msg, s.keys.watch):
+		return func() tea.Msg { return watches.NewAdd(s.client, i.manga, nil) }, true
 	}
 	return nil, false
 }
@@ -313,5 +341,6 @@ func (s *state) updateKeys() {
 	s.keys.confirm.SetEnabled(enable)
 	s.keys.anilist.SetEnabled(enable)
 	s.keys.metadata.SetEnabled(enable)
+	s.keys.watch.SetEnabled(enable)
 	s.keys.toggleFullMeta.SetEnabled(enable && s.extraInfo)
 }

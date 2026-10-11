@@ -20,6 +20,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/state/library"
 	"github.com/luevano/mangal/v5/tui/state/migrate"
 	"github.com/luevano/mangal/v5/tui/state/providers"
+	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -35,6 +36,7 @@ type state struct {
 
 	confirm,
 	library,
+	watches,
 	accounts,
 	migrate key.Binding
 }
@@ -51,6 +53,7 @@ func New() base.State {
 	return &state{
 		confirm:  util.Bind("providers", "enter"),
 		library:  util.Bind("library", "l"),
+		watches:  util.Bind("watches", "w"),
 		accounts: util.Bind("accounts", "a"),
 		migrate:  util.Bind("migrate", "M"),
 	}
@@ -64,7 +67,7 @@ func (s *state) Status() string                { return "" }
 func (s *state) Resize(size base.Size) tea.Cmd { return nil }
 
 func (s *state) KeyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.confirm, s.library, s.accounts, s.migrate}}
+	return util.KeyMap{Short: []key.Binding{s.confirm, s.library, s.watches, s.accounts, s.migrate}}
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
@@ -119,6 +122,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return func() tea.Msg { return s.providers }
 		case key.Matches(msg, s.library):
 			return func() tea.Msg { return library.New() }
+		case key.Matches(msg, s.watches):
+			return func() tea.Msg { return watches.New() }
 		case key.Matches(msg, s.accounts):
 			return func() tea.Msg { return accounts.New(false) }
 		case key.Matches(msg, s.migrate):

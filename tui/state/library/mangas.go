@@ -22,6 +22,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
+	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/spf13/afero"
 )
@@ -32,6 +33,7 @@ type mangaItem struct {
 	manga   storage.Manga
 	missing bool
 	keep    bool
+	watched bool
 }
 
 func (i *mangaItem) FilterValue() string { return i.manga.Title }
@@ -43,6 +45,9 @@ func (i *mangaItem) Title() string {
 	}
 	if i.missing {
 		title += " (missing)"
+	}
+	if i.watched {
+		title += " " + watches.Mark()
 	}
 	return title
 }
@@ -135,15 +140,16 @@ func (s *mangasState) keyMap() help.KeyMap {
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
 	files := s.files
-	return base.Load(ctx, "", func(context.Context) (mangasLoadedMsg, error) {
+	return base.Load(ctx, "", func(ctx context.Context) (mangasLoadedMsg, error) {
 		mangas, err := files.Library.Mangas()
 		if err != nil {
 			return mangasLoadedMsg{}, err
 		}
+		watched, _ := watches.Watched(ctx)
 		items := make([]*mangaItem, len(mangas))
 		for i, m := range mangas {
 			exists, _ := afero.DirExists(files.FS, m.Path())
-			items[i] = &mangaItem{manga: m, missing: !exists}
+			items[i] = &mangaItem{manga: m, missing: !exists, watched: watched.HasLibrary(m)}
 		}
 		return mangasLoadedMsg{items: items, trash: trashSummary(files)}, nil
 	}, func(msg mangasLoadedMsg) tea.Msg { return msg })

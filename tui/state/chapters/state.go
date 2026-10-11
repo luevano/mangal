@@ -24,6 +24,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/model/metadata"
 	"github.com/luevano/mangal/v5/tui/state/anilist"
+	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -49,6 +50,8 @@ type state struct {
 	show show
 	// fullMeta shows the metadata's source and id in the status
 	fullMeta bool
+	// watched is true when the manga is watched
+	watched bool
 
 	renderedSep,
 	renderedSubtitleFormats string
@@ -67,6 +70,7 @@ type keyMap struct {
 	metadata,
 	changeFormat,
 	openURL,
+	watch,
 	selectAll,
 	unselectAll,
 	toggleVolumeNumber,
@@ -111,6 +115,7 @@ func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volum
 			metadata:            util.Bind("metadata", "m"),
 			changeFormat:        util.Bind("change format", "f"),
 			openURL:             util.Bind("open url", "o"),
+			watch:               util.Bind("watch", "w"),
 			selectAll:           util.Bind("select all", "a"),
 			unselectAll:         util.Bind("unselect all", "backspace"),
 			toggleVolumeNumber:  util.Bind("toggle vol num", "v"),
@@ -141,7 +146,7 @@ func (s *state) keyMap() help.KeyMap {
 	short := []key.Binding{k.toggle, k.read, k.download, k.info}
 	return util.KeyMap{Short: short, Full: [][]key.Binding{
 		short,
-		{k.anilist, k.metadata, k.changeFormat, k.openURL},
+		{k.anilist, k.metadata, k.changeFormat, k.openURL, k.watch},
 		{k.selectAll, k.unselectAll},
 		{k.toggleVolumeNumber, k.toggleChapterNumber, k.toggleGroup, k.toggleDate},
 	}}
@@ -171,6 +176,10 @@ func (s *state) Subtitle() string {
 		subtitle.WriteString(s.styles.subtitle.Render(fmt.Sprintf("%d selected", s.selected.Size())))
 	}
 	subtitle.WriteString(s.renderedSubtitleFormats)
+	if s.watched {
+		subtitle.WriteString(s.renderedSep)
+		subtitle.WriteString(watches.Mark())
+	}
 	return subtitle.String()
 }
 
@@ -186,7 +195,14 @@ func (s *state) Resize(size base.Size) tea.Cmd {
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
 	s.updateSubtitleFormats()
-	return tea.Batch(s.formats.Init(), s.refresh(ctx, true))
+	return tea.Batch(s.formats.Init(), s.refresh(ctx, true), s.watchedCmd(ctx))
+}
+
+type watchedMsg bool
+
+func (s *state) watchedCmd(ctx context.Context) tea.Cmd {
+	provider, id := s.client.Info().ID, s.manga.Info().ID
+	return base.Load(ctx, "", watches.Watched, func(set watches.Set) tea.Msg { return watchedMsg(set.Has(provider, id)) })
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
@@ -195,6 +211,9 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return s.updateKey(ctx, msg)
 	case filesMsg:
 		s.setFiles(msg)
+		return nil
+	case watchedMsg:
+		s.watched = bool(msg)
 		return nil
 	case downloadMsg:
 		return s.download(ctx, msg)
@@ -219,7 +238,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case base.RestoredMsg:
 		// e.g. after the download screen
 		s.updateSubtitleFormats()
-		return s.refresh(ctx, false)
+		return tea.Batch(s.refresh(ctx, false), s.watchedCmd(ctx))
 	}
 	return s.updateChild(msg)
 }
@@ -248,6 +267,16 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 		return anilist.Open(s.client, s.manga)
 	case key.Matches(msg, k.metadata):
 		return metadata.ShowManga(s.manga)
+	case key.Matches(msg, k.watch):
+		// a volume's chapters aren't all of them
+		var chapters []mangadata.Chapter
+		if s.volume == nil {
+			for _, i := range s.items() {
+				chapters = append(chapters, i.chapter)
+			}
+		}
+		c, manga := s.client, s.manga
+		return func() tea.Msg { return watches.NewAdd(c, manga, chapters) }
 	case key.Matches(msg, k.changeFormat):
 		s.formatsBehind = s.View()
 		s.inFormats = true
