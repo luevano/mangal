@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/adrg/xdg"
+	"github.com/luevano/libmangal/metadata/myanimelist"
 	"github.com/luevano/mangal/v5/auth/oauth"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -49,6 +50,9 @@ type fakeMAL struct {
 	requests []string
 	form     url.Values
 	query    string
+	// badClient answers the searches like MyAnimeList does to an unknown client id
+	badClient bool
+	searches  int
 }
 
 var fake = &fakeMAL{}
@@ -56,7 +60,7 @@ var fake = &fakeMAL{}
 func (f *fakeMAL) reset(access []string, refresh map[string]string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.refresh, f.requests, f.form, f.query = refresh, nil, nil, ""
+	f.refresh, f.requests, f.form, f.query, f.badClient, f.searches = refresh, nil, nil, "", false, 0
 	f.access = map[string]bool{}
 	for _, a := range access {
 		f.access[a] = true
@@ -100,6 +104,10 @@ func (f *fakeMAL) RoundTrip(req *http.Request) (*http.Response, error) {
 		return respond(200, map[string]any{"id": 7, "name": "me"})
 	case req.URL.Path == "/v2/manga":
 		f.query = req.URL.Query().Get("q")
+		f.searches++
+		if f.badClient {
+			return respond(400, map[string]string{"error": "invalid_request", "message": "Invalid client id"})
+		}
 		return respond(200, map[string]any{"data": []any{}})
 	}
 	return respond(404, map[string]any{})
@@ -290,7 +298,7 @@ func TestSearchCapsTheQuery(t *testing.T) {
 	if _, err := p.SearchContext(context.Background(), long); err != nil {
 		t.Fatal(err)
 	}
-	if got := []rune(fake.query); len(got) > maxQuery || !strings.HasPrefix(long, fake.query) {
+	if got := []rune(fake.query); len(got) > 64 || !strings.HasPrefix(long, fake.query) {
 		t.Errorf("query %q (%d runes)", fake.query, len(got))
 	}
 }
@@ -320,5 +328,24 @@ func TestNotConfigured(t *testing.T) {
 	}
 	if err := Logout(); err != nil {
 		t.Errorf("logout: %v", err)
+	}
+}
+
+func TestInvalidClientIDSearchesOnce(t *testing.T) {
+	start(t)
+	fake.reset(nil, nil)
+	fake.badClient = true
+	p, err := MyAnimeList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SearchContext(context.Background(), "one"); !errors.Is(err, myanimelist.ErrInvalidClientID) {
+		t.Fatalf("first search: %v", err)
+	}
+	if res, err := p.SearchContext(context.Background(), "two"); err != nil || len(res) != 0 {
+		t.Fatalf("second search: %v, %v", res, err)
+	}
+	if fake.searches != 1 {
+		t.Errorf("%d requests, the refused id is asked once", fake.searches)
 	}
 }

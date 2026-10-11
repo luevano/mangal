@@ -6,8 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/luevano/libmangal/metadata"
@@ -23,9 +23,6 @@ import (
 const (
 	// refreshBefore is how long before the token expires it's refreshed (they last ~31 days).
 	refreshBefore = 7 * 24 * time.Hour
-	// maxQuery caps the search queries, in runes.
-	// TODO: drop once libmangal caps them; MyAnimeList's limit isn't documented.
-	maxQuery = 64
 )
 
 // ErrNotConfigured is MyAnimeList without a client id.
@@ -34,7 +31,9 @@ var ErrNotConfigured = errors.New("not configured: set metadata.myanimelist.clie
 var (
 	mal      *myanimelist.MyAnimeList
 	provider *metadata.ProviderWithCache
-	malLock  sync.Mutex
+	// providerID is the client id provider was made with, a new one makes a new provider
+	providerID string
+	malLock    sync.Mutex
 
 	// loginSem serializes the logins, a channel so waiting can be cancelled
 	loginSem   = make(chan struct{}, 1)
@@ -52,11 +51,11 @@ var (
 func MyAnimeList() (*metadata.ProviderWithCache, error) {
 	malLock.Lock()
 	defer malLock.Unlock()
-	if provider != nil {
+	// the client id can change during the run (the TUI config window)
+	id := config.Metadata.MyAnimeList.ClientID.Get()
+	if provider != nil && id == providerID {
 		return provider, nil
 	}
-	// not kept: the client id can be set later in the run
-	id := config.Metadata.MyAnimeList.ClientID.Get()
 	if id == "" {
 		return nil, ErrNotConfigured
 	}
@@ -70,26 +69,33 @@ func MyAnimeList() (*metadata.ProviderWithCache, error) {
 	}
 
 	cacheOpts := metadata.DefaultProviderWithCacheOptions()
-	cacheOpts.Provider = capped{m}
+	cacheOpts.Provider = &guarded{MyAnimeList: m}
 	cacheOpts.CacheStore = cache.CacheStore
 	p, err := metadata.NewProviderWithCache(cacheOpts)
 	if err != nil {
 		return nil, fmt.Errorf("create myanimelist: %w", err)
 	}
-	mal, provider = m, p
+	mal, provider, providerID = m, p, id
 	return provider, nil
 }
 
-// capped caps the search queries to maxQuery runes.
-type capped struct {
+// guarded stops searching once MyAnimeList refused the client id: the first search says so,
+// the next ones find nothing instead of failing every metadata search.
+type guarded struct {
 	*myanimelist.MyAnimeList
+	refused atomic.Bool
 }
 
-func (c capped) Search(ctx context.Context, query string) ([]metadata.Metadata, error) {
-	if r := []rune(query); len(r) > maxQuery {
-		query = strings.TrimSpace(string(r[:maxQuery]))
+func (g *guarded) Search(ctx context.Context, query string) ([]metadata.Metadata, error) {
+	if g.refused.Load() {
+		return nil, nil
 	}
-	return c.MyAnimeList.Search(ctx, query)
+	mangas, err := g.MyAnimeList.Search(ctx, query)
+	if errors.Is(err, myanimelist.ErrInvalidClientID) {
+		g.refused.Store(true)
+		return nil, fmt.Errorf("myanimelist refused metadata.myanimelist.client_id, not searched again until it changes: %w", err)
+	}
+	return mangas, err
 }
 
 func client() (*myanimelist.MyAnimeList, error) {
