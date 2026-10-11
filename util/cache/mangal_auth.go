@@ -130,3 +130,51 @@ func KitsuLoggedOut() (bool, error) {
 	_, err := get(CacheDBNameMangalAuth, BucketNameAuthHistory, kitsuLoggedOut, &out)
 	return out, err
 }
+
+// SetMyAnimeListAuthData stores the oauth2 Token of the username (with its refresh token).
+func SetMyAnimeListAuthData(username string, token *oauth2.Token) error {
+	return set(CacheDBNameMangalAuth, BucketNameMyAnimeListAuthData, username, *token)
+}
+
+// GetMyAnimeListAuthData populates the oauth2 Token of the username.
+func GetMyAnimeListAuthData(username string, token *oauth2.Token) (bool, error) {
+	return get(CacheDBNameMangalAuth, BucketNameMyAnimeListAuthData, username, token)
+}
+
+// DeleteMyAnimeListAuthData deletes the oauth2 Token of the username, no error if not found.
+func DeleteMyAnimeListAuthData(username string) error {
+	store, err := CacheStore(CacheDBNameMangalAuth, BucketNameMyAnimeListAuthData)
+	if err != nil {
+		return err
+	}
+	return store.Delete(username)
+}
+
+// ExpireMyAnimeListAuthData marks the username's oauth2 Token as expired (MyAnimeList rejected
+// it, or its refresh): it isn't tried again and can't be refreshed.
+func ExpireMyAnimeListAuthData(username string) error {
+	var token oauth2.Token
+	found, err := GetMyAnimeListAuthData(username, &token)
+	if err != nil || !found {
+		return err
+	}
+	token.RefreshToken = ""
+	if token.Expiry.IsZero() || token.Expiry.After(time.Now()) {
+		token.Expiry = time.Now()
+	}
+	return SetMyAnimeListAuthData(username, &token)
+}
+
+const myAnimeListLoggedOut = MyAnimeListAuthHistory + "/logged_out"
+
+// SetMyAnimeListLoggedOut saves whether the user logged out of MyAnimeList.
+func SetMyAnimeListLoggedOut(out bool) error {
+	return set(CacheDBNameMangalAuth, BucketNameAuthHistory, myAnimeListLoggedOut, out)
+}
+
+// MyAnimeListLoggedOut is true if the user logged out of MyAnimeList (and didn't log in since).
+func MyAnimeListLoggedOut() (bool, error) {
+	var out bool
+	_, err := get(CacheDBNameMangalAuth, BucketNameAuthHistory, myAnimeListLoggedOut, &out)
+	return out, err
+}
