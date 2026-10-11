@@ -1,3 +1,4 @@
+// Package chapters is the chapters of a manga (or a volume): download, read, toggle.
 package chapters
 
 import (
@@ -7,11 +8,16 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
-	lmmeta "github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/theme/color"
+	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/format"
@@ -19,78 +25,135 @@ import (
 	"github.com/luevano/mangal/v5/tui/model/metadata"
 	"github.com/luevano/mangal/v5/tui/state/anilist"
 	"github.com/luevano/mangal/v5/tui/util"
+	"github.com/luevano/mangal/v5/util/afs"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/zyedidia/generic/set"
 )
 
 var _ base.State = (*state)(nil)
 
-type confirmState uint8
-
-const (
-	cSDownloadNone confirmState = iota
-	cSDownloadHovered
-	cSDownloadSelected
-	cSDownloadForRead
-)
-
-// state implements base.state.
 type state struct {
-	list    *list.Model
-	meta    *metadata.Model
-	confirm *confirm.Model
+	list.Screen
+	confirm *confirm.Dialog
 	formats *format.Model
+	// inFormats shows the format picker over formatsBehind
+	inFormats     bool
+	formatsBehind string
 
-	chapters   []mangadata.Chapter
-	volume     mangadata.Volume // can be nil
-	manga      mangadata.Manga
-	client     *libmangal.Client
-	downloaded *downloaded
+	volume mangadata.Volume // nil when the chapters are the manga's
+	manga  mangadata.Manga
+	client *libmangal.Client
 
 	selected set.Set[*item]
+	// show is what the items show, they point to it
+	show show
+	// fullMeta shows the metadata's source and id in the status
+	fullMeta bool
 
-	previousFrame,
 	renderedSep,
 	renderedSubtitleFormats string
 
-	// to avoid extra read/download cmds from
-	// firing up when an action is already happening,
-	// only blocks keymaps handled by Update for read/download
-	actionRunning string
-
-	// if the actions that require an item are available
-	actionItemAvailable bool
-
-	inConfirm,
-	inFormats bool
-
-	confirmState confirmState
-
-	showVolumeNumber  *bool
-	showChapterNumber *bool
-	showGroup         *bool
-	showDate          *bool
-
 	size   base.Size
 	styles styles
-	keyMap keyMap
+	keys   keyMap
 }
 
-// Backable implements base.State.
+type keyMap struct {
+	toggle,
+	read,
+	download,
+	info,
+	anilist,
+	metadata,
+	changeFormat,
+	openURL,
+	selectAll,
+	unselectAll,
+	toggleVolumeNumber,
+	toggleChapterNumber,
+	toggleGroup,
+	toggleDate key.Binding
+}
+
+// filesMsg is where the chapters are downloaded: in the library by number and format,
+// and in the temp dir (aligned with items).
+type filesMsg struct {
+	downloads map[float32]map[libmangal.Format]string
+	items     []*item
+	temp      []map[libmangal.Format]string
+}
+
+// New is the chapters of the volume, nil for chapters of the whole manga.
+func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volume, chapters []mangadata.Chapter) base.State {
+	_styles := defaultStyles()
+	s := &state{
+		confirm: confirm.NewDialog(30, color.Success),
+		formats: format.New(color.Viewport),
+		volume:  volume,
+		manga:   manga,
+		client:  client,
+		show: show{
+			volumeNumber:  config.TUI.Chapter.ShowVolumeNumber.Get(),
+			chapterNumber: config.TUI.Chapter.ShowNumber.Get(),
+			group:         config.TUI.Chapter.ShowGroup.Get(),
+			date:          config.TUI.Chapter.ShowDate.Get(),
+		},
+		selected:    set.NewMapset[*item](),
+		renderedSep: _styles.sep.Render(icon.Separator.Raw()),
+		styles:      _styles,
+		keys: keyMap{
+			toggle:              util.Bind("toggle", " "),
+			read:                util.Bind("read", "r"),
+			download:            util.Bind("download", "d"),
+			info:                util.Bind("info", "i"),
+			anilist:             util.Bind("anilist", "A"),
+			metadata:            util.Bind("metadata", "m"),
+			changeFormat:        util.Bind("change format", "f"),
+			openURL:             util.Bind("open url", "o"),
+			selectAll:           util.Bind("select all", "a"),
+			unselectAll:         util.Bind("unselect all", "backspace"),
+			toggleVolumeNumber:  util.Bind("toggle vol num", "v"),
+			toggleChapterNumber: util.Bind("toggle number", "c"),
+			toggleGroup:         util.Bind("toggle group", "ctrl+g"),
+			toggleDate:          util.Bind("toggle date", "ctrl+d"),
+		},
+	}
+
+	volumeFormat, numberFormat := config.TUI.Chapter.VolumeNumberFormat.Get(), config.TUI.Chapter.NumberFormat.Get()
+	s.Screen = list.NewScreen(list.New(3, 1, "chapter", "chapters", chapters, func(chapter mangadata.Chapter) _list.DefaultItem {
+		return &item{
+			chapter:               chapter,
+			renderedSep:           s.renderedSep,
+			renderedVolumeNumber:  fmt.Sprintf(volumeFormat, chapter.Volume()),
+			renderedChapterNumber: fmt.Sprintf(numberFormat, chapter.Info().Number),
+			show:                  &s.show,
+			styles:                _styles,
+		}
+	}), s.keyMap)
+	s.updateItemHeight()
+	s.updateKeys()
+	return s
+}
+
+func (s *state) keyMap() help.KeyMap {
+	k := s.keys
+	short := []key.Binding{k.toggle, k.read, k.download, k.info}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{
+		short,
+		{k.anilist, k.metadata, k.changeFormat, k.openURL},
+		{k.selectAll, k.unselectAll},
+		{k.toggleVolumeNumber, k.toggleChapterNumber, k.toggleGroup, k.toggleDate},
+	}}
+}
+
 func (s *state) Backable() bool {
-	return s.list.Unfiltered() && !s.inFormats && !s.inConfirm
+	return s.Screen.Backable() && !s.inFormats && !s.confirm.Active()
 }
 
-// Inputting implements base.State.
 func (s *state) Inputting() bool {
-	return s.list.Filtering() || s.inFormats || s.inConfirm
+	return s.Screen.Inputting() || s.inFormats || s.confirm.Active()
 }
 
-// KeyMap implements base.State.
-func (s *state) KeyMap() help.KeyMap {
-	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)
-}
-
-// Title implements base.State.
 func (s *state) Title() base.Title {
 	if s.volume != nil {
 		return base.Title{Text: "Volume " + s.volume.String()}
@@ -98,163 +161,235 @@ func (s *state) Title() base.Title {
 	return base.Title{Text: s.manga.String()}
 }
 
-// Subtitle implements base.State.
 func (s *state) Subtitle() string {
 	var subtitle strings.Builder
 	subtitle.Grow(100)
-
-	subtitle.WriteString(s.list.Subtitle())
+	subtitle.WriteString(s.List.Subtitle())
 	if s.selected.Size() > 0 {
-		selected := s.renderedSep +
-			s.styles.subtitle.Render(fmt.Sprintf("%d selected", s.selected.Size()))
-		subtitle.WriteString(selected)
+		subtitle.WriteString(s.renderedSep)
+		subtitle.WriteString(s.styles.subtitle.Render(fmt.Sprintf("%d selected", s.selected.Size())))
 	}
 	subtitle.WriteString(s.renderedSubtitleFormats)
-
 	return subtitle.String()
 }
 
-// Status implements base.State.
 func (s *state) Status() string {
-	return s.meta.View() + " " + s.list.Status()
+	return metadata.Status(s.manga.Metadata(), s.fullMeta) + s.List.Status()
 }
 
-// Resize implements base.State.
 func (s *state) Resize(size base.Size) tea.Cmd {
 	s.size = size
-	return s.list.Resize(size)
+	s.confirm.Resize(size)
+	return s.Screen.Resize(size)
 }
 
-// Init implements base.State.
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	s.updateRenderedSubtitleFormats()
-	return tea.Sequence(
-		s.list.Init(),
-		s.confirm.Init(),
-		s.formats.Init(),
-	)
+	s.updateSubtitleFormats()
+	return tea.Batch(s.formats.Init(), s.refresh(ctx, true))
 }
 
-// Update implements base.State.
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		// skip keybind handling, let the models handle these events
-		if s.list.Filtering() || s.inFormats || s.inConfirm {
-			goto end
-		}
-
-		// don't return on nil item, keybinds will be disabled for relevant actions
-		i, _ := s.list.SelectedItem().(*item)
-		switch {
-		case key.Matches(msg, s.keyMap.toggle):
-			if reason := i.unavailable(); reason != "" {
-				return base.Notify("Chapter unavailable: " + reason)
-			}
-			i.toggle()
-			if i.selected {
-				s.selected.Put(i)
-			} else {
-				s.selected.Remove(i)
-			}
-			return nil
-		case key.Matches(msg, s.keyMap.read):
-			return s.readCmd(ctx, i)
-		case key.Matches(msg, s.keyMap.download):
-			return s.downloadCmd(i)
-		case key.Matches(msg, s.keyMap.info):
-			s.meta.ShowFull = !s.meta.ShowFull
-		case key.Matches(msg, s.keyMap.anilist):
-			ani, err := s.client.GetMetadataProvider(lmmeta.IDSourceAnilist)
-			if err != nil {
-				return func() tea.Msg {
-					return err
-				}
-			}
-			return func() tea.Msg {
-				return anilist.New(ani, s.manga)
-			}
-		case key.Matches(msg, s.keyMap.metadata):
-			return s.meta.ShowMetadataCmd()
-		case key.Matches(msg, s.keyMap.changeFormat):
-			s.previousFrame = s.View()
-			s.inFormats = true
-		case key.Matches(msg, s.keyMap.openURL):
-			return s.openURLCmd(i.chapter)
-		case key.Matches(msg, s.keyMap.selectAll):
-			for _, listItem := range s.list.Items() {
-				it, ok := listItem.(*item)
-				if !ok {
-					continue
-				}
-
-				if !it.selected && it.unavailable() == "" {
-					it.toggle()
-					s.selected.Put(it)
-				}
-			}
-			return nil
-		case key.Matches(msg, s.keyMap.unselectAll):
-			for _, item := range s.selected.Keys() {
-				item.toggle()
-				s.selected.Remove(item)
-			}
-			return nil
-		case key.Matches(msg, s.keyMap.toggleVolumeNumber):
-			*s.showVolumeNumber = !(*s.showVolumeNumber)
-		case key.Matches(msg, s.keyMap.toggleChapterNumber):
-			*s.showChapterNumber = !(*s.showChapterNumber)
-		case key.Matches(msg, s.keyMap.toggleGroup):
-			*s.showGroup = !(*s.showGroup)
-			s.updateListDelegate()
-		case key.Matches(msg, s.keyMap.toggleDate):
-			*s.showDate = !(*s.showDate)
-			s.updateListDelegate()
-		}
-	case showConfirmMsg:
-		s.previousFrame = s.View()
-		s.inConfirm = true
-		s.confirmState = msg.state
-		s.confirm.SetData(msg.title, msg.message)
-	case confirm.YesMsg:
-		return s.onConfirmCmd(ctx)
-	case confirm.NoMsg:
-		s.inConfirm = false
-		s.confirmState = cSDownloadNone
+		return s.updateKey(ctx, msg)
+	case filesMsg:
+		s.setFiles(msg)
+		return nil
+	case downloadMsg:
+		return s.download(ctx, msg)
+	case downloadedMsg:
+		return s.onDownloaded(ctx, msg)
+	case waitMsg:
+		return tea.Batch(base.NotifyWithDuration(fmt.Sprintf("Rate limited, trying again in %s (#%d)", msg.wait, msg.attempt), msg.wait), msg.next)
 	case format.BackMsg:
 		s.inFormats = false
-		s.updateAllItems()
-		s.updateRenderedSubtitleFormats()
+		s.updateSubtitleFormats()
+		readFormat := config.Read.Format.Get()
+		for _, i := range s.items() {
+			i.setReadFormat(readFormat)
+		}
+		return nil
 	case base.RestoredMsg:
-		// in case the metadata was updated in the anilist state
-		s.meta.SetMetadata(s.manga.Metadata())
-		// usually the downloaded chapters change or the metadata when restoring the chapter list
-		s.updateAllItems()
-		s.updateRenderedSubtitleFormats()
+		// e.g. after the download screen
+		s.updateSubtitleFormats()
+		return s.refresh(ctx, false)
 	}
-end:
-	switch {
-	case s.inConfirm:
-		return s.confirm.Update(msg)
-	case s.inFormats:
+	return s.updateChild(msg)
+}
+
+// updateChild sends the msg to what's shown: the format picker or the list.
+func (s *state) updateChild(msg tea.Msg) tea.Cmd {
+	if s.inFormats {
 		return s.formats.Update(msg)
+	}
+	return s.List.Update(msg)
+}
+
+func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
+	switch {
+	case s.confirm.Active():
+		return s.confirm.Update(msg)
+	case s.inFormats, s.List.Filtering():
+		return s.updateChild(msg)
+	}
+
+	k := s.keys
+	switch {
+	case key.Matches(msg, k.info):
+		s.fullMeta = !s.fullMeta
+	case key.Matches(msg, k.anilist):
+		return anilist.Open(s.client, s.manga)
+	case key.Matches(msg, k.metadata):
+		return metadata.ShowManga(s.manga)
+	case key.Matches(msg, k.changeFormat):
+		s.formatsBehind = s.View()
+		s.inFormats = true
+	case key.Matches(msg, k.toggleVolumeNumber):
+		s.show.volumeNumber = !s.show.volumeNumber
+	case key.Matches(msg, k.toggleChapterNumber):
+		s.show.chapterNumber = !s.show.chapterNumber
+	case key.Matches(msg, k.toggleGroup):
+		s.show.group = !s.show.group
+		s.updateItemHeight()
+	case key.Matches(msg, k.toggleDate):
+		s.show.date = !s.show.date
+		s.updateItemHeight()
+	case key.Matches(msg, k.selectAll):
+		s.selectAll()
+	case key.Matches(msg, k.unselectAll):
+		for _, i := range s.selected.Keys() {
+			i.toggle()
+			s.selected.Remove(i)
+		}
 	default:
-		return s.list.Update(msg)
+		return s.updateItemKey(ctx, msg)
+	}
+	return nil
+}
+
+// updateItemKey handles the keys on the hovered (or toggled) chapter.
+func (s *state) updateItemKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
+	i, ok := s.List.SelectedItem().(*item)
+	if !ok {
+		return s.List.Update(msg)
+	}
+	switch {
+	case key.Matches(msg, s.keys.toggle):
+		if reason := i.unavailable(); reason != "" {
+			return base.Notify("Chapter unavailable: " + reason)
+		}
+		i.toggle()
+		if i.selected {
+			s.selected.Put(i)
+		} else {
+			s.selected.Remove(i)
+		}
+		return nil
+	case key.Matches(msg, s.keys.read):
+		return s.askRead(ctx, i)
+	case key.Matches(msg, s.keys.download):
+		return s.askDownload(ctx, i)
+	case key.Matches(msg, s.keys.openURL):
+		return openURLCmd(i.chapter)
+	}
+	return s.List.Update(msg)
+}
+
+func (s *state) selectAll() {
+	for _, i := range s.items() {
+		if !i.selected && i.unavailable() == "" {
+			i.toggle()
+			s.selected.Put(i)
+		}
 	}
 }
 
-// View implements base.State.
+// refresh finds where the chapters are downloaded, scan checks the library against the
+// files first. It isn't a Load: it doesn't make the State busy for a download.
+func (s *state) refresh(ctx context.Context, scan bool) tea.Cmd {
+	items := s.items()
+	chapters := make([]mangadata.Chapter, len(items))
+	for i, it := range items {
+		chapters[i] = it.chapter
+	}
+	c, manga := s.client, s.manga
+	root, temp := path.Downloads(), path.Temp()
+	providerDirs := config.Download.Provider.CreateDir.Get()
+	return func() tea.Msg {
+		release, ok := base.Track(ctx)
+		if !ok {
+			return nil
+		}
+		defer release()
+		msg := filesMsg{items: items, temp: tempFiles(afs.Afero, c, temp, chapters)}
+		lib, err := cache.Library()
+		if err != nil {
+			log.Error("library: %s", err)
+			return msg
+		}
+		var scanner *library.Scanner
+		if scan {
+			scanner = &library.Scanner{FS: afs.Afero, Library: lib}
+		}
+		// the chapters still show without it
+		if msg.downloads, err = libraryDownloads(lib, scanner, root, c.Info(), manga, providerDirs); err != nil {
+			log.Error("library of %q: %s", manga, err)
+		}
+		return msg
+	}
+}
+
+func (s *state) setFiles(msg filesMsg) {
+	readFormat := config.Read.Format.Get()
+	for i, it := range msg.items {
+		it.setFiles(msg.downloads[it.chapter.Info().Number], msg.temp[i], readFormat)
+	}
+}
+
+func (s *state) items() []*item {
+	items := make([]*item, 0, len(s.List.Items()))
+	for _, i := range s.List.Items() {
+		if i, ok := i.(*item); ok {
+			items = append(items, i)
+		}
+	}
+	return items
+}
+
+func (s *state) updateItemHeight() {
+	if s.show.date || s.show.group {
+		s.List.SetItemHeight(3)
+	} else {
+		s.List.SetItemHeight(2)
+	}
+}
+
+func (s *state) updateSubtitleFormats() {
+	s.renderedSubtitleFormats = s.renderedSep +
+		s.styles.subtitle.Render("download ") +
+		s.styles.format.Render(config.Download.Format.Get().String()) +
+		s.styles.subtitle.Render(" & read ") +
+		s.styles.format.Render(config.Read.Format.Get().String())
+}
+
+// updateKeys enables the keys that need a chapter.
+func (s *state) updateKeys() {
+	enable := len(s.List.Items()) != 0
+	for _, k := range []*key.Binding{
+		&s.keys.toggle, &s.keys.read, &s.keys.download, &s.keys.openURL, &s.keys.selectAll, &s.keys.unselectAll,
+		&s.keys.toggleVolumeNumber, &s.keys.toggleChapterNumber, &s.keys.toggleGroup, &s.keys.toggleDate,
+	} {
+		k.SetEnabled(enable)
+	}
+}
+
 func (s *state) View() string {
 	switch {
-	case s.inConfirm:
-		cV := s.styles.confirmView.Render(s.confirm.View())
-		w, h := lipgloss.Size(cV)
-		return util.PlaceOverlay((s.size.Width-w)/2, (s.size.Height-h)/2, cV, s.previousFrame)
+	case s.confirm.Active():
+		return s.confirm.View()
 	case s.inFormats:
-		fV := s.styles.formatView.Render(s.formats.View())
-		w, h := lipgloss.Size(fV)
-		return util.PlaceOverlay((s.size.Width-w)/2, (s.size.Height-h)/2, fV, s.previousFrame)
+		return util.PlaceCenter(s.size.Width, s.size.Height, s.styles.formatView.Render(s.formats.View()), s.formatsBehind)
 	default:
-		return s.list.View()
+		return s.List.View()
 	}
 }
