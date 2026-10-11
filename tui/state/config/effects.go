@@ -29,6 +29,7 @@ var effects = []struct {
 	{"download.mode_dir_decimal", applyReload},
 	{"download.mode_file_decimal", applyReload},
 	{"cache.", applyRestart},
+	{"data.", applyRestart},
 	{"auth.keyring", applyRestart},
 	{"tui.skip_home", applyRestart},
 	{"tui.chapter.", applyNewScreens},

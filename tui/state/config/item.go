@@ -14,7 +14,7 @@ import (
 var _ list.DefaultItem = item{}
 
 // sections in the order shown, the others after them by name.
-var sections = []string{"download", "read", "providers", "metadata", "notification", "tui", "cache", "auth", "icons", "cli"}
+var sections = []string{"download", "read", "providers", "metadata", "notification", "watch", "serve", "tui", "cache", "data", "auth", "icons", "cli"}
 
 // summaries say what each section holds, on the section list.
 var summaries = map[string]string{
@@ -23,8 +23,11 @@ var summaries = map[string]string{
 	"providers":    "manga sources: filters, mirrors, FlareSolverr, MangaPlus",
 	"metadata":     "Kitsu and MyAnimeList, after Anilist",
 	"notification": "Discord notifications after downloads",
+	"watch":        "watched mangas: check intervals, gap filling, notifications",
+	"serve":        "where mangal serve listens",
 	"tui":          "how the TUI looks and behaves",
 	"cache":        "how long searches, lists and mirrors are kept",
+	"data":         "where the data database is",
 	"auth":         "where logins and secrets are kept",
 	"icons":        "the icon set",
 	"cli":          "command line output",
