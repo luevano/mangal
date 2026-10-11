@@ -16,7 +16,6 @@ import (
 	"github.com/luevano/luaprovider"
 	"github.com/luevano/mangal/v5/provider/info"
 	"github.com/luevano/mangal/v5/provider/manager"
-	"github.com/pelletier/go-toml"
 	"github.com/samber/lo"
 	"github.com/spf13/afero"
 )
@@ -215,11 +214,7 @@ func newLua(af afero.Afero, information info.Info) error {
 	}
 	defer infoFile.Close()
 
-	encoder := toml.NewEncoder(infoFile)
-	encoder.SetTagName("json")
-
-	err = encoder.Encode(information)
-	if err != nil {
+	if err := information.Encode(infoFile); err != nil {
 		return fmt.Errorf("write %s: %w", info.Filename, err)
 	}
 

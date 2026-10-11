@@ -2,6 +2,8 @@ package info
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -86,5 +88,65 @@ func TestMarkdown(t *testing.T) {
 		if website != "" && !strings.Contains(md, "]("+website+")") {
 			t.Errorf("%q: %s", website, md)
 		}
+	}
+}
+
+// testdata/saturno holds copies of the saturno bundle's mangal.toml files.
+func TestNewSaturno(t *testing.T) {
+	tests := map[string]Info{
+		"bundle": {ProviderInfo: libmangal.ProviderInfo{ID: "saturno"}, Type: TypeBundle},
+		"mangadex": {ProviderInfo: libmangal.ProviderInfo{
+			ID: "mangadex", Name: "Mangadex", Version: "0.3.1",
+			Description: "Mangadex scraper", Website: "https://mangadex.org/",
+		}, Type: TypeLua},
+		"mangapill": {ProviderInfo: libmangal.ProviderInfo{
+			ID: "mangapill", Name: "Mangapill", Version: "0.2.2",
+			Description: "Mangapill scraper", Website: "https://mangapill.com/",
+		}, Type: TypeLua},
+		"weebcentral": {ProviderInfo: libmangal.ProviderInfo{
+			ID: "weebcentral", Name: "Weeb Central", Version: "0.3.2",
+			Description: "Weeb Central scraper", Website: "https://weebcentral.com/",
+			History: []libmangal.ProviderAlias{{ID: "mangasee", Name: "MangaSee", Website: "https://mangasee123.com/"}},
+		}, Type: TypeLua},
+	}
+	for name, want := range tests {
+		f, err := os.Open(filepath.Join("testdata", "saturno", name+".toml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := New(f)
+		f.Close()
+		if err != nil {
+			t.Fatalf("%s: %s", name, err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: got %+v, want %+v", name, got, want)
+		}
+	}
+}
+
+func TestNewUnknownKeys(t *testing.T) {
+	_, err := New(strings.NewReader("type = \"lua\"\nid = \"x\"\nfoo = 1\n[[history]]\nid = \"y\"\nbar = 2\n"))
+	if err == nil || err.Error() != "unknown keys: foo, history.bar" {
+		t.Errorf("got %v", err)
+	}
+}
+
+func TestEncode(t *testing.T) {
+	want := Info{ProviderInfo: libmangal.ProviderInfo{
+		ID: "x", Name: "X", Version: "0.1.0", Website: "https://x.org/",
+		Mirrors: []string{"https://x.net/"},
+		History: []libmangal.ProviderAlias{{ID: "y"}},
+	}, Type: TypeLua}
+	var sb strings.Builder
+	if err := want.Encode(&sb); err != nil {
+		t.Fatal(err)
+	}
+	got, err := New(strings.NewReader(sb.String()))
+	if err != nil {
+		t.Fatalf("%s\n%s", err, sb.String())
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
 	}
 }

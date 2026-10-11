@@ -1,6 +1,7 @@
 package info
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -8,7 +9,7 @@ import (
 	"text/template"
 
 	"github.com/luevano/libmangal"
-	"github.com/pelletier/go-toml"
+	"github.com/pelletier/go-toml/v2"
 )
 
 //go:generate enumer -type=Type -trimprefix=Type -json -text
@@ -27,14 +28,75 @@ type Info struct {
 	Type Type `json:"type"`
 }
 
-// New parses info from reader
-func New(r io.Reader) (info Info, err error) {
-	decoder := toml.NewDecoder(r)
-	decoder.Strict(true)
-	decoder.SetTagName("json")
+// file is Info as it's written in mangal.toml: go-toml v2 only reads toml
+// tags and libmangal's ProviderInfo has json ones.
+type file struct {
+	Type        Type     `toml:"type"`
+	ID          string   `toml:"id"`
+	Name        string   `toml:"name"`
+	Version     string   `toml:"version"`
+	Description string   `toml:"description"`
+	Website     string   `toml:"website"`
+	Mirrors     []string `toml:"mirrors,omitempty"`
+	History     []alias  `toml:"history,omitempty"`
+}
 
-	err = decoder.Decode(&info)
-	return
+type alias struct {
+	ID      string `toml:"id"`
+	Name    string `toml:"name,omitempty"`
+	Website string `toml:"website,omitempty"`
+}
+
+// New parses info from reader. Unknown keys are an error.
+func New(r io.Reader) (Info, error) {
+	decoder := toml.NewDecoder(r)
+	decoder.DisallowUnknownFields()
+
+	var f file
+	if err := decoder.Decode(&f); err != nil {
+		var strict *toml.StrictMissingError
+		if errors.As(err, &strict) {
+			keys := make([]string, len(strict.Errors))
+			for i, e := range strict.Errors {
+				keys[i] = strings.Join(e.Key(), ".")
+			}
+			return Info{}, fmt.Errorf("unknown keys: %s", strings.Join(keys, ", "))
+		}
+		return Info{}, err
+	}
+
+	info := Info{
+		ProviderInfo: libmangal.ProviderInfo{
+			ID:          f.ID,
+			Name:        f.Name,
+			Version:     f.Version,
+			Description: f.Description,
+			Website:     f.Website,
+			Mirrors:     f.Mirrors,
+		},
+		Type: f.Type,
+	}
+	for _, a := range f.History {
+		info.History = append(info.History, libmangal.ProviderAlias(a))
+	}
+	return info, nil
+}
+
+// Encode writes the info as mangal.toml.
+func (i Info) Encode(w io.Writer) error {
+	f := file{
+		Type:        i.Type,
+		ID:          i.ID,
+		Name:        i.Name,
+		Version:     i.Version,
+		Description: i.Description,
+		Website:     i.Website,
+		Mirrors:     i.Mirrors,
+	}
+	for _, a := range i.History {
+		f.History = append(f.History, alias(a))
+	}
+	return toml.NewEncoder(w).Encode(f)
 }
 
 var markdown = template.Must(template.New("markdown").Funcs(template.FuncMap{

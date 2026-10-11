@@ -1,0 +1,6 @@
+type = "lua"
+id = "mangapill"
+name = "Mangapill"
+description = "Mangapill scraper"
+version = "0.2.2"
+website = "https://mangapill.com/"

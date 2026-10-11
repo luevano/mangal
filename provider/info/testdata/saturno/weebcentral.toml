@@ -1,0 +1,11 @@
+type = "lua"
+id = "weebcentral"
+name = "Weeb Central"
+description = "Weeb Central scraper"
+version = "0.3.2"
+website = "https://weebcentral.com/"
+
+[[history]]
+id = "mangasee"
+name = "MangaSee"
+website = "https://mangasee123.com/"
