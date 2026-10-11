@@ -1,154 +1,145 @@
+// Package anilist is the Anilist search of a manga, to bind its metadata.
 package anilist
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/model/metadata"
 	"github.com/luevano/mangal/v5/tui/model/search"
+	"github.com/luevano/mangal/v5/tui/model/searchlist"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
 var _ base.State = (*state)(nil)
 
-// state implements base.state.
 type state struct {
-	list    *list.Model
-	search  *search.Model
+	searchlist.Screen
 	manga   mangadata.Manga
 	anilist *lmmeta.ProviderWithCache
 
-	history  cache.Records
-	searched bool
-
-	keyMap keyMap
+	confirm,
+	search,
+	metadata key.Binding
 }
 
-// Backable implements base.State.
-func (s *state) Backable() bool {
-	return s.list.Unfiltered() && !s.search.Searching()
+type resultsMsg []_list.Item
+
+// Open shows the Anilist search for the manga, to bind its metadata.
+func Open(client *libmangal.Client, manga mangadata.Manga) tea.Cmd {
+	ani, err := client.GetMetadataProvider(lmmeta.IDSourceAnilist)
+	if err != nil {
+		return func() tea.Msg { return err }
+	}
+	return func() tea.Msg { return New(ani, manga) }
 }
 
-// Inputting implements base.State.
-func (s *state) Inputting() bool {
-	return s.list.Filtering() || s.search.Searching()
+// New is the Anilist search for the manga, starting with its title.
+func New(anilist *lmmeta.ProviderWithCache, manga mangadata.Manga) base.State {
+	l := list.New(2, 1, "anilist manga", "anilist mangas", []lmmeta.Metadata{}, func(meta lmmeta.Metadata) _list.DefaultItem {
+		return &item{meta: meta}
+	})
+	s := &state{
+		Screen: searchlist.New(search.New("Search anilist manga...", manga.Info().Title, 64, 5), l, searchlist.History{
+			Get: cache.GetAnilistSearchHistory,
+			Set: cache.SetAnilistSearchHistory,
+		}),
+		manga:    manga,
+		anilist:  anilist,
+		confirm:  util.Bind("confirm", "enter"),
+		search:   util.Bind("search", "s"),
+		metadata: util.Bind("metadata", "m"),
+	}
+	s.updateKeys()
+	return s
 }
 
-// KeyMap implements base.State.
 func (s *state) KeyMap() help.KeyMap {
-	return base.CombinedKeyMap(s.keyMap, s.list.KeyMap)
+	return base.CombinedKeyMap(util.KeyMap{Short: []key.Binding{s.confirm, s.search, s.metadata}}, s.ListKeyMap())
 }
 
-// Title implements base.State.
 func (s *state) Title() base.Title {
-	return base.Title{
-		Text:       "Anilist Search",
-		Background: color.Anilist,
-		Foreground: color.Bright,
-	}
+	return base.Title{Text: "Anilist Search", Background: color.Anilist, Foreground: color.Bright}
 }
 
-// Subtitle implements base.State.
-func (s *state) Subtitle() string {
-	if !s.searched {
-		return ""
-	}
-	return s.list.Subtitle()
-}
-
-// Status implements base.State.
-func (s *state) Status() string {
-	return s.list.Status()
-}
-
-// Resize implements base.State.
-func (s *state) Resize(size base.Size) tea.Cmd {
-	s.search.Resize(size)
-	_, searchHeight := lipgloss.Size(s.search.View())
-	size.Height -= searchHeight + 1 // +1 for added padding
-
-	return s.list.Resize(size)
-}
-
-// Init implements base.State.
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	return tea.Sequence(
-		s.getHistoryCmd,
-		s.searchCmd(ctx, s.search.Query()),
-		s.search.Init(),
-		s.list.Init(),
-	)
+	if s.Search.Query() == "" {
+		return tea.Batch(s.Screen.Init(ctx), s.Search.Focus())
+	}
+	return tea.Batch(s.Screen.Init(ctx), s.searchCmd(ctx, s.Search.Query()))
 }
 
-// Updateimplements base.State.
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if s.list.Filtering() || s.search.Searching() {
-			goto end
-		}
-
-		// don't return on nil item, keybinds will be disabled for relevant actions
-		i, _ := s.list.SelectedItem().(*item)
-		switch {
-		case key.Matches(msg, s.keyMap.confirm):
-			return s.setMetadataCmd(i.meta)
-		case key.Matches(msg, s.keyMap.search):
-			s.list.ResetFilter()
-			return s.search.Focus()
-		case key.Matches(msg, s.keyMap.metadata):
-			return metadata.New(i.meta).ShowMetadataCmd()
-		}
+	case resultsMsg:
+		cmd := s.SetResults(msg)
+		s.updateKeys()
+		return cmd
 	case search.SearchMsg:
-		return tea.Sequence(
-			s.updateHistoryCmd(string(msg)),
-			s.searchCmd(ctx, string(msg)),
-		)
+		return tea.Batch(s.Screen.Update(msg), s.searchCmd(ctx, string(msg)))
+	case tea.KeyMsg:
+		if s.Inputting() {
+			break
+		}
+		i, ok := s.List.SelectedItem().(*item)
+		switch {
+		case key.Matches(msg, s.confirm) && ok:
+			s.manga.SetMetadata(i.meta)
+			log.Info("set anilist %q to manga %q", i.meta, s.manga)
+			return base.Notify(fmt.Sprintf("Set Anilist %q", i.meta))
+		case key.Matches(msg, s.search):
+			s.List.ResetFilter()
+			return s.Search.Focus()
+		case key.Matches(msg, s.metadata) && ok:
+			return metadata.ShowCmd(i.meta)
+		}
 	}
-end:
-	if s.search.Searching() {
-		return s.search.Update(msg)
-	}
-	return s.list.Update(msg)
+	return s.Screen.Update(msg)
 }
 
-// View implements base.State.
-func (s *state) View() string {
-	if !s.searched {
-		return s.search.View() // no need to display suggestions
-	}
+func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
+	return base.Load(ctx, fmt.Sprintf("Searching %q on Anilist", query), func(ctx context.Context) ([]_list.Item, error) {
+		q := lmmeta.Query{Titles: []string{query}}
+		var items []_list.Item
 
-	if s.search.Searching() {
-		input := s.search.View()
-		view := lipgloss.JoinVertical(
-			lipgloss.Left,
-			input,
-			" ", // "padding" bottom of input
-			s.list.View(),
-		)
-		h := lipgloss.Height(input)
-		return util.PlaceOverlay(0, h, s.search.SuggestionBox(), view)
-	}
+		// the closest on top
+		closest, found, err := s.anilist.FindClosestContext(ctx, q)
+		if err != nil {
+			return nil, fmt.Errorf("search %q on anilist: %w", query, err)
+		}
+		if found {
+			items = append(items, &item{meta: closest.Metadata, bad: closest.Bad(), score: closest.Score})
+		}
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		s.search.View(),
-		" ", // "padding" bottom of input
-		s.list.View(),
-	)
+		results, err := s.anilist.SearchContext(ctx, query)
+		if err != nil {
+			return nil, fmt.Errorf("search %q on anilist: %w", query, err)
+		}
+		for _, manga := range results {
+			if found && manga.ID() == closest.Metadata.ID() {
+				continue
+			}
+			score := lmmeta.Score(q, manga)
+			items = append(items, &item{meta: manga, bad: score < lmmeta.GoodMatchScore, score: score})
+		}
+		return items, nil
+	}, func(items []_list.Item) tea.Msg { return resultsMsg(items) })
 }
 
-func (s *state) updateKeybinds() {
-	enable := len(s.list.Items()) != 0
-	s.keyMap.confirm.SetEnabled(enable)
-	s.keyMap.metadata.SetEnabled(enable)
+func (s *state) updateKeys() {
+	enable := len(s.List.Items()) != 0
+	s.confirm.SetEnabled(enable)
+	s.metadata.SetEnabled(enable)
 }
