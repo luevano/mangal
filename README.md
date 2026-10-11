@@ -198,8 +198,9 @@ mangal notify webhook            # save the Discord webhook: a message per manga
 `mangal serve` keeps running and checks the watches on a cron schedule in local time
 (`watch.schedule`, `0 */4 * * *` = every 4 hours on the hour by default; also `@hourly`, `@daily`,
 `@weekly`, `@every 90m`; a watch can have its own: `watch add/set --schedule`). The ticks don't
-depend on when it started: a watch is due once a tick passed since its last check (a tick missed
-while it was down runs once at start), failing watches skip ticks (`watch.backoff`), gap filling
+depend on when it started: checks only start on ticks, nothing runs at start (a new watch, or one
+whose tick passed while mangal was down, waits for the next tick; `mangal watch check` runs one
+now), failing watches skip ticks (`watch.backoff`), gap filling
 has its own schedule (`watch.gap_schedule`, off by default). Each provider has its own run
 (`watch.parallel_providers` at once, a provider never twice, also against a `mangal watch check`
 or a download elsewhere); the `watch.*` settings are re-read from the config file

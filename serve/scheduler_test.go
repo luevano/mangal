@@ -42,10 +42,29 @@ func (f *fakeChecker) List(context.Context) ([]watch.Watch, error) {
 	return slices.Clone(f.watches), nil
 }
 
-func (f *fakeChecker) GapsDue(w storage.Watch, _ time.Time) bool {
+// NextCheckSince: a watch whose next check is before since waits a minute after since (its
+// "next tick").
+func (f *fakeChecker) NextCheckSince(w storage.Watch, since time.Time) time.Time {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.gapsDue[w.ID]
+	for _, fw := range f.watches {
+		if fw.ID == w.ID {
+			if !since.IsZero() && fw.NextCheck.Before(since) {
+				return since.Add(time.Minute)
+			}
+			return fw.NextCheck
+		}
+	}
+	return time.Time{}
+}
+
+func (f *fakeChecker) NextGapCheckSince(w storage.Watch, _ time.Time) time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.gapsDue[w.ID] {
+		return f.now
+	}
+	return time.Time{}
 }
 
 func (f *fakeChecker) Parallel() int {
@@ -241,7 +260,7 @@ func TestSchedulerGaps(t *testing.T) {
 func TestSchedulerShutdown(t *testing.T) {
 	now := time.Unix(1_000_000, 0)
 	f := &fakeChecker{now: now, block: make(chan struct{}), started: make(chan struct{}, 1),
-		watches: []watch.Watch{testWatch(1, now.Add(-time.Hour), true)}}
+		watches: []watch.Watch{testWatch(1, now, true)}}
 	s := newTestScheduler(f)
 	s.After = func(time.Duration) <-chan time.Time { return nil }
 	ctx, cancel := context.WithCancel(context.Background())
@@ -311,7 +330,13 @@ func (f *tickChecker) List(context.Context) ([]watch.Watch, error) {
 	return list, nil
 }
 
-func (f *tickChecker) GapsDue(w storage.Watch, now time.Time) bool { return f.svc.GapsDue(w, now) }
+func (f *tickChecker) NextCheckSince(w storage.Watch, since time.Time) time.Time {
+	return f.svc.NextCheckSince(w, since)
+}
+
+func (f *tickChecker) NextGapCheckSince(w storage.Watch, since time.Time) time.Time {
+	return f.svc.NextGapCheckSince(w, since)
+}
 
 func (f *tickChecker) Check(ctx context.Context, ids []int64, opts watch.CheckOptions) (watch.Report, error) {
 	opts.OnRun(storage.CheckRun{ID: 1, Kind: opts.Kind})
@@ -349,6 +374,8 @@ func TestSchedulerTicks(t *testing.T) {
 		defer f.mu.Unlock()
 		return f.now
 	}
+	// as Run does: started now, the 10:00 tick watch 1 missed while down isn't caught up
+	s.started = f.now
 	var sleeps []time.Duration
 	for range 6 {
 		sleep := cycle(s)
@@ -359,7 +386,6 @@ func TestSchedulerTicks(t *testing.T) {
 	}
 	slices.Sort(f.checks)
 	want := []string{
-		"10:01:10 [1] scheduled",
 		"10:02:00 [1] scheduled", "10:02:00 [2] scheduled",
 		"10:03:00 [2] gaps",
 		"10:04:00 [1] scheduled", "10:04:00 [2] scheduled",
@@ -386,5 +412,35 @@ func TestOptionsFrom(t *testing.T) {
 	opts = optionsFrom(old, map[string]any{config.Watch.Schedule.Key: "nope", config.Watch.GapSchedule.Key: ""})
 	if opts.Schedule.String() != "@hourly" || !opts.GapSchedule.IsZero() {
 		t.Errorf("invalid schedule: %+v", opts)
+	}
+}
+
+// TestSchedulerNoCatchUp: starting doesn't run the watches whose ticks passed while mangal
+// was down (nor new ones), they wait for their next tick.
+func TestSchedulerNoCatchUp(t *testing.T) {
+	at := func(h, m, s int) time.Time { return time.Date(2026, 10, 11, h, m, s, 0, time.Local) }
+	f := &tickChecker{
+		svc: &watch.Service{Options: watch.Options{Schedule: cron.MustParse("0 */4 * * *")}},
+		stored: []storage.Watch{
+			{ID: 1, Provider: "p", Enabled: true, LastChecked: at(4, 0, 30)}, // missed the 08:00 tick
+			{ID: 2, Provider: "q", Enabled: true, Added: at(9, 0, 0)},        // never checked
+		},
+	}
+	f.now = at(9, 30, 0)
+	s := newScheduler(func() checker { return f }, newLogger(io.Discard), &runs{})
+	s.Now = func() time.Time {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return f.now
+	}
+	s.started = f.now
+	cycle(s)
+	if len(f.checks) != 0 {
+		t.Fatalf("checked at start: %v", f.checks)
+	}
+	f.now = at(12, 0, 0)
+	cycle(s)
+	if want := []string{"12:00:00 [1] scheduled", "12:00:00 [2] scheduled"}; !slices.Equal(f.checks, want) {
+		t.Errorf("checks %v, want %v", f.checks, want)
 	}
 }

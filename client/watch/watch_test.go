@@ -322,7 +322,7 @@ func TestCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w.Title != "Dandadan" || w.LibraryManga == 0 || w.LastDownloaded == nil || *w.LastDownloaded != 65 || !w.NextCheck.Equal(e.now) {
+	if w.Title != "Dandadan" || w.LibraryManga == 0 || w.LastDownloaded == nil || *w.LastDownloaded != 65 || !w.NextCheck.Equal(e.tick(e.now, 1)) {
 		t.Fatalf("added %+v", w)
 	}
 	// --anilist-id is a default AniList binding
@@ -686,8 +686,12 @@ func TestDueAndPaused(t *testing.T) {
 	src.chs["1"], src.chs["2"] = m1.chapters(1), m2.chapters(1)
 	w1, _ := e.svc.Add(ctx, AddOptions{Provider: "p", MangaID: "1"})
 	w2, _ := e.svc.Add(ctx, AddOptions{Provider: "p", MangaID: "2"})
-	if due, _ := e.svc.Due(ctx, e.now); len(due) != 2 {
-		t.Errorf("new watches are due: %+v", due)
+	// new watches wait for their first tick (+ jitter)
+	if due, _ := e.svc.Due(ctx, e.now); len(due) != 0 {
+		t.Errorf("new watches due before their tick: %+v", due)
+	}
+	if due, _ := e.svc.Due(ctx, e.tick(e.now, 1).Add(11*time.Minute)); len(due) != 2 {
+		t.Errorf("new watches due at their tick: %+v", due)
 	}
 	if _, err := e.svc.SetEnabled(ctx, w2.ID, false); err != nil {
 		t.Fatal(err)
@@ -757,7 +761,7 @@ func TestOfflineAndMissingProvider(t *testing.T) {
 	if _, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", MangaID: "dandadan"}); err != nil {
 		t.Fatal(err)
 	}
-	due, err := e.svc.Due(ctx, e.now)
+	due, err := e.svc.Due(ctx, e.tick(e.now, 1))
 	if err != nil || len(due) != 1 || due[0].Provider != "mango-mangaplus" {
 		t.Fatalf("due %v, %v", due, err)
 	}
@@ -844,8 +848,8 @@ func TestNextCheckTicks(t *testing.T) {
 	svc := &Service{Options: Options{Backoff: 3}, OnError: func(err error) { warned = append(warned, err) }}
 	w := storage.Watch{ID: 1, Provider: "p", Added: at(10, 1, 9, 0, 0)}
 
-	if next := svc.NextCheck(w); !next.Equal(w.Added) {
-		t.Errorf("never checked: next %s, want when added", next)
+	if next := svc.NextCheck(w); !next.Equal(at(10, 1, 12, 0, 0)) {
+		t.Errorf("never checked: next %s, want the first tick after it was added", next)
 	}
 	// the default schedule: every 4 hours on the hour, whenever the last check was
 	for _, c := range []struct{ last, want time.Time }{
@@ -916,8 +920,8 @@ func TestNextCheckTicks(t *testing.T) {
 		t.Error("gaps due on a watch without gap filling")
 	}
 	w.Gaps = true
-	if !svc.GapsDue(w, w.Added) {
-		t.Error("gaps never filled aren't due")
+	if first := at(10, 4, 3, 0, 0); svc.GapsDue(w, w.Added) || !svc.GapsDue(w, first) {
+		t.Error("gaps never filled: due at the first gap tick after the watch was added")
 	}
 	w.LastGapCheck = at(10, 11, 3, 0, 5)
 	if next := svc.NextGapCheck(w); !next.Equal(at(10, 18, 3, 0, 0)) || svc.GapsDue(w, at(10, 18, 2, 59, 0)) || !svc.GapsDue(w, next) {

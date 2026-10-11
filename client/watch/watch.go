@@ -613,7 +613,12 @@ func (s *Service) Schedule(w storage.Watch) cron.Schedule {
 // skips ticks: it waits 2, 4, then 8 ticks.
 func (s *Service) NextCheck(w storage.Watch) time.Time {
 	if w.LastChecked.IsZero() {
-		return w.Added
+		// a new watch waits for its first tick too
+		next := s.Schedule(w).Next(w.Added)
+		if next.IsZero() {
+			return next
+		}
+		return next.Add(jitter(w.Provider, next, s.Options.Jitter))
 	}
 	ticks := 1
 	if b := s.Options.Backoff; b > 0 && w.Failures >= b {
@@ -647,11 +652,35 @@ func (s *Service) NextGapCheck(w storage.Watch) time.Time {
 	if !w.Gaps || s.Options.GapSchedule.IsZero() {
 		return time.Time{}
 	}
-	if w.LastGapCheck.IsZero() {
-		return w.Added
+	since := w.LastGapCheck
+	if since.IsZero() {
+		since = w.Added
 	}
-	next := s.Options.GapSchedule.Next(w.LastGapCheck)
+	next := s.Options.GapSchedule.Next(since)
 	return next.Add(jitter(w.Provider, next, s.Options.Jitter))
+}
+
+// NextCheckSince is NextCheck, or the first tick after since when NextCheck is before it:
+// a scheduler that started at since doesn't catch up on ticks missed before (e.g. while
+// mangal was down), the watch waits for its next tick.
+func (s *Service) NextCheckSince(w storage.Watch, since time.Time) time.Time {
+	return s.notBefore(s.NextCheck(w), s.Schedule(w), w.Provider, since)
+}
+
+// NextGapCheckSince is NextGapCheck as NextCheckSince is NextCheck.
+func (s *Service) NextGapCheckSince(w storage.Watch, since time.Time) time.Time {
+	return s.notBefore(s.NextGapCheck(w), s.Options.GapSchedule, w.Provider, since)
+}
+
+func (s *Service) notBefore(next time.Time, sched cron.Schedule, provider string, since time.Time) time.Time {
+	if next.IsZero() || !next.Before(since) {
+		return next
+	}
+	tick := sched.Next(since)
+	if tick.IsZero() {
+		return tick
+	}
+	return tick.Add(jitter(provider, tick, s.Options.Jitter))
 }
 
 // GapsDue is true when the watch's gap filling is due (see NextGapCheck).

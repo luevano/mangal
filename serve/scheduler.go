@@ -15,7 +15,10 @@ import (
 // checker is what the scheduler needs of watch.Service.
 type checker interface {
 	List(ctx context.Context) ([]watch.Watch, error)
-	GapsDue(w storage.Watch, now time.Time) bool
+	// NextCheckSince and NextGapCheckSince are when a watch (its gaps) is due for a
+	// scheduler that started at since: ticks missed before aren't caught up.
+	NextCheckSince(w storage.Watch, since time.Time) time.Time
+	NextGapCheckSince(w storage.Watch, since time.Time) time.Time
 	Check(ctx context.Context, ids []int64, opts watch.CheckOptions) (watch.Report, error)
 	// Parallel is how many providers are checked at once (watch.parallel_providers).
 	Parallel() int
@@ -48,6 +51,8 @@ type Scheduler struct {
 	Runs *runs
 
 	wake chan struct{}
+	// started is when Run started: checks only start on the ticks after it
+	started time.Time
 
 	mu sync.Mutex
 	// running are the providers being checked by the scheduler
@@ -88,6 +93,7 @@ func (s *Scheduler) Wake() {
 // record what they got); it returns once they're done.
 func (s *Scheduler) Run(ctx context.Context) {
 	defer s.wg.Wait()
+	s.started = s.Now()
 	for {
 		sleep := s.cycle(ctx)
 		if ctx.Err() != nil {
@@ -126,12 +132,16 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 		todo[provider] = &work{}
 		return todo[provider]
 	}
+	next := make(map[int64]time.Time, len(all))
+	nextGaps := make(map[int64]time.Time, len(all))
 	for _, w := range all {
+		next[w.ID] = c.NextCheckSince(w.Watch, s.started)
+		nextGaps[w.ID] = c.NextGapCheckSince(w.Watch, s.started)
 		switch {
 		case !w.Enabled || w.ProviderMissing:
-		case !w.NextCheck.After(now):
+		case !next[w.ID].IsZero() && !next[w.ID].After(now):
 			add(w.Provider).due = append(add(w.Provider).due, w.ID)
-		case c.GapsDue(w.Watch, now):
+		case !nextGaps[w.ID].IsZero() && !nextGaps[w.ID].After(now):
 			add(w.Provider).gaps = append(add(w.Provider).gaps, w.ID)
 		}
 	}
@@ -159,12 +169,15 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 	full := len(s.running) >= parallel
 	sleep := s.MaxSleep
 	for _, w := range all {
-		if !w.Enabled || w.ProviderMissing || s.running[w.Provider] || (full && !w.NextCheck.After(now)) {
+		if !w.Enabled || w.ProviderMissing || s.running[w.Provider] || (full && !next[w.ID].After(now)) {
 			continue
 		}
-		next := w.NextCheck
-		if g := w.NextGapCheck; !g.IsZero() && g.Before(next) {
+		next := next[w.ID]
+		if g := nextGaps[w.ID]; !g.IsZero() && (next.IsZero() || g.Before(next)) {
 			next = g
+		}
+		if next.IsZero() {
+			continue
 		}
 		if r := s.retry[w.Provider]; next.Before(r) {
 			next = r

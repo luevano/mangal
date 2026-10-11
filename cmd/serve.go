@@ -29,8 +29,9 @@ var serveCmd = &cobra.Command{
 	Short: "Check the watches on a schedule, with an API to manage them",
 	Long: `Run until stopped (SIGTERM, ctrl+c), checking each watch at the ticks of its cron
 schedule (watch.schedule, every 4 hours on the hour by default, or its own; local time),
-whenever the server started: a watch is due once a tick passed since its last check, so
-one missed while the server was down runs once at start. The gaps are filled at the
+whenever the server started: checks only start on ticks, nothing runs at start (a new
+watch, or one whose tick passed while the server was down, waits for its next tick). The
+gaps are filled at the
 ticks of watch.gap_schedule (off by default). Each provider has its own run
 (watch.parallel_providers at once; a "mangal watch check" of a provider running elsewhere
 postpones that provider). The watch.* settings are re-read from the config file every
