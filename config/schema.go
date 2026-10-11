@@ -17,6 +17,11 @@ type config struct {
 	Providers    configProviders
 	Library      configLibrary
 	Notification configNotification
+	Auth         configAuth
+}
+
+type configAuth struct {
+	Keyring *entry[bool, bool]
 }
 
 type configCLI struct {

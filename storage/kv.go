@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -21,6 +22,9 @@ type KV struct {
 	Owner string
 	// TTL of the values set, 0 for no expiry.
 	TTL time.Duration
+	// Keyring keeps the values set in the OS keyring, the row only says so. Values already
+	// there are read either way.
+	Keyring bool
 }
 
 var codec = encoding.Gob
@@ -36,6 +40,12 @@ func (s KV) Set(k string, v any) error {
 	var expires int64
 	if s.TTL > 0 {
 		expires = time.Now().Add(s.TTL).Unix()
+	}
+	if s.Keyring {
+		if err := keyringSet(s.Table, s.Owner, k, data); err != nil {
+			return fmt.Errorf("set %s %q: %w", s.Table, k, err)
+		}
+		data = inKeyring
 	}
 	_, err = s.DB.Exec(`INSERT INTO `+s.Table+` (owner, key, value, expires) VALUES (?, ?, ?, ?)
 ON CONFLICT (owner, key) DO UPDATE SET value = excluded.value, expires = excluded.expires`,
@@ -62,6 +72,16 @@ func (s KV) Get(k string, v any) (bool, error) {
 	if expires != 0 && expires < time.Now().Unix() {
 		return false, s.Delete(k)
 	}
+	if bytes.Equal(data, inKeyring) {
+		var found bool
+		if data, found, err = keyringGet(s.Table, s.Owner, k); err != nil || !found {
+			if err != nil {
+				return false, fmt.Errorf("get %s %q: %w", s.Table, k, err)
+			}
+			// removed from the keyring by hand
+			return false, s.Delete(k)
+		}
+	}
 	if err := codec.Unmarshal(data, v); err != nil {
 		return false, fmt.Errorf("decode %s %q: %w", s.Table, k, err)
 	}
@@ -71,6 +91,13 @@ func (s KV) Get(k string, v any) (bool, error) {
 func (s KV) Delete(k string) error {
 	if err := util.CheckKey(k); err != nil {
 		return err
+	}
+	var data []byte
+	err := s.DB.QueryRow(`SELECT value FROM `+s.Table+` WHERE owner = ? AND key = ?`, s.Owner, k).Scan(&data)
+	if err == nil && bytes.Equal(data, inKeyring) {
+		if err := keyringDelete(s.Table, s.Owner, k); err != nil {
+			return fmt.Errorf("delete %s %q: %w", s.Table, k, err)
+		}
 	}
 	if _, err := s.DB.Exec(`DELETE FROM `+s.Table+` WHERE owner = ? AND key = ?`, s.Owner, k); err != nil {
 		return fmt.Errorf("delete %s %q: %w", s.Table, k, err)

@@ -52,6 +52,9 @@ func open() (*storage.DB, *storage.DB, error) {
 		if notice != "" {
 			notices = append(notices, notice)
 		}
+		if notice := useKeyring(dataDB); notice != "" {
+			notices = append(notices, notice)
+		}
 	})
 	return cacheDB, dataDB, openErr
 }

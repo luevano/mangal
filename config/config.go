@@ -40,6 +40,7 @@ var (
 	Providers    = cfg.Providers
 	Library      = cfg.Library
 	Notification = cfg.Notification
+	Auth         = cfg.Auth
 )
 
 func xdgConfig() string {
@@ -531,6 +532,13 @@ func initConfig() config {
 				Unmarshal: func(s string) (string, error) {
 					return expandPath(s)
 				},
+			}),
+		},
+		Auth: configAuth{
+			Keyring: reg(entry[bool, bool]{
+				Key:         "auth.keyring",
+				Default:     false,
+				Description: "Keep the logins and secrets (Anilist/MyAnimeList tokens, MangaPlus secrets) in the OS keyring (Secret Service on Linux, Keychain on macOS, Credential Manager on Windows) instead of mangal's database. They move on the next run after changing it.",
 			}),
 		},
 		Notification: configNotification{
