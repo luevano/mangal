@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/adrg/xdg"
 	"github.com/luevano/mangal/v5/log"
@@ -34,8 +35,26 @@ func init() {
 	setup()
 }
 
+// vmu guards viper, which isn't safe for concurrent use: the TUI changes values while
+// background work (downloads, checks) reads them.
+var vmu sync.RWMutex
+
+func viperGet(key string) any {
+	vmu.RLock()
+	defer vmu.RUnlock()
+	return viper.Get(key)
+}
+
+func viperSet(key string, value any) {
+	vmu.Lock()
+	defer vmu.Unlock()
+	viper.Set(key, value)
+}
+
 // setup configures viper and sets the defaults, nothing is read here.
 func setup() {
+	vmu.Lock()
+	defer vmu.Unlock()
 	viper.KeyDelimiter(".")
 	viper.SetFs(afs.Afero.Fs)
 	viper.SetConfigType("toml")
@@ -53,7 +72,9 @@ func setup() {
 
 // Reset forgets the loaded file and the values set at runtime, for tests.
 func Reset() {
+	vmu.Lock()
 	viper.Reset()
+	vmu.Unlock()
 	setup()
 	unsupported = nil
 }
@@ -72,7 +93,7 @@ func Get(key string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := f.toRaw(viper.Get(key))
+	raw, err := f.toRaw(viperGet(key))
 	if err != nil {
 		return nil, fmt.Errorf("config key %q: %w", key, err)
 	}
@@ -168,7 +189,7 @@ func Set(key string, value any) error {
 	if err != nil {
 		return err
 	}
-	viper.Set(key, raw)
+	viperSet(key, raw)
 	return nil
 }
 
@@ -191,7 +212,10 @@ func BindPFlag(key string, flag *pflag.Flag) error {
 	if _, err := lookup(key); err != nil {
 		return err
 	}
-	if err := viper.BindPFlag(key, flag); err != nil {
+	vmu.Lock()
+	err := viper.BindPFlag(key, flag)
+	vmu.Unlock()
+	if err != nil {
 		return fmt.Errorf("bind flag %q to config key %q: %w", flag.Name, key, err)
 	}
 	return nil
@@ -239,15 +263,19 @@ func Load(path string) error {
 	}
 	Path = path
 
+	vmu.Lock()
 	viper.SetConfigFile(path)
-	if err := viper.ReadInConfig(); err != nil {
+	err := viper.ReadInConfig()
+	keys := viper.AllKeys()
+	vmu.Unlock()
+	if err != nil {
 		if explicit || !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("read config %q: %w", path, err)
 		}
 	}
 
 	unsupported = nil
-	for _, key := range viper.AllKeys() {
+	for _, key := range keys {
 		if !Exists(key) && !underMap(key) && !retired[key] {
 			unsupported = append(unsupported, key)
 		}
@@ -285,7 +313,7 @@ func underMap(key string) bool {
 func Validate() error {
 	var errs []error
 	for _, key := range Keys() {
-		if _, err := fields[key].toRaw(viper.Get(key)); err != nil {
+		if _, err := fields[key].toRaw(viperGet(key)); err != nil {
 			if _, ok := os.LookupEnv(envName(key)); ok {
 				err = fmt.Errorf("from %s: %w", envName(key), err)
 			}
@@ -332,7 +360,7 @@ func WriteKey(key string, value any) error {
 			return fmt.Errorf("write config key %q: %w", key, err)
 		}
 	}
-	viper.Set(key, raw)
+	viperSet(key, raw)
 	return nil
 }
 

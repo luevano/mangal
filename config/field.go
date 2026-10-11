@@ -5,7 +5,6 @@ import (
 	"reflect"
 
 	"github.com/spf13/cast"
-	"github.com/spf13/viper"
 )
 
 // fields are all the registered entries by key, the config as a flattened map.
@@ -42,7 +41,7 @@ type entry[Raw, Value any] struct {
 // Get returns the value of the key. Every value is validated at startup (Validate) and by
 // Set, so it can't be invalid here; if it is anyway the default is returned.
 func (e *entry[Raw, Value]) Get() Value {
-	value, err := e.decode(viper.Get(e.Key))
+	value, err := e.decode(viperGet(e.Key))
 	if err != nil {
 		return e.Default
 	}

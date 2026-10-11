@@ -436,3 +436,19 @@ func TestWriteKeepsComments(t *testing.T) {
 		t.Errorf("retired table left:\n%s", got)
 	}
 }
+
+func TestConcurrentGetSet(t *testing.T) {
+	reset(t)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			_ = Download.Metadata.Strict.Get()
+			_, _ = Get(Download.Path.Key)
+		}
+	}()
+	for i := 0; i < 200; i++ {
+		_ = Download.Metadata.Strict.Set(i%2 == 0)
+	}
+	<-done
+}
