@@ -141,6 +141,15 @@ func Keys() []string {
 	return slices.Sorted(maps.Keys(fields))
 }
 
+// retired keys were removed from mangal; old config files still have them, they're ignored
+// without a warning (and config write drops them).
+var retired = map[string]bool{
+	// never implemented, the library is the download path
+	"library.path": true,
+	// the databases are always 0600, they hold logins
+	"download.mode_db_decimal": true,
+}
+
 // Unsupported are the keys of the loaded config file that mangal doesn't know (e.g. removed
 // ones), sorted.
 func Unsupported() []string {
@@ -172,7 +181,7 @@ func Load(path string) error {
 
 	unsupported = nil
 	for _, key := range viper.AllKeys() {
-		if !Exists(key) && !underMap(key) {
+		if !Exists(key) && !underMap(key) && !retired[key] {
 			unsupported = append(unsupported, key)
 		}
 	}
@@ -292,6 +301,9 @@ func Write() error {
 		return fmt.Errorf("write config: %w", err)
 	}
 	settings := file.AllSettings()
+	for key := range retired {
+		deleteNested(settings, strings.Split(key, "."))
+	}
 	for _, key := range Keys() {
 		if !file.IsSet(key) {
 			setNested(settings, strings.Split(key, "."), fields[key].defaultRaw())
@@ -310,4 +322,20 @@ func Write() error {
 		return fmt.Errorf("write config: %w", err)
 	}
 	return nil
+}
+
+// deleteNested deletes the key at path from nested maps, and the maps it empties.
+func deleteNested(m map[string]any, path []string) {
+	if len(path) == 1 {
+		delete(m, path[0])
+		return
+	}
+	sub, ok := m[path[0]].(map[string]any)
+	if !ok {
+		return
+	}
+	deleteNested(sub, path[1:])
+	if len(sub) == 0 {
+		delete(m, path[0])
+	}
 }

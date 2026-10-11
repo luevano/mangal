@@ -65,15 +65,15 @@ func TestDefaults(t *testing.T) {
 
 func TestPathEntryExpandsHome(t *testing.T) {
 	reset(t)
-	if err := Library.Path.Set("~/manga"); err != nil {
+	if err := Download.Path.Set("~/manga"); err != nil {
 		t.Fatal(err)
 	}
 	want := filepath.Join(xdg.Home, "manga")
-	if got := Library.Path.Get(); got != want {
+	if got := Download.Path.Get(); got != want {
 		t.Errorf("wanted %q, got %q", want, got)
 	}
 	// the raw value keeps the ~
-	if got, _ := Get(Library.Path.Key); got != "~/manga" {
+	if got, _ := Get(Download.Path.Key); got != "~/manga" {
 		t.Errorf("raw %v", got)
 	}
 }
@@ -209,7 +209,7 @@ func TestParse(t *testing.T) {
 
 func TestLoad(t *testing.T) {
 	reset(t)
-	writeConfig(t, "icons = 'Nerd'\nold_key = 1\n[providers.mirrors]\nmango-x = 'https://x.example/'\n")
+	writeConfig(t, "icons = 'Nerd'\nold_key = 1\n[download]\nmode_db_decimal = 384\n[library]\npath = ''\n[providers.mirrors]\nmango-x = 'https://x.example/'\n")
 	if err := Load(Path); err != nil {
 		t.Fatal(err)
 	}
@@ -218,6 +218,17 @@ func TestLoad(t *testing.T) {
 	}
 	if got := Unsupported(); len(got) != 1 || got[0] != "old_key" {
 		t.Errorf("unsupported %q", got)
+	}
+	// config write drops the retired keys, keeps the rest
+	if err := Write(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "mode_db") || strings.Contains(string(data), "[library]") || !strings.Contains(string(data), "old_key") {
+		t.Errorf("written:\n%s", data)
 	}
 
 	reset(t)

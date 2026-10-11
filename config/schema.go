@@ -31,7 +31,6 @@ type configDownload struct {
 	UserAgent    *entry[string, string]
 	ModeDir      *entry[int64, fs.FileMode]
 	ModeFile     *entry[int64, fs.FileMode]
-	ModeDB       *entry[int64, fs.FileMode]
 	SkipIfExists *entry[bool, bool]
 	Provider     configDownloadProvider
 	Manga        configDownloadManga
@@ -108,10 +107,6 @@ type configCache struct {
 type configProvidersHeadless struct {
 	UseFlaresolverr *entry[bool, bool]
 	FlaresolverrURL *entry[string, string]
-}
-
-type configLibrary struct {
-	Path *entry[string, string]
 }
 
 type configProvidersFilter struct {
