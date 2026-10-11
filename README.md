@@ -204,7 +204,8 @@ now), failing watches skip ticks (`watch.backoff`), gap filling
 has its own schedule (`watch.gap_schedule`, off by default). Each provider has its own run
 (`watch.parallel_providers` at once, a provider never twice, also against a `mangal watch check`
 or a download elsewhere); the `watch.*` settings are re-read from the config file
-every minute. It serves a JSON API on `127.0.0.1:6977` (`serve.host`, `serve.port`) that the TUI
+every minute, and logins or secrets saved meanwhile (e.g. the MangaPlus secret from a TUI on the
+same config) apply from the next run. It serves a JSON API on `127.0.0.1:6977` (`serve.host`, `serve.port`) that the TUI
 and the `mangal watch` commands use while it runs; `--web` (`serve.web`) also serves the web UI
 there. On an address that isn't loopback the API needs a token: `mangal serve token --generate` saves
 one (the TUI and `mangal watch` on the same config use it), send `Authorization: Bearer <token>`.
