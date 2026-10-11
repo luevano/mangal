@@ -83,7 +83,9 @@ By default if just executing the `mangal` command, it will start the TUI. To lis
 mangal -h
 ```
 
-**Note:** If the previous mangal (v4) was used, then remove the config (usually located at `~/.config/mangal`) as otherwise these commands will fail.
+In the TUI `?` shows the keys of each screen and `,` opens the config window from any of them. On the home screen: `l` library, `w` watches, `a` accounts, `M` migrate; on a manga: `A` its metadata bindings, `w` watch it.
+
+**Note:** A v4 config (usually `~/.config/mangal/mangal.toml`) doesn't work with v5: its keys are ignored with a warning, remove it.
 
 ### Config
 
@@ -107,6 +109,8 @@ For example:
 mangal config set download.path $HOME/downloads_test
 ```
 
+Secrets aren't config: the logins, the Discord webhook (`mangal notify webhook`) and the serve token (`mangal serve token`) are saved in mangal's data (or the OS keyring with `auth.keyring`), the `notification.discord.webhook_url` and `serve.token` keys are only used when none is saved. The MyAnimeList client id is config (`metadata.myanimelist.client_id`).
+
 ### Providers
 
 These are either the native Go implementations already included (from [mangoprovider](https://github.com/luevano/mangoprovider)) or Lua scripts that handle the site scrape logic (search mangas, list mangas/chapters/images, etc). List them with:
@@ -126,10 +130,10 @@ Each Lua provider is a directory with the `main.lua` (scraper) and `mangal.toml`
 A new provider can be created by running:
 
 ```sh
-mangal providers new
+mangal providers new --id mysite --website https://example.com
 ```
 
-It is automatically placed in the required path.
+It is placed in the providers path.
 
 ### Downloads
 
@@ -140,7 +144,9 @@ mangal library rename          # list the renames
 mangal library rename --apply  # do them
 ```
 
-The cache and mangal's data (Anilist title bindings, logins, search history, the library) are kept in SQLite databases, see `mangal path`. The cache can be cleared with `mangal cache clear [provider]`. Logins and secrets can be kept in the OS keyring instead with `auth.keyring`.
+The cache and mangal's data (logins, metadata and title bindings, search and read history, the library, watches) are kept in SQLite databases, see `mangal path`. The cache can be cleared with `mangal cache clear [provider]`.
+
+Only one download per provider runs at a time, across every mangal on the same data (TUI, inline, scripts, watch checks): another one waits and says why.
 
 ### Library
 
@@ -149,11 +155,13 @@ mangal keeps track of what's downloaded, whichever provider got it: a chapter al
 ```sh
 mangal library ls                          # the mangas
 mangal library scan                        # check against the files: moved, removed, added by hand, older downloads
+mangal library scan --check                # also check the guessed metadata ids of folders without a .libmangal.json
+mangal library downloads [provider]        # the downloaded chapters
 mangal library merge <keep> <other> --apply  # one manga in two directories, duplicates go to the trash
 mangal library trash [empty]               # see or empty the trash
 ```
 
-The TUI has the same under `l` on the home screen, where `d` deletes a manga or a chapter (to the trash).
+The TUI has the same under `l` on the home screen (`s` scan, `S` scan and check ids, `m` merge, `t` trash), where `d` deletes a manga or a chapter (to the trash).
 
 ### Accounts
 
@@ -161,9 +169,17 @@ The TUI has the same under `l` on the home screen, where `d` deletes a manga or 
 mangal accounts
 ```
 
-Shows every account mangal can use, logged in or not: Anilist, Kitsu, MyAnimeList and the provider accounts (e.g. the MangaPlus subscription), `a` on the TUI home. From there you can log into Anilist, Kitsu or MyAnimeList or set the MangaPlus secret. mangal tells you when the Anilist login expires. Without a browser on the same machine, `mangal anilist login` and `mangal myanimelist login` print the URL to open and take the redirected URL pasted back.
+Shows every account mangal can use, logged in or not: Anilist, Kitsu, MyAnimeList and the provider accounts (e.g. the MangaPlus subscription), `a` on the TUI home. From there you can log into Anilist, Kitsu or MyAnimeList, set the MangaPlus secret or the Discord webhook. mangal tells you when the Anilist login expires. Without a browser on the same machine, `mangal anilist login` and `mangal myanimelist login` print the URL to open and take the redirected URL pasted back.
 
-Metadata comes from [Anilist](https://anilist.co), then [Kitsu](https://kitsu.app) when Anilist finds nothing (`metadata.kitsu.enabled`), or the provider, and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config. Log in with `mangal anilist` to also sync the reading progress when reading from the TUI; `mangal kitsu` and `read.history.kitsu = true` do the same for Kitsu. MyAnimeList needs an API client id of your own: register an app at https://myanimelist.net/apiconfig (App Type "other", redirect URL `http://localhost:6969/oauth/mal/callback`), set `metadata.myanimelist.client_id`, then `mangal myanimelist` and `read.history.myanimelist = true`; it's searched last for metadata. Chapters read from the TUI are kept in a local history (`mangal history`, `read.history.local`).
+Metadata comes from [Anilist](https://anilist.co), then [Kitsu](https://kitsu.app) when Anilist finds nothing (`metadata.kitsu.enabled`), then MyAnimeList when configured (below), or the provider, and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config. Log in with `mangal anilist` to also sync the reading progress when reading from the TUI; `mangal kitsu` and `read.history.kitsu = true` do the same for Kitsu. MyAnimeList needs an API client id of your own: register an app at https://myanimelist.net/apiconfig (App Type "other", redirect URL `http://localhost:6969/oauth/mal/callback`), set `metadata.myanimelist.client_id`, then `mangal myanimelist` and `read.history.myanimelist = true`. Chapters read from the TUI are kept in a local history (`mangal history`, `read.history.local`).
+
+A provider's manga can be bound to its Anilist, Kitsu and MyAnimeList ids (`A` on a manga in the TUI, or `mangal bind`; watches and the library share them). Downloads use the metadata of the first bound source in the order Anilist, Kitsu, MyAnimeList, the others are backups used when it can't be fetched; every bound id gets the reading progress.
+
+```sh
+mangal bind mango-mangapill "One-Punch Man" --anilist 74347 --kitsu 24147
+mangal bind mango-mangaplus mid:100171 --remove kitsu
+mangal bind ls
+```
 
 ### Headless
 
@@ -176,7 +192,7 @@ mangal watch add mango-mangaplus mid:100171 --anilist-id 132029
 mangal watch ls                  # last check, next check, errors
 mangal watch check [--dry-run]   # check now (--provider <id>, --due)
 mangal watch log --since 7d      # what each check got
-mangal notify webhook            # Discord message per manga with new chapters (watch.notify)
+mangal notify webhook            # save the Discord webhook: a message per manga with new chapters (watch.notify)
 ```
 
 `mangal serve` keeps running and checks the watches on a cron schedule in local time
@@ -186,11 +202,11 @@ depend on when it started: a watch is due once a tick passed since its last chec
 while it was down runs once at start), failing watches skip ticks (`watch.backoff`), gap filling
 has its own schedule (`watch.gap_schedule`, off by default). Each provider has its own run
 (`watch.parallel_providers` at once, a provider never twice, also against a `mangal watch check`
-elsewhere); the `watch.*` settings are re-read from the config file
+or a download elsewhere); the `watch.*` settings are re-read from the config file
 every minute. It serves a JSON API on `127.0.0.1:6977` (`serve.host`, `serve.port`) that the TUI
 and the `mangal watch` commands use while it runs; `--web` (`serve.web`) also serves the web UI
-there. On an address that isn't loopback the API needs a token: set `serve.token` (or
-`MANGAL_SERVE_TOKEN`) and send `Authorization: Bearer <token>`.
+there. On an address that isn't loopback the API needs a token: `mangal serve token --generate` saves
+one (the TUI and `mangal watch` on the same config use it), send `Authorization: Bearer <token>`.
 
 ```sh
 curl 127.0.0.1:6977/api/status
@@ -247,7 +263,7 @@ mangal inline json -p <provider-id> -q <query>
 A more advanced use that fetches just some chapters with anilist output:
 
 ```sh
-mangal inline json -p saturno-mangapill -q "Tengoku Daimakyou" -m exact -c 10-15 --chapter-populate
+mangal inline json -p mango-mangapill -q "Tengoku Daimakyou" -m exact -c 10-15 --chapter-populate
 ```
 
 For more, use the `-h` flag.
@@ -257,7 +273,7 @@ For more, use the `-h` flag.
 Works exactly like the `json` option but needs to select only one manga and has couple different flags:
 
 ```sh
-mangal inline download -p saturno-mangapill -q "Tengoku Daimakyou" -m exact -c 10-15 -f CBZ -d "/custom/manga/root/path"
+mangal inline download -p mango-mangapill -q "Tengoku Daimakyou" -m exact -c 10-15 -f CBZ -d "/custom/manga/root/path"
 ```
 
 For more, use the `-h` flag.
