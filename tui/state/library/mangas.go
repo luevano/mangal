@@ -14,6 +14,7 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/kitsu"
+	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
@@ -33,7 +34,7 @@ type mangaItem struct {
 	manga   storage.Manga
 	missing bool
 	keep    bool
-	watched bool
+	watches []watch.Watch
 }
 
 func (i *mangaItem) FilterValue() string { return i.manga.Title }
@@ -46,7 +47,7 @@ func (i *mangaItem) Title() string {
 	if i.missing {
 		title += " (missing)"
 	}
-	if i.watched {
+	if len(i.watches) != 0 {
 		title += " " + watches.Mark()
 	}
 	return title
@@ -77,7 +78,7 @@ type mangasState struct {
 }
 
 type mangasKeyMap struct {
-	confirm, scan, check, merge, remove, trash, delete key.Binding
+	confirm, scan, check, merge, remove, trash, delete, watch key.Binding
 }
 
 type mangasLoadedMsg struct {
@@ -126,6 +127,7 @@ func newMangasState(files library.Files) *mangasState {
 			remove:  util.Bind("remove missing", "x"),
 			trash:   util.Bind("trash", "t"),
 			delete:  util.Bind("delete", "d"),
+			watch:   util.Bind("its watch", "W"),
 		},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "manga", "mangas", []*mangaItem{}, func(i *mangaItem) _list.DefaultItem { return i }), s.keyMap)
@@ -135,7 +137,7 @@ func newMangasState(files library.Files) *mangasState {
 func (s *mangasState) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.check, k.remove)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.check, k.remove, k.watch)}}
 }
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
@@ -149,7 +151,7 @@ func (s *mangasState) reload(ctx context.Context) tea.Cmd {
 		items := make([]*mangaItem, len(mangas))
 		for i, m := range mangas {
 			exists, _ := afero.DirExists(files.FS, m.Path())
-			items[i] = &mangaItem{manga: m, missing: !exists, watched: watched.HasLibrary(m)}
+			items[i] = &mangaItem{manga: m, missing: !exists, watches: watched.ForLibrary(m)}
 		}
 		return mangasLoadedMsg{items: items, trash: trashSummary(files)}, nil
 	}, func(msg mangasLoadedMsg) tea.Msg { return msg })
@@ -258,6 +260,8 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 		return func() tea.Msg { return newMangaState(files, item.manga) }, true
 	case key.Matches(msg, s.keys.merge):
 		return s.merge(ctx, item), true
+	case key.Matches(msg, s.keys.watch):
+		return watches.JumpCmd(item.watches, ""), true
 	case key.Matches(msg, s.keys.delete):
 		m := item.manga
 		message := fmt.Sprintf("Delete %q? Its folder (%d chapters) goes to the trash and it leaves the library.", m.Title, m.Chapters)

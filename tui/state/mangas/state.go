@@ -13,6 +13,7 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	clientanilist "github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -50,6 +51,7 @@ type keyMap struct {
 	metadata,
 	info,
 	watch,
+	jump,
 	toggleFullMeta key.Binding
 }
 
@@ -79,6 +81,7 @@ func New(client *libmangal.Client) base.State {
 			metadata:       util.Bind("metadata", "m"),
 			info:           util.Bind("info", "i"),
 			watch:          util.Bind("watch", "w"),
+			jump:           util.Bind("its watch", "W"),
 			toggleFullMeta: util.Bind("toggle full meta", "M"),
 		},
 	}
@@ -97,7 +100,7 @@ func (s *state) KeyMap() help.KeyMap {
 	k := s.keys
 	return base.CombinedKeyMap(util.KeyMap{
 		Short: []key.Binding{k.confirm, k.search, k.anilist, k.metadata, k.watch},
-		Full:  [][]key.Binding{{k.confirm, k.search, k.info, k.watch}, {k.anilist, k.metadata, k.toggleFullMeta}},
+		Full:  [][]key.Binding{{k.confirm, k.search, k.info, k.watch, k.jump}, {k.anilist, k.metadata, k.toggleFullMeta}},
 	}, s.ListKeyMap())
 }
 
@@ -213,6 +216,12 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
 		return metadata.ShowManga(i.manga), true
 	case key.Matches(msg, s.keys.watch):
 		return func() tea.Msg { return watches.NewAdd(s.client, i.manga, nil) }, true
+	case key.Matches(msg, s.keys.jump):
+		w, ok := s.watched.Find(s.client.Info().ID, i.manga.Info().ID)
+		if !ok {
+			return watches.JumpCmd(nil, "w watches it"), true
+		}
+		return watches.JumpCmd([]watch.Watch{w}, ""), true
 	}
 	return nil, false
 }
@@ -342,5 +351,6 @@ func (s *state) updateKeys() {
 	s.keys.anilist.SetEnabled(enable)
 	s.keys.metadata.SetEnabled(enable)
 	s.keys.watch.SetEnabled(enable)
+	s.keys.jump.SetEnabled(enable)
 	s.keys.toggleFullMeta.SetEnabled(enable && s.extraInfo)
 }

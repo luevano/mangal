@@ -3,11 +3,14 @@ package library
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
@@ -15,6 +18,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
+	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/skratchdot/open-golang/open"
@@ -49,11 +53,16 @@ type mangaState struct {
 	files   library.Files
 	manga   storage.Manga
 	confirm *confirm.Dialog
+	// watches are the manga's, for the header
+	watches []watch.Watch
+	size    base.Size
 
-	open, scan, delete key.Binding
+	open, scan, delete, watch key.Binding
 }
 
 type downloadsMsg []_list.Item
+
+type mangaWatchesMsg []watch.Watch
 
 // mangaScannedMsg is the result of a scan, and the manga after it.
 type mangaScannedMsg struct {
@@ -69,13 +78,29 @@ func newMangaState(files library.Files, manga storage.Manga) *mangaState {
 		open:    util.Bind("open", "enter"),
 		scan:    util.Bind("scan", "s"),
 		delete:  util.Bind("delete", "d"),
+		watch:   util.Bind("its watch", "W"),
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "chapter", "chapters", []*downloadItem{}, func(i *downloadItem) _list.DefaultItem { return i }), s.keyMap)
 	return s
 }
 
 func (s *mangaState) keyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete}}
+	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete, s.watch}}
+}
+
+// watchesCmd loads the manga's watches.
+func (s *mangaState) watchesCmd(ctx context.Context) tea.Cmd {
+	manga := s.manga
+	return base.Load(ctx, "", watches.Watched, func(set watches.Set) tea.Msg { return mangaWatchesMsg(set.ForLibrary(manga)) })
+}
+
+// header is the manga's watch state, empty when not watched.
+func (s *mangaState) header() string {
+	lines := make([]string, len(s.watches))
+	for i, w := range s.watches {
+		lines[i] = watches.Describe(w)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (s *mangaState) reload(ctx context.Context) tea.Cmd {
@@ -131,12 +156,16 @@ func (s *mangaState) Inputting() bool   { return s.Screen.Inputting() || s.confi
 func (s *mangaState) Title() base.Title { return base.Title{Text: s.manga.Title} }
 func (s *mangaState) Subtitle() string  { return s.manga.Path() }
 func (s *mangaState) Resize(size base.Size) tea.Cmd {
+	s.size = size
 	s.confirm.Resize(size)
+	if h := s.header(); h != "" {
+		size.Height = max(1, size.Height-lipgloss.Height(h)-1)
+	}
 	return s.Screen.Resize(size)
 }
 
 func (s *mangaState) Init(ctx context.Context) tea.Cmd {
-	return s.scanCmd(ctx)
+	return tea.Batch(s.scanCmd(ctx), s.watchesCmd(ctx))
 }
 
 func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
@@ -146,6 +175,12 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case downloadsMsg:
 		return s.List.SetItems(msg)
+	case mangaWatchesMsg:
+		s.watches = msg
+		return s.Resize(s.size)
+	case base.RestoredMsg:
+		// e.g. paused on its watch's screen
+		return s.watchesCmd(ctx)
 	case mangaScannedMsg:
 		return s.onScanned(ctx, msg)
 	case actionMsg:
@@ -157,6 +192,8 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			break
 		}
 		switch {
+		case key.Matches(msg, s.watch):
+			return watches.JumpCmd(s.watches, "")
 		case key.Matches(msg, s.scan):
 			if base.Busy(ctx) {
 				return nil
@@ -191,6 +228,9 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 func (s *mangaState) View() string {
 	if s.confirm.Active() {
 		return s.confirm.View()
+	}
+	if h := s.header(); h != "" {
+		return h + "\n\n" + s.List.View()
 	}
 	return s.List.View()
 }
