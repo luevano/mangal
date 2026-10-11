@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -15,35 +15,38 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// TODO: handle the errors instead of just fatal'ing
-
 // expiringSoon is how long before the login expires the notice starts.
 const expiringSoon = 7 * 24 * time.Hour
 
 var (
 	anilist_    *metadata.ProviderWithCache
+	anilistErr  error
 	anilistOnce sync.Once
+
+	// loginSem serializes the logins, a channel so waiting can be cancelled
+	loginSem   = make(chan struct{}, 1)
+	loginTried bool
 
 	loginErr     error
 	loginErrLock sync.Mutex
 )
 
-func Anilist() *metadata.ProviderWithCache {
+// Anilist is the AniList metadata provider shared by every client. It makes no request:
+// EnsureLogin logs in with the saved user.
+func Anilist() (*metadata.ProviderWithCache, error) {
 	anilistOnce.Do(func() {
-		anilist_ = newAnilist()
-		if err := CheckLogin(context.Background()); err != nil {
-			mlog.Log("anilist login: %s", err)
-		}
+		anilist_, anilistErr = newAnilist()
 	})
-	return anilist_
+	return anilist_, anilistErr
 }
 
-func newAnilist() *metadata.ProviderWithCache {
+func newAnilist() (*metadata.ProviderWithCache, error) {
 	aniOpts := anilist.DefaultOptions()
+	aniOpts.HTTPClient = &http.Client{Timeout: time.Minute}
 
 	ani, err := anilist.NewAnilist(aniOpts)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("create anilist: %w", err)
 	}
 
 	opts := metadata.DefaultProviderWithCacheOptions()
@@ -52,9 +55,32 @@ func newAnilist() *metadata.ProviderWithCache {
 
 	provider, err := metadata.NewProviderWithCache(opts)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("create anilist: %w", err)
 	}
-	return provider
+	return provider, nil
+}
+
+// EnsureLogin logs into AniList with the saved user once per process (see CheckLogin).
+// A cancelled attempt is tried again by the next call.
+func EnsureLogin(ctx context.Context) error {
+	select {
+	case loginSem <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { <-loginSem }()
+	if loginTried {
+		return nil
+	}
+
+	err := checkLogin(ctx)
+	if ctx.Err() == nil {
+		loginTried = true
+	}
+	if err != nil {
+		mlog.Log("anilist login: %s", err)
+	}
+	return err
 }
 
 // Login is the saved login of the last Anilist user.
@@ -73,13 +99,9 @@ func (l Login) Expired() bool {
 
 // SavedLogin is the last user's saved login, read locally (no request).
 func SavedLogin() (Login, bool, error) {
-	var history cache.UserHistory
-	if _, err := cache.GetAuthHistory(cache.AnilistAuthHistory, &history); err != nil {
+	user, err := lastUser()
+	if err != nil || user == "" {
 		return Login{}, false, err
-	}
-	user := history.Last()
-	if user == "" {
-		return Login{}, false, nil
 	}
 	var token oauth2.Token
 	found, err := cache.GetAnilistAuthData(user, &token)
@@ -94,7 +116,21 @@ func SavedLogin() (Login, bool, error) {
 // CheckLogin logs into Anilist with the saved login, unless it already is or the login
 // expired. A token Anilist rejects is marked expired.
 func CheckLogin(ctx context.Context) error {
-	if anilist_.Authenticated() {
+	select {
+	case loginSem <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { <-loginSem }()
+	return checkLogin(ctx)
+}
+
+func checkLogin(ctx context.Context) error {
+	ani, err := Anilist()
+	if err != nil {
+		return err
+	}
+	if ani.Authenticated() {
 		return nil
 	}
 	login, found, err := SavedLogin()
@@ -102,11 +138,11 @@ func CheckLogin(ctx context.Context) error {
 		return err
 	}
 
-	err = anilist_.LoginContext(ctx, login.token.AccessToken)
+	err = ani.LoginContext(ctx, login.token.AccessToken)
 	unauthorized := errors.Is(err, metadata.ErrUnauthorized)
 	loginErrLock.Lock()
 	loginErr = nil
-	if err != nil && !unauthorized {
+	if err != nil && !unauthorized && ctx.Err() == nil {
 		loginErr = err
 	}
 	loginErrLock.Unlock()
@@ -115,7 +151,10 @@ func CheckLogin(ctx context.Context) error {
 			return err
 		}
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("log in %q: %w", login.User, err)
+	}
+	return nil
 }
 
 // LoginNotice tells when the saved login expired or expires soon, empty otherwise.

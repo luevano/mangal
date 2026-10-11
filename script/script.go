@@ -2,10 +2,13 @@ package script
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"os"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/script/lib"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -34,10 +37,14 @@ func addClient(state *lua.LState, client *libmangal.Client) {
 }
 
 func Run(ctx context.Context, args Args, script io.Reader) error {
-	client, err := client.NewClientByID(ctx, args.Provider)
+	client, warnings, err := client.AcquireByID(ctx, args.Provider)
+	for _, w := range warnings {
+		fmt.Fprintln(os.Stderr, "warning: "+w)
+	}
 	if err != nil {
 		return err
 	}
+	_ = anilist.EnsureLogin(ctx)
 
 	state := lua.NewState()
 	state.SetContext(ctx)

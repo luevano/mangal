@@ -1,10 +1,8 @@
 package anilist
 
 import (
-	"errors"
-	"strings"
-
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
@@ -19,25 +17,14 @@ func (m *Model) updateCurrent() {
 	}
 }
 
-func (m *Model) updateAuthUser() error {
-	user := m.anilist.User()
-	if user == nil {
-		return errors.New("received nil User from Anilist")
-	}
-	m.user = user
-	return nil
-}
-
-// updateUserHistory is a convenience method to update the
-// auth user history data within the cache and the model list.
+// updateUserHistory reloads the saved users into the model list.
 func (m *Model) updateUserHistory() error {
-	// Set the updated auth user history
-	err := cache.SetAuthHistory(cache.AnilistAuthHistory, m.userHistory)
+	users, err := anilist.Users()
 	if err != nil {
 		return err
 	}
+	m.userHistory = cache.UserHistory(users)
 
-	// Set the new user history items
 	items := make([]list.Item, m.userHistory.Size())
 	for i, u := range m.userHistory {
 		items[i] = &item{user: u}
@@ -75,8 +62,4 @@ func (m *Model) updateKeybinds() {
 	typing := m.inNew && m.inInput
 	m.keyMap.confirm.SetEnabled(typing)
 	m.keyMap.cancel.SetEnabled(typing)
-}
-
-func sanitize(in string) string {
-	return strings.Join(strings.Fields(strings.TrimSpace(in)), "")
 }

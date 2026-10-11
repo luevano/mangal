@@ -5,80 +5,47 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/luevano/libmangal/metadata"
-	mangalclient "github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/util"
-	"github.com/luevano/mangal/v5/util/chapter"
 )
 
 func RunDownload(ctx context.Context, args Args) error {
-	client, err := mangalclient.NewClientByID(ctx, args.Provider)
+	results, err := runDownload(ctx, args)
 	if err != nil {
 		return notify.SendError(err)
 	}
+	if err := notify.Send(results); err != nil {
+		return err
+	}
+	// so scripts can tell from the exit code
+	if failed := len(results.Failed()); failed > 0 {
+		return fmt.Errorf("%d of %d chapters failed", failed, len(results))
+	}
+	return nil
+}
 
-	mangas, err := client.SearchMangasContext(ctx, args.Query)
+func runDownload(ctx context.Context, args Args) (client.Results, error) {
+	c, mangaResults, err := search(ctx, args)
 	if err != nil {
-		return notify.SendError(err)
-	}
-	if len(mangas) == 0 {
-		err = fmt.Errorf("no mangas found with provider ID %q and query %q", args.Provider, args.Query)
-		return notify.SendError(err)
-	}
-
-	mangaResults, err := getSelectedMangaResults(args, mangas)
-	if err != nil {
-		return notify.SendError(err)
+		return nil, err
 	}
 	if len(mangaResults) != 1 {
-		err = fmt.Errorf("invalid manga selector %q, needs to select 1 manga only", args.MangaSelector)
-		return notify.SendError(err)
+		return nil, fmt.Errorf("manga selector %q selects %d mangas, it needs to select 1", args.MangaSelector, len(mangaResults))
 	}
 
 	manga := mangaResults[0].Manga
 	useMangaMetadata := false
 	if args.PreferProviderMetadata {
 		if err = metadata.Validate(manga.Metadata()); err != nil {
-			// TODO: this logger is only really used for TUI, better handle logs
-			log.Log("provider metadata is preferred but it's not valid: %s", err.Error())
+			log.Log("provider metadata is preferred but it's not valid: %s", err)
 		} else {
 			useMangaMetadata = true
-		}
-	}
-	var meta metadata.Metadata
-	var found bool
-
-	// If AnilistID is provided via argument, then search for it and replace the manga metadata,
-	// error out as it is expected to find some metadata (given the id).
-	// Otherwise, if prefer provider metadata is true and the metadata is valid, libmangal will search for metadata.
-	if !useMangaMetadata && args.AnilistID != 0 {
-		// guaranteed to exist
-		ani, _ := client.GetMetadataProvider(metadata.IDSourceAnilist)
-		meta, found, err = ani.SearchByIDContext(ctx, args.AnilistID)
-		if err != nil {
-			return notify.SendError(err)
-		}
-		if !found {
-			err = fmt.Errorf("couldn't find anilist manga with id %d (from argument)", args.AnilistID)
-			return notify.SendError(err)
-		}
-		manga.SetMetadata(meta)
-	}
-
-	rawChapters, err := getChapters(ctx, client, args, manga)
-	if err != nil {
-		return notify.SendError(err)
-	}
-	// wrapper for keeping track of failed/success downloads
-	chapters := make(chapter.Chapters, len(rawChapters))
-	for i, ch := range rawChapters {
-		chapters[i] = &chapter.Chapter{
-			Chapter: ch,
 		}
 	}
 
@@ -88,65 +55,63 @@ func RunDownload(ctx context.Context, args Args) error {
 		// Re-searching would replace the set metadata here
 		downloadOptions.SearchMetadata = false
 	}
+	if downloadOptions.SearchMetadata || (!useMangaMetadata && args.AnilistID != 0) {
+		_ = anilist.EnsureLogin(ctx)
+	}
 
-	// FIX: rework this mess
-	// TODO: make configurable
-	maxRetries := 10
-	retryCount := 0
-	failed := 0
-	for _, ch := range chapters {
-		retry := true
-		for retry {
-			retry = false
-			ch.Down, ch.Err = mangalclient.DownloadChapter(ctx, client, ch.Chapter, downloadOptions, nil)
-			if ch.Err != nil {
-				// cancelled (e.g. ctrl+c), don't keep trying the rest of the chapters
-				if ctx.Err() != nil {
-					return notify.SendError(ctx.Err())
-				}
-				if wait, ok := util.RetryAfter(ch.Err); ok {
-					retry = true
-					retryCount++
-					if retryCount > maxRetries {
-						// TODO: use as ch.Err?
-						err = fmt.Errorf("exceeded max retries (%d) while downloading chapters", maxRetries)
-						return notify.SendError(err)
-					}
-
-					retryAfter := min(10*time.Second, wait)
-					// TODO: handle different in case that JSONOutput is desired?
-					fmt.Printf("429 Too Many Requests (retry #%d). Retrying in %s\n", retryCount, retryAfter)
-					time.Sleep(retryAfter)
-					continue
-				}
-
-				// In case that the error is not due to 429 code, just continue to the next chapter
-				// as ch.Down will not be available
-				fmt.Fprintf(os.Stderr, "error: %s\n", util.ErrorTree(fmt.Errorf("chapter %s: %w", ch.Chapter, ch.Err)))
-				failed++
-				continue
-			}
-
-			if ch.Down.Skipped != "" {
-				fmt.Fprintf(os.Stderr, "warning: chapter %s skipped: %s\n", ch.Chapter, ch.Down.Skipped)
-			}
-			if args.JSONOutput {
-				dc, err := json.Marshal(ch.Down)
-				if err != nil {
-					return notify.SendError(err)
-				}
-				fmt.Println(string(dc))
-			} else {
-				fmt.Println(ch.Down.Path())
-			}
+	// If AnilistID is provided via argument, then search for it and replace the manga metadata,
+	// error out as it is expected to find some metadata (given the id).
+	// Otherwise, if prefer provider metadata is true and the metadata is valid, libmangal will search for metadata.
+	if !useMangaMetadata && args.AnilistID != 0 {
+		ani, err := c.GetMetadataProvider(metadata.IDSourceAnilist)
+		if err != nil {
+			return nil, err
 		}
+		meta, found, err := ani.SearchByIDContext(ctx, args.AnilistID)
+		if err != nil {
+			return nil, fmt.Errorf("get anilist manga %d: %w", args.AnilistID, err)
+		}
+		if !found {
+			return nil, fmt.Errorf("anilist manga %d (from the argument) not found", args.AnilistID)
+		}
+		manga.SetMetadata(meta)
 	}
-	if err := notify.Send(chapters); err != nil {
-		return err
+
+	chapters, err := chapters(ctx, c, args, manga)
+	if err != nil {
+		return nil, err
 	}
-	// so scripts can tell from the exit code
-	if failed > 0 {
-		return fmt.Errorf("%d of %d chapters failed", failed, len(chapters))
+
+	var printErr error
+	results := client.Download(ctx, c, chapters, downloadOptions, func(e client.Event) {
+		r := e.Result
+		switch {
+		case e.Kind == client.EventWait:
+			// stderr, stdout may be json
+			fmt.Fprintf(os.Stderr, "chapter %s: rate limited (retry #%d), retrying in %s\n", r.Chapter, e.Attempt, e.Wait)
+		case e.Kind != client.EventDone:
+		case r.Unavailable != "":
+			fmt.Fprintf(os.Stderr, "warning: chapter %s skipped, unavailable: %s\n", r.Chapter, r.Unavailable)
+		case r.Err != nil:
+			fmt.Fprintf(os.Stderr, "error: %s\n", util.ErrorTree(fmt.Errorf("chapter %s: %w", r.Chapter, r.Err)))
+		default:
+			if r.Down.Skipped != "" {
+				fmt.Fprintf(os.Stderr, "warning: chapter %s skipped: %s\n", r.Chapter, r.Down.Skipped)
+			}
+			if !args.JSONOutput {
+				fmt.Println(r.Down.Path())
+				return
+			}
+			dc, err := json.Marshal(r.Down)
+			if err != nil {
+				printErr = err
+				return
+			}
+			fmt.Println(string(dc))
+		}
+	})
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-	return nil
+	return results, printErr
 }

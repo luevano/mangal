@@ -42,11 +42,10 @@ func (s *Server) GetMangaPage(ctx context.Context, request api.GetMangaPageReque
 		}, nil
 	}
 
-	c, err := client.NewClient(ctx, loader)
+	c, err := client.Acquire(ctx, loader)
 	if err != nil {
 		return nil, err
 	}
-	defer c.Close()
 
 	mangas, err := searchMangas(ctx, c, request.Params.Query)
 	if err != nil {
@@ -180,11 +179,10 @@ func (s *Server) GetMangaVolumes(ctx context.Context, request api.GetMangaVolume
 		}, nil
 	}
 
-	c, err := client.NewClient(ctx, loader)
+	c, err := client.Acquire(ctx, loader)
 	if err != nil {
 		return nil, err
 	}
-	defer c.Close()
 
 	volumes, err := mangaVolumes(ctx, c, request.Params.Query, request.Params.Manga)
 	if err != nil {
@@ -213,11 +211,10 @@ func (s *Server) GetVolumeChapters(ctx context.Context, request api.GetVolumeCha
 		}, nil
 	}
 
-	c, err := client.NewClient(ctx, loader)
+	c, err := client.Acquire(ctx, loader)
 	if err != nil {
 		return nil, err
 	}
-	defer c.Close()
 
 	chapters, err := volumeChapters(ctx, c, request.Params.Query, request.Params.Manga, request.Params.Volume)
 	if err != nil {
@@ -301,7 +298,7 @@ func (s *Server) SearchMangas(ctx context.Context, request api.SearchMangasReque
 		}, nil
 	}
 
-	c, err := client.NewClient(ctx, loader)
+	c, err := client.Acquire(ctx, loader)
 	if err != nil {
 		return api.SearchMangasdefaultJSONResponse{
 			StatusCode: 400,
@@ -310,7 +307,6 @@ func (s *Server) SearchMangas(ctx context.Context, request api.SearchMangasReque
 			},
 		}, nil
 	}
-	defer c.Close()
 
 	mangas, err := searchMangas(ctx, c, request.Params.Query)
 	if err != nil {

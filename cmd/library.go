@@ -1,14 +1,12 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
@@ -52,24 +50,12 @@ templates give them. Only lists the renames unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		ani := anilist.Anilist()
 		namer := library.Namer{
 			FS:           afs.Afero,
 			Loaders:      loaders,
 			ProviderName: template.Provider,
 			MangaName:    template.Manga,
-			Metadata: func(ctx context.Context, ids []metadata.ID) (metadata.Metadata, error) {
-				for _, id := range ids {
-					if id.Source != metadata.IDSourceAnilist {
-						continue
-					}
-					meta, found, err := ani.SearchByIDContext(ctx, id.Value())
-					if err != nil || found {
-						return meta, err
-					}
-				}
-				return nil, nil
-			},
+			Metadata:     anilist.MetadataByIDs,
 		}
 
 		dir := path.DownloadsDir()

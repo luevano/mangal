@@ -1,8 +1,6 @@
 package inline
 
 import (
-	"fmt"
-
 	"github.com/luevano/libmangal/mangadata"
 	lmanilist "github.com/luevano/libmangal/metadata/anilist"
 )
@@ -38,31 +36,4 @@ type Args struct {
 	AnilistID              int    `json:"anilist_id"`
 	AnilistDisable         bool   `json:"anilist_disable"`
 	JSONOutput             bool   `json:"json_output,omitempty"`
-}
-
-type MangaSelectorError struct {
-	selector  string
-	extraInfo string
-}
-
-func (m *MangaSelectorError) Error() string {
-	return GenericSelectorError("manga", m.selector, m.extraInfo)
-}
-
-type ChapterSelectorError struct {
-	selector  string
-	extraInfo string
-}
-
-func (m *ChapterSelectorError) Error() string {
-	return GenericSelectorError("chapter", m.selector, m.extraInfo)
-}
-
-func GenericSelectorError(selectorType string, selector string, extraInfo string) string {
-	msg := fmt.Sprintf("invalid %s selector %q", selectorType, selector)
-	if extraInfo == "" {
-		return msg
-	} else {
-		return fmt.Sprintf("%s (%s)", msg, extraInfo)
-	}
 }

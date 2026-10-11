@@ -57,12 +57,7 @@ func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
 		}
 
 		entry := AccountEntry{Account: libmangal.Account{Service: loader.Info().Name}, Provider: id, Checked: time.Now()}
-		// the TUI may have loaded it already, only one client per provider
-		client := Get(loader)
-		var err error
-		if client == nil {
-			client, err = NewClient(ctx, loader)
-		}
+		client, err := Acquire(ctx, loader)
 		if err == nil {
 			var found bool
 			entry.Account, found, err = client.AccountContext(ctx)
@@ -83,9 +78,14 @@ func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
 // anilistAccount is the Anilist login, with when its token expires; refresh tries the
 // saved login again if it couldn't be checked.
 func anilistAccount(ctx context.Context, refresh bool) AccountEntry {
-	ani := anilist.Anilist()
+	ani, err := anilist.Anilist()
+	if err != nil {
+		return AccountEntry{Account: libmangal.Account{Service: "Anilist"}, Checked: time.Now(), Err: err}
+	}
 	if refresh {
 		_ = anilist.CheckLogin(ctx)
+	} else {
+		_ = anilist.EnsureLogin(ctx)
 	}
 	entry := AccountEntry{Account: metadata.AccountOf(ani), Checked: time.Now()}
 	login, found, err := anilist.SavedLogin()

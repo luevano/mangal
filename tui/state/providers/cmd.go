@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/state/mangas"
@@ -24,10 +25,12 @@ func (s *state) loadProviderCmd(ctx context.Context, item *item) tea.Cmd {
 				mangalClient = c
 			} else {
 				newex = "new"
-				c, err := client.NewClient(ctx, item.loader)
+				c, err := client.Acquire(ctx, item.loader)
 				if err != nil {
 					return err
 				}
+				// in the background, the anilist screens show the login once it's done
+				go func() { _ = anilist.EnsureLogin(ctx) }()
 				mangalClient = c
 				item.markLoaded()
 

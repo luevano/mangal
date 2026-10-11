@@ -5,7 +5,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
 	anilistLogin "github.com/luevano/mangal/v5/tui/model/anilist"
@@ -19,7 +18,7 @@ type anilistState struct {
 }
 
 func newAnilistLogin(ctx context.Context) base.State {
-	return &anilistState{model: anilistLogin.New(ctx, anilist.Anilist(), false)}
+	return &anilistState{model: anilistLogin.New(ctx, false)}
 }
 
 func (s *anilistState) Intermediate() bool  { return false }

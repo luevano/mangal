@@ -7,7 +7,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/client"
-	"github.com/luevano/mangal/v5/client/anilist"
 	accountsViewer "github.com/luevano/mangal/v5/tui/model/accounts"
 	anilistViewer "github.com/luevano/mangal/v5/tui/model/anilist"
 	"github.com/spf13/cobra"
@@ -60,7 +59,7 @@ Anilist logged into or the MangaPlus secret set.`,
 			return err
 		}
 		if model.LoginAnilist {
-			_, err := tea.NewProgram(anilistViewer.New(cmd.Context(), anilist.Anilist(), true)).Run()
+			_, err := tea.NewProgram(anilistViewer.New(cmd.Context(), true)).Run()
 			return err
 		}
 		return nil
