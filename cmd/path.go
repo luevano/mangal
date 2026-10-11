@@ -17,6 +17,7 @@ var pathArgs = struct {
 	Downloads bool
 	Providers bool
 	Logs      bool
+	Data      bool
 	JSON      bool
 }{}
 
@@ -30,6 +31,7 @@ func init() {
 	f.BoolVar(&pathArgs.Downloads, "downloads", false, "Get downloads directory")
 	f.BoolVar(&pathArgs.Providers, "providers", false, "Get providers directory")
 	f.BoolVar(&pathArgs.Logs, "logs", false, "Get logs directory")
+	f.BoolVar(&pathArgs.Data, "data", false, "Get data directory")
 	f.BoolVarP(&pathArgs.JSON, "json", "j", false, "Output as JSON")
 
 	pathCmd.MarkFlagsMutuallyExclusive(
@@ -39,6 +41,7 @@ func init() {
 		"downloads",
 		"providers",
 		"logs",
+		"data",
 	)
 }
 
@@ -55,13 +58,15 @@ var pathCmd = &cobra.Command{
 		case pathArgs.Config:
 			p = path.PathConfig
 		case pathArgs.Downloads:
-			p = path.PathConfig
+			p = path.PathDownloads
 		case pathArgs.Temp:
-			p = path.PathConfig
+			p = path.PathTemp
 		case pathArgs.Providers:
-			p = path.PathConfig
+			p = path.PathProviders
 		case pathArgs.Logs:
-			p = path.PathConfig
+			p = path.PathLog
+		case pathArgs.Data:
+			p = path.PathData
 		}
 		paths := path.AllPaths()
 		if p != "" {
