@@ -131,3 +131,27 @@ func TestDataIsPrivate(t *testing.T) {
 		}
 	}
 }
+
+// several processes starting on a fresh database: only one applies each migration
+func TestConcurrentMigrations(t *testing.T) {
+	for _, open := range []func(string) (*DB, error){OpenCache, OpenData} {
+		path := filepath.Join(t.TempDir(), "db.sqlite")
+		var wg sync.WaitGroup
+		errs := make([]error, 8)
+		for i := range errs {
+			wg.Go(func() {
+				db, err := open(path)
+				if err == nil {
+					err = db.Close()
+				}
+				errs[i] = err
+			})
+		}
+		wg.Wait()
+		for _, err := range errs {
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}

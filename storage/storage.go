@@ -7,12 +7,14 @@ package storage
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 const (
@@ -124,7 +126,9 @@ func Open(path string, migrations []Migration) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	dsn := "file:" + path + "?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)"
+	// immediate transactions take the write lock when they start, so two processes can't both
+	// read a version (or row) and then write based on it
+	dsn := "file:" + path + "?_txlock=immediate&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)"
 	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
@@ -141,31 +145,52 @@ func Open(path string, migrations []Migration) (*DB, error) {
 }
 
 func (db *DB) migrate(migrations []Migration) error {
+	busy := 0
+	for {
+		done, err := db.migrateOne(migrations)
+		// a brand new file can be busy without waiting (busy_timeout doesn't apply) while
+		// another process switches it to WAL; retrying is safe, the version is read again
+		var sqliteErr *sqlite.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.Code()&0xff == sqlite3.SQLITE_BUSY && busy < 50 {
+			busy++
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		if err != nil || done {
+			return err
+		}
+	}
+}
+
+// migrateOne applies the next migration, if any. The version is read inside the
+// transaction, another process may have migrated while this one waited for the lock.
+func (db *DB) migrateOne(migrations []Migration) (done bool, err error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		if err != nil || done {
+			_ = tx.Rollback()
+		}
+	}()
 	var version int
-	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
-		return err
+	if err := tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return false, err
 	}
 	if version > len(migrations) {
-		return fmt.Errorf("schema version %d is newer than this mangal's %d", version, len(migrations))
+		return false, fmt.Errorf("schema version %d is newer than this mangal's %d", version, len(migrations))
 	}
-	for i := version; i < len(migrations); i++ {
-		tx, err := db.Begin()
-		if err != nil {
-			return err
-		}
-		if err := migrations[i](tx); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("migration %d: %w", i+1, err)
-		}
-		if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		if err := tx.Commit(); err != nil {
-			return err
-		}
+	if version == len(migrations) {
+		return true, nil
 	}
-	return nil
+	if err := migrations[version](tx); err != nil {
+		return false, fmt.Errorf("migration %d: %w", version+1, err)
+	}
+	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", version+1)); err != nil {
+		return false, err
+	}
+	return false, tx.Commit()
 }
 
 // OpenCache opens the cache database and removes its expired entries.
