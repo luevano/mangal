@@ -155,3 +155,20 @@ func TestConcurrentMigrations(t *testing.T) {
 		}
 	}
 }
+
+func TestSynchronous(t *testing.T) {
+	for _, tt := range []struct {
+		open func(string) (*DB, error)
+		want int
+	}{{OpenCache, 1}, {OpenData, 2}} {
+		db, err := tt.open(filepath.Join(t.TempDir(), "db.sqlite"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got int
+		if err := db.QueryRow("PRAGMA synchronous").Scan(&got); err != nil || got != tt.want {
+			t.Errorf("synchronous %d, %v, want %d (1 normal, 2 full)", got, err, tt.want)
+		}
+		db.Close()
+	}
+}
