@@ -20,6 +20,7 @@ import (
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/proc"
 )
 
@@ -119,12 +120,28 @@ func Find(ctx context.Context, dataDB, token string) (*Remote, Discovery, error)
 	return remote, d, nil
 }
 
+// Token is the token of the serve API: the saved one (mangal serve token), else serve.token.
+func Token() (string, error) {
+	token, err := cache.ServeToken()
+	if err != nil {
+		return "", fmt.Errorf("serve token: %w", err)
+	}
+	if token == "" {
+		token = config.Serve.Token.Get()
+	}
+	return token, nil
+}
+
 // Connect is the Manager the CLI and the TUI use: the running `mangal serve` of this
 // config's data database (found with its discovery file and serve.token) when there's
 // one, else the local Service (New) with the notifier (notify.Watches(), which this
 // package can't import).
 func Connect(ctx context.Context, notifier Notifier) (Manager, error) {
-	remote, _, err := Find(ctx, DataDB(), config.Serve.Token.Get())
+	token, err := Token()
+	if err != nil {
+		return nil, err
+	}
+	remote, _, err := Find(ctx, DataDB(), token)
 	if err != nil {
 		return nil, err
 	}

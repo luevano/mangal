@@ -430,7 +430,7 @@ var Serve = configServe{
 	Port: intEntry("serve.port", 6977, 1, 65535, "Port `mangal serve` listens on, one per instance."),
 	Token: reg(entry[string, string]{
 		Key:         "serve.token",
-		Description: "Token the `mangal serve` API asks for (Authorization: Bearer <token>) when it listens on an address that isn't loopback, where it's required. mangal's own commands and TUI send it.",
+		Description: "Token the `mangal serve` API asks for (Authorization: Bearer <token>) when it listens on an address that isn't loopback, where it's required. mangal's own commands and TUI send it. A token saved with `mangal serve token` (kept with the logins) is used instead.",
 		Secret:      true,
 	}),
 	Web: boolEntry("serve.web", false, "Also serve the web UI (as `mangal web`) on the `mangal serve` port (`mangal serve --web`)."),

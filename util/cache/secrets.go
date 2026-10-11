@@ -64,6 +64,8 @@ func SetMangaPlusFreeSecret(secret string) error {
 const (
 	authOwnerDiscord  = "discord"
 	keyDiscordWebhook = "webhook"
+	authOwnerServe    = "serve"
+	keyServeToken     = "token"
 )
 
 // DiscordWebhook is the saved Discord webhook url, empty if none.
@@ -88,6 +90,30 @@ func SetDiscordWebhook(url string) error {
 		return kv.Delete(keyDiscordWebhook)
 	}
 	return kv.Set(keyDiscordWebhook, url)
+}
+
+// ServeToken is the saved token of the `mangal serve` API, empty if none.
+func ServeToken() (string, error) {
+	st, err := Storage()
+	if err != nil {
+		return "", err
+	}
+	var token string
+	_, err = st.AuthStore(authOwnerServe, keyring).Get(keyServeToken, &token)
+	return token, err
+}
+
+// SetServeToken saves the token of the `mangal serve` API, empty removes it.
+func SetServeToken(token string) error {
+	st, err := Storage()
+	if err != nil {
+		return err
+	}
+	kv := st.AuthStore(authOwnerServe, keyring)
+	if token == "" {
+		return kv.Delete(keyServeToken)
+	}
+	return kv.Set(keyServeToken, token)
 }
 
 // keyring is true when the logins are kept in the OS keyring (auth.keyring).

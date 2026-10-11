@@ -1,8 +1,14 @@
 package cmd
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+
+	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/serve"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 )
 
@@ -35,11 +41,69 @@ config (--config) with its own data.path and serve.port.`,
 	GroupID: groupMode,
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		token, err := watch.Token()
+		if err != nil {
+			return err
+		}
 		return serve.Run(cmd.Context(), serve.Args{
 			Host:  config.Serve.Host.Get(),
 			Port:  config.Serve.Port.Get(),
 			Web:   config.Serve.Web.Get(),
-			Token: config.Serve.Token.Get(),
+			Token: token,
 		}, cmd.ErrOrStderr())
+	},
+}
+
+var serveTokenArgs = struct {
+	Generate, Clear bool
+}{}
+
+func init() {
+	serveCmd.AddCommand(serveTokenCmd)
+	f := serveTokenCmd.Flags()
+	f.BoolVar(&serveTokenArgs.Generate, "generate", false, "Generate a random token, save it and print it")
+	f.BoolVar(&serveTokenArgs.Clear, "clear", false, "Remove the saved token")
+}
+
+var serveTokenCmd = &cobra.Command{
+	Use:   "token",
+	Short: "Save the token of the serve API",
+	Long: `Save the token the serve API asks for when it listens on an address that isn't loopback
+(Authorization: Bearer <token>); the TUI and "mangal watch" on the same config use it too.
+It's kept with the logins (the OS keyring with auth.keyring); serve.token is only used when
+none is saved. The token is read from the terminal without echo, or from stdin.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		var token string
+		switch {
+		case serveTokenArgs.Clear:
+			if err := cache.SetServeToken(""); err != nil {
+				return err
+			}
+			successf(cmd, "removed the saved serve token")
+			return nil
+		case serveTokenArgs.Generate:
+			b := make([]byte, 24)
+			if _, err := rand.Read(b); err != nil {
+				return err
+			}
+			token = hex.EncodeToString(b)
+		default:
+			var err error
+			if token, err = readSecret(cmd, "Serve token: "); err != nil {
+				return err
+			}
+			if token == "" {
+				return errors.New("no token given (--generate makes one, --clear removes the saved one)")
+			}
+		}
+		if err := cache.SetServeToken(token); err != nil {
+			return err
+		}
+		if serveTokenArgs.Generate {
+			cmd.Println(token)
+		}
+		successf(cmd, "saved the serve token")
+		return nil
 	},
 }
