@@ -57,7 +57,12 @@ func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
 		}
 
 		entry := AccountEntry{Account: libmangal.Account{Service: loader.Info().Name}, Provider: id, Checked: time.Now()}
-		client, err := NewClient(ctx, loader)
+		// the TUI may have loaded it already, only one client per provider
+		client := Get(loader)
+		var err error
+		if client == nil {
+			client, err = NewClient(ctx, loader)
+		}
 		if err == nil {
 			var found bool
 			entry.Account, found, err = client.AccountContext(ctx)
