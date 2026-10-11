@@ -72,8 +72,8 @@ func (s *mangaState) reload() tea.Cmd {
 	return s.list.SetItems(items)
 }
 
-// scannedMsg is the result of a scan, applied in Update (the list isn't touched from commands).
-type scannedMsg struct {
+// mangaScannedMsg is the result of a scan, applied in Update (the list isn't touched from commands).
+type mangaScannedMsg struct {
 	result library.ScanResult
 	manga  storage.Manga
 }
@@ -89,10 +89,10 @@ func (s *mangaState) scan() tea.Msg {
 	if m, ok, err := s.library.MangaByID(s.manga.ID); err == nil && ok {
 		manga = m
 	}
-	return scannedMsg{result: res, manga: manga}
+	return mangaScannedMsg{result: res, manga: manga}
 }
 
-func (s *mangaState) onScanned(msg scannedMsg) tea.Cmd {
+func (s *mangaState) onScanned(msg mangaScannedMsg) tea.Cmd {
 	s.manga = msg.manga
 	cmds := []tea.Cmd{s.reload()}
 	res := msg.result
@@ -119,7 +119,7 @@ func (s *mangaState) Init(ctx context.Context) tea.Cmd {
 }
 
 func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(scannedMsg); ok {
+	if msg, ok := msg.(mangaScannedMsg); ok {
 		return s.onScanned(msg)
 	}
 	if msg, ok := msg.(tea.KeyMsg); ok && !s.list.Filtering() {

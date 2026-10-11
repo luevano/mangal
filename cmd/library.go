@@ -256,7 +256,7 @@ and manga folders with a .libmangal.json that aren't in the library yet are adde
 		}
 
 		// mangas in another (existing) download directory
-		if dir := otherRoot(res.Missing, root, providerDirs); dir != "" &&
+		if dir := library.OtherRoot(afs.Afero, res.Missing, root, providerDirs); dir != "" &&
 			confirm(cmd, fmt.Sprintf("%d mangas are in %s, but download.path is %s. Use %s as download.path?", len(res.Missing), dir, root, dir)) {
 			if err := config.WriteKey(config.Download.Path.Key, dir); err != nil {
 				return err
@@ -292,24 +292,6 @@ and manga folders with a .libmangal.json that aren't in the library yet are adde
 		printTrash(cmd)
 		return nil
 	},
-}
-
-// otherRoot is a directory (other than root) that exists and has the missing mangas'
-// folders, e.g. the previous download.path.
-func otherRoot(missing []storage.Manga, root string, providerDirs bool) string {
-	for _, m := range missing {
-		dir := m.Parent
-		if providerDirs {
-			dir = filepath.Dir(dir)
-		}
-		if dir == filepath.Clean(root) {
-			continue
-		}
-		if exists, _ := afs.Afero.DirExists(dir); exists {
-			return dir
-		}
-	}
-	return ""
 }
 
 var libraryMergeArgs = struct {

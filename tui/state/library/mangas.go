@@ -146,6 +146,8 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case base.RestoredMsg:
 		return s.reload()
+	case scannedMsg:
+		return s.onScanned(msg.result)
 	case reloadMsg:
 		if msg.notify == "" {
 			return s.reload()
@@ -186,6 +188,11 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return s.list.Update(msg)
 }
 
+// scannedMsg is a finished library scan.
+type scannedMsg struct {
+	result library.ScanResult
+}
+
 func (s *mangasState) scanCmd() tea.Cmd {
 	return tea.Sequence(
 		base.Loading("Scanning the library"),
@@ -195,25 +202,40 @@ func (s *mangasState) scanCmd() tea.Cmd {
 			if err != nil {
 				return err
 			}
-			report := fmt.Sprintf("Added %d, moved %d, removed %d chapters.\nFound %d moved manga folders, %d new.",
-				res.Added, res.Moved, res.Removed, res.Relocated, res.New)
-			if len(res.Missing) != 0 {
-				report += fmt.Sprintf("\n\n%d mangas weren't found (marked missing in the list, x removes one):", len(res.Missing))
-				for _, m := range res.Missing {
-					report += "\n  " + m.Title + "  " + m.Path()
-				}
-				report += "\n\nIf the download path changed, set download.path (mangal library scan in a terminal asks)."
-			}
-			if len(res.Unrecognized) != 0 {
-				report += fmt.Sprintf("\n\n%d files without a chapter number:", len(res.Unrecognized))
-				for _, f := range res.Unrecognized {
-					report += "\n  " + f
-				}
-			}
-			return tea.Batch(reloaded(""), base.Viewport("Library scan", report, color.Accent))()
+			return scannedMsg{result: res}
 		},
 		base.Loaded,
 	)
+}
+
+func (s *mangasState) onScanned(res library.ScanResult) tea.Cmd {
+	root := path.DownloadsDir()
+	if dir := library.OtherRoot(afs.Afero, res.Missing, root, config.Download.Provider.CreateDir.Get()); dir != "" {
+		message := fmt.Sprintf("%d mangas are in %s, but download.path is %s. Use %s as download.path?", len(res.Missing), dir, root, dir)
+		s.confirm.ask("Download path", message, s.View(), func() tea.Msg {
+			if err := config.WriteKey(config.Download.Path.Key, dir); err != nil {
+				return err
+			}
+			return s.scanCmd()()
+		})
+		return s.reload()
+	}
+
+	report := fmt.Sprintf("Added %d, moved %d, removed %d chapters.\nFound %d moved manga folders, %d new.",
+		res.Added, res.Moved, res.Removed, res.Relocated, res.New)
+	if len(res.Missing) != 0 {
+		report += fmt.Sprintf("\n\n%d mangas weren't found (marked missing in the list, x removes one):", len(res.Missing))
+		for _, m := range res.Missing {
+			report += "\n  " + m.Title + "  " + m.Path()
+		}
+	}
+	if len(res.Unrecognized) != 0 {
+		report += fmt.Sprintf("\n\n%d files without a chapter number:", len(res.Unrecognized))
+		for _, f := range res.Unrecognized {
+			report += "\n  " + f
+		}
+	}
+	return tea.Batch(s.reload(), base.Viewport("Library scan", report, color.Accent))
 }
 
 func (s *mangasState) mergeCmd(item *mangaItem) tea.Cmd {

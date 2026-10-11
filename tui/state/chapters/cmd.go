@@ -130,6 +130,9 @@ func (s *state) downloadChapterCmd(ctx context.Context, item *item, options libm
 			s.updateItem(item)
 
 			log.Log("Downloaded chapter %q at %q", chapter, downChap.Path())
+			if downChap.Skipped != "" && !readAfter {
+				return base.Notify(fmt.Sprintf("Skipped %q: %s", chapter, downChap.Skipped))()
+			}
 			if readAfter {
 				return s.readChapterCmd(ctx, downChap.Path(), item, config.ReadOptions())()
 			}

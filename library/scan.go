@@ -178,6 +178,24 @@ func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
 	return res, nil
 }
 
+// OtherRoot is an existing directory (other than root) with the missing mangas' folders,
+// e.g. the previous download path, empty if none.
+func OtherRoot(fsys afero.Fs, missing []storage.Manga, root string, providerDirs bool) string {
+	for _, m := range missing {
+		dir := m.Parent
+		if providerDirs {
+			dir = filepath.Dir(dir)
+		}
+		if dir == filepath.Clean(root) {
+			continue
+		}
+		if exists, _ := afero.DirExists(fsys, dir); exists {
+			return dir
+		}
+	}
+	return ""
+}
+
 // movedTo is an unrecorded file that's the recorded download moved: same name, or the
 // same chapter number and format.
 func movedTo(files []chapterFile, known map[string]bool, dl storage.Download) (chapterFile, bool) {
