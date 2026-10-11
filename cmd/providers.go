@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"path/filepath"
+
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/path"
@@ -102,8 +104,8 @@ func init() {
 }
 
 var providersRmCmd = &cobra.Command{
-	Use:   "rm tags",
-	Short: "Remove provider",
+	Use:   "rm <dir>...",
+	Short: "Remove installed providers by their directory name",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		for _, tag := range args {
@@ -121,29 +123,35 @@ func init() {
 	f := providersNewCmd.Flags()
 	f.StringP("directory", "d", "", "Directory in which new providers will be created")
 	configKeyFlag(f, "directory", config.Providers.Path.Key)
+	f.StringVar(&providersNewArgs.ID, "id", "", "Provider id, also the name of its directory")
+	f.StringVar(&providersNewArgs.Name, "name", "", "Provider name (default: the id)")
+	f.StringVar(&providersNewArgs.Website, "website", "", "Website the provider scrapes, e.g. https://example.com")
+	f.StringVar(&providersNewArgs.Description, "description", "", "Provider description")
 
 	providersNewCmd.MarkFlagDirname("directory")
+	providersNewCmd.MarkFlagRequired("id")
 }
 
-// TODO: provide more options for the new provider
+var providersNewArgs libmangal.ProviderInfo
+
 var providersNewCmd = &cobra.Command{
 	Use:   "new",
-	Short: "Create new provider",
+	Short: "Create a new Lua provider from the template",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		dir, err := path.Ensure(path.Providers())
 		if err != nil {
 			return err
 		}
-		return install.New(dir, info.Info{
-			ProviderInfo: libmangal.ProviderInfo{
-				ID:          "test",
-				Name:        "test",
-				Version:     "0.1.0",
-				Description: "Lorem ipsum",
-				Website:     "example.com",
-			},
-			Type: info.TypeLua,
-		})
+		providerInfo := providersNewArgs
+		if providerInfo.Name == "" {
+			providerInfo.Name = providerInfo.ID
+		}
+		providerInfo.Version = "0.1.0"
+		if err := install.New(dir, info.Info{ProviderInfo: providerInfo, Type: info.TypeLua}); err != nil {
+			return err
+		}
+		successf(cmd, "Created %s", filepath.Join(dir, providerInfo.ID))
+		return nil
 	},
 }
