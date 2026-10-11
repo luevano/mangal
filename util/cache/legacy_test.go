@@ -57,6 +57,10 @@ func TestImportBBolt(t *testing.T) {
 	writeBolt(t, filepath.Join(dir, "metadata", "anilist.db"), metadata.CacheBucketNameTitleToID, map[string]any{"berserk": 30002})
 	writeBolt(t, filepath.Join(dir, "anilist.db"), metadata.CacheBucketNameTitleToID, map[string]any{"vagabond": 30656})
 	writeBolt(t, filepath.Join(dir, "mango-mangadex.db"), "chapters", map[string]any{"x": 1})
+	// mangal 5.10 and older
+	writeBolt(t, filepath.Join(dir, "anilist", "title-to-id.db"), metadata.CacheBucketNameTitleToID, map[string]any{"claymore": 30583})
+	writeBolt(t, filepath.Join(dir, "anilist", "id-to-manga.db"), "id-to-manga", map[string]any{"30583": "x"})
+	writeBolt(t, filepath.Join(dir, "anilist", "access-token.db"), "access-token", map[string]any{"hi": "token"})
 
 	// a file held by another (old) mangal
 	held, err := bolt.Open(filepath.Join(dir, "mango-mangaplus.db"), 0o600, nil)
@@ -69,7 +73,7 @@ func TestImportBBolt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(notice, "kept 2 title bindings, 1 logins and 1 histories") || !strings.Contains(notice, "mango-mangaplus.db are in use") {
+	if !strings.Contains(notice, "kept 3 title bindings, 1 logins and 1 histories") || !strings.Contains(notice, "log in again") || !strings.Contains(notice, "mango-mangaplus.db are in use") {
 		t.Errorf("notice %q", notice)
 	}
 
@@ -78,7 +82,7 @@ func TestImportBBolt(t *testing.T) {
 		t.Errorf("token %+v, %t, %v", token, found, err)
 	}
 	bindings := storage.KV{DB: data, Table: storage.TableTitleBindings, Owner: "anilist"}
-	for title, want := range map[string]int{"berserk": 30002, "vagabond": 30656} {
+	for title, want := range map[string]int{"berserk": 30002, "vagabond": 30656, "claymore": 30583} {
 		var id int
 		if found, err := bindings.Get(title, &id); err != nil || !found || id != want {
 			t.Errorf("binding %q: %d, %t, %v", title, id, found, err)
@@ -91,6 +95,9 @@ func TestImportBBolt(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "metadata")); !os.IsNotExist(err) {
 		t.Error("empty metadata dir left")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "anilist")); !os.IsNotExist(err) {
+		t.Error("old anilist dir left")
 	}
 
 	// nothing left to convert (but the one in use)

@@ -18,20 +18,23 @@ import (
 var legacyMetadataDBs = []string{"anilist", "myanimelist", "kitsu", "mangaupdates", "animeplanet"}
 
 // importBBolt converts the old bbolt cache files (mangal 5.12 and older, "<id>.db" in the
-// cache directory and its "metadata" subdirectory): what isn't cache (title bindings,
-// logins, search history) goes into the data database, the rest rebuilds. The old files
-// are deleted.
+// cache directory and its "metadata" subdirectory; mangal 5.10 and older, "anilist/<store>.db"):
+// what isn't cache (title bindings, logins, search history) goes into the data database, the
+// rest rebuilds. The old files are deleted.
 //
 // TODO: keep for a while, until most users have converted.
 func importBBolt(cacheDir string, data *storage.DB) (string, error) {
 	files, _ := filepath.Glob(filepath.Join(cacheDir, "*.db"))
 	metadataFiles, _ := filepath.Glob(filepath.Join(cacheDir, "metadata", "*.db"))
+	anilistFiles, _ := filepath.Glob(filepath.Join(cacheDir, "anilist", "*.db"))
 	files = append(files, metadataFiles...)
+	files = append(files, anilistFiles...)
 	if len(files) == 0 {
 		return "", nil
 	}
 
 	var bindings, logins, histories int
+	var oldLogin bool
 	var inUse []string
 	for _, file := range files {
 		db, err := bolt.Open(file, 0o600, &bolt.Options{Timeout: time.Second, ReadOnly: true})
@@ -45,10 +48,21 @@ func importBBolt(cacheDir string, data *storage.DB) (string, error) {
 		}
 
 		name := strings.TrimSuffix(filepath.Base(file), ".db")
+		old := filepath.Base(filepath.Dir(file)) == "anilist"
 		err = db.View(func(tx *bolt.Tx) error {
 			var err error
 			n := 0
 			switch {
+			case old && name == metadata.CacheBucketNameTitleToID:
+				n, err = copyBucket(tx, name, data, storage.TableTitleBindings, "anilist")
+				bindings += n
+			case old && name == "access-token":
+				// a bare token without the user it belongs to, it needs a new login
+				if b := tx.Bucket([]byte(name)); b != nil && b.Stats().KeyN != 0 {
+					oldLogin = true
+				}
+			case old:
+				// the rest of the old anilist stores is cache
 			case name == CacheDBNameMangal:
 				n, err = copyBucket(tx, BucketNameSearchHistory, data, storage.TableSearchHistory, "")
 				histories += n
@@ -77,8 +91,12 @@ func importBBolt(cacheDir string, data *storage.DB) (string, error) {
 	}
 	// only removed if empty
 	_ = os.Remove(filepath.Join(cacheDir, "metadata"))
+	_ = os.Remove(filepath.Join(cacheDir, "anilist"))
 
 	notice := fmt.Sprintf("Converted the old cache to the new storage: kept %d title bindings, %d logins and %d histories, the rest of the cache rebuilds as you use mangal.", bindings, logins, histories)
+	if oldLogin {
+		notice += " The AniList login from mangal 5.10 or older can't be kept, log in again."
+	}
 	if len(inUse) != 0 {
 		notice += fmt.Sprintf(" %s are in use by another mangal, close it to convert them too.", strings.Join(inUse, ", "))
 	}
