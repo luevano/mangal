@@ -107,7 +107,7 @@ var configWriteCmd = &cobra.Command{
 	Short: "Write configuration to disk",
 	Long: `Write every config key to the config file: its current values and the defaults of the
 keys it doesn't have (values from environment variables or flags aren't written). The file is
-re-serialised, comments and order are lost.`,
+edited in place: its comments and order stay, retired keys are dropped.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := config.Write(); err != nil {
@@ -145,7 +145,7 @@ var configSetCmd = &cobra.Command{
 	Use:   "set key value",
 	Short: "Sets value to the config key",
 	Long: `Set the value of the config key in the config file (created if there's none). Only that
-key changes, but the file is re-serialised: comments and order are lost.`,
+key changes, the rest of the file (comments, order) stays as it is.`,
 	Args:              cobra.ExactArgs(2),
 	ValidArgsFunction: completionConfigKeys,
 	RunE: func(cmd *cobra.Command, args []string) error {

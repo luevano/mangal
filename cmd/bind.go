@@ -47,7 +47,7 @@ progress. The default is the first bound source in the order AniList, Kitsu, MyA
 the others are its backups, used in that order when the default's metadata can't be fetched.
 Without flags it prints the manga's bindings. Watches, the library and the TUI (A on a
 manga) share the bindings.`,
-	Example: `  mangal bind mango-mangapill "One Piece" --anilist 30013 --kitsu 11
+	Example: `  mangal bind mango-mangapill "One Piece" --anilist 30013 --kitsu 38
   mangal bind mango-mangaplus mid:100171 --remove kitsu
   mangal bind ls mango-mangapill`,
 	Args:              cobra.MinimumNArgs(2),
