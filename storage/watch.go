@@ -388,11 +388,18 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.CheckRun, nullID(r.Watch), r.Provider,
 
 // RunFilter selects check runs: started at or after Since (zero for any), with a check of
 // Watch (0 for any, then only its checks are listed), the Limit latest (0 for all).
+// Provider (and MangaID with it) select the checks the same way, by what was checked:
+// they keep the history of a removed watch.
 type RunFilter struct {
-	Since time.Time
-	Watch int64
-	Limit int
+	Since    time.Time
+	Watch    int64
+	Provider string
+	MangaID  string
+	Limit    int
 }
+
+// runFilterWhere is the SQL condition on the watch_runs w of the filter, ?2 to ?4 its args.
+const runFilterWhere = `(?2 = 0 OR w.watch = ?2) AND (?3 = '' OR w.provider = ?3) AND (?4 = '' OR w.manga_id = ?4)`
 
 func scanCheckRun(rows *sql.Rows) (CheckRun, error) {
 	var r CheckRun
@@ -405,11 +412,11 @@ func scanCheckRun(rows *sql.Rows) (CheckRun, error) {
 // Runs lists the check runs, latest first, with their watch runs and chapters.
 func (s Watches) Runs(f RunFilter) ([]CheckRun, error) {
 	query := `SELECT id, kind, started, finished, watches, new_chapters, errors FROM check_runs
-WHERE started >= ?1 AND (?2 = 0 OR EXISTS (SELECT 1 FROM watch_runs w WHERE w.check_run = check_runs.id AND w.watch = ?2))
+WHERE started >= ?1 AND (?2 = 0 AND ?3 = '' AND ?4 = '' OR EXISTS (SELECT 1 FROM watch_runs w WHERE w.check_run = check_runs.id AND `+runFilterWhere+`))
 ORDER BY started DESC, id DESC`
-	args := []any{unix(f.Since), f.Watch}
+	args := []any{unix(f.Since), f.Watch, f.Provider, f.MangaID}
 	if f.Limit > 0 {
-		query += ` LIMIT ?3`
+		query += ` LIMIT ?5`
 		args = append(args, f.Limit)
 	}
 	runs, err := queryAll(s.DB, scanCheckRun, query, args...)
@@ -417,7 +424,7 @@ ORDER BY started DESC, id DESC`
 		return nil, fmt.Errorf("list check runs: %w", err)
 	}
 	for i := range runs {
-		if runs[i].Results, err = s.watchRuns(runs[i].ID, f.Watch); err != nil {
+		if runs[i].Results, err = s.watchRuns(runs[i].ID, f); err != nil {
 			return nil, err
 		}
 	}
@@ -431,11 +438,11 @@ func (s Watches) Run(id int64) (CheckRun, bool, error) {
 		return CheckRun{}, false, err
 	}
 	run := runs[0]
-	run.Results, err = s.watchRuns(id, 0)
+	run.Results, err = s.watchRuns(id, RunFilter{})
 	return run, err == nil, err
 }
 
-func (s Watches) watchRuns(checkRun, watch int64) ([]WatchRun, error) {
+func (s Watches) watchRuns(checkRun int64, f RunFilter) ([]WatchRun, error) {
 	runs, err := queryAll(s.DB, func(rows *sql.Rows) (WatchRun, error) {
 		var r WatchRun
 		var from sql.NullFloat64
@@ -444,7 +451,7 @@ func (s Watches) watchRuns(checkRun, watch int64) ([]WatchRun, error) {
 		r.From, r.Started, r.Finished = floatPtr(from), fromUnix(started), fromUnix(finished)
 		return r, err
 	}, `SELECT id, check_run, coalesce(watch, 0), provider, manga_id, title, from_number, status, error, started, finished
-FROM watch_runs WHERE check_run = ?1 AND (?2 = 0 OR watch = ?2) ORDER BY id`, checkRun, watch)
+FROM watch_runs w WHERE check_run = ?1 AND `+runFilterWhere+` ORDER BY id`, checkRun, f.Watch, f.Provider, f.MangaID)
 	if err != nil {
 		return nil, fmt.Errorf("watch runs of check run %d: %w", checkRun, err)
 	}

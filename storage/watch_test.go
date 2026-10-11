@@ -114,6 +114,21 @@ func TestWatches(t *testing.T) {
 	if err != nil || !found || len(r.Results) != 1 || r.Results[0].Watch != 0 || r.Results[0].Title != "Dandadan" {
 		t.Errorf("history after remove: %+v, %v", r, err)
 	}
+
+	// by provider and manga: the removed watch's checks still
+	_, _ = watches.RecordWatchRun(WatchRun{CheckRun: other.ID, Provider: "mango-mangapill", MangaID: "2", Title: "Berserk", Status: StatusNone})
+	_, _ = watches.RecordWatchRun(WatchRun{CheckRun: other.ID, Provider: "mango-mangaplus", MangaID: "3", Title: "Frieren", Status: StatusNone})
+	runs, _ = watches.Runs(RunFilter{Provider: "mango-mangaplus"})
+	if len(runs) != 2 || len(runs[0].Results) != 1 || runs[0].Results[0].Title != "Frieren" || runs[1].Results[0].Title != "Dandadan" {
+		t.Errorf("runs of the provider: %+v", runs)
+	}
+	runs, _ = watches.Runs(RunFilter{Provider: "mango-mangaplus", MangaID: "100171"})
+	if len(runs) != 1 || runs[0].ID != run.ID {
+		t.Errorf("runs of the manga: %+v", runs)
+	}
+	if runs, _ := watches.Runs(RunFilter{Provider: "mango-mangadex"}); len(runs) != 0 {
+		t.Errorf("runs of another provider: %+v", runs)
+	}
 }
 
 func TestWatchesLibrary(t *testing.T) {

@@ -394,6 +394,7 @@ func (a *API) runs(w http.ResponseWriter, r *http.Request) error {
 		}
 		filter.Watch = n
 	}
+	filter.Provider, filter.MangaID = q.Get("provider"), q.Get("manga_id")
 	if s := q.Get("limit"); s != "" {
 		n, err := strconv.Atoi(s)
 		if err != nil || n < 0 {

@@ -404,6 +404,12 @@ func TestRemote(t *testing.T) {
 	if err != nil || len(runs) != 1 || runs[0].ID != report.ID {
 		t.Errorf("runs: %+v, %v", runs, err)
 	}
+	if runs, err := r.Runs(ctx, watch.RunFilter{Provider: w.Provider, MangaID: w.MangaID}); err != nil || len(runs) != 1 {
+		t.Errorf("runs of the manga: %+v, %v", runs, err)
+	}
+	if runs, err := r.Runs(ctx, watch.RunFilter{Provider: "other"}); err != nil || len(runs) != 0 {
+		t.Errorf("runs of another provider: %+v, %v", runs, err)
+	}
 	if run, err := r.RunDetails(ctx, report.ID); err != nil || len(run.Results) != 1 {
 		t.Errorf("run: %+v, %v", run, err)
 	}

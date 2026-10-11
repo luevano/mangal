@@ -143,6 +143,12 @@ func (r *Remote) Runs(ctx context.Context, filter RunFilter) ([]CheckRun, error)
 	if filter.Watch != 0 {
 		q.Set("watch", strconv.FormatInt(filter.Watch, 10))
 	}
+	if filter.Provider != "" {
+		q.Set("provider", filter.Provider)
+	}
+	if filter.MangaID != "" {
+		q.Set("manga_id", filter.MangaID)
+	}
 	if filter.Limit != 0 {
 		q.Set("limit", strconv.Itoa(filter.Limit))
 	}
