@@ -71,38 +71,52 @@ func Add(ctx context.Context, dir, url string, progress io.Writer) (info.Info, e
 	return providerInfo, nil
 }
 
-// Update pulls every provider repository in dir. The git progress goes to progress.
+// Update pulls every provider repository in dir, even if some fail. The git progress
+// goes to progress.
 func Update(ctx context.Context, dir string, progress io.Writer) error {
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("read providers dir: %w", err)
 	}
 
+	var errs []error
 	for _, dirEntry := range dirEntries {
-		repo, err := git.PlainOpen(filepath.Join(dir, dirEntry.Name()))
-		if errors.Is(err, git.ErrRepositoryNotExists) {
+		if !dirEntry.IsDir() {
 			continue
 		}
-		if err != nil {
-			return fmt.Errorf("open %s: %w", dirEntry.Name(), err)
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-
-		worktree, err := repo.Worktree()
-		if err != nil {
-			return fmt.Errorf("open %s: %w", dirEntry.Name(), err)
-		}
-
-		err = worktree.PullContext(ctx, &git.PullOptions{
-			Progress: progress,
-			Force:    true,
-		})
-
-		if !(errors.Is(err, git.NoErrAlreadyUpToDate) || errors.Is(err, git.ErrRemoteNotFound)) {
-			return fmt.Errorf("pull %s: %w", dirEntry.Name(), err)
+		if err := pull(ctx, filepath.Join(dir, dirEntry.Name()), progress); err != nil {
+			errs = append(errs, fmt.Errorf("update %s: %w", dirEntry.Name(), err))
 		}
 	}
+	return errors.Join(errs...)
+}
 
-	return nil
+// pull updates the repository in dir, if it's one with a remote.
+func pull(ctx context.Context, dir string, progress io.Writer) error {
+	repo, err := git.PlainOpen(dir)
+	if errors.Is(err, git.ErrRepositoryNotExists) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return err
+	}
+
+	err = worktree.PullContext(ctx, &git.PullOptions{
+		Progress: progress,
+		Force:    true,
+	})
+	if errors.Is(err, git.NoErrAlreadyUpToDate) || errors.Is(err, git.ErrRemoteNotFound) {
+		return nil
+	}
+	return err
 }
 
 // Remove removes the provider dir named tag from dir.
