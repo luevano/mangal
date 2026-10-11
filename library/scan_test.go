@@ -213,10 +213,10 @@ func TestMoveToTrashMergesFolders(t *testing.T) {
 	fsys := afero.NewOsFs()
 	touch(t, filepath.Join(root, "M", "Vol. 1", "a.cbz"))
 	touch(t, filepath.Join(root, "M", "Vol. 1", "b.cbz"))
-	if err := moveToTrash(fsys, root, "batch", filepath.Join(root, "M", "Vol. 1", "a.cbz")); err != nil {
+	if err := moveToTrash(fsys, root, "batch", filepath.Join(root, "M", "Vol. 1", "a.cbz"), DefaultModes); err != nil {
 		t.Fatal(err)
 	}
-	if err := moveToTrash(fsys, root, "batch", filepath.Join(root, "M", "Vol. 1")); err != nil {
+	if err := moveToTrash(fsys, root, "batch", filepath.Join(root, "M", "Vol. 1"), DefaultModes); err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range []string{"a.cbz", "b.cbz"} {

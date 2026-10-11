@@ -493,6 +493,29 @@ type MergeMove struct {
 	From, To string
 }
 
+// MergeDownload records a file of a manga moved into keep (to keep's chapter).
+func (l Library) MergeDownload(keep int64, m MergeMove) error {
+	if err := l.DB.InTx(func(tx *sql.Tx) error { return mergeDownload(tx, keep, m) }); err != nil {
+		return fmt.Errorf("merge download %s: %w", m.From, err)
+	}
+	return nil
+}
+
+func mergeDownload(tx *sql.Tx, keep int64, m MergeMove) error {
+	var number, volume float32
+	var name string
+	err := tx.QueryRow(`SELECT c.number, c.volume, c.name FROM downloads d JOIN library_chapters c ON c.id = d.chapter_id WHERE d.path = ?`, m.From).Scan(&number, &volume, &name)
+	if err != nil {
+		return fmt.Errorf("%s: %w", m.From, err)
+	}
+	chapter, err := upsertChapter(tx, keep, number, volume, name)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`UPDATE downloads SET path = ?, chapter_id = ? WHERE path = ?`, m.To, chapter, m.From)
+	return err
+}
+
 // Merge joins other into keep: the moved files get keep's chapters, the trashed files
 // (chapters keep already had) are forgotten, other's sources and metadata ids go to keep
 // and other is removed.
@@ -504,17 +527,7 @@ func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) e
 			}
 		}
 		for _, m := range moved {
-			var number, volume float32
-			var name string
-			err := tx.QueryRow(`SELECT c.number, c.volume, c.name FROM downloads d JOIN library_chapters c ON c.id = d.chapter_id WHERE d.path = ?`, m.From).Scan(&number, &volume, &name)
-			if err != nil {
-				return fmt.Errorf("%s: %w", m.From, err)
-			}
-			chapter, err := upsertChapter(tx, keep, number, volume, name)
-			if err != nil {
-				return err
-			}
-			if _, err := tx.Exec(`UPDATE downloads SET path = ?, chapter_id = ? WHERE path = ?`, m.To, chapter, m.From); err != nil {
+			if err := mergeDownload(tx, keep, m); err != nil {
 				return err
 			}
 		}

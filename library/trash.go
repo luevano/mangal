@@ -2,6 +2,7 @@ package library
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -28,32 +29,53 @@ func newTrashBatch() string {
 	return time.Now().Format("2006-01-02 15-04-05")
 }
 
-// moveToTrash moves path into the trash batch of root, keeping its path relative to root.
-func moveToTrash(fsys afero.Fs, root, batch, path string) error {
+// moveToTrash moves path into the trash batch of root, keeping its path relative to root
+// (outside root, its parent folder's name and its own). Nothing in the trash is
+// overwritten: a name already taken gets a number.
+func moveToTrash(fsys afero.Fs, root, batch, path string, modes Modes) error {
 	rel, err := filepath.Rel(root, path)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		rel = filepath.Base(path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		rel = filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path))
 	}
 	to := filepath.Join(root, TrashDir, batch, rel)
-	if err := fsys.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+	isDir, err := afero.DirExists(fsys, path)
+	if err != nil {
 		return err
 	}
 	// a folder already in the batch (e.g. a volume with a trashed chapter) gets the rest
-	if isDir, _ := afero.DirExists(fsys, path); isDir {
-		if exists, _ := afero.DirExists(fsys, to); exists {
-			entries, err := afero.ReadDir(fsys, path)
-			if err != nil {
+	if exists, _ := afero.DirExists(fsys, to); isDir && exists {
+		entries, err := afero.ReadDir(fsys, path)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if err := moveToTrash(fsys, root, batch, filepath.Join(path, e.Name()), modes); err != nil {
 				return err
 			}
-			for _, e := range entries {
-				if err := moveToTrash(fsys, root, batch, filepath.Join(path, e.Name())); err != nil {
-					return err
-				}
-			}
-			return fsys.Remove(path)
 		}
+		return fsys.Remove(path)
 	}
-	return fsys.Rename(path, to)
+	to, err = freeName(fsys, to, isDir)
+	if err != nil {
+		return err
+	}
+	return moveFile(fsys, path, to, modes)
+}
+
+// freeName is path, or path with a number (before a file's extension) if it's taken.
+func freeName(fsys afero.Fs, path string, isDir bool) (string, error) {
+	ext := ""
+	if !isDir {
+		ext = filepath.Ext(path)
+	}
+	base := strings.TrimSuffix(path, ext)
+	for i := 2; ; i++ {
+		exists, err := afero.Exists(fsys, path)
+		if err != nil || !exists {
+			return path, err
+		}
+		path = fmt.Sprintf("%s (%d)%s", base, i, ext)
+	}
 }
 
 // Trash lists the trash batches of root, oldest first.
