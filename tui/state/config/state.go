@@ -183,7 +183,12 @@ func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
 // change toggles a bool, cycles an enum, or opens the editor of the key.
 func (s *state) change(key string) tea.Cmd {
 	s.err = ""
-	raw, err := mconfig.Get(key)
+	get := mconfig.Get
+	if _, set := mconfig.EnvVar(key); set {
+		// the change goes to the file, start from what's there, not the override
+		get = mconfig.FileValue
+	}
+	raw, err := get(key)
 	if err != nil {
 		def, _ := mconfig.Default(key)
 		raw = def

@@ -394,3 +394,21 @@ func TestKindsAndValues(t *testing.T) {
 		t.Errorf("path values %v", got)
 	}
 }
+
+func TestFileValueIgnoresEnv(t *testing.T) {
+	reset(t)
+	writeConfig(t, "[download]\npath = '/from/file'\n")
+	if err := Load(Path); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(envName(Download.Path.Key), "/from/env")
+	if got, _ := Get(Download.Path.Key); got != "/from/env" {
+		t.Fatalf("Get %v, the env should win", got)
+	}
+	if got, err := FileValue(Download.Path.Key); err != nil || got != "/from/file" {
+		t.Errorf("FileValue %v, %v", got, err)
+	}
+	if got, err := FileValue(Download.Format.Key); err != nil || got != "PDF" {
+		t.Errorf("default %v, %v", got, err)
+	}
+}

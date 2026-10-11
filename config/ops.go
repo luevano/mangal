@@ -131,6 +131,29 @@ func EnvVar(key string) (name string, set bool) {
 	return name, set
 }
 
+// FileValue is the key's value in the config file (or its default), ignoring the
+// environment and flags that may override it for this run.
+func FileValue(key string) (any, error) {
+	f, err := lookup(key)
+	if err != nil {
+		return nil, err
+	}
+	file := viper.New()
+	file.SetFs(afs.Afero.Fs)
+	file.SetConfigFile(Path)
+	if err := file.ReadInConfig(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("read config %q: %w", Path, err)
+	}
+	if !file.IsSet(key) {
+		return f.defaultRaw(), nil
+	}
+	raw, err := f.toRaw(file.Get(key))
+	if err != nil {
+		return nil, fmt.Errorf("config key %q: %w", key, err)
+	}
+	return raw, nil
+}
+
 // IsSecret is true for keys that hold secrets (tokens, webhooks).
 func IsSecret(key string) bool {
 	f, ok := fields[key]
