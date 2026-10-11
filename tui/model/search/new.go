@@ -5,9 +5,9 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/luevano/mangal/v5/theme/icon"
-	"github.com/luevano/mangal/v5/tui/base"
 )
 
+// New makes a search input up to width wide, showing up to maxSuggestions.
 func New(placeholder, initialQuery string, width, maxSuggestions int) *Model {
 	input := textinput.New()
 	input.Placeholder = placeholder
@@ -27,12 +27,12 @@ func New(placeholder, initialQuery string, width, maxSuggestions int) *Model {
 	}
 
 	return &Model{
-		input:    input,
-		state:    initState,
-		query:    query,
-		maxWidth: width,
-		size:     base.Size{Width: width, Height: maxSuggestions},
-		styles:   defaultStyles(),
-		keyMap:   newKeyMap(),
+		input:          input,
+		state:          initState,
+		query:          query,
+		maxWidth:       width,
+		maxSuggestions: maxSuggestions,
+		styles:         defaultStyles(),
+		keyMap:         newKeyMap(),
 	}
 }

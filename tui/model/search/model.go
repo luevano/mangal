@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
@@ -23,12 +24,10 @@ type Model struct {
 	state state
 	query string
 
-	maxWidth int
-	// the Height field in size is used
-	// for the max suggestions to display
-	size   base.Size
-	styles styles
-	keyMap keyMap
+	maxWidth       int
+	maxSuggestions int
+	styles         styles
+	keyMap         keyMap
 }
 
 // Query returns the current set query (only when the input is confirmed)
@@ -65,12 +64,11 @@ func (m *Model) Focus() tea.Cmd {
 	return m.input.Focus()
 }
 
-// Resize resizes the input given the new size.
-func (m *Model) Resize(size base.Size) {
-	if size.Width < m.maxWidth {
-		m.size.Width = size.Width
-		m.input.Width = size.Width
-	}
+// Resize fits the input in size.Width, up to its max width.
+func (m *Model) Resize(size base.Size) tea.Cmd {
+	// the cursor takes a cell after the text
+	m.input.Width = max(1, min(m.maxWidth, size.Width-lipgloss.Width(m.input.Prompt)-1))
+	return nil
 }
 
 func (m *Model) Init() tea.Cmd {
@@ -120,12 +118,15 @@ func (m *Model) View() string {
 
 // SuggestionBox returns the rendered suggestions box with styling applied.
 func (m *Model) SuggestionBox() string {
-	sugs, idx := m.getSuggestions()
+	// as wide as the input, with the box's margin and borders
+	width := max(1, lipgloss.Width(m.input.Prompt)+m.input.Width+1-3)
+
+	sugs, idx := m.suggestions()
 	if len(sugs) == 0 {
-		return m.styles.renderSuggestionBox(m.styles.normalSuggestion.Render("<no suggestions>"), m.size.Width)
+		return m.styles.renderSuggestionBox(m.styles.normalSuggestion.Render("<no suggestions>"), width)
 	}
-	if len(sugs) > m.size.Height {
-		sugs = sugs[:m.size.Height]
+	if len(sugs) > m.maxSuggestions {
+		sugs = sugs[:m.maxSuggestions]
 	}
 
 	var sb strings.Builder
@@ -140,36 +141,16 @@ func (m *Model) SuggestionBox() string {
 			sb.WriteByte('\n')
 		}
 	}
-	return m.styles.renderSuggestionBox(sb.String(), m.size.Width)
+	return m.styles.renderSuggestionBox(sb.String(), width)
 }
 
-// TODO: change to exposed input methods once (if?) merged and released,
-// https://github.com/charmbracelet/bubbles/pull/556
-//
-// Also, CurrentSuggestion is currently panic if called on empty
-// matches (no input or no matches at all); fixed by (not yet released)
-// https://github.com/charmbracelet/bubbles/pull/473
-//
-// getSuggestions will get the matched suggestions and their index, else
-// just the available suggestions and -1 as index
-func (m *Model) getSuggestions() (matches []string, idx int) {
-	idx = -1
-	val := m.input.Value()
-	if strings.TrimSpace(val) == "" {
-		return m.input.AvailableSuggestions(), idx
+// suggestions are the matched suggestions and the current one's index, or all of them
+// and -1 when the input is empty.
+func (m *Model) suggestions() ([]string, int) {
+	if strings.TrimSpace(m.input.Value()) == "" {
+		return m.input.AvailableSuggestions(), -1
 	}
-
-	i := 0
-	for _, s := range m.input.AvailableSuggestions() {
-		if strings.HasPrefix(strings.ToLower(s), strings.ToLower(val)) {
-			if strings.ToLower(s) == strings.ToLower(m.input.CurrentSuggestion()) {
-				idx = i
-			}
-			matches = append(matches, s)
-			i++
-		}
-	}
-	return matches, idx
+	return m.input.MatchedSuggestions(), m.input.CurrentSuggestionIndex()
 }
 
 // updateKeybinds if the keymap should be enabled.
