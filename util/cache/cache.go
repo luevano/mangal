@@ -4,7 +4,6 @@ import (
 	"encoding/gob"
 	"time"
 
-	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/metadata/anilist"
 	"github.com/luevano/libmangal/metadata/myanimelist"
@@ -16,16 +15,10 @@ import (
 )
 
 func init() {
-	// CacheStore uses gob; types that will be stores must be registered first
-
-	// manga data
-	gob.RegisterName("mango-manga", &mango.Manga{})
-	gob.RegisterName("mango-volume", &mango.Volume{})
-	gob.RegisterName("mango-chapter", &mango.Chapter{})
-	gob.RegisterName("mango-page", &mango.Page{})
+	// CacheStore uses gob; types stored as interfaces must be registered first.
+	// mangoprovider registers its own (mango-*, provider-metadata).
 
 	// metadatas
-	gob.RegisterName("provider-metadata", &mangadata.Metadata{})
 	gob.RegisterName("anilist-manga", &anilist.Manga{})
 	gob.RegisterName("myanimelist-manga", &myanimelist.Manga{})
 
