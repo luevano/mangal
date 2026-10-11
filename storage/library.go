@@ -378,6 +378,125 @@ func (l Library) Moved(from, to string) error {
 	return nil
 }
 
+// MangaByFolder is the library manga of the folder.
+func (l Library) MangaByFolder(parent, dir string) (Manga, bool, error) {
+	mangas, err := l.mangas(`WHERE m.parent = ? AND m.dir = ?`, parent, dir)
+	if err != nil || len(mangas) == 0 {
+		return Manga{}, false, err
+	}
+	return mangas[0], true, nil
+}
+
+// MangaBySource is the library manga a provider's manga was last downloaded into.
+func (l Library) MangaBySource(provider, mangaID string) (Manga, bool, error) {
+	mangas, err := l.mangas(`WHERE m.id = (SELECT manga FROM library_sources WHERE provider = ? AND manga_id = ?)`, provider, mangaID)
+	if err != nil || len(mangas) == 0 {
+		return Manga{}, false, err
+	}
+	return mangas[0], true, nil
+}
+
+// SetDownloadPath updates the path of a recorded file (it was moved).
+func (l Library) SetDownloadPath(from, to string) error {
+	if _, err := l.DB.Exec(`UPDATE downloads SET path = ? WHERE path = ?`, to, from); err != nil {
+		return fmt.Errorf("move download %s: %w", from, err)
+	}
+	return nil
+}
+
+// RemoveDownload forgets a recorded file, and its chapter if it has no other file.
+func (l Library) RemoveDownload(path string) error {
+	err := l.inTx(func(tx *sql.Tx) error {
+		var chapter sql.NullInt64
+		if err := tx.QueryRow(`SELECT chapter_id FROM downloads WHERE path = ?`, path).Scan(&chapter); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil
+			}
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM downloads WHERE path = ?`, path); err != nil {
+			return err
+		}
+		if chapter.Valid {
+			_, err := tx.Exec(`DELETE FROM library_chapters WHERE id = ? AND NOT EXISTS (SELECT 1 FROM downloads WHERE chapter_id = ?)`, chapter.Int64, chapter.Int64)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("remove download %s: %w", path, err)
+	}
+	return nil
+}
+
+// RemoveManga forgets a library manga, with its sources, chapters and downloads.
+func (l Library) RemoveManga(id int64) error {
+	err := l.inTx(func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM downloads WHERE chapter_id IN (SELECT id FROM library_chapters WHERE manga = ?)`, id); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`DELETE FROM library_mangas WHERE id = ?`, id)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("remove manga %d: %w", id, err)
+	}
+	return nil
+}
+
+// MergeMove is a file of the merged manga moved into the kept one.
+type MergeMove struct {
+	From, To string
+}
+
+// Merge joins other into keep: the moved files get keep's chapters, the trashed files
+// (chapters keep already had) are forgotten, other's sources and metadata ids go to keep
+// and other is removed.
+func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) error {
+	err := l.inTx(func(tx *sql.Tx) error {
+		for _, path := range trashed {
+			if _, err := tx.Exec(`DELETE FROM downloads WHERE path = ?`, path); err != nil {
+				return err
+			}
+		}
+		for _, m := range moved {
+			var number, volume float32
+			var name string
+			err := tx.QueryRow(`SELECT c.number, c.volume, c.name FROM downloads d JOIN library_chapters c ON c.id = d.chapter_id WHERE d.path = ?`, m.From).Scan(&number, &volume, &name)
+			if err != nil {
+				return fmt.Errorf("%s: %w", m.From, err)
+			}
+			chapter, err := upsertChapter(tx, keep, number, volume, name)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`UPDATE downloads SET path = ?, chapter_id = ? WHERE path = ?`, m.To, chapter, m.From); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(`UPDATE library_sources SET manga = ? WHERE manga = ?`, keep, other); err != nil {
+			return err
+		}
+		var raw string
+		if err := tx.QueryRow(`SELECT metadata_ids FROM library_mangas WHERE id = ?`, other).Scan(&raw); err != nil {
+			return err
+		}
+		var ids []metadata.ID
+		if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+			return err
+		}
+		if err := addMetadataIDs(tx, keep, ids); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`DELETE FROM library_mangas WHERE id = ?`, other)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("merge manga %d into %d: %w", other, keep, err)
+	}
+	return nil
+}
+
 func (l Library) inTx(f func(*sql.Tx) error) error {
 	tx, err := l.DB.Begin()
 	if err != nil {

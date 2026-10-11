@@ -1,0 +1,227 @@
+package library
+
+import (
+	"archive/zip"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/storage"
+	"github.com/spf13/afero"
+)
+
+func newLibrary(t *testing.T) storage.Library {
+	t.Helper()
+	db, err := storage.OpenData(filepath.Join(t.TempDir(), storage.FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return storage.Library{DB: db}
+}
+
+func touch(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeCBZ writes a cbz with one page and a ComicInfo.xml with the number.
+func writeCBZ(t *testing.T, path, number string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	page, _ := w.Create("0001.jpg")
+	_, _ = page.Write([]byte("img"))
+	ci, _ := w.Create(metadata.FilenameComicInfoXML)
+	_, _ = ci.Write([]byte("<ComicInfo><Title>Found</Title><Number>" + number + "</Number></ComicInfo>"))
+	_ = w.Close()
+	_ = f.Close()
+}
+
+func writeMarker(t *testing.T, dir string, info libmangal.MangaDirInfo) {
+	t.Helper()
+	data, _ := json.Marshal(info)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, libmangal.FilenameMangaDirInfo), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func record(t *testing.T, library storage.Library, parent, dir, file string, number float32, provider string) {
+	t.Helper()
+	err := library.RecordDownload(parent, dir, storage.Download{
+		Path: filepath.Join(parent, dir, file), Provider: provider, MangaID: "berserk", MangaTitle: "Berserk",
+		Chapter: number, Format: libmangal.FormatCBZ.String(), Downloaded: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestScanManga(t *testing.T) {
+	root := t.TempDir()
+	library := newLibrary(t)
+	scanner := Scanner{FS: afero.NewOsFs(), Library: library}
+	folder := filepath.Join(root, "Berserk")
+	writeMarker(t, folder, libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "berserk", Title: "Berserk"}})
+	for _, f := range []string{"[0001.0] One.cbz", "[0002.0] Two.cbz", "[0003.0] Three.cbz"} {
+		touch(t, filepath.Join(folder, f))
+		record(t, library, root, "Berserk", f, map[string]float32{"[0001.0] One.cbz": 1, "[0002.0] Two.cbz": 2, "[0003.0] Three.cbz": 3}[f], "p")
+	}
+
+	// moved into a volume folder, deleted, and a new one copied by hand
+	if err := os.MkdirAll(filepath.Join(folder, "Vol. 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(folder, "[0001.0] One.cbz"), filepath.Join(folder, "Vol. 1", "[0001.0] One.cbz")); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(filepath.Join(folder, "[0002.0] Two.cbz"))
+	writeCBZ(t, filepath.Join(folder, "manual copy.cbz"), "4")
+	touch(t, filepath.Join(folder, "no number.cbz"))
+
+	m, _, _ := library.MangaByFolder(root, "Berserk")
+	res, err := scanner.ScanManga(m, root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Moved != 1 || res.Removed != 1 || res.Added != 1 || len(res.Unrecognized) != 1 {
+		t.Errorf("got %+v", res)
+	}
+	downloads, _ := library.Downloads(m.ID)
+	numbers := map[float32]string{}
+	for _, dl := range downloads {
+		numbers[dl.Chapter] = dl.Path
+	}
+	if len(downloads) != 3 || numbers[1] != filepath.Join(folder, "Vol. 1", "[0001.0] One.cbz") || numbers[4] != filepath.Join(folder, "manual copy.cbz") {
+		t.Errorf("downloads %v", numbers)
+	}
+
+	// the folder renamed outside of mangal is found again by its .libmangal.json
+	if err := os.Rename(folder, filepath.Join(root, "Berserk (1989)")); err != nil {
+		t.Fatal(err)
+	}
+	res, err = scanner.ScanManga(m, root, false)
+	if err != nil || res.Relocated != 1 || len(res.Missing) != 0 {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+	if moved, ok, _ := library.MangaByFolder(root, "Berserk (1989)"); !ok || moved.ID != m.ID {
+		t.Errorf("not relocated")
+	}
+
+	// gone for good: reported missing, not dropped
+	if err := os.RemoveAll(filepath.Join(root, "Berserk (1989)")); err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ = library.MangaByID(m.ID)
+	res, _ = scanner.ScanManga(m, root, false)
+	if len(res.Missing) != 1 {
+		t.Errorf("got %+v", res)
+	}
+	if _, ok, _ := library.MangaByID(m.ID); !ok {
+		t.Error("missing manga dropped")
+	}
+}
+
+func TestScanAddsMarkedFolders(t *testing.T) {
+	root := t.TempDir()
+	library := newLibrary(t)
+	folder := filepath.Join(root, "Vagabond")
+	writeMarker(t, folder, libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "vagabond", Title: "Vagabond"}})
+	writeCBZ(t, filepath.Join(folder, "[0001.0] x.cbz"), "1")
+
+	res, err := Scanner{FS: afero.NewOsFs(), Library: library}.Scan(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.New != 1 || res.Added != 1 {
+		t.Errorf("got %+v", res)
+	}
+	mangas, _ := library.Mangas()
+	if len(mangas) != 1 || mangas[0].Title != "Vagabond" || mangas[0].Chapters != 1 || len(mangas[0].Sources) != 1 {
+		t.Errorf("got %+v", mangas)
+	}
+}
+
+func TestMergeAndTrash(t *testing.T) {
+	root := t.TempDir()
+	library := newLibrary(t)
+	fsys := afero.NewOsFs()
+	for _, f := range []string{"[0001.0] One.cbz", "[0002.0] Two.cbz"} {
+		touch(t, filepath.Join(root, "Berserk", f))
+	}
+	record(t, library, root, "Berserk", "[0001.0] One.cbz", 1, "a")
+	record(t, library, root, "Berserk", "[0002.0] Two.cbz", 2, "a")
+	for _, f := range []string{"Ch 2.cbz", "Ch 3.cbz"} {
+		touch(t, filepath.Join(root, "Berserk B", f))
+	}
+	writeMarker(t, filepath.Join(root, "Berserk B"), libmangal.MangaDirInfo{Provider: "b"})
+	record(t, library, root, "Berserk B", "Ch 2.cbz", 2, "b")
+	record(t, library, root, "Berserk B", "Ch 3.cbz", 3, "b")
+
+	keep, _, _ := library.MangaByFolder(root, "Berserk")
+	other, _, _ := library.MangaByFolder(root, "Berserk B")
+	plan, err := PlanMerge(fsys, library, keep, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Trashed) != 1 || len(plan.Moves) != 1 || plan.Moves[0].To != filepath.Join(root, "Berserk", "Ch 3.cbz") {
+		t.Fatalf("plan %+v", plan)
+	}
+	if err := ApplyMerge(fsys, library, root, plan); err != nil {
+		t.Fatal(err)
+	}
+
+	mangas, _ := library.Mangas()
+	if len(mangas) != 1 || mangas[0].Chapters != 3 || len(mangas[0].Sources) != 2 {
+		t.Errorf("after merge %+v", mangas)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Berserk B")); !os.IsNotExist(err) {
+		t.Error("merged folder left")
+	}
+	trash, err := Trash(fsys, root)
+	if err != nil || len(trash) != 1 || trash[0].Files != 2 { // the duplicate chapter and the marker
+		t.Fatalf("trash %+v %v", trash, err)
+	}
+	if err := EmptyTrash(fsys, root); err != nil {
+		t.Fatal(err)
+	}
+	if trash, _ := Trash(fsys, root); len(trash) != 0 {
+		t.Errorf("trash %+v after emptying", trash)
+	}
+}
+
+func TestMoveToTrashMergesFolders(t *testing.T) {
+	root := t.TempDir()
+	fsys := afero.NewOsFs()
+	touch(t, filepath.Join(root, "M", "Vol. 1", "a.cbz"))
+	touch(t, filepath.Join(root, "M", "Vol. 1", "b.cbz"))
+	if err := moveToTrash(fsys, root, "batch", filepath.Join(root, "M", "Vol. 1", "a.cbz")); err != nil {
+		t.Fatal(err)
+	}
+	if err := moveToTrash(fsys, root, "batch", filepath.Join(root, "M", "Vol. 1")); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"a.cbz", "b.cbz"} {
+		if _, err := os.Stat(filepath.Join(root, TrashDir, "batch", "M", "Vol. 1", f)); err != nil {
+			t.Error(err)
+		}
+	}
+}
