@@ -51,10 +51,9 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 	loaders = append(loaders, apis.Loaders(o)...)
 	loaders = append(loaders, scrapers.Loaders(o)...)
 
-	for _, loader := range loaders {
+	for i, loader := range loaders {
 		if loader == nil {
-			// TODO: need to provide more info
-			return nil, fmt.Errorf("failed while loading providers")
+			return nil, fmt.Errorf("mangoprovider loader %d is nil", i)
 		}
 	}
 

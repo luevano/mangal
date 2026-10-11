@@ -64,9 +64,12 @@ var providersLsCmd = &cobra.Command{
 	Short: "List installed providers",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		loaders, err := manager.Loaders()
+		loaders, problems, err := manager.Load()
 		if err != nil {
 			return err
+		}
+		for _, p := range problems {
+			cmd.PrintErrf("warning: skipped %s\n", p)
 		}
 
 		withMirrors, _ := cmd.Flags().GetBool("mirrors")

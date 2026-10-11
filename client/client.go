@@ -97,16 +97,19 @@ func Acquire(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal.C
 // AcquireByID is Acquire for the provider with the id, which may be an alias (old id) of
 // it. The warnings tell about the alias and data still under old ids.
 func AcquireByID(ctx context.Context, id string) (*libmangal.Client, []string, error) {
-	loaders, err := manager.Loaders()
+	loaders, problems, err := manager.Load()
 	if err != nil {
 		return nil, nil, err
+	}
+	var warnings []string
+	for _, p := range problems {
+		warnings = append(warnings, fmt.Sprintf("skipped %s", p))
 	}
 
 	loader, alias, ok := libmangal.FindLoader(loaders, id)
 	if !ok {
-		return nil, nil, fmt.Errorf("provider with id %q not found", id)
+		return nil, warnings, fmt.Errorf("provider with id %q not found", id)
 	}
-	var warnings []string
 	if alias != nil {
 		info := loader.Info()
 		warnings = append(warnings, fmt.Sprintf("provider %q is now %q (%s), use that id instead", id, info.ID, info.Name))
