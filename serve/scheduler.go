@@ -27,7 +27,8 @@ type serviceChecker struct{ *watch.Service }
 func (c serviceChecker) Parallel() int { return c.Options.ParallelProviders }
 
 // Scheduler checks the watches when they're due, each provider on its own: every cycle
-// (at most MaxSleep apart, when the earliest watch is due, or when a provider's run ends)
+// (at most MaxSleep apart, at the next tick of a watch's schedule, or when a provider's
+// run ends)
 // each provider with due watches gets a scheduled run of them, then a gaps run of the
 // ones whose gap filling is due, up to Parallel providers at once. A provider another
 // check has (ErrBusy, e.g. `mangal watch check` or an API check) or whose run failed is
@@ -153,8 +154,8 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 		return 0
 	}
 
-	// until the earliest watch of a provider that can start is due; a running provider,
-	// or one waiting for a free slot, wakes it when its run ends
+	// until the next tick of a watch (or its gaps) of a provider that can start; a running
+	// provider, or one waiting for a free slot, wakes it when its run ends
 	full := len(s.running) >= parallel
 	sleep := s.MaxSleep
 	for _, w := range all {
@@ -162,6 +163,9 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 			continue
 		}
 		next := w.NextCheck
+		if g := w.NextGapCheck; !g.IsZero() && g.Before(next) {
+			next = g
+		}
 		if r := s.retry[w.Provider]; next.Before(r) {
 			next = r
 		}

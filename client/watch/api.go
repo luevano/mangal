@@ -2,9 +2,6 @@ package watch
 
 import (
 	"errors"
-	"time"
-
-	"github.com/luevano/mangal/v5/storage"
 )
 
 // The JSON bodies of the `mangal serve` API (serve/), besides Watch, Report, CheckRun and
@@ -12,58 +9,50 @@ import (
 
 // AddRequest is POST /api/watches, AddOptions in JSON.
 type AddRequest struct {
-	Offline   bool             `json:"offline,omitempty"`
-	Title     string           `json:"title,omitempty"`
-	Enabled   *bool            `json:"enabled,omitempty"`
-	Provider  string           `json:"provider"`
-	MangaID   string           `json:"manga_id,omitempty"`
-	Query     string           `json:"query,omitempty"`
-	Selector  string           `json:"selector,omitempty"`
-	AnilistID int              `json:"anilist_id,omitempty"`
-	From      *float32         `json:"from,omitempty"`
-	Gaps      *bool            `json:"gaps,omitempty"`
-	Interval  storage.Duration `json:"interval,omitempty"`
+	Offline   bool     `json:"offline,omitempty"`
+	Title     string   `json:"title,omitempty"`
+	Enabled   *bool    `json:"enabled,omitempty"`
+	Provider  string   `json:"provider"`
+	MangaID   string   `json:"manga_id,omitempty"`
+	Query     string   `json:"query,omitempty"`
+	Selector  string   `json:"selector,omitempty"`
+	AnilistID int      `json:"anilist_id,omitempty"`
+	From      *float32 `json:"from,omitempty"`
+	Gaps      *bool    `json:"gaps,omitempty"`
+	Schedule  string   `json:"schedule,omitempty"`
 }
 
 func (r AddRequest) Options() AddOptions {
 	return AddOptions{Offline: r.Offline, Title: r.Title, Enabled: r.Enabled,
 		Provider: r.Provider, MangaID: r.MangaID, Query: r.Query, Selector: r.Selector,
-		AnilistID: r.AnilistID, From: r.From, Gaps: r.Gaps, Interval: time.Duration(r.Interval)}
+		AnilistID: r.AnilistID, From: r.From, Gaps: r.Gaps, Schedule: r.Schedule}
 }
 
 func addRequest(o AddOptions) AddRequest {
 	return AddRequest{Offline: o.Offline, Title: o.Title, Enabled: o.Enabled,
 		Provider: o.Provider, MangaID: o.MangaID, Query: o.Query, Selector: o.Selector,
-		AnilistID: o.AnilistID, From: o.From, Gaps: o.Gaps, Interval: storage.Duration(o.Interval)}
+		AnilistID: o.AnilistID, From: o.From, Gaps: o.Gaps, Schedule: o.Schedule}
 }
 
 // PatchRequest is PATCH /api/watches/{id}: Enabled pauses or resumes, the rest are
 // UpdateOptions. Nil keeps the value.
 type PatchRequest struct {
-	Enabled   *bool             `json:"enabled,omitempty"`
-	Interval  *storage.Duration `json:"interval,omitempty"`
-	Gaps      *bool             `json:"gaps,omitempty"`
-	AnilistID *int              `json:"anilist_id,omitempty"`
-	From      *float32          `json:"from,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
+	// Schedule is a cron schedule, "" for watch.schedule.
+	Schedule  *string  `json:"schedule,omitempty"`
+	Gaps      *bool    `json:"gaps,omitempty"`
+	AnilistID *int     `json:"anilist_id,omitempty"`
+	From      *float32 `json:"from,omitempty"`
 }
 
 // Update are the UpdateOptions of the request, false when it changes none.
 func (r PatchRequest) Update() (UpdateOptions, bool) {
-	opts := UpdateOptions{Gaps: r.Gaps, AnilistID: r.AnilistID, From: r.From}
-	if r.Interval != nil {
-		d := time.Duration(*r.Interval)
-		opts.Interval = &d
-	}
+	opts := UpdateOptions{Schedule: r.Schedule, Gaps: r.Gaps, AnilistID: r.AnilistID, From: r.From}
 	return opts, opts != UpdateOptions{}
 }
 
 func patchRequest(o UpdateOptions) PatchRequest {
-	r := PatchRequest{Gaps: o.Gaps, AnilistID: o.AnilistID, From: o.From}
-	if o.Interval != nil {
-		d := storage.Duration(*o.Interval)
-		r.Interval = &d
-	}
-	return r
+	return PatchRequest{Schedule: o.Schedule, Gaps: o.Gaps, AnilistID: o.AnilistID, From: o.From}
 }
 
 // CheckRequest is POST /api/check: the watches with the IDs (every enabled one if none).

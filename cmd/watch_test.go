@@ -8,6 +8,7 @@ import (
 
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/spf13/pflag"
 )
 
 func TestParseSince(t *testing.T) {
@@ -74,5 +75,38 @@ func TestSelectWatches(t *testing.T) {
 		if got := selectWatches(all, tc.ids, tc.provider, tc.due, now); !slices.Equal(got, tc.want) {
 			t.Errorf("%+v: %v", tc, got)
 		}
+	}
+}
+
+func TestScheduleFlag(t *testing.T) {
+	for _, tc := range []struct {
+		args    []string
+		want    string
+		changed bool
+		err     bool
+	}{
+		{args: nil},
+		{args: []string{"--schedule", " @daily "}, want: "@daily", changed: true},
+		{args: []string{"--schedule", ""}, want: "", changed: true},
+		{args: []string{"--schedule", "every day"}, err: true},
+		{args: []string{"--interval", "4h"}, want: "0 */4 * * *", changed: true},
+		{args: []string{"--interval", "36h"}, want: "@every 36h", changed: true},
+		{args: []string{"--interval", "4h", "--schedule", "@daily"}, err: true},
+	} {
+		var schedule string
+		var interval time.Duration
+		f := pflag.NewFlagSet("", pflag.ContinueOnError)
+		f.StringVar(&schedule, "schedule", "", "")
+		intervalAlias(f, &interval)
+		if err := f.Parse(tc.args); err != nil {
+			t.Fatal(err)
+		}
+		got, changed, err := scheduleFlag(f, schedule, interval)
+		if (err != nil) != tc.err || got != tc.want || changed != tc.changed {
+			t.Errorf("%v: %q %v %v", tc.args, got, changed, err)
+		}
+	}
+	if f := watchSetCmd.Flags().Lookup("interval"); f == nil || !f.Hidden {
+		t.Error("--interval isn't a hidden flag of watch set")
 	}
 }

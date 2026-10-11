@@ -3,6 +3,7 @@ package watch
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/luevano/mangal/v5/storage"
 )
@@ -33,5 +34,27 @@ func TestCheckLines(t *testing.T) {
 	failed := Result{WatchRun: storage.WatchRun{Status: storage.StatusError, Error: "site down"}}
 	if got := outcome(failed, false); got != "ERROR site down" {
 		t.Errorf("error %q", got)
+	}
+}
+
+func TestFormatNext(t *testing.T) {
+	now := time.Date(2026, 10, 11, 13, 30, 0, 0, time.UTC)
+	for _, c := range []struct {
+		next time.Time
+		want string
+	}{
+		{time.Time{}, "never"},
+		{now, "due"},
+		{now.Add(-time.Hour), "due"},
+		{time.Date(2026, 10, 11, 16, 0, 0, 0, time.UTC), "in 2h (16:00)"},
+		{time.Date(2026, 10, 11, 13, 30, 40, 0, time.UTC), "in 40s (13:30)"},
+		{time.Date(2026, 10, 12, 4, 0, 0, 0, time.UTC), "in 14h (tomorrow 04:00)"},
+		{time.Date(2026, 10, 14, 4, 0, 0, 0, time.UTC), "in 2d (Wed 04:00)"},
+		{time.Date(2026, 10, 23, 4, 0, 0, 0, time.UTC), "in 11d (Oct 23 04:00)"},
+		{time.Date(2027, 1, 2, 4, 0, 0, 0, time.UTC), "in 82d (Jan 2 2027 04:00)"},
+	} {
+		if got := FormatNext(c.next, now); got != c.want {
+			t.Errorf("FormatNext(%s) = %q, want %q", c.next, got, c.want)
+		}
 	}
 }

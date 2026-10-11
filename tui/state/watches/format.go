@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
@@ -20,17 +21,7 @@ func formatTime(t time.Time) string {
 }
 
 // short is a duration as 45s, 12m, 3h, 2d.
-func short(d time.Duration) string {
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d/time.Second))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d/time.Minute))
-	case d < 48*time.Hour:
-		return fmt.Sprintf("%dh", int(d/time.Hour))
-	}
-	return fmt.Sprintf("%dd", int(d/(24*time.Hour)))
-}
+func short(d time.Duration) string { return watch.ShortDuration(d) }
 
 // ago is t relative to now, in the past.
 func ago(t, now time.Time) string {
@@ -60,7 +51,7 @@ func nextCheck(w watch.Watch, backoff int, now time.Time) string {
 	case !w.NextCheck.After(now):
 		return "due"
 	}
-	next := "in " + short(w.NextCheck.Sub(now))
+	next := watch.FormatNext(w.NextCheck, now)
 	if backoff > 0 && w.Failures >= backoff {
 		next += " (backing off)"
 	}
@@ -124,12 +115,12 @@ func runReport(r storage.WatchRun) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// interval is the watch's interval, or the default's.
-func interval(w watch.Watch) string {
-	if w.Interval <= 0 {
-		return "default (watch.interval)"
+// schedule is the watch's schedule, or the default's.
+func schedule(w watch.Watch) string {
+	if w.Schedule == "" {
+		return "default (" + config.Watch.Schedule.Get() + ")"
 	}
-	return formatInterval(time.Duration(w.Interval))
+	return w.Schedule
 }
 
 func onOff(b bool) string {
@@ -143,7 +134,7 @@ func onOff(b bool) string {
 func settings(w watch.Watch, backoff int, now time.Time) string {
 	lines := []string{
 		fmt.Sprintf("%s · %s · manga id %s", w.Provider, enabled(w), w.MangaID),
-		fmt.Sprintf("interval %s · gaps %s · metadata %s · from %s", interval(w), onOff(w.Gaps), bindings(w), formatNumber(w.From)),
+		fmt.Sprintf("schedule %s · gaps %s · metadata %s · from %s", schedule(w), onOff(w.Gaps), bindings(w), formatNumber(w.From)),
 		fmt.Sprintf("last downloaded %s · last checked %s · next check %s", formatNumber(w.LastDownloaded), ago(w.LastChecked, now), nextCheck(w, backoff, now)),
 	}
 	if w.LastError != "" {

@@ -15,6 +15,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/theme/icon"
+	"github.com/luevano/mangal/v5/util/cron"
 )
 
 var (
@@ -56,6 +57,22 @@ func pathEntry(key, def, description string, required bool) *entry[string, strin
 				return fmt.Errorf("the path is empty")
 			}
 			return nil
+		},
+	})
+}
+
+// scheduleEntry is a cron schedule (util/cron), empty only when allowEmpty.
+func scheduleEntry(key, def, description string, allowEmpty bool) *entry[string, string] {
+	return reg(entry[string, string]{
+		Key:         key,
+		Default:     def,
+		Description: description,
+		Validate: func(s string) error {
+			if s == "" && allowEmpty {
+				return nil
+			}
+			_, err := cron.Parse(s)
+			return err
 		},
 	})
 }
@@ -410,17 +427,17 @@ var Data = configData{
 }
 
 var Watch = configWatch{
-	Interval: durationEntry("watch.interval", "4h",
-		"How often a watched manga is checked for new chapters (by `mangal serve`), a duration such as \"4h\". A watch can override it (`mangal watch set --interval`).", false),
-	Jitter: durationEntry("watch.jitter", "10m",
-		"Up to how much later than its interval a watch is checked, so the checks spread out.", false),
-	GapInterval: durationEntry("watch.gap_interval", "0s",
-		"How often the watches with gap filling also download the chapters below the last downloaded one the library misses, e.g. \"168h\". 0s turns it off (`mangal watch check --gaps` still does it).", false),
+	Schedule: scheduleEntry("watch.schedule", "0 */4 * * *",
+		"When the watched mangas are checked for new chapters (by `mangal serve`): a cron schedule in the local time zone (minute hour day-of-month month day-of-week, e.g. \"0 */4 * * *\" every 4 hours on the hour), @hourly, @daily, @weekly, @monthly or @every <duration>. A watch is due once a tick passed since its last check. A watch can have its own (`mangal watch set --schedule`).", false),
+	Jitter: durationEntry("watch.jitter", "0s",
+		"Up to how long after a tick a provider's watches are checked (fixed per provider and tick), so the providers don't all start at once.", false),
+	GapSchedule: scheduleEntry("watch.gap_schedule", "",
+		"When the watches with gap filling also download the chapters below the last downloaded one the library misses, a cron schedule like watch.schedule (e.g. \"0 3 * * 0\" on sundays at 3:00). Empty turns it off (`mangal watch check --gaps` still does it).", true),
 	Gaps: boolEntry("watch.gaps", false, "Gap filling for new watches (`mangal watch add --gaps` sets it per watch)."),
 	ParallelProviders: intEntry("watch.parallel_providers", 2, 1, 32,
 		"How many providers are checked at the same time, the mangas of one provider are always checked one at a time."),
 	Backoff: intEntry("watch.backoff", 3, 0, 1000,
-		"After this many failed checks in a row a watch waits longer between checks (doubling, up to 8 times its interval). 0 never waits longer."),
+		"After this many failed checks in a row a watch skips ticks of its schedule (waits 2, 4, then 8 ticks). 0 never skips."),
 	Notify: oneOfEntry("watch.notify", "both",
 		"What watch checks notify (Discord): new chapters, errors, both or none.", "new", "errors", "both", "none"),
 }

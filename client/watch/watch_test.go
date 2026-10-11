@@ -16,6 +16,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cron"
 )
 
 type fakeManga struct {
@@ -209,6 +210,14 @@ type env struct {
 	now      time.Time
 }
 
+// tick is the nth tick of the default schedule after t.
+func (e *env) tick(t time.Time, n int) time.Time {
+	for range n {
+		t = e.svc.Options.Schedule.Next(t)
+	}
+	return t
+}
+
 func newEnv(t *testing.T) *env {
 	t.Helper()
 	data, err := storage.OpenData(filepath.Join(t.TempDir(), storage.FilenameData))
@@ -220,7 +229,7 @@ func newEnv(t *testing.T) *env {
 	e.svc = &Service{
 		Watches: storage.Watches{DB: data},
 		Library: storage.Library{DB: data},
-		Options: Options{Interval: 4 * time.Hour, ParallelProviders: 2, Backoff: 3, Notify: NotifyBoth, LockStale: time.Minute},
+		Options: Options{Schedule: cron.MustParse("@every 4h"), ParallelProviders: 2, Backoff: 3, Notify: NotifyBoth, LockStale: time.Minute},
 		Source: func(_ context.Context, id string) (Source, error) {
 			src, ok := e.sources[id]
 			if !ok {
@@ -368,7 +377,7 @@ func TestCheck(t *testing.T) {
 		t.Errorf("notified %+v / %+v", e.notifier.news, e.notifier.errs)
 	}
 	w, _ = e.svc.Get(ctx, w.ID)
-	if *w.LastNew != 66 || !w.LastNewAt.Equal(e.now) || !w.LastChecked.Equal(e.now) || *w.LastDownloaded != 66 || !w.NextCheck.Equal(e.now.Add(4*time.Hour)) {
+	if *w.LastNew != 66 || !w.LastNewAt.Equal(e.now) || !w.LastChecked.Equal(e.now) || *w.LastDownloaded != 66 || !w.NextCheck.Equal(e.tick(e.now, 1)) {
 		t.Errorf("watch after %+v", w)
 	}
 	runs, _ := e.svc.Runs(ctx, RunFilter{Watch: w.ID})
@@ -483,13 +492,13 @@ func TestCheckFailures(t *testing.T) {
 		t.Errorf("notified %d new, %d errors", len(e.notifier.news), len(e.notifier.errs))
 	}
 
-	// backoff: after 3 failures in a row the interval doubles
+	// backoff: after 3 failures in a row it skips ticks, 4 failures = 4 ticks
 	for range 3 {
 		e.now = e.now.Add(time.Hour)
 		_, _ = e.svc.Check(ctx, []int64{ids[1]}, CheckOptions{})
 	}
 	w, _ := e.svc.Get(ctx, ids[1])
-	if w.Failures != 4 || !w.NextCheck.Equal(w.LastChecked.Add(16*time.Hour)) {
+	if w.Failures != 4 || !w.NextCheck.Equal(e.tick(w.LastChecked, 4)) {
 		t.Errorf("backoff: %d failures, next %s after %s", w.Failures, w.NextCheck, w.LastChecked)
 	}
 	broken.err = nil
@@ -688,15 +697,26 @@ func TestDueAndPaused(t *testing.T) {
 		t.Errorf("checked the paused one: %+v", report.Results)
 	}
 	w1, _ = e.svc.Get(ctx, w1.ID)
-	if d := w1.NextCheck.Sub(w1.LastChecked); d < 4*time.Hour || d > 4*time.Hour+10*time.Minute {
-		t.Errorf("next check %s after", d)
+	tick := e.tick(w1.LastChecked, 1)
+	if d := w1.NextCheck.Sub(tick); d < 0 || d > 10*time.Minute {
+		t.Errorf("next check %s after the tick", d)
 	}
-	if due, _ := e.svc.Due(ctx, e.now.Add(4*time.Hour+11*time.Minute)); len(due) != 1 || due[0].ID != w1.ID {
+	if due, _ := e.svc.Due(ctx, tick.Add(-time.Second)); len(due) != 0 {
+		t.Errorf("due before the tick: %+v", due)
+	}
+	if due, _ := e.svc.Due(ctx, tick.Add(11*time.Minute)); len(due) != 1 || due[0].ID != w1.ID {
 		t.Errorf("due %+v", due)
 	}
-	interval := time.Hour
-	if w, _ := e.svc.Update(ctx, w1.ID, UpdateOptions{Interval: &interval}); w.NextCheck.Sub(w.LastChecked) > time.Hour+10*time.Minute {
-		t.Errorf("interval override: %+v", w)
+	every := "*/30 * * * *"
+	if w, _ := e.svc.Update(ctx, w1.ID, UpdateOptions{Schedule: &every}); w.Schedule != every || w.NextCheck.Sub(w.LastChecked) > 40*time.Minute {
+		t.Errorf("schedule override: %+v", w)
+	}
+	bad := "*/30 * *"
+	if _, err := e.svc.Update(ctx, w1.ID, UpdateOptions{Schedule: &bad}); err == nil {
+		t.Error("saved an invalid schedule")
+	}
+	if _, err := e.svc.Add(ctx, AddOptions{Provider: "p", MangaID: "1", Schedule: "@sometimes"}); err == nil || errors.Is(err, ErrExists) {
+		t.Errorf("added with an invalid schedule: %v", err)
 	}
 	if stale, _ := e.svc.Stale(ctx, time.Hour); len(stale) != 0 {
 		t.Errorf("stale %+v", stale)
@@ -811,5 +831,96 @@ func TestCheckAndDownload(t *testing.T) {
 		t.Errorf("lock kept: %v", err)
 	} else {
 		_ = l.Unlock()
+	}
+}
+
+func TestNextCheckTicks(t *testing.T) {
+	loc, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		t.Skip("no tz database:", err)
+	}
+	at := func(m time.Month, d, h, min, sec int) time.Time { return time.Date(2026, m, d, h, min, sec, 0, loc) }
+	var warned []error
+	svc := &Service{Options: Options{Backoff: 3}, OnError: func(err error) { warned = append(warned, err) }}
+	w := storage.Watch{ID: 1, Provider: "p", Added: at(10, 1, 9, 0, 0)}
+
+	if next := svc.NextCheck(w); !next.Equal(w.Added) {
+		t.Errorf("never checked: next %s, want when added", next)
+	}
+	// the default schedule: every 4 hours on the hour, whenever the last check was
+	for _, c := range []struct{ last, want time.Time }{
+		{at(10, 11, 15, 59, 0), at(10, 11, 16, 0, 0)},
+		{at(10, 11, 16, 0, 0), at(10, 11, 20, 0, 0)},
+		{at(10, 11, 16, 0, 30), at(10, 11, 20, 0, 0)},
+		{at(10, 11, 21, 7, 0), at(10, 12, 0, 0, 0)},
+		// 02:00 CST → 03:00 CDT: still 04:00 on the wall clock, 2h30m later
+		{at(3, 8, 0, 30, 0), at(3, 8, 4, 0, 0)},
+		// 02:00 CDT → 01:00 CST: 04:00 on the wall clock, 4h30m later
+		{at(11, 1, 0, 30, 0), at(11, 1, 4, 0, 0)},
+	} {
+		w.LastChecked = c.last
+		if next := svc.NextCheck(w); !next.Equal(c.want) || next.Hour() != c.want.Hour() {
+			t.Errorf("checked %s: next %s, want %s", c.last, next, c.want)
+		}
+	}
+
+	// a manual check between ticks: due again at the next tick, not 4h later
+	w.LastChecked = at(10, 11, 17, 30, 0)
+	if next := svc.NextCheck(w); !next.Equal(at(10, 11, 20, 0, 0)) {
+		t.Errorf("manual check: next %s", next)
+	}
+
+	// backoff skips ticks: 3 failures = 2 ticks, 4 = 4, 5 and more = 8
+	w.LastChecked = at(10, 11, 15, 59, 0)
+	for failures, want := range map[int]time.Time{
+		2:  at(10, 11, 16, 0, 0),
+		3:  at(10, 11, 20, 0, 0),
+		4:  at(10, 12, 4, 0, 0),
+		5:  at(10, 12, 20, 0, 0),
+		10: at(10, 12, 20, 0, 0),
+	} {
+		w.Failures = failures
+		if next := svc.NextCheck(w); !next.Equal(want) {
+			t.Errorf("%d failures: next %s, want %s", failures, next, want)
+		}
+	}
+	w.Failures = 0
+
+	// its own schedule, an invalid one falls back (with a warning)
+	w.Schedule = "@daily"
+	if next := svc.NextCheck(w); !next.Equal(at(10, 12, 0, 0, 0)) {
+		t.Errorf("own schedule: next %s", next)
+	}
+	w.Schedule = "nope"
+	if next := svc.NextCheck(w); !next.Equal(at(10, 11, 16, 0, 0)) || len(warned) != 1 {
+		t.Errorf("invalid own schedule: next %s, warned %v", next, warned)
+	}
+	w.Schedule = ""
+
+	// jitter: the same for a provider's watches at a tick, at most watch.jitter
+	svc.Options.Jitter = 5 * time.Minute
+	other := w
+	other.ID = 2
+	next := svc.NextCheck(w)
+	if d := next.Sub(at(10, 11, 16, 0, 0)); d < 0 || d > 5*time.Minute || !svc.NextCheck(other).Equal(next) {
+		t.Errorf("jitter: next %s, other %s", next, svc.NextCheck(other))
+	}
+	svc.Options.Jitter = 0
+
+	// gap filling: off without watch.gap_schedule or the watch's gaps
+	if !svc.NextGapCheck(w).IsZero() || svc.GapsDue(w, at(12, 1, 0, 0, 0)) {
+		t.Error("gaps due without a gap schedule")
+	}
+	svc.Options.GapSchedule = cron.MustParse("0 3 * * 0")
+	if !svc.NextGapCheck(w).IsZero() {
+		t.Error("gaps due on a watch without gap filling")
+	}
+	w.Gaps = true
+	if !svc.GapsDue(w, w.Added) {
+		t.Error("gaps never filled aren't due")
+	}
+	w.LastGapCheck = at(10, 11, 3, 0, 5)
+	if next := svc.NextGapCheck(w); !next.Equal(at(10, 18, 3, 0, 0)) || svc.GapsDue(w, at(10, 18, 2, 59, 0)) || !svc.GapsDue(w, next) {
+		t.Errorf("gaps: next %s", next)
 	}
 }

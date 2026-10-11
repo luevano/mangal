@@ -49,18 +49,18 @@ func TestWatches(t *testing.T) {
 		t.Errorf("added twice: %v", err)
 	}
 	got, err := watches.Get(w.ID)
-	if err != nil || got.Title != "Dandadan" || !got.Enabled || got.From == nil || *got.From != 200 || got.Interval != 0 || got.LastNew != nil {
+	if err != nil || got.Title != "Dandadan" || !got.Enabled || got.From == nil || *got.From != 200 || got.Schedule != "" || got.LastNew != nil {
 		t.Fatalf("get: %+v, %v", got, err)
 	}
 
-	got.Interval = Duration(2 * time.Hour)
+	got.Schedule = "0 */2 * * *"
 	got.LastChecked, got.LastNew, got.LastNewAt = time.Unix(100, 0), f32(201.5), time.Unix(100, 0)
 	got.Failures, got.LastError, got.Enabled = 2, "boom", false
 	if err := watches.Save(got); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = watches.Get(w.ID)
-	if time.Duration(got.Interval) != 2*time.Hour || *got.LastNew != 201.5 || got.LastChecked.Unix() != 100 || got.Failures != 2 || got.Enabled {
+	if got.Schedule != "0 */2 * * *" || *got.LastNew != 201.5 || got.LastChecked.Unix() != 100 || got.Failures != 2 || got.Enabled {
 		t.Errorf("saved: %+v", got)
 	}
 	if _, found, _ := watches.Find("mango-mangaplus", "100171"); !found {
@@ -279,5 +279,40 @@ func TestLockHolders(t *testing.T) {
 	}
 	if len(held) != 2 || held[0].Name != "watch-check:a" || held[1].Name != "watch-check:b" || held[0].PID == 0 {
 		t.Errorf("holders %+v", held)
+	}
+}
+
+// TestMigrateWatchSchedules: the per-watch intervals (schema 8) become cron schedules.
+func TestMigrateWatchSchedules(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FilenameData)
+	old, err := Open(path, dataMigrations[:8])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO watches (provider, manga_id, title, interval, added) VALUES ('p', 'a', 'A', NULL, 10)`,
+		`INSERT INTO watches (provider, manga_id, title, interval, added) VALUES ('p', 'b', 'B', 7200, 10)`,
+		`INSERT INTO watches (provider, manga_id, title, interval, added) VALUES ('p', 'c', 'C', 259200, 10)`,
+		`INSERT INTO watches (provider, manga_id, title, interval, added) VALUES ('p', 'd', 'D', 18000, 10)`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old.Close()
+
+	data, err := OpenData(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	list, err := (Watches{DB: data}).List()
+	if err != nil || len(list) != 4 {
+		t.Fatalf("watches: %+v, %v", list, err)
+	}
+	for i, want := range []string{"", "0 */2 * * *", "0 0 */3 * *", "@every 5h"} {
+		if list[i].Schedule != want {
+			t.Errorf("%s: schedule %q, want %q", list[i].Title, list[i].Schedule, want)
+		}
 	}
 }

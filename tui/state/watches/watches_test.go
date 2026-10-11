@@ -139,7 +139,7 @@ func TestRows(t *testing.T) {
 		t.Fatalf("got %d rows, want 3", len(items))
 	}
 	want := []struct{ title, desc string }{
-		{"Berserk", "mango-mangapill · last 380 · checked 2h ago · next in 2h · new 3"},
+		{"Berserk", "mango-mangapill · last 380 · checked 2h ago · next in 2h (14:00) · new 3"},
 		{"Dandadan (paused)", "mango-mangaplus · last - · checked never · next paused · error · 2 failures"},
 		// the skipped check doesn't count
 		{"Frieren", "mango-mangaplus · last - · checked never · next due · error"},
@@ -157,7 +157,7 @@ func TestRows(t *testing.T) {
 
 func TestBackingOff(t *testing.T) {
 	w := watch.Watch{Watch: storage.Watch{Enabled: true, Failures: 3}, NextCheck: now.Add(5 * time.Hour)}
-	if got := nextCheck(w, 2, now); got != "in 5h (backing off)" {
+	if got := nextCheck(w, 2, now); got != "in 5h (17:00) (backing off)" {
 		t.Errorf("got %q", got)
 	}
 }
@@ -408,11 +408,13 @@ func TestBindings(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
-	if d, err := parseInterval("7d"); err != nil || d != 7*24*time.Hour {
-		t.Errorf("7d: %v %v", d, err)
+	for _, good := range []string{"", "0 */6 * * *", "@daily", "@every 12h"} {
+		if err := validateSchedule(good); err != nil {
+			t.Errorf("%q: %v", good, err)
+		}
 	}
-	for _, bad := range []string{"30s", "x", "-1h"} {
-		if _, err := parseInterval(bad); err == nil {
+	for _, bad := range []string{"12h", "* * *", "@every 30s", "61 * * * *"} {
+		if err := validateSchedule(bad); err == nil {
 			t.Errorf("%q accepted", bad)
 		}
 	}
@@ -442,18 +444,18 @@ func TestEditOptions(t *testing.T) {
 	if opts := s.options(); opts != (watch.UpdateOptions{}) {
 		t.Errorf("unchanged: got %+v", opts)
 	}
-	s.interval.input.SetValue("12h")
+	s.schedule.input.SetValue(" 0 */12 * * * ")
 	s.gaps.on = false
 	s.anilist.input.SetValue("")
 	opts := s.options()
-	if opts.Interval == nil || *opts.Interval != 12*time.Hour || opts.Gaps == nil || *opts.Gaps || opts.AnilistID == nil || *opts.AnilistID != 0 {
+	if opts.Schedule == nil || *opts.Schedule != "0 */12 * * *" || opts.Gaps == nil || *opts.Gaps || opts.AnilistID == nil || *opts.AnilistID != 0 {
 		t.Errorf("changed: got %+v", opts)
 	}
-	s.interval.input.SetValue("1s")
-	if s.form.valid() || s.interval.err == "" {
-		t.Error("1s interval valid")
+	s.schedule.input.SetValue("12h")
+	if s.form.valid() || s.schedule.err == "" {
+		t.Error("12h schedule valid")
 	}
-	if !strings.Contains(s.View(), "at least 1m") {
+	if !strings.Contains(s.View(), "has 5 fields") {
 		t.Errorf("no error shown:\n%s", s.View())
 	}
 }

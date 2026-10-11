@@ -16,8 +16,10 @@ import (
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cron"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func init() {
@@ -30,7 +32,7 @@ var watchCmd = &cobra.Command{
 	Long: `A watch is one provider's manga mangal keeps up to date: each check downloads the
 chapters from the last one the library has up (a .5 published after it too), and with gap
 filling the missing ones below it. "mangal watch check" checks them once (e.g. from a
-timer), "mangal serve" on a schedule (watch.interval).`,
+timer), "mangal serve" on a cron schedule (watch.schedule, or the watch's own).`,
 	Args: cobra.NoArgs,
 }
 
@@ -117,6 +119,7 @@ var watchAddArgs = struct {
 	AnilistID int
 	From      float32
 	Gaps      bool
+	Schedule  string
 	Interval  time.Duration
 }{}
 
@@ -130,7 +133,32 @@ func init() {
 	f.IntVarP(&watchAddArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind as the default (its metadata is used for the downloads, see mangal bind)")
 	f.Float32Var(&watchAddArgs.From, "from", 0, "Treat the chapters up to this number as downloaded (read elsewhere)")
 	f.BoolVar(&watchAddArgs.Gaps, "gaps", false, "Also download the missing chapters below the last downloaded one (default: config watch.gaps)")
-	f.DurationVar(&watchAddArgs.Interval, "interval", 0, "Check interval of this manga (default: config watch.interval)")
+	f.StringVar(&watchAddArgs.Schedule, "schedule", "", `When this manga is checked, a cron schedule such as "0 */6 * * *" or @daily (default: config watch.schedule)`)
+	intervalAlias(f, &watchAddArgs.Interval)
+}
+
+// intervalAlias is the old --interval, hidden: a duration that becomes the closest cron
+// schedule (cron.FromInterval).
+func intervalAlias(f *pflag.FlagSet, d *time.Duration) {
+	f.DurationVar(d, "interval", 0, "Replaced by --schedule")
+	_ = f.MarkHidden("interval")
+}
+
+// scheduleFlag is --schedule, or the --interval alias as a schedule; changed is false
+// when neither was given.
+func scheduleFlag(f *pflag.FlagSet, schedule string, interval time.Duration) (string, bool, error) {
+	switch {
+	case f.Changed("schedule") && f.Changed("interval"):
+		return "", false, errors.New("--interval is the old --schedule, use one")
+	case f.Changed("schedule"):
+		if _, err := watch.ParseSchedule(schedule); err != nil {
+			return "", false, err
+		}
+		return strings.TrimSpace(schedule), true, nil
+	case f.Changed("interval"):
+		return cron.FromInterval(interval), true, nil
+	}
+	return "", false, nil
 }
 
 var watchAddCmd = &cobra.Command{
@@ -145,6 +173,10 @@ ones after --from.`,
 	Args:              cobra.MinimumNArgs(2),
 	ValidArgsFunction: completionProviderIDs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		schedule, _, err := scheduleFlag(cmd.Flags(), watchAddArgs.Schedule, watchAddArgs.Interval)
+		if err != nil {
+			return err
+		}
 		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
@@ -154,7 +186,7 @@ ones after --from.`,
 			Query:     strings.Join(args[1:], " "),
 			Selector:  watchAddArgs.Selector,
 			AnilistID: watchAddArgs.AnilistID,
-			Interval:  watchAddArgs.Interval,
+			Schedule:  schedule,
 			Offline:   watchAddArgs.Offline,
 			Title:     watchAddArgs.Title,
 		}
@@ -227,8 +259,9 @@ var watchLsCmd = &cobra.Command{
 func printWatches(out io.Writer, watches []watch.Watch) {
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "ID\tPROVIDER\tTITLE\tLAST\tCHECKED\tNEXT\tERRORS")
+	now := time.Now()
 	for _, w := range watches {
-		next := formatTime(w.NextCheck)
+		next := watch.FormatNext(w.NextCheck, now)
 		switch {
 		case !w.Enabled && w.ProviderMissing:
 			next = "paused, provider missing"
@@ -354,6 +387,7 @@ func pauseCmd(resume bool) *cobra.Command {
 }
 
 var watchSetArgs = struct {
+	Schedule  string
 	Interval  time.Duration
 	Gaps      bool
 	AnilistID int
@@ -363,7 +397,8 @@ var watchSetArgs = struct {
 func init() {
 	watchCmd.AddCommand(watchSetCmd)
 	f := watchSetCmd.Flags()
-	f.DurationVar(&watchSetArgs.Interval, "interval", 0, "Check interval of this manga, 0 for config watch.interval")
+	f.StringVar(&watchSetArgs.Schedule, "schedule", "", `When this manga is checked, a cron schedule such as "0 */6 * * *" or @daily, "" for config watch.schedule`)
+	intervalAlias(f, &watchSetArgs.Interval)
 	f.BoolVar(&watchSetArgs.Gaps, "gaps", false, "Gap filling (--gaps=false turns it off)")
 	f.IntVarP(&watchSetArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind as the default, 0 unbinds it (see mangal bind)")
 	f.Float32Var(&watchSetArgs.From, "from", 0, "Treat the chapters up to this number as downloaded")
@@ -380,8 +415,12 @@ var watchSetCmd = &cobra.Command{
 		}
 		var opts watch.UpdateOptions
 		f := cmd.Flags()
-		if f.Changed("interval") {
-			opts.Interval = &watchSetArgs.Interval
+		schedule, changed, err := scheduleFlag(f, watchSetArgs.Schedule, watchSetArgs.Interval)
+		if err != nil {
+			return err
+		}
+		if changed {
+			opts.Schedule = &schedule
 		}
 		if f.Changed("gaps") {
 			opts.Gaps = &watchSetArgs.Gaps
@@ -403,7 +442,7 @@ var watchSetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		successf(cmd, "updated %q from %s, next check %s", w.Title, w.Provider, formatTime(w.NextCheck))
+		successf(cmd, "updated %q from %s, next check %s", w.Title, w.Provider, watch.FormatNext(w.NextCheck, time.Now()))
 		return nil
 	},
 }
@@ -432,7 +471,7 @@ var watchCheckCmd = &cobra.Command{
 	Short: "Check the watches now",
 	Long: `Check the watches with the ids, or every one that isn't paused (--provider: of that
 provider; --due: only the due ones), and download what's new. A check counts as the
-scheduled one: the next check is an interval from now.
+scheduled one: the next check is the schedule's next tick.
 
 A provider is checked by one check at a time, also across processes (e.g. "mangal
 serve"): the watches of a provider another check or a download has are skipped, and when

@@ -226,6 +226,9 @@ func (a *API) add(w http.ResponseWriter, r *http.Request) error {
 	if req.Provider == "" || (req.MangaID == "" && req.Query == "") {
 		return badRequest("provider and manga_id or query are needed")
 	}
+	if _, err := watch.ParseSchedule(req.Schedule); err != nil {
+		return badRequest("%w", err)
+	}
 	added, err := a.Manager().Add(r.Context(), req.Options())
 	if err != nil {
 		if watch.ErrorCode(err) == "" {
@@ -281,6 +284,11 @@ func (a *API) patch(w http.ResponseWriter, r *http.Request) error {
 	update, changes := req.Update()
 	if req.Enabled == nil && !changes {
 		return badRequest("nothing to change")
+	}
+	if update.Schedule != nil {
+		if _, err := watch.ParseSchedule(*update.Schedule); err != nil {
+			return badRequest("%w", err)
+		}
 	}
 	m := a.Manager()
 	var got watch.Watch

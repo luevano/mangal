@@ -4,12 +4,12 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/luevano/mangal/v5/util/cron"
 	"github.com/luevano/mangal/v5/util/proc"
 )
 
@@ -28,23 +28,6 @@ var ErrWatchNotFound = errors.New("watch not found")
 // ErrLocked is a lock held by another process (or another holder in this one).
 var ErrLocked = errors.New("locked")
 
-// Duration is a time.Duration written as a string in JSON ("4h0m0s").
-type Duration time.Duration
-
-func (d Duration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Duration(d).String())
-}
-
-func (d *Duration) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return err
-	}
-	v, err := time.ParseDuration(s)
-	*d = Duration(v)
-	return err
-}
-
 // Watch is a watched manga: one provider's manga.
 type Watch struct {
 	ID       int64  `json:"id"`
@@ -59,8 +42,8 @@ type Watch struct {
 	// LibraryManga is the library manga it's downloaded into, 0 until known.
 	LibraryManga int64 `json:"library_manga,omitempty"`
 	Enabled      bool  `json:"enabled"`
-	// Interval overrides watch.interval when not 0.
-	Interval Duration `json:"interval,omitempty"`
+	// Schedule overrides watch.schedule when not empty (a cron schedule, util/cron).
+	Schedule string `json:"schedule,omitempty"`
 	// Gaps also downloads the chapters below the last downloaded one the library misses.
 	Gaps bool `json:"gaps"`
 	// From treats the chapters up to it as done (read elsewhere), nil for none.
@@ -197,6 +180,38 @@ CREATE TABLE locks (
 // migration 7: what a lock is held for (e.g. a manga's: a watch check or a download).
 const lockPurpose = `ALTER TABLE locks ADD COLUMN purpose TEXT NOT NULL DEFAULT ''`
 
+// migrateWatchSchedules (migration 9): the per-watch check interval (seconds) becomes a
+// cron schedule, the closest one on wall-clock ticks (cron.FromInterval).
+func migrateWatchSchedules(tx *sql.Tx) error {
+	if _, err := tx.Exec(`ALTER TABLE watches ADD COLUMN schedule TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	rows, err := tx.Query(`SELECT id, interval FROM watches WHERE interval > 0`)
+	if err != nil {
+		return err
+	}
+	schedules := map[int64]string{}
+	for rows.Next() {
+		var id, seconds int64
+		if err := rows.Scan(&id, &seconds); err != nil {
+			rows.Close()
+			return err
+		}
+		schedules[id] = cron.FromInterval(time.Duration(seconds) * time.Second)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for id, schedule := range schedules {
+		if _, err := tx.Exec(`UPDATE watches SET schedule = ? WHERE id = ?`, schedule, id); err != nil {
+			return err
+		}
+	}
+	_, err = tx.Exec(`ALTER TABLE watches DROP COLUMN interval`)
+	return err
+}
+
 func nullFloat(f *float32) sql.NullFloat64 {
 	if f == nil {
 		return sql.NullFloat64{}
@@ -231,24 +246,18 @@ func fromUnix(s int64) time.Time {
 	return time.Unix(s, 0)
 }
 
-const watchColumns = `id, provider, manga_id, title, coalesce(library_manga, 0), enabled, coalesce(interval, 0), gaps,
+const watchColumns = `id, provider, manga_id, title, coalesce(library_manga, 0), enabled, schedule, gaps,
 	from_number, added, last_checked, last_gap_check, last_new, last_new_at, last_error, failures`
 
 func scanWatch(rows *sql.Rows) (Watch, error) {
 	var w Watch
-	var interval, added, checked, gapChecked, newAt int64
+	var added, checked, gapChecked, newAt int64
 	var from, lastNew sql.NullFloat64
-	err := rows.Scan(&w.ID, &w.Provider, &w.MangaID, &w.Title, &w.LibraryManga, &w.Enabled, &interval, &w.Gaps,
+	err := rows.Scan(&w.ID, &w.Provider, &w.MangaID, &w.Title, &w.LibraryManga, &w.Enabled, &w.Schedule, &w.Gaps,
 		&from, &added, &checked, &gapChecked, &lastNew, &newAt, &w.LastError, &w.Failures)
-	w.Interval = Duration(time.Duration(interval) * time.Second)
 	w.From, w.LastNew = floatPtr(from), floatPtr(lastNew)
 	w.Added, w.LastChecked, w.LastGapCheck, w.LastNewAt = fromUnix(added), fromUnix(checked), fromUnix(gapChecked), fromUnix(newAt)
 	return w, err
-}
-
-func nullInterval(d Duration) sql.NullInt64 {
-	s := int64(time.Duration(d) / time.Second)
-	return sql.NullInt64{Int64: s, Valid: s != 0}
 }
 
 // Add adds a watch, its ID and Added are set. A manga already watched is ErrWatchExists.
@@ -263,9 +272,9 @@ func (s Watches) Add(w Watch) (Watch, error) {
 	if exists != 0 {
 		return w, fmt.Errorf("add watch of %s %q: %w", w.Provider, w.MangaID, ErrWatchExists)
 	}
-	res, err := s.DB.Exec(`INSERT INTO watches (provider, manga_id, title, library_manga, enabled, interval, gaps, from_number, added)
+	res, err := s.DB.Exec(`INSERT INTO watches (provider, manga_id, title, library_manga, enabled, schedule, gaps, from_number, added)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, w.Provider, w.MangaID, w.Title, nullID(w.LibraryManga), w.Enabled,
-		nullInterval(w.Interval), w.Gaps, nullFloat(w.From), unix(w.Added))
+		w.Schedule, w.Gaps, nullFloat(w.From), unix(w.Added))
 	if err != nil {
 		return w, fmt.Errorf("add watch of %s %q: %w", w.Provider, w.MangaID, err)
 	}
@@ -317,9 +326,9 @@ func (s Watches) Remove(id int64) error {
 
 // Save writes every field of the watch but its provider, manga id and added time.
 func (s Watches) Save(w Watch) error {
-	res, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = ?, enabled = ?, interval = ?, gaps = ?,
+	res, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = ?, enabled = ?, schedule = ?, gaps = ?,
 	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?
-WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, nullInterval(w.Interval), w.Gaps,
+WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, w.Schedule, w.Gaps,
 		nullFloat(w.From), unix(w.LastChecked), unix(w.LastGapCheck), nullFloat(w.LastNew), unix(w.LastNewAt), w.LastError, w.Failures, w.ID)
 	if err != nil {
 		return fmt.Errorf("save watch %d: %w", w.ID, err)

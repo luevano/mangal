@@ -13,6 +13,7 @@ import (
 	"hash/fnv"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/luevano/libmangal"
@@ -24,6 +25,7 @@ import (
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
+	"github.com/luevano/mangal/v5/util/cron"
 )
 
 // Kinds of check runs.
@@ -67,6 +69,9 @@ type Watch struct {
 	LastDownloaded *float32 `json:"last_downloaded,omitempty"`
 	// NextCheck is when it's due, see Service.NextCheck.
 	NextCheck time.Time `json:"next_check"`
+	// NextGapCheck is when its gap filling is due, see Service.NextGapCheck; zero when it
+	// has none or watch.gap_schedule is off.
+	NextGapCheck time.Time `json:"next_gap_check,omitzero"`
 	// ProviderMissing is a provider that isn't installed: the checks skip it (without an
 	// error) until it is again.
 	ProviderMissing bool `json:"provider_missing,omitempty"`
@@ -98,12 +103,13 @@ func (w *Watch) fillBindings(bindings []storage.Binding) {
 
 // Options are the watch.* settings.
 type Options struct {
-	// Interval between checks of a watch without its own.
-	Interval time.Duration
-	// Jitter is up to how much later than its interval a watch is due.
+	// Schedule is when the watches without their own are due (watch.schedule), the
+	// zero Schedule is DefaultSchedule.
+	Schedule cron.Schedule
+	// Jitter is up to how long after a tick a provider's watches are due.
 	Jitter time.Duration
-	// GapInterval is how often gap filling runs on the watches that have it, 0 never.
-	GapInterval time.Duration
+	// GapSchedule is when gap filling is due on the watches that have it, zero never.
+	GapSchedule cron.Schedule
 	// Gaps is gap filling for new watches.
 	Gaps bool
 	// ParallelProviders is how many providers are checked at once.
@@ -119,6 +125,18 @@ type Options struct {
 	LockStale time.Duration
 }
 
+// DefaultSchedule is watch.schedule's default: every 4 hours on the hour.
+var DefaultSchedule = cron.MustParse(config.Watch.Schedule.Default)
+
+// ParseSchedule is a watch's schedule: empty for the default (the zero Schedule), else a
+// cron schedule (util/cron).
+func ParseSchedule(spec string) (cron.Schedule, error) {
+	if strings.TrimSpace(spec) == "" {
+		return cron.Schedule{}, nil
+	}
+	return cron.Parse(spec)
+}
+
 // ConfigOptions are the Options from the config.
 func ConfigOptions() Options {
 	duration := func(s string, def time.Duration) time.Duration {
@@ -128,11 +146,12 @@ func ConfigOptions() Options {
 		}
 		return d
 	}
+	schedule, _ := ParseSchedule(config.Watch.Schedule.Get())
+	gapSchedule, _ := ParseSchedule(config.Watch.GapSchedule.Get())
 	return Options{
-		// a 0 interval would check all the time
-		Interval:          max(time.Minute, duration(config.Watch.Interval.Get(), 4*time.Hour)),
+		Schedule:          schedule,
 		Jitter:            duration(config.Watch.Jitter.Get(), 0),
-		GapInterval:       duration(config.Watch.GapInterval.Get(), 0),
+		GapSchedule:       gapSchedule,
 		Gaps:              config.Watch.Gaps.Get(),
 		ParallelProviders: config.Watch.ParallelProviders.Get(),
 		Backoff:           config.Watch.Backoff.Get(),
@@ -233,12 +252,16 @@ type AddOptions struct {
 	From *float32
 	// Gaps is gap filling, nil for watch.gaps.
 	Gaps *bool
-	// Interval overrides watch.interval when not 0.
-	Interval time.Duration
+	// Schedule overrides watch.schedule when not empty (a cron schedule).
+	Schedule string
 }
 
 // Add watches a manga. A manga already watched is ErrExists.
 func (s *Service) Add(ctx context.Context, opts AddOptions) (Watch, error) {
+	if _, err := ParseSchedule(opts.Schedule); err != nil {
+		return Watch{}, err
+	}
+	opts.Schedule = strings.TrimSpace(opts.Schedule)
 	if opts.Offline {
 		return s.addOffline(opts)
 	}
@@ -266,7 +289,7 @@ func (s *Service) Add(ctx context.Context, opts AddOptions) (Watch, error) {
 		MangaID:  manga.Info().ID,
 		Title:    manga.Info().Title,
 		Enabled:  true,
-		Interval: storage.Duration(opts.Interval),
+		Schedule: opts.Schedule,
 		Gaps:     s.Options.Gaps,
 		From:     opts.From,
 		Added:    s.now(),
@@ -310,7 +333,7 @@ func (s *Service) addOffline(opts AddOptions) (Watch, error) {
 		Provider: opts.Provider,
 		MangaID:  id,
 		Title:    title,
-		Interval: storage.Duration(opts.Interval),
+		Schedule: opts.Schedule,
 		Gaps:     s.Options.Gaps,
 		From:     opts.From,
 		Added:    s.now(),
@@ -457,7 +480,7 @@ func (s *Service) bindAnilist(w storage.Watch, anilistID int) error {
 }
 
 func (s *Service) complete(w storage.Watch) (Watch, error) {
-	full := Watch{Watch: w, NextCheck: s.NextCheck(w)}
+	full := Watch{Watch: w, NextCheck: s.NextCheck(w), NextGapCheck: s.NextGapCheck(w)}
 	bindings, err := s.bindings().Get(w.Provider, w.MangaID)
 	if err != nil {
 		return Watch{}, err
@@ -512,8 +535,8 @@ func (s *Service) SetEnabled(ctx context.Context, id int64, enabled bool) (Watch
 
 // UpdateOptions are the settings of a watch to change, nil keeps them.
 type UpdateOptions struct {
-	// Interval overrides watch.interval, 0 goes back to it.
-	Interval *time.Duration
+	// Schedule overrides watch.schedule (a cron schedule), empty goes back to it.
+	Schedule *string
 	Gaps     *bool
 	// AnilistID binds an AniList manga (the default binding), 0 unbinds it.
 	AnilistID *int
@@ -523,6 +546,11 @@ type UpdateOptions struct {
 
 // Update changes the watch's settings.
 func (s *Service) Update(ctx context.Context, id int64, opts UpdateOptions) (Watch, error) {
+	if opts.Schedule != nil {
+		if _, err := ParseSchedule(*opts.Schedule); err != nil {
+			return Watch{}, err
+		}
+	}
 	if opts.AnilistID != nil {
 		w, err := s.Watches.Get(id)
 		if err != nil {
@@ -537,8 +565,8 @@ func (s *Service) Update(ctx context.Context, id int64, opts UpdateOptions) (Wat
 		}
 	}
 	return s.update(id, func(w *storage.Watch) {
-		if opts.Interval != nil {
-			w.Interval = storage.Duration(*opts.Interval)
+		if opts.Schedule != nil {
+			w.Schedule = strings.TrimSpace(*opts.Schedule)
 		}
 		if opts.Gaps != nil {
 			w.Gaps = *opts.Gaps
@@ -561,39 +589,75 @@ func (s *Service) update(id int64, change func(*storage.Watch)) (Watch, error) {
 	return s.complete(w)
 }
 
-// maxBackoff caps how many times its interval a failing watch waits (2^3).
+// maxBackoff caps how many ticks a failing watch skips (2^3 = it waits 8 ticks).
 const maxBackoff = 3
 
-// NextCheck is when the watch is due: right away if never checked, else its interval
-// (watch.interval if it has none) plus up to watch.jitter after the last check. After
-// watch.backoff failures in a row the interval doubles with each failure, up to 8 times.
+// Schedule is the watch's schedule: its own, else watch.schedule.
+func (s *Service) Schedule(w storage.Watch) cron.Schedule {
+	if w.Schedule != "" {
+		sched, err := cron.Parse(w.Schedule)
+		if err == nil {
+			return sched
+		}
+		s.warn(fmt.Errorf("watch %d: %w, using watch.schedule", w.ID, err))
+	}
+	if s.Options.Schedule.IsZero() {
+		return DefaultSchedule
+	}
+	return s.Options.Schedule
+}
+
+// NextCheck is when the watch is due: right away if never checked, else the first tick
+// of its schedule (watch.schedule if it has none) after the last check, plus the jitter
+// of its provider for that tick (watch.jitter). After watch.backoff failures in a row it
+// skips ticks: it waits 2, 4, then 8 ticks.
 func (s *Service) NextCheck(w storage.Watch) time.Time {
 	if w.LastChecked.IsZero() {
 		return w.Added
 	}
-	interval := time.Duration(w.Interval)
-	if interval <= 0 {
-		interval = s.Options.Interval
-	}
+	ticks := 1
 	if b := s.Options.Backoff; b > 0 && w.Failures >= b {
-		interval <<= min(w.Failures-b+1, maxBackoff)
+		ticks <<= min(w.Failures-b+1, maxBackoff)
 	}
-	return w.LastChecked.Add(interval + jitter(w, s.Options.Jitter))
+	sched := s.Schedule(w)
+	next := w.LastChecked
+	for range ticks {
+		next = sched.Next(next)
+	}
+	if next.IsZero() {
+		return next
+	}
+	return next.Add(jitter(w.Provider, next, s.Options.Jitter))
 }
 
-// jitter is the same for a watch until it's checked again.
-func jitter(w storage.Watch, max time.Duration) time.Duration {
+// jitter is the same for a provider's watches at a tick, so they're checked together.
+func jitter(provider string, tick time.Time, max time.Duration) time.Duration {
 	if max <= 0 {
 		return 0
 	}
 	h := fnv.New64a()
-	fmt.Fprintf(h, "%d/%d", w.ID, w.LastChecked.Unix())
+	fmt.Fprintf(h, "%s/%d", provider, tick.Unix())
 	return time.Duration(h.Sum64()%uint64(max/time.Second+1)) * time.Second
 }
 
-// GapsDue is true when the watch's gap filling is due (see watch.gap_interval).
+// NextGapCheck is when the watch's gap filling is due: right away if it never ran, else
+// the first tick of watch.gap_schedule after the last one (plus the jitter); zero when
+// the watch has no gap filling or watch.gap_schedule is off.
+func (s *Service) NextGapCheck(w storage.Watch) time.Time {
+	if !w.Gaps || s.Options.GapSchedule.IsZero() {
+		return time.Time{}
+	}
+	if w.LastGapCheck.IsZero() {
+		return w.Added
+	}
+	next := s.Options.GapSchedule.Next(w.LastGapCheck)
+	return next.Add(jitter(w.Provider, next, s.Options.Jitter))
+}
+
+// GapsDue is true when the watch's gap filling is due (see NextGapCheck).
 func (s *Service) GapsDue(w storage.Watch, now time.Time) bool {
-	return w.Gaps && s.Options.GapInterval > 0 && !now.Before(w.LastGapCheck.Add(s.Options.GapInterval))
+	next := s.NextGapCheck(w)
+	return !next.IsZero() && !next.After(now)
 }
 
 // Due are the enabled watches due at now, by next check.

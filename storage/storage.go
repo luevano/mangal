@@ -119,6 +119,7 @@ CREATE INDEX downloads_manga ON downloads (provider, manga_id)`),
 	sqlMigration(bindingsTable),
 	sqlMigration(lockPurpose),
 	sqlMigration(bindingsNoDefault),
+	migrateWatchSchedules,
 }
 
 // DB is an open SQLite database.

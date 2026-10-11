@@ -23,7 +23,7 @@ var summaries = map[string]string{
 	"providers":    "manga sources: filters, mirrors, FlareSolverr, MangaPlus",
 	"metadata":     "Kitsu and MyAnimeList, after Anilist",
 	"notification": "Discord notifications after downloads",
-	"watch":        "watched mangas: check intervals, gap filling, notifications",
+	"watch":        "watched mangas: check schedules, gap filling, notifications",
 	"serve":        "where mangal serve listens",
 	"tui":          "how the TUI looks and behaves",
 	"cache":        "how long searches, lists and mirrors are kept",

@@ -2,14 +2,18 @@ package serve
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cron"
 )
 
 type checkCall struct {
@@ -286,4 +290,101 @@ func TestSchedulerWake(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+// tickChecker checks its watches, their next checks worked out by a watch.Service.
+type tickChecker struct {
+	fakeChecker
+	svc    *watch.Service
+	stored []storage.Watch
+	// checks are "time ids kind" of each check
+	checks []string
+}
+
+func (f *tickChecker) List(context.Context) ([]watch.Watch, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var list []watch.Watch
+	for _, w := range f.stored {
+		list = append(list, watch.Watch{Watch: w, NextCheck: f.svc.NextCheck(w), NextGapCheck: f.svc.NextGapCheck(w)})
+	}
+	return list, nil
+}
+
+func (f *tickChecker) GapsDue(w storage.Watch, now time.Time) bool { return f.svc.GapsDue(w, now) }
+
+func (f *tickChecker) Check(ctx context.Context, ids []int64, opts watch.CheckOptions) (watch.Report, error) {
+	opts.OnRun(storage.CheckRun{ID: 1, Kind: opts.Kind})
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.checks = append(f.checks, fmt.Sprintf("%s %v %s", f.now.Format(time.TimeOnly), ids, opts.Kind))
+	for i, w := range f.stored {
+		if slices.Contains(ids, w.ID) {
+			// a scheduled check fills the gaps when they're due too (as watch.Service)
+			if opts.Gaps || f.svc.GapsDue(w, f.now) {
+				f.stored[i].LastGapCheck = f.now
+			}
+			f.stored[i].LastChecked = f.now
+		}
+	}
+	return watch.Report{CheckRun: storage.CheckRun{ID: 1, Kind: opts.Kind}}, nil
+}
+
+// TestSchedulerTicks: checks run on the schedule's ticks, whenever the server started; a
+// tick missed while it was down runs once at the start.
+func TestSchedulerTicks(t *testing.T) {
+	at := func(h, m, s int) time.Time { return time.Date(2026, 10, 11, h, m, s, 0, time.Local) }
+	f := &tickChecker{
+		svc: &watch.Service{Options: watch.Options{Schedule: cron.MustParse("*/2 * * * *"), GapSchedule: cron.MustParse("*/3 * * * *")}},
+		stored: []storage.Watch{
+			// last checked before the 10:00 tick, missed while down
+			{ID: 1, Provider: "p", Enabled: true, LastChecked: at(9, 58, 30)},
+			{ID: 2, Provider: "q", Enabled: true, LastChecked: at(10, 0, 40), Gaps: true, LastGapCheck: at(10, 0, 40)},
+		},
+	}
+	f.now = at(10, 1, 10)
+	s := newScheduler(func() checker { return f }, newLogger(io.Discard), &runs{})
+	s.Now = func() time.Time {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return f.now
+	}
+	var sleeps []time.Duration
+	for range 6 {
+		sleep := cycle(s)
+		sleeps = append(sleeps, sleep)
+		f.mu.Lock()
+		f.now = f.now.Add(sleep)
+		f.mu.Unlock()
+	}
+	slices.Sort(f.checks)
+	want := []string{
+		"10:01:10 [1] scheduled",
+		"10:02:00 [1] scheduled", "10:02:00 [2] scheduled",
+		"10:03:00 [2] gaps",
+		"10:04:00 [1] scheduled", "10:04:00 [2] scheduled",
+		"10:06:00 [1] scheduled", "10:06:00 [2] scheduled",
+	}
+	if !slices.Equal(f.checks, want) {
+		t.Errorf("checks:\n%s\nwant:\n%s", strings.Join(f.checks, "\n"), strings.Join(want, "\n"))
+	}
+	if want := []time.Duration{50 * time.Second, time.Minute, time.Minute, time.Minute, time.Minute, time.Minute}; !slices.Equal(sleeps, want) {
+		t.Errorf("sleeps %v, want %v", sleeps, want)
+	}
+}
+
+func TestOptionsFrom(t *testing.T) {
+	old := watch.Options{Schedule: cron.MustParse("@hourly")}
+	opts := optionsFrom(old, map[string]any{
+		config.Watch.Schedule.Key:    "*/2 * * * *",
+		config.Watch.GapSchedule.Key: "0 3 * * 0",
+		config.Watch.Jitter.Key:      "1m",
+	})
+	if opts.Schedule.String() != "*/2 * * * *" || opts.GapSchedule.String() != "0 3 * * 0" || opts.Jitter != time.Minute {
+		t.Errorf("options %+v", opts)
+	}
+	opts = optionsFrom(old, map[string]any{config.Watch.Schedule.Key: "nope", config.Watch.GapSchedule.Key: ""})
+	if opts.Schedule.String() != "@hourly" || !opts.GapSchedule.IsZero() {
+		t.Errorf("invalid schedule: %+v", opts)
+	}
 }

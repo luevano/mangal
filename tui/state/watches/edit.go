@@ -2,46 +2,20 @@ package watches
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/util"
 )
 
-// parseInterval is a check interval: empty or 0 for the default, a duration (12h) or
-// days (7d), at least a minute.
-func parseInterval(s string) (time.Duration, error) {
-	if s == "" || s == "0" {
-		return 0, nil
-	}
-	var d time.Duration
-	if days, ok := strings.CutSuffix(s, "d"); ok {
-		n, err := strconv.ParseFloat(days, 64)
-		if err != nil {
-			return 0, fmt.Errorf("%q isn't a number of days", s)
-		}
-		d = time.Duration(n * float64(24*time.Hour))
-	} else {
-		var err error
-		if d, err = time.ParseDuration(s); err != nil {
-			return 0, fmt.Errorf("%q isn't a duration (e.g. 12h, 7d)", s)
-		}
-	}
-	if d < time.Minute {
-		return 0, errors.New("at least 1m, or empty for watch.interval")
-	}
-	return d, nil
-}
-
-func validateInterval(s string) error {
-	_, err := parseInterval(s)
+func validateSchedule(s string) error {
+	_, err := watch.ParseSchedule(s)
 	return err
 }
 
@@ -62,16 +36,6 @@ func validateAnilistID(s string) error {
 	return err
 }
 
-func formatInterval(d time.Duration) string {
-	if d <= 0 {
-		return ""
-	}
-	if d%(24*time.Hour) == 0 {
-		return fmt.Sprintf("%dd", d/(24*time.Hour))
-	}
-	return d.String()
-}
-
 func formatAnilistID(id int) string {
 	if id == 0 {
 		return ""
@@ -86,7 +50,7 @@ type editState struct {
 	manager                 watch.Manager
 	w                       watch.Watch
 	form                    *form
-	interval, gaps, anilist *field
+	schedule, gaps, anilist *field
 }
 
 type savedMsg struct{ notify string }
@@ -95,11 +59,11 @@ func newEditState(m watch.Manager, w watch.Watch) *editState {
 	s := &editState{
 		manager:  m,
 		w:        w,
-		interval: textField("Interval", formatInterval(time.Duration(w.Interval)), "e.g. 12h or 7d, empty for watch.interval", validateInterval),
+		schedule: textField("Schedule", w.Schedule, fmt.Sprintf(`cron, e.g. "0 */6 * * *" or @daily; empty for the default (%s)`, config.Watch.Schedule.Get()), validateSchedule),
 		gaps:     toggleField("Gaps", w.Gaps, "also download the missing chapters below the last one"),
 		anilist:  textField("AniList id", formatAnilistID(w.AnilistID), "the metadata of its downloads, empty for none", validateAnilistID),
 	}
-	s.form = newForm(s.interval, s.gaps, s.anilist)
+	s.form = newForm(s.schedule, s.gaps, s.anilist)
 	return s
 }
 
@@ -117,8 +81,8 @@ func (s *editState) Init(ctx context.Context) tea.Cmd {
 // options are the changed settings, valid once the form is.
 func (s *editState) options() watch.UpdateOptions {
 	var opts watch.UpdateOptions
-	if d, _ := parseInterval(s.interval.value()); d != time.Duration(s.w.Interval) {
-		opts.Interval = &d
+	if sched := strings.TrimSpace(s.schedule.value()); sched != s.w.Schedule {
+		opts.Schedule = &sched
 	}
 	if s.gaps.on != s.w.Gaps {
 		gaps := s.gaps.on

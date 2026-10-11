@@ -236,7 +236,7 @@ func (s *listState) Subtitle() string {
 	case !s.status.NextCheck.IsZero() && !s.status.NextCheck.After(now):
 		parts = append(parts, "next check: due")
 	case !s.status.NextCheck.IsZero():
-		parts = append(parts, "next check in "+short(s.status.NextCheck.Sub(now)))
+		parts = append(parts, "next check "+watch.FormatNext(s.status.NextCheck, now))
 	}
 	return strings.Join(parts, " · ")
 }

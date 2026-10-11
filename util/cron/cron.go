@@ -82,7 +82,7 @@ func Parse(spec string) (Schedule, error) {
 	}
 	parts := strings.Fields(expanded)
 	if len(parts) != 5 {
-		return Schedule{}, fmt.Errorf("schedule %q: %d fields, a cron schedule has 5 (minute hour day-of-month month day-of-week)", spec, len(parts))
+		return Schedule{}, fmt.Errorf("schedule %q: a cron schedule has 5 fields (minute hour day-of-month month day-of-week), not %d", spec, len(parts))
 	}
 	s := Schedule{spec: spec}
 	sets := [5]*uint64{&s.minute, &s.hour, &s.dom, &s.month, &s.dow}

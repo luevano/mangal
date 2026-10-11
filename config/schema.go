@@ -170,9 +170,9 @@ type configData struct {
 }
 
 type configWatch struct {
-	Interval          *entry[string, string]
+	Schedule          *entry[string, string]
 	Jitter            *entry[string, string]
-	GapInterval       *entry[string, string]
+	GapSchedule       *entry[string, string]
 	Gaps              *entry[bool, bool]
 	ParallelProviders *entry[int64, int]
 	Backoff           *entry[int64, int]

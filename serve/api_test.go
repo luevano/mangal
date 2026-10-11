@@ -144,7 +144,7 @@ func newTestService(t *testing.T) (*watch.Service, *fakeSource) {
 	svc := &watch.Service{
 		Watches: storage.Watches{DB: data},
 		Library: storage.Library{DB: data},
-		Options: watch.Options{Interval: 4 * time.Hour, ParallelProviders: 2, Notify: watch.NotifyNone, LockStale: time.Minute},
+		Options: watch.Options{ParallelProviders: 2, Notify: watch.NotifyNone, LockStale: time.Minute},
 		Source: func(_ context.Context, id string) (watch.Source, error) {
 			if id != "fake" {
 				return nil, fmt.Errorf("provider with id %q not found", id)
@@ -216,8 +216,8 @@ func (s *testServer) call(t *testing.T, method, path string, body string, out an
 func TestAPIWatches(t *testing.T) {
 	s := newTestServer(t, "")
 	var w watch.Watch
-	if code := s.call(t, "POST", "/api/watches", `{"provider":"fake","query":"mid:opm","from":1,"interval":"2h"}`, &w); code != http.StatusCreated ||
-		w.ID == 0 || w.Title != "One-Punch Man" || time.Duration(w.Interval) != 2*time.Hour || w.LastDownloaded == nil || *w.LastDownloaded != 1 {
+	if code := s.call(t, "POST", "/api/watches", `{"provider":"fake","query":"mid:opm","from":1,"schedule":"0 */2 * * *"}`, &w); code != http.StatusCreated ||
+		w.ID == 0 || w.Title != "One-Punch Man" || w.Schedule != "0 */2 * * *" || w.LastDownloaded == nil || *w.LastDownloaded != 1 {
 		t.Fatalf("add: %d %+v", code, w)
 	}
 	var e watch.ErrorResponse
@@ -248,6 +248,12 @@ func TestAPIWatches(t *testing.T) {
 	}
 	if code := s.call(t, "PATCH", path, `{"enabled":false,"gaps":true}`, &w); code != http.StatusOK || w.Enabled || !w.Gaps {
 		t.Errorf("patch: %d %+v", code, w)
+	}
+	if code := s.call(t, "PATCH", path, `{"schedule":"every day"}`, &e); code != http.StatusBadRequest {
+		t.Errorf("patch with an invalid schedule: %d %+v", code, e)
+	}
+	if code := s.call(t, "POST", "/api/watches", `{"provider":"fake","manga_id":"dan","schedule":"* * *"}`, &e); code != http.StatusBadRequest {
+		t.Errorf("add with an invalid schedule: %d %+v", code, e)
 	}
 	if code := s.call(t, "PATCH", path, `{}`, &e); code != http.StatusBadRequest {
 		t.Errorf("empty patch: %d", code)
@@ -382,8 +388,8 @@ func TestRemote(t *testing.T) {
 	r.PollInterval = 10 * time.Millisecond
 
 	from := float32(1)
-	w, err := r.Add(ctx, watch.AddOptions{Provider: "fake", Query: "One-Punch Man", From: &from, Interval: time.Hour})
-	if err != nil || w.MangaID != "opm" || time.Duration(w.Interval) != time.Hour {
+	w, err := r.Add(ctx, watch.AddOptions{Provider: "fake", Query: "One-Punch Man", From: &from, Schedule: "@hourly"})
+	if err != nil || w.MangaID != "opm" || w.Schedule != "@hourly" {
 		t.Fatalf("add: %+v, %v", w, err)
 	}
 	if _, err := r.Add(ctx, watch.AddOptions{Provider: "fake", MangaID: "opm"}); !errors.Is(err, watch.ErrExists) {
@@ -401,9 +407,9 @@ func TestRemote(t *testing.T) {
 	if w, err = r.SetEnabled(ctx, w.ID, true); err != nil || !w.Enabled {
 		t.Errorf("resume: %+v, %v", w, err)
 	}
-	interval, gaps := time.Duration(0), true
+	schedule, gaps := "", true
 	anilistID := 21087
-	if w, err = r.Update(ctx, w.ID, watch.UpdateOptions{Interval: &interval, Gaps: &gaps, AnilistID: &anilistID}); err != nil || w.Interval != 0 || !w.Gaps ||
+	if w, err = r.Update(ctx, w.ID, watch.UpdateOptions{Schedule: &schedule, Gaps: &gaps, AnilistID: &anilistID}); err != nil || w.Schedule != "" || !w.Gaps ||
 		w.AnilistID != 21087 || len(w.Bindings) != 1 {
 		t.Errorf("update: %+v, %v", w, err)
 	}

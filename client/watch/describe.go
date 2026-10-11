@@ -3,6 +3,7 @@ package watch
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/luevano/mangal/v5/storage"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -57,4 +58,52 @@ func formatNumber(n *float32) string {
 		return "-"
 	}
 	return stringutil.FormatFloa32(*n)
+}
+
+// FormatNext is when a check is due, for people: "due" once it's past, else how long
+// until then and the wall-clock time (in now's location): "in 2h (16:00)", "in 9h
+// (tomorrow 04:00)", "in 3d (Wed 04:00)", "in 12d (Oct 23 04:00)".
+func FormatNext(next, now time.Time) string {
+	if next.IsZero() {
+		return "never"
+	}
+	if !next.After(now) {
+		return "due"
+	}
+	return fmt.Sprintf("in %s (%s)", ShortDuration(next.Sub(now)), WallClock(next, now))
+}
+
+// WallClock is t as a time of day, with the day when it isn't now's: 16:00, tomorrow
+// 04:00, Wed 04:00 (within a week), Oct 23 04:00, Jan 2 2027 04:00 (another year).
+func WallClock(t, now time.Time) string {
+	t = t.In(now.Location())
+	clock := t.Format("15:04")
+	y, m, d := t.Date()
+	ny, nm, nd := now.Date()
+	today := time.Date(ny, nm, nd, 0, 0, 0, 0, now.Location())
+	days := int(time.Date(y, m, d, 0, 0, 0, 0, now.Location()).Sub(today).Round(time.Hour) / (24 * time.Hour))
+	switch {
+	case days == 0:
+		return clock
+	case days == 1:
+		return "tomorrow " + clock
+	case days > 1 && days < 7:
+		return t.Format("Mon ") + clock
+	case y == ny:
+		return t.Format("Jan 2 ") + clock
+	}
+	return t.Format("Jan 2 2006 ") + clock
+}
+
+// ShortDuration is d in its largest unit, rounded down: 40s, 45m, 2h, 3d (from 48h).
+func ShortDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d/time.Second))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d/time.Minute))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%dh", int(d/time.Hour))
+	}
+	return fmt.Sprintf("%dd", int(d/(24*time.Hour)))
 }

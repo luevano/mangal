@@ -21,6 +21,7 @@ import (
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cron"
 	"github.com/luevano/mangal/v5/web"
 )
 
@@ -242,7 +243,7 @@ func isLoopback(addr net.Addr) bool {
 
 // watchKeys are re-read from the config file at each cycle.
 var watchKeys = []string{
-	config.Watch.Interval.Key, config.Watch.Jitter.Key, config.Watch.GapInterval.Key, config.Watch.Gaps.Key,
+	config.Watch.Schedule.Key, config.Watch.Jitter.Key, config.Watch.GapSchedule.Key, config.Watch.Gaps.Key,
 	config.Watch.ParallelProviders.Key, config.Watch.Backoff.Key, config.Watch.Notify.Key,
 }
 
@@ -315,9 +316,20 @@ func optionsFrom(opts watch.Options, values map[string]any) watch.Options {
 		}
 		return def
 	}
-	opts.Interval = max(time.Minute, duration(config.Watch.Interval.Key, opts.Interval))
+	schedule := func(key string, def cron.Schedule) cron.Schedule {
+		s, ok := values[key].(string)
+		if !ok {
+			return def
+		}
+		sched, err := watch.ParseSchedule(s)
+		if err != nil {
+			return def
+		}
+		return sched
+	}
+	opts.Schedule = schedule(config.Watch.Schedule.Key, opts.Schedule)
 	opts.Jitter = duration(config.Watch.Jitter.Key, opts.Jitter)
-	opts.GapInterval = duration(config.Watch.GapInterval.Key, opts.GapInterval)
+	opts.GapSchedule = schedule(config.Watch.GapSchedule.Key, opts.GapSchedule)
 	if b, ok := values[config.Watch.Gaps.Key].(bool); ok {
 		opts.Gaps = b
 	}
