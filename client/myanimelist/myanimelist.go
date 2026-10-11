@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -293,4 +294,20 @@ func ResetLogin() {
 	loginSem <- struct{}{}
 	defer func() { <-loginSem }()
 	loginTried = false
+}
+
+// SetClient saves the MyAnimeList API client, an empty id removes it. The next MyAnimeList
+// uses it, and the saved login is tried again with it.
+func SetClient(id, secret string) error {
+	id, secret = strings.Join(strings.Fields(id), ""), strings.Join(strings.Fields(secret), "")
+	if err := cache.SetMyAnimeListClient(id, secret); err != nil {
+		return fmt.Errorf("save the myanimelist client: %w", err)
+	}
+	ResetLogin()
+	return nil
+}
+
+// Client is the saved MyAnimeList API client, an empty id if none.
+func Client() (id, secret string, err error) {
+	return cache.MyAnimeListClient()
 }

@@ -20,6 +20,11 @@ func newKeyMap() keyMap {
 		new:    util.Bind("new login", "n"),
 		forget: util.Bind("forget", "ctrl+d"),
 		back:   util.Bind("saved logins", "esc"),
+		client: util.Bind("API client", "c"),
+		save:   util.Bind("save", "enter"),
+		next:   util.Bind("next", "tab", "down"),
+		prev:   util.Bind("previous", "shift+tab", "up"),
+		cancel: util.Bind("cancel", "esc"),
 	}
 }
 
@@ -29,15 +34,20 @@ type keyMap struct {
 	logout,
 	new,
 	forget,
-	back key.Binding
+	back,
+	client,
+	save,
+	next,
+	prev,
+	cancel key.Binding
 }
 
 // ShortHelp implements help.KeyMap.
 func (k *keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.login, k.logout, k.new, k.forget, k.back}
+	return []key.Binding{k.save, k.next, k.cancel, k.login, k.logout, k.new, k.forget, k.client, k.back}
 }
 
 // FullHelp implements help.KeyMap.
 func (k *keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.login, k.logout}, {k.new, k.forget}, {k.back}}
+	return [][]key.Binding{{k.save, k.next, k.prev, k.cancel}, {k.login, k.logout}, {k.new, k.forget}, {k.client, k.back}}
 }
