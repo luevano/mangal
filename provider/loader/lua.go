@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"strings"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/luaprovider"
@@ -39,7 +40,8 @@ func getLoaderBundles(bundleID, dir string) (loaders []libmangal.ProviderLoader,
 	}
 
 	for _, dirEntry := range dirEntries {
-		if !dirEntry.IsDir() {
+		// dot dirs are hidden (e.g. a provider being installed)
+		if !dirEntry.IsDir() || strings.HasPrefix(dirEntry.Name(), ".") {
 			continue
 		}
 

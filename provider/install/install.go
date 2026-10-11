@@ -13,7 +13,6 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/luaprovider"
-	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/info"
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/pelletier/go-toml"
@@ -21,13 +20,23 @@ import (
 	"github.com/spf13/afero"
 )
 
+// installed are the installed providers, swapped in tests.
+var installed = manager.Loaders
+
 // Add clones the provider repository at url into dir (the providers dir), in a dir named
 // after the provider id. The git progress goes to progress.
-func Add(ctx context.Context, dir, url string, progress io.Writer) (info.Info, error) {
-	tempDir, err := os.MkdirTemp(path.TempDir(), "")
+func Add(ctx context.Context, dir, url string, progress io.Writer) (_ info.Info, err error) {
+	// cloned next to the providers, so the rename doesn't cross filesystems; dot dirs
+	// aren't loaded as providers
+	tempDir, err := os.MkdirTemp(dir, ".add-")
 	if err != nil {
 		return info.Info{}, err
 	}
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(tempDir)
+		}
+	}()
 
 	_, err = git.PlainCloneContext(ctx, tempDir, false, &git.CloneOptions{
 		URL:      url,
@@ -37,15 +46,9 @@ func Add(ctx context.Context, dir, url string, progress io.Writer) (info.Info, e
 		return info.Info{}, fmt.Errorf("clone %s: %w", url, err)
 	}
 
-	infoFile, err := os.Open(filepath.Join(tempDir, info.Filename))
+	providerInfo, err := readInfo(tempDir)
 	if err != nil {
 		return info.Info{}, err
-	}
-	defer infoFile.Close()
-
-	providerInfo, err := info.New(infoFile)
-	if err != nil {
-		return info.Info{}, fmt.Errorf("read %s: %w", info.Filename, err)
 	}
 
 	id := providerInfo.ID
@@ -53,7 +56,7 @@ func Add(ctx context.Context, dir, url string, progress io.Writer) (info.Info, e
 		return info.Info{}, fmt.Errorf("%s has no id", info.Filename)
 	}
 
-	loaders, err := manager.Loaders()
+	loaders, err := installed()
 	if err != nil {
 		return info.Info{}, err
 	}
@@ -67,6 +70,20 @@ func Add(ctx context.Context, dir, url string, progress io.Writer) (info.Info, e
 
 	if err := os.Rename(tempDir, filepath.Join(dir, id)); err != nil {
 		return info.Info{}, err
+	}
+	return providerInfo, nil
+}
+
+func readInfo(dir string) (info.Info, error) {
+	file, err := os.Open(filepath.Join(dir, info.Filename))
+	if err != nil {
+		return info.Info{}, err
+	}
+	defer file.Close()
+
+	providerInfo, err := info.New(file)
+	if err != nil {
+		return info.Info{}, fmt.Errorf("read %s: %w", info.Filename, err)
 	}
 	return providerInfo, nil
 }
