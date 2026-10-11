@@ -446,7 +446,7 @@ func initConfig() config {
 			Mirrors: reg(entry[map[string]any, map[string]string]{
 				Key:         "providers.mirrors",
 				Default:     map[string]string{},
-				Description: "Preferred website by provider id, its website or one of its mirrors (see mangal providers), e.g. mango-mangakakalot = 'https://www.mangakakalove.com/'. When it's down the others are tried.",
+				Description: "Preferred website by provider id, its website or one of its mirrors (see mangal providers), e.g. mango-manganato = 'https://www.nelomanga.net/'. When it's down the others are tried.",
 				Unmarshal: func(raw map[string]any) (map[string]string, error) {
 					mirrors := make(map[string]string, len(raw))
 					for id, v := range raw {
