@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -102,5 +103,31 @@ func TestClearCache(t *testing.T) {
 	}
 	if n, err := ClearCache(db, ""); err != nil || n != 1 {
 		t.Errorf("cleared %d, %v, want the remaining 1", n, err)
+	}
+}
+
+func TestDataIsPrivate(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "mangal")
+	path := filepath.Join(dir, FilenameData)
+	// an existing database readable by anyone
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db, err := OpenData(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = KV{DB: db, Table: TableAuthTokens}.Set("x", 1)
+	for p, want := range map[string]os.FileMode{dir: 0o700, path: 0o600, path + "-wal": 0o600} {
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Errorf("%s: %o, want %o", filepath.Base(p), got, want)
+		}
 	}
 }

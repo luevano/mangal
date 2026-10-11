@@ -172,9 +172,35 @@ func OpenCache(path string) (*DB, error) {
 	return db, nil
 }
 
-// OpenData opens the data database.
+// OpenData opens the data database, only readable by the user: it has login tokens.
 func OpenData(path string) (*DB, error) {
+	if err := makePrivate(path); err != nil {
+		return nil, err
+	}
 	return Open(path, dataMigrations)
+}
+
+// makePrivate makes the database (and its directory) only accessible by the user,
+// SQLite creates the -wal and -shm files with the database's permissions.
+func makePrivate(path string) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	_ = f.Close()
+	for _, file := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(file, 0o600); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // ClearCache deletes the cache entries of a provider (or metadata provider) id, or all of
