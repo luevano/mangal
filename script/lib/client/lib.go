@@ -4,6 +4,7 @@ import (
 	luadoc "github.com/luevano/gopher-luadoc"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/metadata"
 	mangalclient "github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/script/lib/util"
@@ -94,11 +95,58 @@ func Lib(client *libmangal.Client) *luadoc.Lib {
 	classDownloadedChapter := &luadoc.Class{
 		Name:        downloadedChapterTypeName,
 		Description: "Downloaded chapter data",
+		Methods: []*luadoc.Method{
+			{
+				Name:        "info",
+				Description: "What was downloaded and where",
+				Value:       downloadedChapterInfo,
+				Returns: []*luadoc.Param{
+					{
+						Name: "info",
+						Type: luadoc.TableLiteral(
+							"number", luadoc.Number,
+							"title", luadoc.String,
+							"path", luadoc.String,
+							"directory", luadoc.String,
+							"filename", luadoc.String,
+							"pages", luadoc.Number,
+							"skipped", luadoc.String,
+							"status", luadoc.String,
+						),
+						Description: "pages is 0 and skipped says why when the chapter wasn't downloaded",
+					},
+				},
+			},
+		},
 	}
 
 	classPage := &luadoc.Class{
 		Name:        pageTypeName,
 		Description: "Single page of the chapter",
+		Methods: []*luadoc.Method{
+			{
+				Name:        "extension",
+				Description: "Image extension of the page, starting with a dot. For example: .jpeg .png",
+				Value:       pageExtension,
+				Returns: []*luadoc.Param{
+					{
+						Name: "extension",
+						Type: luadoc.String,
+					},
+				},
+			},
+			{
+				Name:        "chapter",
+				Description: "Chapter of the page",
+				Value:       pageChapter,
+				Returns: []*luadoc.Param{
+					{
+						Name: "chapter",
+						Type: chapterTypeName,
+					},
+				},
+			},
+		},
 	}
 
 	classPageWithImage := &luadoc.Class{
@@ -139,7 +187,9 @@ func Lib(client *libmangal.Client) *luadoc.Lib {
 			classManga,
 			classVolume,
 			classChapter,
+			classPage,
 			classPageWithImage,
+			classDownloadedChapter,
 		},
 		Funcs: []*luadoc.Func{
 			{
@@ -400,10 +450,31 @@ func pageImage(state *lua.LState) int {
 }
 
 func pageExtension(state *lua.LState) int {
-	page := util.Check[mangadata.PageWithImage](state, 1)
-	extension := page.Extension()
+	page := util.Check[mangadata.Page](state, 1)
+	state.Push(lua.LString(page.Extension()))
+	return 1
+}
 
-	state.Push(lua.LString(extension))
+func pageChapter(state *lua.LState) int {
+	page := util.Check[mangadata.Page](state, 1)
+	util.Push(state, page.Chapter(), chapterTypeName)
+	return 1
+}
+
+func downloadedChapterInfo(state *lua.LState) int {
+	down := util.Check[*metadata.DownloadedChapter](state, 1)
+
+	table := state.NewTable()
+	table.RawSetString("number", lua.LNumber(down.Number))
+	table.RawSetString("title", lua.LString(down.Title))
+	table.RawSetString("path", lua.LString(down.Path()))
+	table.RawSetString("directory", lua.LString(down.Directory))
+	table.RawSetString("filename", lua.LString(down.Filename))
+	table.RawSetString("pages", lua.LNumber(down.Pages))
+	table.RawSetString("skipped", lua.LString(down.Skipped))
+	table.RawSetString("status", lua.LString(down.ChapterStatus))
+
+	state.Push(table)
 	return 1
 }
 
