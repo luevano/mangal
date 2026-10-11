@@ -5,7 +5,6 @@ import (
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/manager"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
@@ -39,37 +38,23 @@ Only lists what would change unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		oldIDs, err := storage.FindOldIDs(cacheDB, dataDB, loaders)
+		migration, err := library.PlanMigration(afs.Afero, cacheDB, dataDB, path.DownloadsDir(), config.Download.Provider.CreateDir.Get(), loaders)
 		if err != nil {
 			return err
 		}
-		markers, err := library.OldMarkers(afs.Afero, path.DownloadsDir(), config.Download.Provider.CreateDir.Get(), loaders)
-		if err != nil {
-			return err
-		}
-		if len(oldIDs) == 0 && len(markers) == 0 {
+		if migration.Empty() {
 			cmd.Println("nothing to migrate")
 			return nil
 		}
-
-		for _, id := range oldIDs {
-			cmd.Printf("%s -> %s (%s): %d library mangas, %d downloads, %d cache entries (dropped)\n", id.Old, id.New, id.Name, id.Sources, id.Downloads, id.Cache)
-		}
-		for _, marker := range markers {
-			cmd.Printf("%s: %s -> %s\n", marker.Dir, marker.Old, marker.New)
+		for _, line := range migration.Lines() {
+			cmd.Println(line)
 		}
 		if !migrateArgs.Apply {
 			cmd.Println("run with --apply to migrate")
 			return nil
 		}
-
-		if err := storage.MigrateOldIDs(cacheDB, dataDB, oldIDs); err != nil {
+		if err := migration.Apply(afs.Afero, cacheDB, dataDB); err != nil {
 			return err
-		}
-		for _, marker := range markers {
-			if err := library.UpdateMarker(afs.Afero, marker); err != nil {
-				return err
-			}
 		}
 		cmd.Println("migrated")
 		return nil

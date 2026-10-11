@@ -13,6 +13,7 @@ func newKeyMap() keyMap {
 		confirm:  util.Bind("providers", "enter"),
 		library:  util.Bind("library", "l"),
 		accounts: util.Bind("accounts", "a"),
+		migrate:  util.Bind("migrate", "M"),
 	}
 }
 
@@ -20,7 +21,8 @@ func newKeyMap() keyMap {
 type keyMap struct {
 	confirm,
 	library,
-	accounts key.Binding
+	accounts,
+	migrate key.Binding
 }
 
 // ShortHelp implements help.KeyMap.
@@ -29,6 +31,7 @@ func (k keyMap) ShortHelp() []key.Binding {
 		k.confirm,
 		k.library,
 		k.accounts,
+		k.migrate,
 	}
 }
 

@@ -76,7 +76,7 @@ func OldIDsNotice(loaders []libmangal.ProviderLoader) (short, long string, err e
 	short = fmt.Sprintf("data under old provider ids (%s), run %q to update it", strings.Join(renames, ", "), "mangal migrate")
 	long = "Some data still uses old provider ids:\n\n" + strings.Join(details, "\n") + `
 
-Run "mangal migrate" to see what would change and "mangal migrate --apply" to do it:
+Press M on the home screen (or run "mangal migrate") to see what would change and do it:
 the library entries, downloads and .libmangal.json files move to the new ids and the old
 cache is dropped (it rebuilds). Folders aren't renamed or moved, "mangal library rename"
 does that. Until then everything keeps working through the old ids.`
