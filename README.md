@@ -158,7 +158,8 @@ mangal library scan                        # check against the files: moved, rem
 mangal library scan --check                # also check the guessed metadata ids of folders without a .libmangal.json
 mangal library downloads [provider]        # the downloaded chapters
 mangal library merge <keep> <other> --apply  # one manga in two directories, duplicates go to the trash
-mangal library move <id> <provider> [query|mid:id] --apply  # switch a manga to another provider (folder, watch and bindings follow)
+mangal library move <id> <provider> [query|mid:id] --apply  # switch a manga to another provider (folder, watch and bindings follow; names stay)
+mangal library move <id> <provider> --full --apply          # also adopt the new provider's title and the folder name it gives
 mangal library trash [empty]               # see or empty the trash
 ```
 
