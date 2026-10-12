@@ -197,7 +197,7 @@ func newListState(connect connector) *listState {
 			details:       util.Bind("details", "enter"),
 			check:         util.Bind("check now", "c"),
 			checkDue:      util.Bind("check due", "C"),
-			checkProvider: util.Bind("check its provider", "alt+c"),
+			checkProvider: base.KeyCheckProvider,
 			pause:         base.KeyPause,
 			pauseProvider: util.Bind("pause/resume its provider", "P"),
 			delete:        util.Bind("stop watching", "x"),

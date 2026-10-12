@@ -45,7 +45,7 @@ func newHistoryState(m watch.Manager, provider string) *historyState {
 		next:     base.KeyNextProvider,
 		refresh:  base.KeyRefresh,
 		library:  base.KeyLibraryManga,
-		check:    util.Bind("check the provider", "c"),
+		check:    base.KeyCheckProvider,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
 	return s

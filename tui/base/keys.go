@@ -34,6 +34,7 @@ var (
 	KeyPause           = util.Bind("pause/resume", "p")
 	KeyEdit            = util.Bind("edit", "e")
 	KeyRefresh         = util.Bind("refresh", "r")
+	KeyCheckProvider   = util.Bind("check provider", "alt+c")
 	KeyNextProvider    = util.Bind("next provider", "tab")
 	KeyScan            = util.Bind("scan", "s")
 	KeyRemove          = util.Bind("remove", "x")
@@ -45,7 +46,7 @@ func sharedKeys() (old, newer []key.Binding) {
 	return []key.Binding{KeyInfo, KeyMetadata, KeyBindings, KeySearch, KeyLogIn, KeyLogOut, KeyNewLogin, KeyForget},
 		[]key.Binding{
 			KeyWatch, KeyItsWatch, KeyLibraryManga, KeyProviderHistory, KeyLiveLog, KeyRelink, KeyPause, KeyEdit,
-			KeyRefresh, KeyNextProvider, KeyScan, KeyRemove, KeyUndo,
+			KeyRefresh, KeyCheckProvider, KeyNextProvider, KeyScan, KeyRemove, KeyUndo,
 		}
 }
 
