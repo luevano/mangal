@@ -399,57 +399,7 @@ func (s *Service) installed() func(string) bool {
 
 // find is the manga AddOptions name.
 func (s *Service) find(ctx context.Context, src Source, opts AddOptions) (mangadata.Manga, error) {
-	id := opts.MangaID
-	if id == "" {
-		id, _ = selector.IDQuery(opts.Query)
-	}
-	if id != "" {
-		manga, found, err := src.MangaByID(ctx, id)
-		switch {
-		case errors.Is(err, libmangal.ErrMangaByIDUnsupported) && opts.Query != "":
-			// mangoprovider's searches take "mid:" queries too
-			return s.pick(ctx, src, opts.Query, "id", id)
-		case errors.Is(err, libmangal.ErrMangaByIDUnsupported):
-			return nil, fmt.Errorf("%s can't get a manga by id, add it with a title query", src.Info().ID)
-		case err != nil:
-			return nil, err
-		case !found:
-			return nil, fmt.Errorf("no manga with id %q in %s", id, src.Info().ID)
-		}
-		return manga, nil
-	}
-	if opts.Query == "" {
-		return nil, errors.New("no manga id or query")
-	}
-	sel := opts.Selector
-	if sel == "" {
-		sel = "exact"
-	}
-	return s.pick(ctx, src, opts.Query, sel, "")
-}
-
-// pick searches the query and picks one manga with the selector (with an id, it must be
-// that manga).
-func (s *Service) pick(ctx context.Context, src Source, query, sel, id string) (mangadata.Manga, error) {
-	mangas, err := src.SearchMangas(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("search %q: %w", query, err)
-	}
-	if len(mangas) == 0 {
-		return nil, fmt.Errorf("no mangas found in %s with %q", src.Info().ID, query)
-	}
-	indexes, err := selector.Mangas(sel, query, mangas)
-	if err != nil {
-		return nil, err
-	}
-	if len(indexes) != 1 {
-		return nil, fmt.Errorf("manga selector %q picks %d mangas, it needs to pick 1", sel, len(indexes))
-	}
-	manga := mangas[indexes[0]]
-	if id != "" && manga.Info().ID != id {
-		return nil, fmt.Errorf("no manga with id %q in %s", id, src.Info().ID)
-	}
-	return manga, nil
+	return selector.Find(ctx, src, opts.MangaID, opts.Query, opts.Selector)
 }
 
 // List lists every watch, by id.
