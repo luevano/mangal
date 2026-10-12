@@ -19,7 +19,7 @@ var libraryBindArgs = struct {
 	Anilist, Kitsu, MyAnimeList string
 	Remove                      []string
 	Rename, Watches             bool
-	Backups, Yes                bool
+	Backups, Yes, Apply         bool
 }{}
 
 func init() {
@@ -32,7 +32,8 @@ func init() {
 	f.BoolVar(&libraryBindArgs.Rename, "rename", false, "Also rename the folder to the name the template gives with the links")
 	f.BoolVar(&libraryBindArgs.Watches, "watches", false, "Also bind the manga's watches (of other provider mangas) to the links")
 	f.BoolVar(&libraryBindArgs.Backups, "backups", false, "Fill the missing Kitsu and MyAnimeList links from AniList (all mangas without an id)")
-	f.BoolVarP(&libraryBindArgs.Yes, "yes", "y", false, "With --backups, set them without asking (ids that differ are still only replaced when asked)")
+	f.BoolVarP(&libraryBindArgs.Yes, "yes", "y", false, "With --backups --apply, set them without asking (ids that differ are still only replaced when asked)")
+	f.BoolVar(&libraryBindArgs.Apply, "apply", false, "Link (rename, bind, fill), instead of only listing what would happen")
 }
 
 var libraryBindCmd = &cobra.Command{
@@ -49,17 +50,20 @@ What a link implies is never done silently: the folder name the template gives w
 new AniList id (--rename does it), a watch of the manga on another provider bound to
 another id (--watches binds it), another library manga with the id (merge them).
 
+Only lists what would happen (the ids are checked) unless --apply is set.
+
 --backups fills the Kitsu and MyAnimeList links of the mangas linked to AniList (the given
 one, else all): MyAnimeList from AniList (batched), Kitsu from the links of a MangaDex
 source, else from Kitsu's own AniList mappings (batched; when both exist and disagree,
 neither is set and it's listed to check). A link that
-differs is only replaced when you say so. Every change can be undone ("mangal library
-undo").`,
+differs is only replaced when you say so (with --apply). Every change can be undone
+("mangal library undo").`,
 	Example: `  mangal library bind 12
   mangal library bind 12 --anilist 74347
-  mangal library bind 12 --anilist 74347 --rename --watches
-  mangal library bind 12 --remove kitsu
-  mangal library bind --backups`,
+  mangal library bind 12 --anilist 74347 --apply
+  mangal library bind 12 --anilist 74347 --rename --watches --apply
+  mangal library bind 12 --remove kitsu --apply
+  mangal library bind --backups --apply`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		st := newStatus(cmd)
@@ -73,6 +77,9 @@ undo").`,
 		links, err := libraryBindLinks(cmd)
 		if err != nil {
 			return err
+		}
+		if libraryBindArgs.Yes && !libraryBindArgs.Backups {
+			return errors.New("--yes goes with --backups")
 		}
 		if len(args) == 0 {
 			if !libraryBindArgs.Backups || len(links) != 0 || libraryBindArgs.Rename || libraryBindArgs.Watches {
@@ -98,6 +105,9 @@ undo").`,
 
 		if len(links) == 0 && !libraryBindArgs.Rename && !libraryBindArgs.Watches {
 			if !libraryBindArgs.Backups {
+				if libraryBindArgs.Apply {
+					return errors.New("nothing to apply: give links (--anilist, --kitsu, --mal, --remove), --rename, --watches or --backups")
+				}
 				return printLinks(cmd, linker, manga)
 			}
 			return libraryBackups(cmd, st, linker, []storage.Manga{manga})
@@ -132,7 +142,19 @@ undo").`,
 		opts := library.LinkOptions{Rename: libraryBindArgs.Rename, Watches: libraryBindArgs.Watches}
 		renames := opts.Rename && plan.Rename != nil && plan.Rename.Skip == ""
 		watches := opts.Watches && len(plan.Watches) != 0
-		if len(plan.Changes) != 0 || renames || watches {
+		todo := len(plan.Changes) != 0 || renames || watches
+		if todo && !libraryBindArgs.Apply {
+			if len(plan.Changes) != 0 {
+				cmd.Println("would link")
+			}
+			if renames {
+				cmd.Printf("would rename to %s\n", filepath.Base(plan.Rename.To))
+			}
+			if watches {
+				cmd.Printf("would bind %d watches\n", len(plan.Watches))
+			}
+		}
+		if todo && libraryBindArgs.Apply {
 			summary := fmt.Sprintf("link %d %q", manga.ID, manga.Title)
 			snapshot, err := client.Operation("link", summary, func(j library.Journal) error {
 				linker.Journal = j
@@ -163,6 +185,9 @@ undo").`,
 		}
 		for _, line := range left.ImpliedLines(map[string]string{"rename": "--rename", "watches": "--watches"}) {
 			cmd.Println(line)
+		}
+		if todo && !libraryBindArgs.Apply {
+			cmd.Println("run with --apply to link")
 		}
 		if libraryBindArgs.Backups {
 			if manga, ok, err = linker.Library.MangaByID(manga.ID); err != nil || !ok {
@@ -257,7 +282,7 @@ func libraryBackups(cmd *cobra.Command, st *status, linker library.Linker, manga
 		}
 	}
 	replace := map[int64]bool{}
-	if conflicts != 0 {
+	if conflicts != 0 && libraryBindArgs.Apply {
 		for _, b := range backups {
 			for _, c := range b.Conflicts {
 				src, _ := client.MetadataSourceOf(c.Code)
@@ -275,6 +300,8 @@ func libraryBackups(cmd *cobra.Command, st *status, linker library.Linker, manga
 	}
 	switch {
 	case todo == 0:
+	case !libraryBindArgs.Apply:
+		cmd.Printf("would set the links of %d mangas\n", todo)
 	case libraryBindArgs.Yes || confirm(cmd, fmt.Sprintf("Set the links of %d mangas?", todo)):
 		snapshot, err := client.Operation("link", fmt.Sprintf("backup links of %d mangas", todo), func(j library.Journal) error {
 			linker.Journal = j
@@ -304,5 +331,8 @@ func libraryBackups(cmd *cobra.Command, st *status, linker library.Linker, manga
 		cmd.Println("nothing set")
 	}
 	cmd.Println(finder.Summary(backups))
+	if todo != 0 && !libraryBindArgs.Apply {
+		cmd.Println("run with --apply to set them")
+	}
 	return nil
 }

@@ -165,8 +165,8 @@ mangal library downloads [provider]        # the downloaded chapters
 mangal library merge <keep> <other> --apply  # one manga in two directories, duplicates go to the trash
 mangal library move <id> <provider> [query|mid:id] --apply  # switch a manga to another provider (folder, watch and bindings follow; names stay)
 mangal library move <id> <provider> --full --apply          # also adopt the new provider's title and the folder name it gives
-mangal library bind <id> [--anilist N] [--kitsu N] [--mal N] [--rename] [--watches]  # link a library manga (also without a provider source)
-mangal library bind [id] --backups         # fill the Kitsu and MyAnimeList links from AniList
+mangal library bind <id> [--anilist N] [--kitsu N] [--mal N] [--rename] [--watches] --apply  # link a library manga (also without a provider source)
+mangal library bind [id] --backups --apply # fill the Kitsu and MyAnimeList links from AniList
 mangal library trash [empty]               # see or empty the trash
 mangal library undo [--list] [--apply]     # undo the last operation: files moved back, database restored from its snapshot
 ```
