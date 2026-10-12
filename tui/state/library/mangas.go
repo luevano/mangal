@@ -351,7 +351,9 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 		}
 		m := item.manga
 		s.confirm.Ask("Remove", fmt.Sprintf("Forget %q? Its folder is gone.", m.Title), s.View(), action("Removing "+m.Title, func() (string, error) {
-			return "removed " + m.Title, files.Library.RemoveManga(m.ID)
+			return journaled("remove", fmt.Sprintf("remove missing %d %q", m.ID, m.Title), "removed "+m.Title, func(library.Journal) error {
+				return files.Library.RemoveManga(m.ID)
+			})
 		}))
 		return nil, true
 	}
