@@ -93,7 +93,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			if err != nil {
 				return migratedMsg{}, err
 			}
-			if err := migration.ApplyTo(afs.Afero, st, modes); err != nil {
+			if err := migration.ApplyTo(afs.Afero, nil, st, modes); err != nil {
 				return migratedMsg{}, err
 			}
 			watches, err := st.Watches().List()

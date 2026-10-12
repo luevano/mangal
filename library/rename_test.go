@@ -98,7 +98,7 @@ func TestOldMarkers(t *testing.T) {
 	if len(markers) != 1 || markers[0] != (OldMarker{Dir: "/lib/Berserk", Old: "mango-mangasee", New: "mango-weebcentral"}) {
 		t.Fatalf("got %+v", markers)
 	}
-	if err := UpdateMarker(fsys, markers[0], 0o644); err != nil {
+	if err := UpdateMarker(fsys, nil, markers[0], 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if info, _ := libmangal.ReadMangaDirInfo(fsys, "/lib/Berserk"); info.Provider != "mango-weebcentral" || info.Manga.ID != "1" {

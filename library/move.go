@@ -368,7 +368,7 @@ func (f Files) ApplyMove(plan MovePlan) error {
 	}
 	moved := plan.Dir != plan.From
 	if moved {
-		if err := moveDir(f.FS, plan.From, plan.Dir, f.Modes); err != nil {
+		if err := moveDir(f.FS, f.Journal, plan.From, plan.Dir, f.Modes); err != nil {
 			return fail(err)
 		}
 	}
@@ -379,14 +379,14 @@ func (f Files) ApplyMove(plan MovePlan) error {
 			}
 		}
 		if moved {
-			if undoErr := moveDir(f.FS, plan.Dir, plan.From, f.Modes); undoErr != nil {
+			if undoErr := moveDir(f.FS, nil, plan.Dir, plan.From, f.Modes); undoErr != nil {
 				return fail(fmt.Errorf("%w (and moving the folder back: %w)", err, undoErr))
 			}
 		}
 		return fail(err)
 	}
 	if plan.Marker != nil {
-		if err := libmangal.WriteMangaDirInfo(f.FS, plan.Dir, *plan.Marker, f.Modes.File); err != nil {
+		if err := writeDirInfo(f.FS, f.Journal, plan.Dir, *plan.Marker, f.Modes.File); err != nil {
 			return undo(fmt.Errorf("write %s: %w", libmangal.FilenameMangaDirInfo, err))
 		}
 	}
@@ -410,12 +410,15 @@ func (f Files) ApplyMove(plan MovePlan) error {
 
 // moveDir moves a folder, through a temporary name when only the case changes (on a
 // case-insensitive filesystem).
-func moveDir(fsys afero.Fs, from, to string, modes Modes) error {
+func moveDir(fsys afero.Fs, j Journal, from, to string, modes Modes) error {
 	exists, err := afero.Exists(fsys, to)
 	switch {
 	case err != nil:
 		return err
 	case exists && sameFile(fsys, from, to):
+		if err := logStep(j, storage.Step{Kind: storage.StepMove, Path: from, Dest: to}); err != nil {
+			return err
+		}
 		tmp := from + ".mangal-rename"
 		if err := fsys.Rename(from, tmp); err != nil {
 			return err
@@ -424,5 +427,5 @@ func moveDir(fsys afero.Fs, from, to string, modes Modes) error {
 	case exists:
 		return fmt.Errorf("%s already exists", to)
 	}
-	return moveFile(fsys, from, to, modes)
+	return moveFile(fsys, j, from, to, modes)
 }

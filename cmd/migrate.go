@@ -66,7 +66,7 @@ Only lists what would change unless --apply is set.`,
 			cmd.Println("run with --apply to migrate")
 			return nil
 		}
-		if err := migration.ApplyTo(afs.Afero, st, client.LibraryModes()); err != nil {
+		if err := migration.ApplyTo(afs.Afero, nil, st, client.LibraryModes()); err != nil {
 			return err
 		}
 		cmd.Println("migrated")

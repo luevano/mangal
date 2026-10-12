@@ -31,12 +31,17 @@ type Files struct {
 	Modes Modes
 	// OnProgress, if set, is told where Mark and ApplyMerge are.
 	OnProgress func(Progress)
+	// Journal, if set, records the file changes, for undo.
+	Journal Journal
 }
 
 // moveFile renames a file or folder, copying it (and removing the original) when it's on
 // another drive.
-func moveFile(fsys afero.Fs, from, to string, modes Modes) error {
-	if err := fsys.MkdirAll(filepath.Dir(to), modes.Dir); err != nil {
+func moveFile(fsys afero.Fs, j Journal, from, to string, modes Modes) error {
+	if err := mkdirAll(fsys, j, filepath.Dir(to), modes.Dir); err != nil {
+		return err
+	}
+	if err := logStep(j, storage.Step{Kind: storage.StepMove, Path: from, Dest: to}); err != nil {
 		return err
 	}
 	err := fsys.Rename(from, to)

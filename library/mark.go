@@ -51,6 +51,8 @@ type MarkOptions struct {
 	ProviderName func(libmangal.ProviderInfo) string
 	// OnMarked, if set, is told each folder marked as soon as it is.
 	OnMarked func(Marked)
+	// DryRun only tells what would be marked, nothing is written.
+	DryRun bool
 }
 
 // Mark writes a libmangal.MangaDirInfo (as libmangal does on download) into the folders of
@@ -86,8 +88,10 @@ func (f Files) Mark(opts MarkOptions) (MarkResult, error) {
 			res.Unknown = append(res.Unknown, m)
 			continue
 		}
-		if err := libmangal.WriteMangaDirInfo(f.FS, m.Path(), info, f.Modes.File); err != nil {
-			return res, fmt.Errorf("mark %s: %w", m.Path(), err)
+		if !opts.DryRun {
+			if err := writeDirInfo(f.FS, f.Journal, m.Path(), info, f.Modes.File); err != nil {
+				return res, fmt.Errorf("mark %s: %w", m.Path(), err)
+			}
 		}
 		marked := Marked{Manga: m, Info: info, Evidence: evidence}
 		res.Marked = append(res.Marked, marked)

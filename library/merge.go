@@ -108,7 +108,7 @@ func (f Files) ApplyMerge(plan MergePlan) error {
 	}
 	for _, path := range plan.Trashed {
 		step(path)
-		if err := moveToTrash(f.FS, f.Root, batch, path, f.Modes); err != nil {
+		if err := moveToTrash(f.FS, f.Journal, f.Root, batch, path, f.Modes); err != nil {
 			return fail(fmt.Errorf("trash %s: %w", path, err))
 		}
 		started = true
@@ -118,7 +118,7 @@ func (f Files) ApplyMerge(plan MergePlan) error {
 	}
 	for _, m := range plan.Moves {
 		step(m.From)
-		if err := moveFile(f.FS, m.From, m.To, f.Modes); err != nil {
+		if err := moveFile(f.FS, f.Journal, m.From, m.To, f.Modes); err != nil {
 			return fail(fmt.Errorf("move %s: %w", m.From, err))
 		}
 		started = true
@@ -146,11 +146,11 @@ func (f Files) ApplyMerge(plan MergePlan) error {
 	}
 	for _, e := range entries {
 		path := filepath.Join(plan.Other.Path(), e.Name())
-		if err := moveToTrash(f.FS, f.Root, batch, path, f.Modes); err != nil {
+		if err := moveToTrash(f.FS, f.Journal, f.Root, batch, path, f.Modes); err != nil {
 			return fail(fmt.Errorf("trash %s: %w", path, err))
 		}
 	}
-	if err := f.FS.Remove(plan.Other.Path()); err != nil {
+	if err := removeDir(f.FS, f.Journal, plan.Other.Path()); err != nil {
 		return fail(err)
 	}
 	return nil

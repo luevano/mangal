@@ -112,7 +112,7 @@ is set.`,
 			cmd.Println("run with --apply to rename")
 			return nil
 		}
-		return library.ApplyEach(afs.Afero, renames, st.Progress, func(i int, err error) error {
+		return library.ApplyEach(afs.Afero, nil, renames, st.Progress, func(i int, err error) error {
 			r := renames[i]
 			switch {
 			case errors.Is(err, library.ErrNotEmpty):

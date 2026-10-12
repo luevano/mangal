@@ -319,26 +319,27 @@ func mergeHint(keep, other folderID, dir string) string {
 // It returns an error per rename (nil when done).
 func Apply(fsys afero.Fs, renames []Rename) []error {
 	errs := make([]error, len(renames))
-	_ = ApplyEach(fsys, renames, nil, func(i int, err error) error {
+	_ = ApplyEach(fsys, nil, renames, nil, func(i int, err error) error {
 		errs[i] = err
 		return nil
 	})
 	return errs
 }
 
-// ApplyEach is Apply telling where it is (onProgress, may be nil) and each rename's error
-// (nil when done) as soon as it's done. It stops at the first error done returns.
-func ApplyEach(fsys afero.Fs, renames []Rename, onProgress func(Progress), done func(i int, err error) error) error {
+// ApplyEach is Apply recording the changes in j (may be nil), telling where it is
+// (onProgress, may be nil) and each rename's error (nil when done) as soon as it's done.
+// It stops at the first error done returns.
+func ApplyEach(fsys afero.Fs, j Journal, renames []Rename, onProgress func(Progress), done func(i int, err error) error) error {
 	for i, r := range renames {
 		report(onProgress, Progress{Phase: "renaming", Done: i + 1, Total: len(renames), Item: filepath.Base(r.From)})
-		if err := done(i, applyRename(fsys, r)); err != nil {
+		if err := done(i, applyRename(fsys, j, r)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func applyRename(fsys afero.Fs, r Rename) error {
+func applyRename(fsys afero.Fs, j Journal, r Rename) error {
 	if r.Skip != "" {
 		return errors.New(r.Skip)
 	}
@@ -350,13 +351,13 @@ func applyRename(fsys afero.Fs, r Rename) error {
 		case len(entries) != 0:
 			return fmt.Errorf("%s: %w", r.From, ErrNotEmpty)
 		}
-		return fsys.Remove(r.From)
+		return removeDir(fsys, j, r.From)
 	}
 	exists, err := afero.Exists(fsys, r.To)
 	if err == nil && exists && !sameFile(fsys, r.From, r.To) {
 		// an empty directory in the way (e.g. a provider's of its current name) goes
 		if entries, readErr := afero.ReadDir(fsys, r.To); readErr == nil && len(entries) == 0 {
-			if err = fsys.Remove(r.To); err == nil {
+			if err = removeDir(fsys, j, r.To); err == nil {
 				exists = false
 			}
 		}
@@ -366,6 +367,9 @@ func applyRename(fsys afero.Fs, r Rename) error {
 		return err
 	case exists && sameFile(fsys, r.From, r.To):
 		// only the case changes, on a case-insensitive filesystem
+		if err := logStep(j, storage.Step{Kind: storage.StepMove, Path: r.From, Dest: r.To}); err != nil {
+			return err
+		}
 		tmp := r.From + ".mangal-rename"
 		if err := fsys.Rename(r.From, tmp); err != nil {
 			return err
@@ -375,7 +379,7 @@ func applyRename(fsys afero.Fs, r Rename) error {
 		return fmt.Errorf("%s already exists", r.To)
 	}
 	// copied when it's on another drive (the copy goes when that fails)
-	return moveFile(fsys, r.From, r.To, DefaultModes)
+	return moveFile(fsys, j, r.From, r.To, DefaultModes)
 }
 
 func sameFile(fsys afero.Fs, a, b string) bool {

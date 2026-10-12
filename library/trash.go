@@ -32,7 +32,7 @@ func newTrashBatch() string {
 // moveToTrash moves path into the trash batch of root, keeping its path relative to root
 // (outside root, its parent folder's name and its own). Nothing in the trash is
 // overwritten: a name already taken gets a number.
-func moveToTrash(fsys afero.Fs, root, batch, path string, modes Modes) error {
+func moveToTrash(fsys afero.Fs, j Journal, root, batch, path string, modes Modes) error {
 	rel, err := filepath.Rel(root, path)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		rel = filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path))
@@ -49,17 +49,17 @@ func moveToTrash(fsys afero.Fs, root, batch, path string, modes Modes) error {
 			return err
 		}
 		for _, e := range entries {
-			if err := moveToTrash(fsys, root, batch, filepath.Join(path, e.Name()), modes); err != nil {
+			if err := moveToTrash(fsys, j, root, batch, filepath.Join(path, e.Name()), modes); err != nil {
 				return err
 			}
 		}
-		return fsys.Remove(path)
+		return removeDir(fsys, j, path)
 	}
 	to, err = freeName(fsys, to, isDir)
 	if err != nil {
 		return err
 	}
-	return moveFile(fsys, path, to, modes)
+	return moveFile(fsys, j, path, to, modes)
 }
 
 // freeName is path, or path with a number (before a file's extension) if it's taken.

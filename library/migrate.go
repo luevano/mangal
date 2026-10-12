@@ -31,14 +31,15 @@ func OldMarkers(fsys afero.Fs, dir string, providerDirs bool, loaders []libmanga
 	return markers, nil
 }
 
-// UpdateMarker writes the new provider id into the directory's info (with the mode).
-func UpdateMarker(fsys afero.Fs, marker OldMarker, mode fs.FileMode) error {
+// UpdateMarker writes the new provider id into the directory's info (with the mode),
+// recording it in j (may be nil).
+func UpdateMarker(fsys afero.Fs, j Journal, marker OldMarker, mode fs.FileMode) error {
 	info, err := libmangal.ReadMangaDirInfo(fsys, marker.Dir)
 	if err != nil {
 		return err
 	}
 	info.Provider = marker.New
-	if err := libmangal.WriteMangaDirInfo(fsys, marker.Dir, info, mode); err != nil {
+	if err := writeDirInfo(fsys, j, marker.Dir, info, mode); err != nil {
 		return fmt.Errorf("update %s: %w", marker.Dir, err)
 	}
 	return nil
@@ -85,13 +86,13 @@ func (m Migration) Lines() []string {
 	return lines
 }
 
-// ApplyTo moves the data to the current ids.
-func (m Migration) ApplyTo(fsys afero.Fs, st storage.Storage, modes Modes) error {
+// ApplyTo moves the data to the current ids, recording the file changes in j (may be nil).
+func (m Migration) ApplyTo(fsys afero.Fs, j Journal, st storage.Storage, modes Modes) error {
 	if err := st.MigrateOldIDs(m.OldIDs); err != nil {
 		return err
 	}
 	for _, marker := range m.Markers {
-		if err := UpdateMarker(fsys, marker, modes.File); err != nil {
+		if err := UpdateMarker(fsys, j, marker, modes.File); err != nil {
 			return err
 		}
 	}

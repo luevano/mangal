@@ -25,7 +25,7 @@ func TestMoveFileOtherDrive(t *testing.T) {
 	dir := t.TempDir()
 	fsys := otherDrive{Fs: afero.NewOsFs()}
 	touch(t, filepath.Join(dir, "a", "Vol. 1", "x.cbz"))
-	if err := moveFile(fsys, filepath.Join(dir, "a"), filepath.Join(dir, "b", "a"), DefaultModes); err != nil {
+	if err := moveFile(fsys, nil, filepath.Join(dir, "a"), filepath.Join(dir, "b", "a"), DefaultModes); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "b", "a", "Vol. 1", "x.cbz")); err != nil {
@@ -51,7 +51,7 @@ func TestTrashNeverOverwrites(t *testing.T) {
 		if err := os.WriteFile(path, []byte{byte('0' + i)}, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := moveToTrash(fsys, root, "batch", path, DefaultModes); err != nil {
+		if err := moveToTrash(fsys, nil, root, "batch", path, DefaultModes); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -136,7 +136,7 @@ func TestUpdateMarkerMode(t *testing.T) {
 	dir := t.TempDir()
 	fsys := afero.NewOsFs()
 	writeMarker(t, dir, libmangal.MangaDirInfo{Provider: "old", Manga: mangadata.MangaInfo{ID: "1"}})
-	if err := UpdateMarker(fsys, OldMarker{Dir: dir, Old: "old", New: "new"}, 0o600); err != nil {
+	if err := UpdateMarker(fsys, nil, OldMarker{Dir: dir, Old: "old", New: "new"}, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(filepath.Join(dir, libmangal.FilenameMangaDirInfo))
