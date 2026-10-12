@@ -44,7 +44,16 @@ func (m Manga) Path() string {
 // Source is a provider's manga downloaded into a library manga.
 type Source struct {
 	Provider, MangaID, Title string
+	// Moved is when a move (Library.Move) made it the manga's source, zero if none did.
+	Moved time.Time
+	// Current is the source the manga's folder follows now: the one moved to or downloaded
+	// from last (what its .libmangal.json says), the others are previous ones. Mangas lists
+	// it first.
+	Current bool
 }
+
+// sourceMoved: when a move made a source the library manga's.
+const sourceMoved = `ALTER TABLE library_sources ADD COLUMN moved INTEGER NOT NULL DEFAULT 0`
 
 // LibraryChapter is a chapter of a library manga, the same for every provider.
 type LibraryChapter struct {
@@ -322,19 +331,37 @@ FROM library_mangas m `+where, args...)
 	}
 	type source struct {
 		manga int64
+		// last is the later of the move and its last download
+		last int64
 		Source
 	}
 	sources, err := queryAll(l.DB, func(rows *sql.Rows) (source, error) {
 		var s source
-		err := rows.Scan(&s.manga, &s.Provider, &s.MangaID, &s.Title)
+		var moved int64
+		err := rows.Scan(&s.manga, &s.Provider, &s.MangaID, &s.Title, &moved, &s.last)
+		s.Moved = fromUnix(moved)
 		return s, err
-	}, `SELECT manga, provider, manga_id, title FROM library_sources WHERE manga IN (SELECT value FROM json_each(?)) ORDER BY manga, provider`, string(idsJSON))
+	}, `SELECT s.manga, s.provider, s.manga_id, s.title, s.moved,
+	max(s.moved, coalesce((SELECT max(d.downloaded) FROM downloads d WHERE d.provider = s.provider AND d.manga_id = s.manga_id), 0))
+FROM library_sources s WHERE s.manga IN (SELECT value FROM json_each(?)) ORDER BY s.manga, s.provider`, string(idsJSON))
 	if err != nil {
 		return nil, err
 	}
+	last := map[int64]int64{}
 	for _, s := range sources {
 		m := byID[s.manga]
-		m.Sources = append(m.Sources, s.Source)
+		if len(m.Sources) == 0 || s.last > last[s.manga] {
+			// the current one first
+			m.Sources = append([]Source{s.Source}, m.Sources...)
+			last[s.manga] = s.last
+		} else {
+			m.Sources = append(m.Sources, s.Source)
+		}
+	}
+	for _, m := range mangas {
+		if len(m.Sources) != 0 {
+			m.Sources[0].Current = true
+		}
 	}
 	return mangas, nil
 }
@@ -590,8 +617,8 @@ func (l Library) Move(m MangaMove) error {
 		case err != nil && !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
-		if _, err := tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title) VALUES (?, ?, ?, ?)
-ON CONFLICT (provider, manga_id) DO UPDATE SET title = excluded.title`, m.Source.Provider, m.Source.MangaID, m.Manga, m.Source.Title); err != nil {
+		if _, err := tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title, moved) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (provider, manga_id) DO UPDATE SET title = excluded.title, moved = excluded.moved`, m.Source.Provider, m.Source.MangaID, m.Manga, m.Source.Title, unix(m.At)); err != nil {
 			return err
 		}
 		if m.Title != "" {

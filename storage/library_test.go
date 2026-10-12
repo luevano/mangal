@@ -271,11 +271,19 @@ func TestLibraryMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _, _ := library.MangaByID(m.ID)
-	if got.Path() != "/lib/Pill/Berserk" || len(got.Sources) != 2 || got.Sources[1].Provider != "pill" || got.Title != "Berserk (pill)" {
+	if got.Path() != "/lib/Pill/Berserk" || len(got.Sources) != 2 || got.Title != "Berserk (pill)" ||
+		got.Sources[0].Provider != "pill" || !got.Sources[0].Current || got.Sources[0].Moved.Unix() != 1_000_000 || got.Sources[1].Current {
 		t.Errorf("manga %+v", got)
 	}
 	if ok, _ := library.HasDownload("/lib/Pill/Berserk/[0001.0] Ch 1.cbz"); !ok {
 		t.Error("the download didn't move")
+	}
+	// a later download from the old source makes it the current one again
+	if err := library.RecordDownload("/lib/Pill", "Berserk", Download{Path: "/lib/Pill/Berserk/2.cbz", Provider: "asura", MangaID: "b", MangaTitle: "Berserk", Chapter: 2, Format: "CBZ", Downloaded: time.Unix(2_000_000, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := library.MangaByID(m.ID); got.Sources[0].Provider != "asura" || !got.Sources[0].Current || got.Sources[1].Current {
+		t.Errorf("after a download %+v", got.Sources)
 	}
 	gotW, _ := watches.Get(w.ID)
 	if gotW.Provider != "pill" || gotW.MangaID != "1/berserk" || gotW.Title != "Berserk (pill)" || gotW.NeedsRelink || gotW.LibraryManga != m.ID {
