@@ -133,11 +133,11 @@ func TestMoveArgs(t *testing.T) {
 func TestPrintWatchesLibraryIssue(t *testing.T) {
 	var out strings.Builder
 	printWatches(&out, []watch.Watch{
-		{Watch: storage.Watch{ID: 1, Provider: "mango-mangadex", Title: "Chastity Reverse World", Enabled: true}, LibraryIssue: "in the library under mango-mangasee (Teisou Gyakuten Sekai): move it there (M in the library)"},
+		{Watch: storage.Watch{ID: 1, Provider: "mango-mangadex", Title: "Chastity Reverse World", Enabled: true}, LibraryIssue: "in the library under mango-mangasee (Teisou Gyakuten Sekai): move it there (M in the library)", LibraryElsewhere: true},
 		{Watch: storage.Watch{ID: 2, Provider: "mango-mangadex", Title: "Berserk", Enabled: true}},
 	})
 	got := out.String()
-	for _, want := range []string{"Chastity Reverse World (not in library)", "not in the library:\n  1  Chastity Reverse World: in the library under mango-mangasee"} {
+	for _, want := range []string{"Chastity Reverse World (not in library)", "not in library: move it", "not in the library:\n  1  Chastity Reverse World: in the library under mango-mangasee"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q:\n%s", want, got)
 		}

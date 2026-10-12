@@ -785,6 +785,7 @@ func TestStopWatching(t *testing.T) {
 func TestLibraryIssue(t *testing.T) {
 	m := testManager()
 	m.watches[2].LibraryIssue = "in the library under mango-mangasee (Sousou no Frieren): move it there (M in the library)"
+	m.watches[2].LibraryElsewhere = true
 	s := loaded(t, m)
 	ctx := context.Background()
 	if title := s.List.Items()[2].(*item).Title(); !strings.Contains(title, "(not in library)") {
@@ -813,6 +814,9 @@ func TestLibraryIssue(t *testing.T) {
 	}
 	if got := settings(m.watches[2], 3, now); !strings.Contains(got, "not in library: in the library under mango-mangasee (Sousou no Frieren): move it there (M in the library)") {
 		t.Errorf("details %q", got)
+	}
+	if got := nextCheck(m.watches[2], 3, now); got != "not in library: move it" {
+		t.Errorf("next check %q", got)
 	}
 	if got := mangaDisplay(m.watches[2]); !strings.Contains(got, "not in library: in the library under") {
 		t.Errorf("edit %q", got)

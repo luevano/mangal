@@ -101,6 +101,18 @@ func (w Watch) Scheduled() bool {
 	return w.Enabled && !w.ProviderMissing && !w.NeedsRelink && w.LibraryIssue == ""
 }
 
+// LibraryHold is the short status of a watch the scheduler skips for its library issue,
+// empty without one.
+func (w Watch) LibraryHold() string {
+	switch {
+	case w.LibraryElsewhere:
+		return "not in library: move it"
+	case w.LibraryIssue != "":
+		return "not in library: library scan"
+	}
+	return ""
+}
+
 // UnmarshalJSON fills AnilistID from the bindings (the API's watches, see Remote).
 func (w *Watch) UnmarshalJSON(b []byte) error {
 	type plain Watch

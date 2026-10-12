@@ -64,6 +64,8 @@ func nextCheck(w watch.Watch, backoff int, now time.Time) string {
 		return "paused"
 	case w.ProviderMissing:
 		return "provider missing"
+	case w.LibraryHold() != "":
+		return w.LibraryHold()
 	case !w.NextScheduled.After(now):
 		return "due"
 	}

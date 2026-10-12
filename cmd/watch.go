@@ -278,6 +278,8 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 			next = "paused"
 		case w.ProviderMissing:
 			next = "provider missing"
+		case w.LibraryHold() != "":
+			next = w.LibraryHold()
 		}
 		errs := "-"
 		if w.Failures > 0 {
