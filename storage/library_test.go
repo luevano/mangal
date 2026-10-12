@@ -398,3 +398,43 @@ func TestMergeKeepsCurrentSource(t *testing.T) {
 		t.Errorf("sources %+v, want weebcentral still current", m.Sources)
 	}
 }
+
+func TestSetLinks(t *testing.T) {
+	data := openData(t)
+	library, bindings := Library{DB: data}, Bindings{DB: data}
+	al := func(raw string) metadata.ID {
+		return metadata.ID{Raw: raw, Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}
+	}
+	info := libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "1", Title: "OPM"},
+		MetadataIDs: []metadata.ID{al("1"), {Raw: "9", Source: metadata.IDSourceMyAnimeList, Code: metadata.IDCodeMyAnimeList}, al("2")}}
+	if err := library.RememberMangaDir("/lib", "OPM", info); err != nil {
+		t.Fatal(err)
+	}
+	if err := bindings.Set(Binding{Provider: "p", MangaID: "1", Source: metadata.IDCodeAnilist, ID: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ := library.MangaByFolder("/lib", "OPM")
+	err := library.SetLinks(LinkChange{Manga: m.ID, Links: map[metadata.IDCode]string{
+		metadata.IDCodeAnilist: "74347", metadata.IDCodeMyAnimeList: "", metadata.IDCodeKitsu: "24147",
+	}, Bindings: [][2]string{{"p", "1"}}, From: "/lib/OPM", To: "/lib/One-Punch Man"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, ok, _ := library.MangaByFolder("/lib", "One-Punch Man")
+	if !ok {
+		t.Fatal("folder not renamed")
+	}
+	want := []metadata.ID{al("74347"), {Raw: "24147", Source: metadata.IDSourceKitsu, Code: metadata.IDCodeKitsu}}
+	if fmt.Sprint(m.MetadataIDs) != fmt.Sprint(want) {
+		t.Errorf("ids %v, want %v", m.MetadataIDs, want)
+	}
+	got, _ := bindings.Get("p", "1")
+	if len(got) != 2 || got[0].Source != metadata.IDCodeAnilist || got[0].ID != "74347" || got[1].ID != "24147" {
+		t.Errorf("bindings %+v", got)
+	}
+	// the old id matches nothing any more
+	old := libmangal.MangaDirInfo{Provider: "q", Manga: mangadata.MangaInfo{ID: "x"}, MetadataIDs: []metadata.ID{al("1")}}
+	if _, found, _ := library.FindMangaDir("/lib", libmangal.ProviderInfo{ID: "q"}, old); found {
+		t.Error("the old AniList id still finds the folder")
+	}
+}

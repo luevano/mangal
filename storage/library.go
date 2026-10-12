@@ -239,6 +239,98 @@ func addMetadataIDs(tx *sql.Tx, manga int64, ids []metadata.ID) error {
 	return err
 }
 
+// LinkChange changes the metadata links of a library manga: its own metadata ids and the
+// bindings of provider mangas (its sources, its watches'), in one transaction.
+type LinkChange struct {
+	Manga int64
+	// Links are the new id of each source, replacing the ones it has; "" removes them.
+	Links map[metadata.IDCode]string
+	// Bindings are the provider mangas (provider, manga id) whose binding of each source is
+	// replaced (removed for "") too.
+	Bindings [][2]string
+	// From and To are the manga's folder renamed, both empty when it isn't.
+	From, To string
+	At       time.Time
+}
+
+// SetLinks makes the change: the old ids of a changed source stop matching anything.
+func (l Library) SetLinks(c LinkChange) error {
+	err := l.DB.InTx(func(tx *sql.Tx) error {
+		var raw string
+		if err := tx.QueryRow(`SELECT metadata_ids FROM library_mangas WHERE id = ?`, c.Manga).Scan(&raw); err != nil {
+			return err
+		}
+		var ids []metadata.ID
+		if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+			return err
+		}
+		ids = ReplaceIDs(ids, c.Links)
+		data, err := json.Marshal(ids)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE library_mangas SET metadata_ids = ? WHERE id = ?`, string(data), c.Manga); err != nil {
+			return err
+		}
+		for _, b := range c.Bindings {
+			for code, id := range c.Links {
+				if id == "" {
+					_, err = tx.Exec(`DELETE FROM metadata_bindings WHERE provider = ? AND manga_id = ? AND source = ?`, b[0], b[1], code)
+				} else {
+					_, err = tx.Exec(`INSERT INTO metadata_bindings (provider, manga_id, source, metadata_id, updated) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (provider, manga_id, source) DO UPDATE SET metadata_id = excluded.metadata_id, updated = excluded.updated`, b[0], b[1], code, id, unix(c.At))
+				}
+				if err != nil {
+					return err
+				}
+			}
+		}
+		if c.From != "" && c.From != c.To {
+			return moved(tx, c.From, c.To)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("set the links of library manga %d: %w", c.Manga, err)
+	}
+	return nil
+}
+
+// ReplaceIDs is ids with each source of links replaced by its id (in the place of the
+// source's first id, else at the end), or removed for "".
+func ReplaceIDs(ids []metadata.ID, links map[metadata.IDCode]string) []metadata.ID {
+	out := []metadata.ID{}
+	done := map[metadata.IDCode]bool{}
+	for _, id := range ids {
+		newID, ok := links[id.Code]
+		switch {
+		case !ok:
+			out = append(out, id)
+		case !done[id.Code]:
+			done[id.Code] = true
+			if mid, valid := (Binding{Source: id.Code, ID: newID}).MetadataID(); valid {
+				out = append(out, mid)
+			}
+		}
+	}
+	for _, code := range sourceOrder {
+		if newID, ok := links[code]; ok && !done[code] {
+			if mid, valid := (Binding{Source: code, ID: newID}).MetadataID(); valid {
+				out = append(out, mid)
+			}
+			done[code] = true
+		}
+	}
+	for code, newID := range links {
+		if !done[code] {
+			if mid, valid := (Binding{Source: code, ID: newID}).MetadataID(); valid {
+				out = append(out, mid)
+			}
+		}
+	}
+	return out
+}
+
 // upsertChapter returns the chapter of the manga with the number, keeping a known name.
 func upsertChapter(tx *sql.Tx, manga int64, number, volume float32, name string) (int64, error) {
 	var id int64
