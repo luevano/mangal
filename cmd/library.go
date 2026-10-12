@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -48,10 +49,19 @@ var libraryRenameCmd = &cobra.Command{
 	Short: "Rename manga and provider directories to the current name templates",
 	Long: `Rename the manga directories (those with a .libmangal.json, written on download)
 and the provider directories in the download path to the names the current name
-templates give them. Only lists the renames unless --apply is set.`,
+templates give them, also the directories of a provider's old names. When the directory
+of the current name exists already (not empty), the old one's manga folders move into it
+one by one: a manga it has already (same provider manga or metadata id) is left for
+"mangal library merge", a folder name taken by another manga too, folders of no known
+manga stay, and the old directory goes once empty. Only lists the renames unless --apply
+is set.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		loaders, err := manager.Loaders()
+		if err != nil {
+			return err
+		}
+		index, err := cache.Library()
 		if err != nil {
 			return err
 		}
@@ -61,6 +71,7 @@ templates give them. Only lists the renames unless --apply is set.`,
 			ProviderName: template.Provider,
 			MangaName:    template.Manga,
 			Metadata:     anilist.MetadataByIDs,
+			Library:      index,
 		}
 
 		dir, err := path.Ensure(path.Downloads())
@@ -84,23 +95,29 @@ templates give them. Only lists the renames unless --apply is set.`,
 		}
 		if !libraryRenameArgs.Apply {
 			for _, r := range renames {
-				if r.Skip != "" {
+				switch {
+				case r.Skip != "":
 					cmd.Printf("skip %s: %s\n", rel(r.From), r.Skip)
-					continue
+				case r.RemoveEmpty:
+					cmd.Printf("remove %s once empty\n", rel(r.From))
+				default:
+					cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To))
 				}
-				cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To))
 			}
 			cmd.Println("run with --apply to rename")
 			return nil
 		}
-		index, err := cache.Library()
-		if err != nil {
-			return err
-		}
 		for i, err := range library.Apply(afs.Afero, renames) {
 			r := renames[i]
-			if err != nil {
+			switch {
+			case errors.Is(err, library.ErrNotEmpty):
+				cmd.Printf("kept %s: not empty\n", rel(r.From))
+				continue
+			case err != nil:
 				cmd.PrintErrf("skipped %s: %s\n", rel(r.From), err)
+				continue
+			case r.RemoveEmpty:
+				cmd.Printf("removed %s\n", rel(r.From))
 				continue
 			}
 			if err := index.Moved(r.From, r.To); err != nil {

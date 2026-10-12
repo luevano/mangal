@@ -3,6 +3,9 @@ package library
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -72,11 +75,15 @@ func TestPlanAndApply(t *testing.T) {
 		}
 	}
 
-	// existing targets are skipped
+	// existing targets are skipped, empty ones replaced
 	_ = fsys.MkdirAll("/lib/x", 0o755)
-	_ = fsys.MkdirAll("/lib/y", 0o755)
+	_ = afero.WriteFile(fsys, "/lib/y/1.cbz", []byte("x"), 0o644)
 	if errs := Apply(fsys, []Rename{{From: "/lib/x", To: "/lib/y"}}); errs[0] == nil {
 		t.Error("renamed over an existing directory")
+	}
+	_ = fsys.MkdirAll("/lib/z", 0o755)
+	if errs := Apply(fsys, []Rename{{From: "/lib/x", To: "/lib/z"}}); errs[0] != nil {
+		t.Errorf("onto an empty directory: %v", errs[0])
 	}
 }
 
@@ -131,15 +138,112 @@ func TestPlanOldProviderDirs(t *testing.T) {
 		t.Errorf("without provider directories: %+v", renames)
 	}
 
+	// an empty directory of the current name is replaced
 	_ = fsys.MkdirAll("/lib/mango-weebcentral", 0o755)
 	renames, _ = n.Plan(context.Background(), "/lib", true)
-	if len(renames) != 1 || !strings.Contains(renames[0].Skip, "/lib/mango-weebcentral already exists: move its mangas there") {
-		t.Fatalf("existing target: %+v", renames)
+	if len(renames) != 1 || renames[0].To != "/lib/mango-weebcentral" || renames[0].Skip != "" {
+		t.Fatalf("empty target: %+v", renames)
 	}
-	if errs := Apply(fsys, renames); errs[0] == nil {
-		t.Error("applied a skipped rename")
+	for _, err := range Apply(fsys, renames) {
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	if ok, _ := afero.Exists(fsys, "/lib/mango-mangasee/Berserk/1.cbz"); !ok {
-		t.Error("moved anyway")
+	if ok, _ := afero.Exists(fsys, "/lib/mango-weebcentral/Berserk/1.cbz"); !ok {
+		t.Error("not renamed onto the empty directory")
+	}
+}
+
+// TestPlanIntoExisting: an old provider directory's mangas move into the existing one of
+// its current name one by one; the same manga (by id) or a taken name is skipped,
+// unknown folders stay, the old directory goes only once empty.
+func TestPlanIntoExisting(t *testing.T) {
+	root := t.TempDir()
+	fsys := afero.NewOsFs()
+	lib := newLibrary(t)
+	weebCentral := libmangal.ProviderInfo{ID: "mango-weebcentral", Name: "Weeb Central", History: []libmangal.ProviderAlias{{ID: "mango-mangasee", Name: "MangaSee"}}}
+	n := Namer{
+		FS:           fsys,
+		Loaders:      []libmangal.ProviderLoader{loader{weebCentral}},
+		ProviderName: func(p libmangal.ProviderInfo) string { return p.ID },
+		MangaName:    func(_ libmangal.ProviderInfo, m mangadata.Manga) string { return m.Info().Title },
+		Metadata:     func(context.Context, []metadata.ID) (metadata.Metadata, error) { return nil, nil },
+		Library:      lib,
+	}
+	see, weeb := filepath.Join(root, "mango-mangasee"), filepath.Join(root, "mango-weebcentral")
+	al := metadata.ID{Raw: "30002", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}
+	// moves: in the library under the old id, nothing like it in the target
+	touch(t, filepath.Join(see, "Vagabond", "1.cbz"))
+	record(t, lib, see, "Vagabond", "1.cbz", 1, "mango-mangasee")
+	// same manga as the target's Berserk (AniList id), by another folder name
+	touch(t, filepath.Join(see, "Berserk (old)", "1.cbz"))
+	_ = lib.RememberMangaDir(see, "Berserk (old)", libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "Berserk"}, MetadataIDs: []metadata.ID{al}})
+	writeMarker(t, filepath.Join(weeb, "Berserk"), libmangal.MangaDirInfo{Provider: "mango-weebcentral", Manga: mangadata.MangaInfo{ID: "b", Title: "Berserk"}, MetadataIDs: []metadata.ID{al}})
+	_ = lib.RememberMangaDir(weeb, "Berserk", libmangal.MangaDirInfo{Provider: "mango-weebcentral", Manga: mangadata.MangaInfo{ID: "b", Title: "Berserk"}, MetadataIDs: []metadata.ID{al}})
+	// a name taken by a different manga
+	writeMarker(t, filepath.Join(see, "Monster"), libmangal.MangaDirInfo{Provider: "mango-mangasee", Manga: mangadata.MangaInfo{ID: "m1", Title: "Monster"}})
+	writeMarker(t, filepath.Join(weeb, "Monster"), libmangal.MangaDirInfo{Provider: "mango-weebcentral", Manga: mangadata.MangaInfo{ID: "m2", Title: "Monster"}})
+	// unknown, and a file: they stay
+	touch(t, filepath.Join(see, "stuff", "x.txt"))
+	touch(t, filepath.Join(see, "notes.txt"))
+
+	renames, err := n.Plan(context.Background(), root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byFrom := map[string]Rename{}
+	for _, r := range renames {
+		byFrom[filepath.Base(r.From)] = r
+	}
+	berserk, _, _ := lib.MangaByFolder(weeb, "Berserk")
+	old, _, _ := lib.MangaByFolder(see, "Berserk (old)")
+	if r := byFrom["Vagabond"]; r.To != filepath.Join(weeb, "Vagabond") || r.Skip != "" {
+		t.Errorf("vagabond %+v", r)
+	}
+	if r := byFrom["Berserk (old)"]; !strings.Contains(r.Skip, fmt.Sprintf("mangal library merge %d %d", berserk.ID, old.ID)) {
+		t.Errorf("same manga %+v", r)
+	}
+	if r := byFrom["Monster"]; !strings.Contains(r.Skip, "is another manga's folder") {
+		t.Errorf("name clash %+v", r)
+	}
+	if r := byFrom["stuff"]; r.To != "" || !strings.Contains(r.Skip, "no known manga") {
+		t.Errorf("unknown %+v", r)
+	}
+	if r := byFrom["mango-mangasee"]; !r.RemoveEmpty {
+		t.Errorf("old directory %+v", r)
+	}
+	errs := Apply(fsys, renames)
+	for i, r := range renames {
+		if r.Skip == "" && !r.RemoveEmpty && errs[i] != nil {
+			t.Errorf("%s: %v", r.From, errs[i])
+		}
+		if r.RemoveEmpty && !errors.Is(errs[i], ErrNotEmpty) {
+			t.Errorf("removed a directory with leftovers: %v", errs[i])
+		}
+	}
+	if ok, _ := afero.Exists(fsys, filepath.Join(weeb, "Vagabond", "1.cbz")); !ok {
+		t.Error("vagabond not moved")
+	}
+	for _, left := range []string{"Berserk (old)", "Monster", "stuff", "notes.txt"} {
+		if ok, _ := afero.Exists(fsys, filepath.Join(see, left)); !ok {
+			t.Errorf("%s didn't stay", left)
+		}
+	}
+
+	// once only movable mangas are left, the old directory goes
+	_ = os.RemoveAll(filepath.Join(see, "Berserk (old)"))
+	_ = os.RemoveAll(filepath.Join(see, "Monster"))
+	_ = os.RemoveAll(filepath.Join(see, "stuff"))
+	_ = os.Remove(filepath.Join(see, "notes.txt"))
+	touch(t, filepath.Join(see, "Pluto", "1.cbz"))
+	writeMarker(t, filepath.Join(see, "Pluto"), libmangal.MangaDirInfo{Provider: "mango-mangasee", Manga: mangadata.MangaInfo{ID: "p", Title: "Pluto"}})
+	renames, _ = n.Plan(context.Background(), root, true)
+	for i, err := range Apply(fsys, renames) {
+		if err != nil {
+			t.Errorf("%+v: %v", renames[i], err)
+		}
+	}
+	if ok, _ := afero.Exists(fsys, see); ok {
+		t.Error("the emptied old directory is still there")
 	}
 }
