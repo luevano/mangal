@@ -97,7 +97,7 @@ func newChecker(t *testing.T) Checker {
 			Added: now.Add(-200 * 24 * time.Hour), From: f32(10)}},
 		{Watch: storage.Watch{ID: 7, Provider: "mango-mangadex", MangaID: "dg", Title: "Dungeon Odyssey", Enabled: true, Added: now},
 			Bindings:     []storage.Binding{{Source: metadata.IDCodeAnilist, ID: "555"}},
-			LibraryIssue: "in the library under AsuraScans (Dungeon Odyssey): move it there (M in the library)", LibraryElsewhere: true},
+			LibraryIssue: "in the library under AsuraScans (Dungeon Odyssey): move it there (X in the library)", LibraryElsewhere: true},
 	}
 	return Checker{
 		Library: lib,
@@ -157,7 +157,7 @@ func TestRun(t *testing.T) {
 		{"W4", Error, "watch", 1, "mangal watch check 1", "backing off"},
 		{"W5", Info, "watch", 6, "mangal watch pause 6", "200 days"},
 		{"W6", Error, "watch", 5, "mangal watch move 5 <provider>", "mango-gone"},
-		{"W8", Warning, "watch", 6, "mangal migrate --apply", "now mango-weebcentral"},
+		{"W8", Warning, "watch", 6, "mangal migrate", "now mango-weebcentral"},
 		{"W9", Warning, "watch", 6, "mangal watch set 6 --schedule ''", "bogus"},
 		{"W10", Info, "manga", 2, "mangal watch add <provider> Onepunch-Man", "not watched"},
 		{"W10", Info, "manga", 4, "mangal watch add <provider> Vagabond", "not watched"},

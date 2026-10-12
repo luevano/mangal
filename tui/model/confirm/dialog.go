@@ -42,9 +42,9 @@ func (d *Dialog) Ask(title, message, behind string, onYes tea.Cmd) {
 	d.AskWith([]string{"y", "enter"}, title, message, behind, onYes)
 }
 
-// AskDelete also confirms with D, the key that started it (D then D), but not with enter.
+// AskDelete also confirms with d, the key that started it (d then d), but not with enter.
 func (d *Dialog) AskDelete(title, message, behind string, onYes tea.Cmd) {
-	d.AskWith([]string{"D", "y"}, title, message, behind, onYes)
+	d.AskWith(append(base.KeyDelete.Keys(), "y"), title, message, behind, onYes)
 }
 
 // AskWith confirms with the yes keys.

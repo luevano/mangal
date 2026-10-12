@@ -86,7 +86,7 @@ type mangasState struct {
 }
 
 type mangasKeyMap struct {
-	confirm, scan, check, merge, move, remove, trash, delete, watch, undo, duplicates, links, backups key.Binding
+	confirm, scan, check, merge, move, trash, delete, watch, undo, duplicates, links, backups key.Binding
 }
 
 type mangasLoadedMsg struct {
@@ -132,16 +132,15 @@ func newMangasState(files library.Files) *mangasState {
 		keys: mangasKeyMap{
 			confirm: util.Bind("chapters", "enter"),
 			scan:    base.KeyScan,
-			check:   util.Bind("scan and check ids", "S"),
-			merge:   util.Bind("merge", "m"),
-			move:    util.Bind("move to a provider", "M"),
-			remove:  util.Bind("remove missing", "x"),
-			trash:   util.Bind("trash", "t"),
+			check:   base.KeyScanIDs,
+			merge:   base.KeyMerge,
+			move:    base.KeyMove,
+			trash:   base.KeyTrash,
 			delete:  base.KeyDelete,
 			undo:    base.KeyUndo,
 			watch:   base.KeyItsWatch,
-			// screen-wide filter like the watches' "n", "i"
-			duplicates: util.Bind("duplicates only", "2"),
+			// screen-wide filter like the watches' needs re-link and not in library
+			duplicates: base.KeyDuplicates,
 			links:      base.KeyBindings,
 			backups:    base.KeyBackups,
 		},
@@ -153,7 +152,7 @@ func newMangasState(files library.Files) *mangasState {
 func (s *mangasState) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash, k.undo}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.remove, k.watch, k.duplicates, k.links, k.backups)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.watch, k.duplicates, k.links, k.backups)}}
 }
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
@@ -332,7 +331,7 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 		return linksCmd(item.manga), true
 	case key.Matches(msg, s.keys.watch):
 		return watches.JumpCmd(item.watches, ""), true
-	case key.Matches(msg, s.keys.delete):
+	case key.Matches(msg, s.keys.delete) && !item.missing:
 		m := item.manga
 		message := fmt.Sprintf("Delete %q? Its folder (%d chapters) goes to the trash and it leaves the library.", m.Title, m.Chapters)
 		if m.Dir == "" {
@@ -345,12 +344,10 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 			})
 		}))
 		return nil, true
-	case key.Matches(msg, s.keys.remove):
-		if !item.missing {
-			return base.Notify("only mangas whose folder is missing can be removed from the library"), true
-		}
+	case key.Matches(msg, s.keys.delete):
+		// its folder is gone: delete forgets it
 		m := item.manga
-		s.confirm.Ask("Remove", fmt.Sprintf("Forget %q? Its folder is gone.", m.Title), s.View(), action("Removing "+m.Title, func() (string, error) {
+		s.confirm.AskDelete("Remove", fmt.Sprintf("Forget %q? Its folder is gone.", m.Title), s.View(), action("Removing "+m.Title, func() (string, error) {
 			return journaled("remove", fmt.Sprintf("remove missing %d %q", m.ID, m.Title), "removed "+m.Title, func(library.Journal) error {
 				return files.Library.RemoveManga(m.ID)
 			})
@@ -473,7 +470,7 @@ func (s *mangasState) onScanned(msg scannedMsg) tea.Cmd {
 	}
 	report := scanReport(msg.result)
 	if lines := library.DuplicateLines(msg.dups, s.files.Root); len(lines) != 0 {
-		report += "\n\n" + strings.Join(lines, "\n") + "\n(" + s.keys.duplicates.Help().Key + " shows them, m on one merges it into its keep)"
+		report += "\n\n" + strings.Join(lines, "\n") + "\n(" + s.keys.duplicates.Help().Key + " shows them, " + s.keys.merge.Help().Key + " on one merges it into its keep)"
 	}
 	if msg.checked {
 		report += "\n\n" + checkReport(msg.checks, msg.checkErr)
@@ -525,7 +522,7 @@ func (s *mangasState) merge(ctx context.Context, item *mangaItem) tea.Cmd {
 	switch {
 	case s.keep == 0:
 		s.keep, item.keep = item.manga.ID, true
-		return base.Notify(fmt.Sprintf("keeping %q, select the manga to merge into it and press m", item.manga.Title))
+		return base.Notify(fmt.Sprintf("keeping %q, select the manga to merge into it and press %s", item.manga.Title, s.keys.merge.Help().Key))
 	case s.keep == item.manga.ID:
 		s.keep, item.keep = 0, false
 		return base.Notify("merge cancelled")

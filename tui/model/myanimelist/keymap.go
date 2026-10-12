@@ -21,9 +21,9 @@ func newKeyMap() keyMap {
 		new:    base.KeyNewLogin,
 		forget: base.KeyForget,
 		back:   util.Bind("saved logins", "esc"),
-		client: util.Bind("API client", "c"),
+		client: base.KeyAPIClient,
 		save:   util.Bind("save", "enter"),
-		next:   util.Bind("next", "tab", "down"),
+		next:   util.BindNamedKey("tab", "next", "tab", "down"),
 		prev:   util.Bind("previous", "shift+tab", "up"),
 		cancel: util.Bind("cancel", "esc"),
 	}

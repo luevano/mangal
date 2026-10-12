@@ -70,11 +70,11 @@ func TestSetupSavesClient(t *testing.T) {
 		t.Fatalf("phase %v, inputting %v, backable %v: want the setup, esc going back", s.phase, s.Inputting(), s.Backable())
 	}
 
-	// "c" and "i" are typed, not the client and login keys
-	typeText(ctx, s, "my-id-ci")
+	// "e" and "i" are typed, not the client and login keys
+	typeText(ctx, s, "my-id-ei")
 	s.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
 	typeText(ctx, s, "my-secret")
-	if s.inputs[idField].Value() != "my-id-ci" || s.inputs[secretField].Value() != "my-secret" {
+	if s.inputs[idField].Value() != "my-id-ei" || s.inputs[secretField].Value() != "my-secret" {
 		t.Fatalf("typed %q %q", s.inputs[idField].Value(), s.inputs[secretField].Value())
 	}
 	if view := s.View(); !strings.Contains(view, "*********") || strings.Contains(view, "my-secret") {
@@ -84,12 +84,12 @@ func TestSetupSavesClient(t *testing.T) {
 	for _, m := range run(s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter})) {
 		s.Update(ctx, m)
 	}
-	if id, secret, err := cache.MyAnimeListClient(); err != nil || id != "my-id-ci" || secret != "my-secret" {
+	if id, secret, err := cache.MyAnimeListClient(); err != nil || id != "my-id-ei" || secret != "my-secret" {
 		t.Fatalf("saved %q %q, %v", id, secret, err)
 	}
 	// the load wraps the status, read it again as the screen would get it
 	msg, err = status(ctx)
-	if err != nil || msg.notConfigured || msg.id != "my-id-ci" {
+	if err != nil || msg.notConfigured || msg.id != "my-id-ei" {
 		t.Fatalf("status with the client: %+v, %v", msg, err)
 	}
 	s.Update(ctx, msg)
@@ -97,11 +97,11 @@ func TestSetupSavesClient(t *testing.T) {
 		t.Fatalf("phase %v after saving, want the login", s.phase)
 	}
 
-	// c edits the saved client, esc cancels
-	for _, m := range run(s.Update(ctx, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})) {
+	// e edits the saved client, esc cancels
+	for _, m := range run(s.Update(ctx, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})) {
 		s.Update(ctx, m)
 	}
-	if s.phase != setup || s.inputs[idField].Value() != "my-id-ci" || s.inputs[secretField].Value() != "my-secret" || s.Backable() {
+	if s.phase != setup || s.inputs[idField].Value() != "my-id-ei" || s.inputs[secretField].Value() != "my-secret" || s.Backable() {
 		t.Fatalf("edit: phase %v, fields %q %q", s.phase, s.inputs[idField].Value(), s.inputs[secretField].Value())
 	}
 	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEsc})
@@ -110,7 +110,7 @@ func TestSetupSavesClient(t *testing.T) {
 	}
 
 	// an empty id removes it
-	for _, m := range run(s.Update(ctx, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})) {
+	for _, m := range run(s.Update(ctx, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})) {
 		s.Update(ctx, m)
 	}
 	s.inputs[idField].SetValue("")

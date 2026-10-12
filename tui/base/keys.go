@@ -9,65 +9,186 @@ import (
 	"github.com/luevano/mangal/v5/tui/util"
 )
 
-// The keys of the actions on more than one screen: a screen with the action binds it to
-// the same key (copy the binding into its key map).
+// Every key of the screens (not the globals, the list's, the viewers' or a dialog's): a
+// screen copies the binding instead of writing its own, so an action has one key and a key
+// one meaning on every screen. keyConcepts has the keys with more than one help.
 var (
-	// keys from before v5.14, they never move
+	// keys from before v5.14 ("old"), they never move
 
-	KeyInfo     = util.Bind("info", "i")
-	KeyMetadata = util.Bind("metadata", "m")
-	KeyBindings = util.Bind("bindings", "A")
-	KeySearch   = util.Bind("search", "s")
-	KeyLogIn    = util.Bind("log in", "i")
-	KeyLogOut   = util.Bind("log out", "o")
-	KeyNewLogin = util.Bind("new login", "n")
-	KeyForget   = util.Bind("forget", "ctrl+d")
+	KeyInfo          = util.Bind("info", "i")
+	KeyMetadata      = util.Bind("metadata", "m")
+	KeyFullMetadata  = util.Bind("toggle full meta", "M")
+	KeyBindings      = util.Bind("bindings", "A")
+	KeySearch        = util.Bind("search", "s")
+	KeyLogIn         = util.Bind("log in", "i")
+	KeyLogOut        = util.Bind("log out", "o")
+	KeyNewLogin      = util.Bind("new login", "n")
+	KeyForget        = util.Bind("forget", "ctrl+d")
+	KeyClearField    = util.Bind("clear field", "c")
+	KeyCloseAll      = util.Bind("close all", "backspace")
+	KeyToggle        = util.Bind("toggle", " ")
+	KeyRead          = util.Bind("read", "r")
+	KeyDownload      = util.Bind("download", "d")
+	KeyFormat        = util.Bind("change format", "f")
+	KeyOpenURL       = util.Bind("open url", "o")
+	KeySelectAll     = util.Bind("select all", "a")
+	KeyUnselectAll   = util.Bind("unselect all", "backspace")
+	KeyVolumeNumber  = util.Bind("toggle vol num", "v")
+	KeyChapterNumber = util.Bind("toggle number", "c")
+	KeyGroup         = util.Bind("toggle group", "ctrl+g")
+	KeyDate          = util.Bind("toggle date", "ctrl+d")
+	KeyOpenDir       = util.Bind("open directory", "o")
+	KeyRetry         = util.Bind("retry", "r")
+	KeyCopy          = util.Bind("copy", "c")
+	KeyUp            = util.BindNamedKey("↑/k", "up", "up", "k")
+	KeyDown          = util.BindNamedKey("↓/j", "down", "down", "j")
 
 	// newer keys: none of them is a global or list key, so each works on every screen
 
+	KeyLibrary         = util.Bind("library", "L")
+	KeyWatches         = util.Bind("watches", "W")
+	KeyAccounts        = util.Bind("accounts", "K")
+	KeyMigrate         = util.Bind("migrate", "X")
+	KeyHealth          = util.Bind("health", "!")
 	KeyWatch           = util.Bind("watch", "w")
 	KeyItsWatch        = util.Bind("its watch", "W")
 	KeyLibraryManga    = util.Bind("library manga", "L")
-	KeyProviderHistory = util.Bind("provider history", "v")
-	KeyLiveLog         = util.Bind("live log", "t")
-	KeyRelink          = util.Bind("re-link manga", "m")
-	KeyPause           = util.Bind("pause/resume", "p")
+	KeyMirrors         = util.Bind("mirrors", "alt+m")
+	KeyCopyURL         = util.Bind("copy url", "c")
+	KeyAccountLogIn    = util.Bind("log in / set secret", "i")
+	KeyAPIClient       = util.Bind("API client", "e")
+	KeyRefresh         = util.Bind("refresh", "ctrl+r")
 	KeyEdit            = util.Bind("edit", "e")
-	KeyRefresh         = util.Bind("refresh", "r")
-	KeyCheckProvider   = util.Bind("check provider", "alt+c")
-	KeyNextProvider    = util.Bind("next provider", "tab")
-	KeyScan            = util.Bind("scan", "s")
-	KeyDelete          = util.Bind("delete", "D")
-	KeyRemove          = util.Bind("remove", "x")
+	KeyAdd             = util.Bind("add", "n")
+	KeyDelete          = util.Bind("delete", "d")
+	KeyRemove          = util.Bind("remove", "d")
+	KeyReset           = util.Bind("reset to default", "backspace")
+	KeyExpandAll       = util.Bind("expand/collapse all", "E")
+	KeyChange          = util.BindNamedKey("enter/space", "change", "enter", " ")
+	KeyOnOff           = util.Bind("on/off", " ")
+	KeyScan            = util.Bind("scan", "u")
+	KeyScanIDs         = util.Bind("scan and check ids", "S")
+	KeyMerge           = util.Bind("merge", "J")
+	KeyMove            = util.Bind("move to a provider", "X")
+	KeyTrash           = util.Bind("trash", "t")
+	KeyEmptyTrash      = util.Bind("empty", "d")
 	KeyUndo            = util.Bind("undo", "U")
+	KeyDuplicates      = util.Bind("duplicates only", "D")
 	KeyBackups         = util.Bind("fill backups", "B")
+	KeyCheck           = util.Bind("check now", "u")
+	KeyCheckDue        = util.Bind("check due", "C")
+	KeyCheckProvider   = util.Bind("check provider", "alt+c")
+	KeyFillGaps        = util.Bind("fill gaps", "F")
+	KeyPause           = util.Bind("pause/resume", "p")
+	KeyPauseProvider   = util.Bind("pause/resume its provider", "P")
+	KeyStopWatching    = util.Bind("stop watching", "d")
+	KeyDeleteRun       = util.Bind("delete check", "d")
+	KeyRelink          = util.Bind("re-link manga", "b")
+	KeyLiveLog         = util.Bind("live log", "O")
+	KeyLiveChecks      = util.Bind("every live check", "T")
+	KeyRuns            = util.Bind("every check run", "V")
+	KeyProviderHistory = util.Bind("provider history", "alt+h")
+	KeyNextProvider    = util.Bind("next provider", "tab")
+	KeyPickProvider    = util.Bind("provider", "tab")
+	KeyNext            = util.Bind("next", "tab")
+	KeyGroupByProvider = util.Bind("group by provider", "alt+o")
+	KeyNeedsRelink     = util.Bind("needs re-link only", "N")
+	KeyNotInLibrary    = util.Bind("not in library only", "I")
+
+	// for the health screen, not bound yet
+	KeyApplyFix = util.Bind("apply fix", "x")
+	KeyNetwork  = util.Bind("network checks", "alt+n")
 )
 
-// sharedKeys are the Key* bindings, the old ones (from before v5.14) first.
-func sharedKeys() (old, newer []key.Binding) {
-	return []key.Binding{KeyInfo, KeyMetadata, KeyBindings, KeySearch, KeyLogIn, KeyLogOut, KeyNewLogin, KeyForget},
-		[]key.Binding{
-			KeyWatch, KeyItsWatch, KeyLibraryManga, KeyProviderHistory, KeyLiveLog, KeyRelink, KeyPause, KeyEdit,
-			KeyRefresh, KeyCheckProvider, KeyNextProvider, KeyScan, KeyDelete, KeyRemove, KeyUndo, KeyBackups,
-		}
+// keyConcepts are the keys with more than one help, each one concept: the helps they may
+// have. The rest have one.
+var keyConcepts = map[string][]string{
+	// old: info, and log in on the login screens (no info there)
+	"i": {"info", "log in", "log in / set secret"},
+	// old: chapter number on the chapters, copy, clear field on the logins
+	"c": {"toggle number", "copy", "copy url", "clear field"},
+	// old: open, and log out on the logins
+	"o": {"open url", "open directory", "log out"},
+	// old: read on the chapters, retry on the downloads
+	"r": {"read", "retry"},
+	// old: forget on the logins, the date on the chapters
+	"ctrl+d": {"forget", "toggle date"},
+	// delete; download is the chapters' old key (no delete there)
+	"d": {"delete", "remove", "stop watching", "empty", "delete check", "download"},
+	// clear
+	"backspace": {"close all", "unselect all", "reset to default"},
+	" ":         {"toggle", "change", "on/off"},
+	"tab":       {"next provider", "provider", "next"},
+	"n":         {"new login", "add"},
+	"e":         {"edit", "API client"},
+	// look for new chapters: on the provider (a watch), in the folders (the library)
+	"u": {"check now", "scan"},
+	"L": {"library manga", "library"},
+	"W": {"its watch", "watches"},
+	"X": {"move to a provider", "migrate"},
 }
 
-// KeyInconsistencies are the screen's bindings of a shared action (same help) without its
-// shared key, as "library manga: l, not L". For tests.
+// Keys are every Key* binding, the old ones (from before v5.14) first.
+func Keys() (old, newer []key.Binding) {
+	return []key.Binding{
+		KeyInfo, KeyMetadata, KeyFullMetadata, KeyBindings, KeySearch, KeyLogIn, KeyLogOut, KeyNewLogin,
+		KeyForget, KeyClearField, KeyCloseAll, KeyToggle, KeyRead, KeyDownload, KeyFormat, KeyOpenURL,
+		KeySelectAll, KeyUnselectAll, KeyVolumeNumber, KeyChapterNumber, KeyGroup, KeyDate, KeyOpenDir,
+		KeyRetry, KeyCopy, KeyUp, KeyDown,
+	}, []key.Binding{
+		KeyLibrary, KeyWatches, KeyAccounts, KeyMigrate, KeyHealth, KeyWatch, KeyItsWatch, KeyLibraryManga,
+		KeyMirrors, KeyCopyURL, KeyAccountLogIn, KeyAPIClient, KeyRefresh, KeyEdit, KeyAdd, KeyDelete,
+		KeyRemove, KeyReset, KeyExpandAll, KeyChange, KeyOnOff, KeyScan, KeyScanIDs, KeyMerge, KeyMove, KeyTrash, KeyEmptyTrash,
+		KeyUndo, KeyDuplicates, KeyBackups, KeyCheck, KeyCheckDue, KeyCheckProvider, KeyFillGaps, KeyPause,
+		KeyPauseProvider, KeyStopWatching, KeyDeleteRun, KeyRelink, KeyLiveLog, KeyLiveChecks, KeyRuns,
+		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,
+		KeyNotInLibrary, KeyApplyFix, KeyNetwork,
+	}
+}
+
+// plainKeys go with a screen key without making it a second key (enter is the screen's
+// main action, the rest move): they aren't compared.
+var plainKeys = []string{"enter", "esc", "up", "down", "left", "right", "home", "end", "pgup", "pgdown", "shift+tab"}
+
+// screenKeys are the binding's keys but the plain ones.
+func screenKeys(b key.Binding) []string {
+	return slices.DeleteFunc(slices.Clone(b.Keys()), func(k string) bool { return slices.Contains(plainKeys, k) })
+}
+
+// KeyInconsistencies are the screen's bindings that aren't a Key* binding: another key for
+// a Key* action ("library manga: l, not L"), another meaning for a Key* key ("m: merge, is
+// metadata"), or a key no Key* binding has. For tests.
 func KeyInconsistencies(screen help.KeyMap) []string {
-	old, newer := sharedKeys()
+	old, newer := Keys()
+	all := append(old, newer...)
 	var bad []string
 	for _, b := range util.Bindings(screen) {
-		for _, shared := range append(old, newer...) {
-			if b.Help().Desc != shared.Help().Desc {
-				continue
+		keys := screenKeys(b)
+		if len(keys) == 0 {
+			continue
+		}
+		desc := b.Help().Desc
+		if slices.ContainsFunc(all, func(k key.Binding) bool {
+			return k.Help().Desc == desc && slices.Equal(screenKeys(k), keys)
+		}) {
+			continue
+		}
+		var problem string
+		if i := slices.IndexFunc(all, func(k key.Binding) bool { return k.Help().Desc == desc }); i >= 0 {
+			problem = desc + ": " + strings.Join(keys, "/") + ", not " + strings.Join(screenKeys(all[i]), "/")
+		}
+		for _, k := range keys {
+			if problem != "" {
+				break
 			}
-			for _, k := range shared.Keys() {
-				if !slices.Contains(b.Keys(), k) {
-					bad = append(bad, b.Help().Desc+": "+strings.Join(b.Keys(), "/")+", not "+k)
-				}
+			if i := slices.IndexFunc(all, func(b key.Binding) bool { return slices.Contains(screenKeys(b), k) }); i >= 0 {
+				problem = k + ": " + desc + ", is " + all[i].Help().Desc
 			}
 		}
+		if problem == "" {
+			problem = desc + ": " + strings.Join(keys, "/") + " isn't a base key"
+		}
+		bad = append(bad, problem)
 	}
 	return bad
 }

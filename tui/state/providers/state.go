@@ -50,8 +50,8 @@ func New(loaders []libmangal.ProviderLoader) base.State {
 	s := &state{
 		confirm:  util.Bind("confirm", "enter"),
 		info:     base.KeyInfo,
-		closeAll: util.Bind("close all", "backspace"),
-		mirrors:  util.Bind("mirrors", "m"),
+		closeAll: base.KeyCloseAll,
+		mirrors:  base.KeyMirrors,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "provider", "providers", loaders, s.newItem), s.keyMap)
 	return s

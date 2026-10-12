@@ -59,7 +59,7 @@ func TestMove(t *testing.T) {
 	// M picks the provider first, then searches it
 	s := newMangasState(mover.Files)
 	s.onLoaded(mangasLoadedMsg{items: []*mangaItem{{manga: m}}})
-	if _, ok := s.Update(ctx, press("M"))().(*pick.Providers); !ok {
+	if _, ok := s.Update(ctx, press("X"))().(*pick.Providers); !ok {
 		t.Fatal("M doesn't open the provider picker")
 	}
 	ms := newMoveState(m, "mango-weebcentral")

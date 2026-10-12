@@ -195,25 +195,25 @@ func newListState(connect connector) *listState {
 		now:     time.Now,
 		keys: listKeyMap{
 			details:       util.Bind("details", "enter"),
-			check:         util.Bind("check now", "c"),
-			checkDue:      util.Bind("check due", "C"),
+			check:         base.KeyCheck,
+			checkDue:      base.KeyCheckDue,
 			checkProvider: base.KeyCheckProvider,
 			pause:         base.KeyPause,
-			pauseProvider: util.Bind("pause/resume its provider", "P"),
-			delete:        util.Bind("stop watching", "x"),
+			pauseProvider: base.KeyPauseProvider,
+			delete:        base.KeyStopWatching,
 			edit:          base.KeyEdit,
-			gaps:          util.Bind("fill gaps", "F"),
+			gaps:          base.KeyFillGaps,
 			refresh:       base.KeyRefresh,
-			runs:          util.Bind("every check run", "V"),
+			runs:          base.KeyRuns,
 			library:       base.KeyLibraryManga,
 			history:       base.KeyProviderHistory,
 			nextProvider:  base.KeyNextProvider,
-			group:         util.Bind("group by provider", "o"),
+			group:         base.KeyGroupByProvider,
 			live:          base.KeyLiveLog,
-			running:       util.Bind("every live check", "T"),
+			running:       base.KeyLiveChecks,
 			relink:        base.KeyRelink,
-			missing:       util.Bind("needs re-link only", "n"),
-			unlinked:      util.Bind("not in library only", "i"),
+			missing:       base.KeyNeedsRelink,
+			unlinked:      base.KeyNotInLibrary,
 		},
 		live:          map[int64]liveWatch{},
 		liveProviders: map[string]bool{},
@@ -680,8 +680,7 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		return pauseProviderCmd(m, w), true
 	case key.Matches(msg, s.keys.delete):
 		message := fmt.Sprintf("Stop watching %q? The history of its checks stays, the downloads too.", w.Title)
-		// x then x, as the library's d then d
-		s.confirm.AskWith([]string{"x", "y"}, "Stop watching", message, s.View(), func() tea.Msg {
+		s.confirm.AskDelete("Stop watching", message, s.View(), func() tea.Msg {
 			return actionMsg{label: "Removing " + w.Title, do: func(ctx context.Context) (string, error) {
 				return "stopped watching " + w.Title, m.Remove(ctx, w.ID)
 			}}

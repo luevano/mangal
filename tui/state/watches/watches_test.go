@@ -108,6 +108,9 @@ func (f *fakeManager) RemoveRun(ctx context.Context, id int64) (watch.RemovedRun
 var _ watch.Manager = (*fakeManager)(nil)
 
 func press(k string) tea.KeyMsg {
+	if r, ok := strings.CutPrefix(k, "alt+"); ok {
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(r), Alt: true}
+	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
 }
 
@@ -216,10 +219,10 @@ func TestCheckBusy(t *testing.T) {
 	ctx := context.Background()
 
 	// Berserk's provider is being checked
-	cmd := s.Update(ctx, press("c"))
+	cmd := s.Update(ctx, press("u"))
 	msg, ok := cmd().(base.NotificationMsg)
 	if !ok || !strings.Contains(msg.Message, "mango-mangapill is being checked (since 3m ago)") {
-		t.Errorf("c while its provider is checked: got %#v", cmd())
+		t.Errorf("u while its provider is checked: got %#v", cmd())
 	}
 	if len(m.checked) != 0 {
 		t.Error("checked while busy")
@@ -229,8 +232,8 @@ func TestCheckBusy(t *testing.T) {
 	}
 	// another provider's watch goes
 	s.List.Select(2)
-	if cmd := s.Update(ctx, press("c")); cmd == nil {
-		t.Fatal("c on another provider")
+	if cmd := s.Update(ctx, press("u")); cmd == nil {
+		t.Fatal("u on another provider")
 	} else {
 		runBatch(cmd)
 	}
@@ -551,8 +554,8 @@ func TestJump(t *testing.T) {
 	if d.manager != m || len(d.List.Items()) != 2 {
 		t.Errorf("loaded: manager %v, %d checks", d.manager, len(d.List.Items()))
 	}
-	if _, ok := d.Update(context.Background(), press("v"))().(*historyState); !ok {
-		t.Error("v on the details isn't the history")
+	if _, ok := d.Update(context.Background(), press("alt+h"))().(*historyState); !ok {
+		t.Error("alt+h on the details isn't the history")
 	}
 }
 
@@ -610,9 +613,9 @@ func TestProviderHistory(t *testing.T) {
 	// v on Dandadan: its provider's
 	s := loaded(t, m)
 	s.List.Select(1)
-	h, ok := s.Update(ctx, press("v"))().(*historyState)
+	h, ok := s.Update(ctx, press("alt+h"))().(*historyState)
 	if !ok || h.provider != "mango-mangaplus" {
-		t.Fatalf("v: got %#v", h)
+		t.Fatalf("alt+h: got %#v", h)
 	}
 	h.Update(ctx, msg)
 	if len(h.List.Items()) != 2 || !strings.Contains(h.Subtitle(), "mango-mangaplus") {
@@ -655,7 +658,7 @@ func TestProviderFilter(t *testing.T) {
 		t.Errorf("mangaplus: %v", got)
 	}
 	s.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
-	s.Update(ctx, press("o"))
+	s.Update(ctx, press("alt+o"))
 	if got := titles(); !slices.Equal(got, []string{"Akira", "Berserk", "Dandadan", "Frieren"}) || !strings.Contains(s.Subtitle(), "by provider") {
 		t.Errorf("by provider: %v, %q", got, s.Subtitle())
 	}
@@ -683,11 +686,11 @@ func TestRelink(t *testing.T) {
 		t.Errorf("subtitle %q", s.Subtitle())
 	}
 	// only the ones to fix: flagged, placeholder id, provider missing
-	s.Update(ctx, press("n"))
+	s.Update(ctx, press("N"))
 	if n := len(s.List.Items()); n != 3 || s.List.Items()[0].(*item).w.ID != 2 {
 		t.Fatalf("filtered to %d", n)
 	}
-	cmd := s.Update(ctx, press("m"))
+	cmd := s.Update(ctx, press("b"))
 	if cmd == nil {
 		t.Fatal("m: no cmd")
 	}
@@ -695,7 +698,7 @@ func TestRelink(t *testing.T) {
 	if !ok || r.Provider() != "mango-mangaplus" || r.Search.Query() != "Dandadan" {
 		t.Fatalf("m: %#v", r)
 	}
-	s.Update(ctx, press("n"))
+	s.Update(ctx, press("N"))
 	if n := len(s.List.Items()); n != 4 {
 		t.Errorf("unfiltered %d", n)
 	}
@@ -771,7 +774,7 @@ func TestKeys(t *testing.T) {
 		"run":           base.KeyCollisions(run.keyMap(), run.List.KeyMap.Browsing()...),
 		"relink":        base.KeyCollisions(r.Keys(), r.List.KeyMap.Browsing()...),
 		"provider pick": base.KeyCollisions(p.Keys(), p.List.KeyMap.Browsing()...),
-		"live":          base.KeyCollisions(live.KeyMap()),
+		"live":          base.ViewerKeyCollisions(live.KeyMap()),
 	} {
 		if len(keys) != 0 {
 			t.Errorf("%s: %v", name, keys)
@@ -779,16 +782,16 @@ func TestKeys(t *testing.T) {
 	}
 }
 
-// TestStopWatching: x asks, x (or y) again removes the watch.
+// TestStopWatching: d asks, d (or y) again removes the watch.
 func TestStopWatching(t *testing.T) {
 	s := loaded(t, testManager())
 	ctx := context.Background()
-	if cmd := s.Update(ctx, press("x")); cmd != nil || !s.confirm.Active() {
-		t.Fatal("x doesn't ask")
+	if cmd := s.Update(ctx, press("d")); cmd != nil || !s.confirm.Active() {
+		t.Fatal("d doesn't ask")
 	}
-	cmd := s.Update(ctx, press("x"))
+	cmd := s.Update(ctx, press("d"))
 	if cmd == nil {
-		t.Fatal("x x: no cmd")
+		t.Fatal("d d: no cmd")
 	}
 	var action actionMsg
 	for msg := cmd(); ; {
@@ -798,7 +801,7 @@ func TestStopWatching(t *testing.T) {
 		}
 		batch, ok := msg.(tea.BatchMsg)
 		if !ok || len(batch) == 0 {
-			t.Fatalf("x x: %#v", msg)
+			t.Fatalf("d d: %#v", msg)
 		}
 		msg = batch[len(batch)-1]()
 	}
@@ -810,7 +813,7 @@ func TestStopWatching(t *testing.T) {
 // TestLibraryIssue: the tag, its own color, the filter and the details.
 func TestLibraryIssue(t *testing.T) {
 	m := testManager()
-	m.watches[2].LibraryIssue = "in the library under mango-mangasee (Sousou no Frieren): move it there (M in the library)"
+	m.watches[2].LibraryIssue = "in the library under mango-mangasee (Sousou no Frieren): move it there (X in the library)"
 	m.watches[2].LibraryElsewhere = true
 	s := loaded(t, m)
 	ctx := context.Background()
@@ -827,18 +830,18 @@ func TestLibraryIssue(t *testing.T) {
 		}
 		colors[st.GetForeground()] = name
 	}
-	if !strings.Contains(s.Subtitle(), "1 not in library (i)") {
+	if !strings.Contains(s.Subtitle(), "1 not in library (I)") {
 		t.Errorf("subtitle %q", s.Subtitle())
 	}
-	s.Update(ctx, press("i"))
+	s.Update(ctx, press("I"))
 	if n := len(s.List.Items()); n != 1 || s.List.Items()[0].(*item).w.ID != 3 {
 		t.Errorf("filtered to %d", n)
 	}
-	s.Update(ctx, press("i"))
+	s.Update(ctx, press("I"))
 	if n := len(s.List.Items()); n != 3 {
 		t.Errorf("unfiltered %d", n)
 	}
-	if got := settings(m.watches[2], 3, now); !strings.Contains(got, "not in library: in the library under mango-mangasee (Sousou no Frieren): move it there (M in the library)") {
+	if got := settings(m.watches[2], 3, now); !strings.Contains(got, "not in library: in the library under mango-mangasee (Sousou no Frieren): move it there (X in the library)") {
 		t.Errorf("details %q", got)
 	}
 	if got := nextCheck(m.watches[2], 3, now); got != "not in library: move it" {

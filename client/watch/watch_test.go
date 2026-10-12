@@ -1206,7 +1206,7 @@ func TestLibraryLink(t *testing.T) {
 	}
 	report, err := e.svc.Check(ctx, []int64{w.ID}, CheckOptions{})
 	if err != nil || len(report.Results) != 1 || report.Results[0].Status != storage.StatusSkipped ||
-		!strings.Contains(report.Results[0].Error, fmt.Sprintf("move it first (M in the library, or mangal library move %d mango-mangadex)", lib.ID)) {
+		!strings.Contains(report.Results[0].Error, fmt.Sprintf("move it first (X in the library, or mangal library move %d mango-mangadex)", lib.ID)) {
 		t.Fatalf("check by id: %+v, %v", report.Results, err)
 	}
 	if got := e.sources["mango-mangadex"].downloaded; len(got) != 0 {
@@ -1253,7 +1253,7 @@ func TestLibraryIssue(t *testing.T) {
 		want       string
 	}{
 		{storage.LibraryMatch{Linked: true}, true, ""},
-		{elsewhere, false, "in the library under Weeb Central (Berserk): move it there (M in the library)"},
+		{elsewhere, false, "in the library under Weeb Central (Berserk): move it there (X in the library)"},
 		{storage.LibraryMatch{}, true, "its downloads aren't in the library (library scan?)"},
 		{storage.LibraryMatch{}, false, ""},
 	} {
@@ -1363,8 +1363,8 @@ func TestRemoveRun(t *testing.T) {
 	if err != nil || run.Watches != 1 || run.NewChapters != 1 || len(run.Results) != 1 || run.Results[0].Watch != wb.ID {
 		t.Errorf("check run after %+v, %v", run, err)
 	}
-	if _, err := e.svc.RemoveRun(ctx, runA); !errors.Is(err, storage.ErrRunNotFound) || ErrorCode(err) != CodeNotFound {
-		t.Errorf("removed twice: %v", err)
+	if _, err := e.svc.RemoveRun(ctx, runA); !errors.Is(err, storage.ErrRunNotFound) || ErrorCode(err) != CodeNotFound || len(ops) != 1 {
+		t.Errorf("removed twice: %v (%d operations)", err, len(ops))
 	}
 	removed, err = e.svc.RemoveRun(ctx, run.Results[0].ID)
 	if err != nil || !removed.CheckRunRemoved {

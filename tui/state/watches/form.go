@@ -10,6 +10,7 @@ import (
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
+	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/util"
 )
 
@@ -63,9 +64,9 @@ type form struct {
 func newForm(fields ...*field) *form {
 	f := &form{
 		fields: fields,
-		next:   util.Bind("next", "tab", "down"),
+		next:   util.BindNamedKey("tab", "next", "tab", "down"),
 		prev:   util.Bind("previous", "shift+tab", "up"),
-		flip:   util.Bind("on/off", " "),
+		flip:   base.KeyOnOff,
 		submit: util.Bind("save", "enter"),
 	}
 	f.focus(0)

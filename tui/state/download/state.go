@@ -91,8 +91,8 @@ func New(c *libmangal.Client, chapters []mangadata.Chapter, options libmangal.Do
 		sep:      _styles.sep.Render(icon.Separator.Raw()),
 		message:  "Preparing...",
 		styles:   _styles,
-		open:     util.Bind("open directory", "o"),
-		retry:    util.Bind("retry", "r"),
+		open:     base.KeyOpenDir,
+		retry:    base.KeyRetry,
 	}
 }
 

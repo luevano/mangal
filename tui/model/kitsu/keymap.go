@@ -20,12 +20,12 @@ func newKeyMap() keyMap {
 		logout:  base.KeyLogOut,
 		new:     base.KeyNewLogin,
 		forget:  base.KeyForget,
-		up:      util.BindNamedKey("↑/k", "up", "k", "up"),
-		down:    util.BindNamedKey("↓/j", "down", "j", "down"),
+		up:      base.KeyUp,
+		down:    base.KeyDown,
 		edit:    util.Bind("edit field", "enter"),
 		confirm: util.Bind("confirm", "enter"),
 		cancel:  util.Bind("cancel", "esc"),
-		clear:   util.Bind("clear field", "c"),
+		clear:   base.KeyClearField,
 		back:    util.Bind("saved logins", "esc"),
 	}
 }

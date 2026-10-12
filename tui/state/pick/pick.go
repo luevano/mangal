@@ -140,7 +140,7 @@ func NewManga(opts MangaOptions) *Manga {
 		provider:  opts.Provider,
 		Assign:    util.Bind(opts.Action, "enter"),
 		searchKey: base.KeySearch,
-		pickKey:   util.Bind("provider", "p"),
+		pickKey:   base.KeyPickProvider,
 	}
 	s.updateKeys()
 	return s

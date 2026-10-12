@@ -95,6 +95,6 @@ func relinkWarning(cmd *cobra.Command, watches storage.Watches) error {
 		return nil
 	}
 	cmd.PrintErrf("warning: %d watches need a re-link, the scheduler skips them until then:\n%s\n", len(lines), strings.Join(lines, "\n"))
-	cmd.PrintErrln(`check one ("mangal watch check <id>": finding its manga clears it) or re-link it: "mangal watch move <id> [provider] [query|mid:<id>]", or e on the watch in the TUI's watches (w on the home screen)`)
+	cmd.PrintErrln(`check one ("mangal watch check <id>": finding its manga clears it) or re-link it: "mangal watch move <id> [provider] [query|mid:<id>]", or e on the watch in the TUI's watches (W on the home screen)`)
 	return nil
 }

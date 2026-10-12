@@ -41,7 +41,7 @@ func newTrashState(files library.Files) *trashState {
 	s := &trashState{
 		files:   files,
 		confirm: newDialog(),
-		empty:   util.Bind("empty", "e"),
+		empty:   base.KeyEmptyTrash,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "trashed batch", "trashed batches", []*batchItem{}, func(i *batchItem) _list.DefaultItem { return i }), s.keyMap)
 	return s
@@ -97,7 +97,7 @@ func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return base.Notify("the trash is empty")
 		}
 		files := s.files
-		s.confirm.Ask("Empty the trash", "Delete everything in the trash? It can't be undone.", s.View(), action("Emptying the trash", func() (string, error) {
+		s.confirm.AskDelete("Empty the trash", "Delete everything in the trash? It can't be undone.", s.View(), action("Emptying the trash", func() (string, error) {
 			if _, err := client.Snapshot("empty-trash"); err != nil {
 				return "", err
 			}

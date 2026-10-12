@@ -85,7 +85,7 @@ func TestConfigErrorKey(t *testing.T) {
 	if !m.inViewport || m.viewportConfigKey != "download.metadata.strict" {
 		t.Fatalf("error not shown with its key: %v %q", m.inViewport, m.viewportConfigKey)
 	}
-	_, cmd = m.Update(keyMsg("s"))
+	_, cmd = m.Update(keyMsg("e"))
 	feed(m, cmd)
 	if m.inViewport {
 		t.Error("viewport still shown")

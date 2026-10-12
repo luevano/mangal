@@ -76,6 +76,8 @@ func press(s *state, keys ...string) {
 			msg = tea.KeyMsg{Type: tea.KeyEnter}
 		case "esc":
 			msg = tea.KeyMsg{Type: tea.KeyEsc}
+		case "backspace":
+			msg = tea.KeyMsg{Type: tea.KeyBackspace}
 		default:
 			msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
 		}
@@ -167,7 +169,7 @@ func TestReset(t *testing.T) {
 	if mconfig.Download.Metadata.Strict.Get() {
 		t.Fatal("not toggled")
 	}
-	press(s, "r")
+	press(s, "backspace")
 	if !mconfig.Download.Metadata.Strict.Get() || !strings.Contains(read(t, path), "strict = true") {
 		t.Error("not reset")
 	}
@@ -179,7 +181,7 @@ func TestMirrors(t *testing.T) {
 	if s.mode != mapping {
 		t.Fatal("not mapping")
 	}
-	press(s, "a")
+	press(s, "n")
 	s.input.SetValue("mango-b")
 	press(s, "enter")
 	s.input.SetValue("not a url")
@@ -198,7 +200,7 @@ func TestMirrors(t *testing.T) {
 	}
 
 	// the cursor is on mango-b, remove mango-a
-	press(s, "k", "x")
+	press(s, "k", "d")
 	if got := mconfig.Providers.Mirrors.Get(); len(got) != 1 || got["mango-b"] == "" {
 		t.Errorf("mirrors %v", got)
 	}
@@ -213,11 +215,11 @@ func TestMirrors(t *testing.T) {
 		t.Error("esc didn't close the entries")
 	}
 
-	press(s, "r")
+	press(s, "backspace")
 	if len(mconfig.Providers.Mirrors.Get()) != 1 {
 		t.Error("reset without confirmation")
 	}
-	press(s, "r")
+	press(s, "backspace")
 	if len(mconfig.Providers.Mirrors.Get()) != 0 || strings.Contains(read(t, path), "mango-b") {
 		t.Error("not reset")
 	}

@@ -273,7 +273,7 @@ func (s *addState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case s.manager == nil:
 		return base.Notify("Still looking it up")
 	case s.watched:
-		return base.Notify("Already watched, see the watches (w on the home screen)")
+		return base.Notify("Already watched, see the watches (W on the home screen)")
 	}
 	m, opts := s.manager, s.options()
 	return base.Load(ctx, "Watching "+s.manga.String(), func(ctx context.Context) (addedMsg, error) {

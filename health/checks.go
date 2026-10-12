@@ -78,7 +78,7 @@ func checkLibraryIssue(s *snapshot) []Finding {
 				f.Fix.Commands = []string{fmt.Sprintf("mangal library move %d %s mid:%s", match.Manga.ID, w.Provider, quote(w.MangaID))}
 				f.Fix.Note = "moves the library manga to the watch's manga (its folder into the provider's directory), the watch is linked then"
 			}
-			f.Fix.TUI = tuiLibrary + ": M on the manga moves it"
+			f.Fix.TUI = tuiLibrary + ": X on the manga moves it"
 			out = append(out, f)
 		case w.LibraryIssue != "":
 			out = append(out, Finding{Severity: Error, Subject: watchSubject(w),
@@ -88,7 +88,7 @@ func checkLibraryIssue(s *snapshot) []Finding {
 					Note:     fmt.Sprintf("finds moved folders and files; if the downloads were deleted on purpose, check it anyway: mangal watch check %d", w.ID),
 					TUI:      tuiLibrary + ": s scans",
 				}})
-		case w.LibraryNote != "" && w.LibraryManga == 0:
+		case w.LibraryNote != "" && w.LibraryManga == 0 && !w.NeedsRelink && !w.ProviderMissing:
 			f := Finding{Severity: Info, Subject: watchSubject(w), Message: w.LibraryNote}
 			if len(w.Bindings) == 0 {
 				f.Fix = Fix{Commands: []string{fmt.Sprintf("mangal watch set %d --anilist-id <id>", w.ID)},
@@ -203,8 +203,8 @@ func checkWatchOldID(s *snapshot) []Finding {
 		out = append(out, Finding{Severity: Warning, Subject: watchSubject(w),
 			Message: fmt.Sprintf("under the old provider id %s, now %s", w.Provider, l.Info().ID),
 			Fix: Fix{
-				Commands: []string{"mangal migrate", "mangal migrate --apply"},
-				Note:     fmt.Sprintf("lists, then moves the data to the new id; the watch needs a re-link after (mangal watch move %d)", w.ID),
+				Commands: []string{"mangal migrate"},
+				Note:     fmt.Sprintf("lists what moves to the new id, --apply moves it; the watch needs a re-link after (mangal watch move %d)", w.ID),
 				TUI:      "Home: M migrates",
 			}})
 	}
@@ -250,7 +250,10 @@ func checkNotWatched(s *snapshot) []Finding {
 			f.Fix.Commands = []string{fmt.Sprintf("mangal watch add %s mid:%s", src.Provider, quote(src.MangaID))}
 		} else {
 			f.Fix.Commands = []string{fmt.Sprintf("mangal watch add <provider> %s", quote(m.Title))}
-			f.Fix.Note = "no installed provider source: search it on one"
+			f.Fix.Note = "no provider source (an adopted folder): search it on a provider"
+			if len(m.Sources) != 0 {
+				f.Fix.Note = "its providers aren't installed: search it on another one"
+			}
 		}
 		out = append(out, f)
 	}
@@ -559,8 +562,8 @@ func checkOldIDs(s *snapshot) []Finding {
 			Details: []string{fmt.Sprintf("%d library mangas, %d downloads, %d read chapters, %d watches, %d metadata bindings, %d cache entries",
 				id.Sources, id.Downloads, id.Reads, id.Watches, id.Bindings, id.Cache)},
 			Fix: Fix{
-				Commands: []string{"mangal migrate", "mangal migrate --apply"},
-				Note:     "lists, then moves the data to the new id (moved watches need a re-link)",
+				Commands: []string{"mangal migrate"},
+				Note:     "lists what moves to the new id, --apply moves it (moved watches need a re-link)",
 				TUI:      "Home: M migrates",
 			}})
 	}
@@ -590,7 +593,7 @@ func checkUninstalled(s *snapshot) []Finding {
 			Fix: Fix{
 				Commands: []string{fmt.Sprintf("mangal library move %d <provider>", m.ID)},
 				Note:     "install one again, or move it to another provider",
-				TUI:      tuiLibrary + ": M on the manga moves it",
+				TUI:      tuiLibrary + ": X on the manga moves it",
 			}})
 	}
 	return out
@@ -607,7 +610,7 @@ func checkAccounts(s *snapshot) []Finding {
 			sev = Info
 		}
 		out = append(out, Finding{Severity: sev, Subject: Subject{Kind: "account", Name: l.Service}, Message: l.Message,
-			Fix: Fix{Commands: []string{l.Command}, TUI: "Accounts (a on the home screen): i logs in"}})
+			Fix: Fix{Commands: []string{l.Command}, TUI: "Accounts (K on the home screen): i logs in"}})
 	}
 	for _, err := range a.Skipped {
 		out = append(out, Finding{Severity: Warning, Subject: Subject{Kind: "account", Name: "Lua providers"},
@@ -620,7 +623,7 @@ func checkAccounts(s *snapshot) []Finding {
 			Fix: Fix{
 				Commands: []string{"mangal notify webhook", "mangal config set watch.notify none"},
 				Note:     "set the webhook, or turn the notifications off",
-				TUI:      "Accounts (a on the home screen): i on Discord",
+				TUI:      "Accounts (K on the home screen): i on Discord",
 			}})
 	}
 	for _, n := range a.Notices {

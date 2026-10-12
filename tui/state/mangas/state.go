@@ -83,7 +83,7 @@ func New(client *libmangal.Client) base.State {
 			info:           base.KeyInfo,
 			watch:          base.KeyWatch,
 			jump:           base.KeyItsWatch,
-			toggleFullMeta: util.Bind("toggle full meta", "M"),
+			toggleFullMeta: base.KeyFullMetadata,
 		},
 	}
 	l := list.New(2, 1, "manga", "mangas", []mangadata.Manga{}, func(manga mangadata.Manga) _list.DefaultItem {

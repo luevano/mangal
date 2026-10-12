@@ -133,7 +133,7 @@ func TestMoveArgs(t *testing.T) {
 func TestPrintWatchesLibraryIssue(t *testing.T) {
 	var out strings.Builder
 	printWatches(&out, []watch.Watch{
-		{Watch: storage.Watch{ID: 1, Provider: "mango-mangadex", Title: "Chastity Reverse World", Enabled: true}, LibraryIssue: "in the library under mango-mangasee (Teisou Gyakuten Sekai): move it there (M in the library)", LibraryElsewhere: true},
+		{Watch: storage.Watch{ID: 1, Provider: "mango-mangadex", Title: "Chastity Reverse World", Enabled: true}, LibraryIssue: "in the library under mango-mangasee (Teisou Gyakuten Sekai): move it there (X in the library)", LibraryElsewhere: true},
 		{Watch: storage.Watch{ID: 2, Provider: "mango-mangadex", Title: "Berserk", Enabled: true}},
 	})
 	got := out.String()

@@ -173,7 +173,7 @@ func LoginNotice() string {
 	if err != nil || !found || login.Expires.IsZero() {
 		return ""
 	}
-	how := `log in again from the accounts (a in the TUI home, then l on Anilist) or "mangal accounts"; forgetting the user there stops this notice`
+	how := `log in again from the accounts (K in the TUI home, then i on AniList) or "mangal accounts"; forgetting the user there stops this notice`
 	switch {
 	case login.Expired():
 		return fmt.Sprintf("The Anilist login of %q expired on %s, %s.", login.User, login.Expires.Format(time.DateOnly), how)

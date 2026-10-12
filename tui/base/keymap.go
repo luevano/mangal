@@ -20,7 +20,7 @@ func newKeyMap() *keyMap {
 		help:      util.Bind("help", "?"),
 		log:       util.Bind("log", "ctrl+l"),
 		config:    util.Bind("config", ","),
-		configFix: util.Bind("change it", "s"),
+		configFix: util.Bind("change it", "e"),
 	}
 }
 
@@ -99,4 +99,10 @@ func GlobalKeys() []key.Binding {
 func KeyCollisions(screen help.KeyMap, extra ...key.Binding) []string {
 	collisions := util.Collisions(append(append(GlobalKeys(), util.Bindings(screen)...), extra...)...)
 	return append(collisions, KeyInconsistencies(screen)...)
+}
+
+// ViewerKeyCollisions are KeyCollisions without the KeyInconsistencies, for a viewer (the
+// live log): its pager keys (b, f, space...) are its own.
+func ViewerKeyCollisions(screen help.KeyMap) []string {
+	return util.Collisions(append(GlobalKeys(), util.Bindings(screen)...)...)
 }

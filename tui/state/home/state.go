@@ -50,13 +50,12 @@ type loadedMsg struct {
 }
 
 func New() base.State {
-	// L and W as for a manga's library entry and watch on the other screens, l and w still work
 	return &state{
 		confirm:  util.Bind("providers", "enter"),
-		library:  util.BindNamedKey("L", "library", "L", "l"),
-		watches:  util.BindNamedKey("W", "watches", "W", "w"),
-		accounts: util.Bind("accounts", "a"),
-		migrate:  util.Bind("migrate", "M"),
+		library:  base.KeyLibrary,
+		watches:  base.KeyWatches,
+		accounts: base.KeyAccounts,
+		migrate:  base.KeyMigrate,
 	}
 }
 

@@ -525,25 +525,45 @@ var (
 	ErrRunUnfinished = errors.New("its check is still running")
 )
 
+// WatchRun is the watch run with the id (without chapters), and whether its check run
+// finished; unknown = ErrRunNotFound.
+func (s Watches) WatchRun(id int64) (WatchRun, bool, error) {
+	r, finished, err := watchRun(s.DB, id)
+	if err != nil {
+		return r, false, fmt.Errorf("watch run %d: %w", id, err)
+	}
+	return r, finished, nil
+}
+
+type queryRower interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func watchRun(db queryRower, id int64) (r WatchRun, finished bool, err error) {
+	var started, finishedAt int64
+	var from sql.NullFloat64
+	err = db.QueryRow(`SELECT w.check_run, coalesce(w.watch, 0), w.provider, w.manga_id, w.title, w.from_number, w.status, w.started, w.new_chapters, c.finished
+FROM watch_runs w JOIN check_runs c ON c.id = w.check_run WHERE w.id = ?`, id).Scan(&r.CheckRun, &r.Watch, &r.Provider,
+		&r.MangaID, &r.Title, &from, &r.Status, &started, &r.NewChapters, &finishedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return r, false, ErrRunNotFound
+	}
+	r.ID, r.From, r.Started = id, floatPtr(from), fromUnix(started)
+	return r, finishedAt != 0, err
+}
+
 // RemoveWatchRun removes the watch run with its chapters from the history, and its check
 // run's totals; a check run left without watch runs goes too (checkRunGone). It returns the
 // removed run (without chapters). Unknown = ErrRunNotFound, a check run that hasn't
 // finished = ErrRunUnfinished.
 func (s Watches) RemoveWatchRun(id int64) (removed WatchRun, checkRunGone bool, err error) {
 	err = s.DB.InTx(func(tx *sql.Tx) error {
-		var finished, started int64
-		var from sql.NullFloat64
-		err := tx.QueryRow(`SELECT w.check_run, coalesce(w.watch, 0), w.provider, w.manga_id, w.title, w.from_number, w.status, w.started, w.new_chapters, c.finished
-FROM watch_runs w JOIN check_runs c ON c.id = w.check_run WHERE w.id = ?`, id).Scan(&removed.CheckRun, &removed.Watch, &removed.Provider,
-			&removed.MangaID, &removed.Title, &from, &removed.Status, &started, &removed.NewChapters, &finished)
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrRunNotFound
-		}
-		if err != nil {
+		var finished bool
+		var err error
+		if removed, finished, err = watchRun(tx, id); err != nil {
 			return err
 		}
-		removed.ID, removed.From, removed.Started = id, floatPtr(from), fromUnix(started)
-		if finished == 0 {
+		if !finished {
 			return ErrRunUnfinished
 		}
 		if _, err := tx.Exec(`DELETE FROM watch_runs WHERE id = ?`, id); err != nil {

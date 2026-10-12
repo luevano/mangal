@@ -263,7 +263,7 @@ func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
 		case key.Matches(msg, s.keys.reset):
 			if mconfig.KindOf(k) == mconfig.KindMap && !confirmed {
 				s.confirmReset = k
-				return base.Notify("Press r again to remove every entry")
+				return base.Notify("Press " + s.keys.reset.Help().Key + " again to remove every entry")
 			}
 			def, _ := mconfig.Default(k)
 			cmd, _ := s.set(k, def)

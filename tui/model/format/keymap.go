@@ -3,6 +3,7 @@ package format
 import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/util"
 )
 
@@ -10,8 +11,8 @@ var _ help.KeyMap = (*keyMap)(nil)
 
 func newKeyMap() keyMap {
 	return keyMap{
-		setRead:     util.Bind("read", "r"),
-		setDownload: util.Bind("down", "d"),
+		setRead:     base.KeyRead,
+		setDownload: base.KeyDownload,
 		setBoth:     util.Bind("both", "enter"),
 		back:        util.Bind("back", "esc"),
 	}

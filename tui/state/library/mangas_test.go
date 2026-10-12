@@ -47,11 +47,11 @@ func TestDeleteKeepsTheMergeMarkUntilDone(t *testing.T) {
 	s.onLoaded(mangasLoadedMsg{items: items})
 	ctx := context.Background()
 
-	s.Update(ctx, press("m"))
+	s.Update(ctx, press("J"))
 	if s.keep != 1 || !items[0].keep {
 		t.Fatalf("keep = %d, want 1", s.keep)
 	}
-	s.Update(ctx, press("D"))
+	s.Update(ctx, press("d"))
 	if !s.confirm.Active() {
 		t.Fatal("no delete dialog")
 	}
@@ -153,24 +153,24 @@ func TestDuplicatesFilter(t *testing.T) {
 		{manga: keep, duplicate: true},
 	}
 	s.onLoaded(mangasLoadedMsg{items: items, dups: dups})
-	if got := s.Subtitle(); !strings.Contains(got, "2 duplicates (2)") {
+	if got := s.Subtitle(); !strings.Contains(got, "2 duplicates (D)") {
 		t.Errorf("subtitle %q", got)
 	}
 	if !strings.Contains(items[1].Title(), "(duplicate)") {
 		t.Errorf("title %q", items[1].Title())
 	}
-	s.Update(ctx, press("2"))
+	s.Update(ctx, press("D"))
 	shown := s.List.Items()
 	if len(shown) != 2 || shown[0].(*mangaItem).manga.ID != 2 || shown[1].(*mangaItem).manga.ID != 1 {
 		t.Fatalf("duplicates only: %v", shown)
 	}
-	// m on the other one merges it into its keep
+	// J on the other one merges it into its keep
 	s.List.Select(1)
-	s.Update(ctx, press("m"))
+	s.Update(ctx, press("J"))
 	if s.keep != 2 || !items[2].keep {
 		t.Errorf("keep = %d, want the suggested 2", s.keep)
 	}
-	s.Update(ctx, press("2"))
+	s.Update(ctx, press("D"))
 	if len(s.List.Items()) != 3 {
 		t.Errorf("all again: %d", len(s.List.Items()))
 	}
@@ -202,5 +202,15 @@ func TestAskLinks(t *testing.T) {
 	d = newDialog()
 	if msg, ok := askLinks(d, "", linkPlannedMsg{plan: plan})().(base.NotificationMsg); !ok || d.Active() || !strings.Contains(msg.Message, "already") {
 		t.Errorf("no change: %#v", msg)
+	}
+}
+
+// TestDeleteMissing: d on a manga whose folder is gone forgets it, d (or y) confirms.
+func TestDeleteMissing(t *testing.T) {
+	s := newMangasState(library.Files{})
+	s.onLoaded(mangasLoadedMsg{items: []*mangaItem{{manga: storage.Manga{ID: 1, Title: "A"}, missing: true}}})
+	s.Update(context.Background(), press("d"))
+	if !s.confirm.Active() || !strings.Contains(s.confirm.View(), "Its folder is gone") {
+		t.Fatalf("d on a missing manga:\n%s", s.confirm.View())
 	}
 }

@@ -22,16 +22,16 @@ type keyMap struct {
 
 func newKeyMap() keyMap {
 	return keyMap{
-		expandAll: util.Bind("expand/collapse all", "E"),
-		change:    util.BindNamedKey("enter/space", "change", "enter", " "),
-		reset:     util.Bind("reset to default", "r"),
+		expandAll: base.KeyExpandAll,
+		change:    base.KeyChange,
+		reset:     base.KeyReset,
 		save:      util.Bind("save", "enter"),
 		cancel:    util.Bind("cancel", "esc"),
-		add:       util.Bind("add", "a"),
+		add:       base.KeyAdd,
 		editEntry: util.BindNamedKey("enter/e", "edit", "enter", "e"),
 		remove:    base.KeyRemove,
-		up:        util.BindNamedKey("↑/k", "up", "up", "k"),
-		down:      util.BindNamedKey("↓/j", "down", "down", "j"),
+		up:        base.KeyUp,
+		down:      base.KeyDown,
 		close:     util.Bind("done", "esc"),
 	}
 }

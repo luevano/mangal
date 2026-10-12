@@ -13,7 +13,6 @@ import (
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
-	"github.com/luevano/mangal/v5/tui/util"
 )
 
 // runRemover deletes the selected check of a list of checks from the history: d then d
@@ -24,7 +23,7 @@ type runRemover struct {
 }
 
 func newRunRemover() *runRemover {
-	return &runRemover{confirm: confirm.NewDialog(50, color.Warning), key: util.Bind("delete check", "d")}
+	return &runRemover{confirm: confirm.NewDialog(50, color.Warning), key: base.KeyDeleteRun}
 }
 
 type (
@@ -62,7 +61,7 @@ func (rr *runRemover) update(ctx context.Context, msg tea.Msg, l *list.Model, m 
 		r := i.r
 		message := fmt.Sprintf("Delete the check of %q from %s (%s, %s) from the history? Its downloads stay. A database snapshot is taken first: U in the library undoes it.",
 			r.Title, r.Provider, formatTime(r.Started), result(r))
-		rr.confirm.AskWith([]string{"d", "y"}, "Delete check", message, behind(), func() tea.Msg { return removeRunMsg{r: r} })
+		rr.confirm.AskDelete("Delete check", message, behind(), func() tea.Msg { return removeRunMsg{r: r} })
 		return nil, true
 	case removeRunMsg:
 		r := msg.r

@@ -1018,9 +1018,15 @@ type RemovedRun struct {
 
 // RemoveRun removes a watch run (the check of one watch in a check run) and its chapters
 // from the history, as an operation "mangal library undo" can undo. A check run left
-// without watch runs goes too. Unknown = ErrNotFound.
+// without watch runs goes too. Unknown = storage.ErrRunNotFound.
 func (s *Service) RemoveRun(ctx context.Context, id int64) (RemovedRun, error) {
 	var removed RemovedRun
+	// no snapshot for nothing
+	if _, finished, err := s.Watches.WatchRun(id); err != nil {
+		return removed, fmt.Errorf("remove %w", err)
+	} else if !finished {
+		return removed, fmt.Errorf("remove watch run %d: %w", id, storage.ErrRunUnfinished)
+	}
 	do := func() error {
 		var err error
 		removed.Run, removed.CheckRunRemoved, err = s.Watches.RemoveWatchRun(id)
