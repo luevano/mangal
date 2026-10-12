@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"cmp"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -417,40 +418,92 @@ func (l Library) MangaBySource(provider, mangaID string) (Manga, bool, error) {
 // id, matched like FindMangaDir does on download. With providerDirs that folder must be in
 // a directory named after the provider (its id or name, current or old).
 func (l Library) MangaFor(provider libmangal.ProviderInfo, manga mangadata.Manga, providerDirs bool) (Manga, bool, error) {
+	match, err := l.Match(provider, manga.Info().ID, metadataIDs(manga), providerDirs)
+	return match.Manga, match.Linked, err
+}
+
+// LibraryMatch is the library manga a provider's manga matches.
+type LibraryMatch struct {
+	Manga Manga
+	// Linked is the manga its downloads go to: the one it was downloaded into, else a
+	// folder sharing a metadata id where its downloads would go (see MangaFor).
+	Linked bool
+	// Elsewhere is a folder sharing a metadata id in another provider's directory (with
+	// provider directories): its downloads wouldn't go there, the manga can be moved there.
+	Elsewhere bool
+}
+
+// Match is what the provider's manga (its id and metadata ids, e.g. its bindings')
+// matches in the library, see LibraryMatch.
+func (l Library) Match(provider libmangal.ProviderInfo, mangaID string, ids []metadata.ID, providerDirs bool) (LibraryMatch, error) {
+	for _, id := range providerIDs(provider) {
+		m, ok, err := l.MangaBySource(id, mangaID)
+		if err != nil || ok {
+			return LibraryMatch{Manga: m, Linked: ok}, err
+		}
+	}
+	if len(ids) == 0 {
+		return LibraryMatch{}, nil
+	}
+	mangas, err := l.mangas(`WHERE m.dir != '' AND m.metadata_ids != '[]' ORDER BY m.id`)
+	if err != nil {
+		return LibraryMatch{}, fmt.Errorf("find the library manga of %s %q: %w", provider.ID, mangaID, err)
+	}
+	return matchByIDs(mangas, provider, mangaID, ids, providerDirs), nil
+}
+
+// MatchLibrary is Library.Match over mangas already loaded (Library.Mangas), to match
+// many provider mangas.
+func MatchLibrary(mangas []Manga, provider libmangal.ProviderInfo, mangaID string, ids []metadata.ID, providerDirs bool) LibraryMatch {
+	for _, id := range providerIDs(provider) {
+		for _, m := range mangas {
+			if slices.ContainsFunc(m.Sources, func(src Source) bool { return src.Provider == id && src.MangaID == mangaID }) {
+				return LibraryMatch{Manga: m, Linked: true}
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return LibraryMatch{}
+	}
+	byID := slices.Clone(mangas)
+	slices.SortFunc(byID, func(a, b Manga) int { return cmp.Compare(a.ID, b.ID) })
+	return matchByIDs(byID, provider, mangaID, ids, providerDirs)
+}
+
+func providerIDs(provider libmangal.ProviderInfo) []string {
 	ids := []string{provider.ID}
 	for _, alias := range provider.History {
 		ids = append(ids, alias.ID)
 	}
-	for _, id := range ids {
-		m, ok, err := l.MangaBySource(id, manga.Info().ID)
-		if err != nil || ok {
-			return m, ok, err
-		}
-	}
+	return ids
+}
 
-	want := libmangal.MangaDirInfo{Provider: provider.ID, Manga: manga.Info(), MetadataIDs: metadataIDs(manga)}
-	if len(want.MetadataIDs) == 0 {
-		return Manga{}, false, nil
-	}
-	dirs := append(ids, provider.Name)
+// matchByIDs is the first manga folder (mangas by id) sharing a metadata id: linked when
+// it's where the provider's downloads go, else elsewhere.
+func matchByIDs(mangas []Manga, provider libmangal.ProviderInfo, mangaID string, ids []metadata.ID, providerDirs bool) LibraryMatch {
+	want := libmangal.MangaDirInfo{Provider: provider.ID, Manga: mangadata.MangaInfo{ID: mangaID}, MetadataIDs: ids}
+	dirs := append(providerIDs(provider), provider.Name)
 	for _, alias := range provider.History {
 		if alias.Name != "" {
 			dirs = append(dirs, alias.Name)
 		}
 	}
-	mangas, err := l.mangas(`WHERE m.dir != '' AND m.metadata_ids != '[]' ORDER BY m.id`)
-	if err != nil {
-		return Manga{}, false, fmt.Errorf("find the library manga of %q: %w", manga.Info().Title, err)
-	}
+	var elsewhere *Manga
 	for _, m := range mangas {
-		if providerDirs && !slices.Contains(dirs, filepath.Base(m.Parent)) {
+		if m.Dir == "" || libmangal.MatchMangaDir(provider, want, libmangal.MangaDirInfo{MetadataIDs: m.MetadataIDs}) == libmangal.MangaDirNoMatch {
 			continue
 		}
-		if libmangal.MatchMangaDir(provider, want, libmangal.MangaDirInfo{MetadataIDs: m.MetadataIDs}) != libmangal.MangaDirNoMatch {
-			return m, true, nil
+		if !providerDirs || slices.Contains(dirs, filepath.Base(m.Parent)) {
+			return LibraryMatch{Manga: m, Linked: true}
+		}
+		if elsewhere == nil {
+			elsewhere = &m
 		}
 	}
-	return Manga{}, false, nil
+	if elsewhere != nil {
+		return LibraryMatch{Manga: *elsewhere, Elsewhere: true}
+	}
+	return LibraryMatch{}
 }
 
 // metadataIDs are the manga's metadata ids other than the provider's own, like libmangal

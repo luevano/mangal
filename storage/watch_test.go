@@ -410,3 +410,17 @@ func TestWatchRunNewChapters(t *testing.T) {
 		t.Errorf("imported %+v", r.Results)
 	}
 }
+
+func TestWatchesWithDownloads(t *testing.T) {
+	watches := Watches{DB: openData(t)}
+	a, _ := watches.Add(Watch{Provider: "p", MangaID: "a", Title: "A"})
+	b, _ := watches.Add(Watch{Provider: "p", MangaID: "b", Title: "B"})
+	run, _ := watches.StartRun(CheckRun{Kind: "check", Started: time.Now()})
+	_, _ = watches.RecordWatchRun(WatchRun{CheckRun: run.ID, Watch: a.ID, Provider: "p", MangaID: "a", Status: StatusNew, Started: time.Now(), Finished: time.Now(),
+		Chapters: []RunChapter{{Number: 1, Path: "/dl/a/1.cbz"}}})
+	_, _ = watches.RecordWatchRun(WatchRun{CheckRun: run.ID, Watch: b.ID, Provider: "p", MangaID: "b", Status: StatusNone, Started: time.Now(), Finished: time.Now()})
+	with, err := watches.WithDownloads()
+	if err != nil || !with[a.ID] || with[b.ID] {
+		t.Errorf("with downloads %v, %v", with, err)
+	}
+}

@@ -234,6 +234,28 @@ func TestMangaFor(t *testing.T) {
 	if _, ok, _ := library.MangaFor(other, vagabond, false); !ok {
 		t.Error("not found without provider directories")
 	}
+
+	// by a binding's id: elsewhere with provider directories, linked without
+	ids := BindingIDs([]Binding{{Source: "al", ID: "30002"}, {Source: "xx", ID: "1"}})
+	if len(ids) != 1 || ids[0] != anilistID {
+		t.Fatalf("binding ids %+v", ids)
+	}
+	if match, err := library.Match(other, "v", ids, true); err != nil || match.Linked || !match.Elsewhere || match.Manga.Dir != "Vagabond" {
+		t.Errorf("elsewhere: %+v, %v", match, err)
+	}
+	if match, _ := library.Match(other, "v", ids, false); !match.Linked || match.Elsewhere {
+		t.Errorf("no provider dirs: %+v", match)
+	}
+	all, _ := library.Mangas()
+	if match := MatchLibrary(all, other, "v", ids, true); !match.Elsewhere || match.Manga.Dir != "Vagabond" {
+		t.Errorf("list elsewhere: %+v", match)
+	}
+	if match := MatchLibrary(all, weebCentral, "berserk", nil, true); !match.Linked || match.Manga.Dir != "Berserk" {
+		t.Errorf("list by old source: %+v", match)
+	}
+	if match := MatchLibrary(all, other, "x", nil, true); match.Linked || match.Elsewhere {
+		t.Errorf("list nothing: %+v", match)
+	}
 }
 
 func TestLibraryMove(t *testing.T) {

@@ -427,6 +427,24 @@ func relinkWatch(tx *sql.Tx, id int64, provider, mangaID, title string, libraryM
 	return err
 }
 
+// WithDownloads are the watches whose checks downloaded chapters.
+func (s Watches) WithDownloads() (map[int64]bool, error) {
+	ids, err := queryAll(s.DB, func(rows *sql.Rows) (int64, error) {
+		var id int64
+		err := rows.Scan(&id)
+		return id, err
+	}, `SELECT DISTINCT r.watch FROM watch_runs r WHERE r.watch IS NOT NULL
+	AND EXISTS (SELECT 1 FROM watch_run_chapters c WHERE c.watch_run = r.id AND c.path != '')`)
+	if err != nil {
+		return nil, fmt.Errorf("watches with downloads: %w", err)
+	}
+	with := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		with[id] = true
+	}
+	return with, nil
+}
+
 // LibraryNumbers are the chapter numbers the library manga has downloaded.
 func (s Watches) LibraryNumbers(libraryManga int64) (map[float32]bool, error) {
 	numbers, err := queryAll(s.DB, scanNumber, `SELECT c.number FROM library_chapters c

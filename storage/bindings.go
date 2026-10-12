@@ -33,6 +33,34 @@ type Binding struct {
 	Updated time.Time `json:"updated,omitzero"`
 }
 
+// MetadataID is the binding as a metadata id (as in a .libmangal.json), false for an
+// unknown source.
+func (b Binding) MetadataID() (metadata.ID, bool) {
+	sources := map[metadata.IDCode]metadata.IDSource{
+		metadata.IDCodeAnilist:      metadata.IDSourceAnilist,
+		metadata.IDCodeKitsu:        metadata.IDSourceKitsu,
+		metadata.IDCodeMyAnimeList:  metadata.IDSourceMyAnimeList,
+		metadata.IDCodeMangaUpdates: metadata.IDSourceMangaUpdates,
+		metadata.IDCodeAnimePlanet:  metadata.IDSourceAnimePlanet,
+	}
+	source, ok := sources[b.Source]
+	if !ok || b.ID == "" {
+		return metadata.ID{}, false
+	}
+	return metadata.ID{Raw: b.ID, Source: source, Code: b.Source}, true
+}
+
+// BindingIDs are the bindings' metadata ids (Binding.MetadataID).
+func BindingIDs(bindings []Binding) []metadata.ID {
+	var ids []metadata.ID
+	for _, b := range bindings {
+		if id, ok := b.MetadataID(); ok {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 // sourceOrder is the priority of the sources, the first bound one is the default. Sources
 // not in it come after, by code.
 var sourceOrder = []metadata.IDCode{metadata.IDCodeAnilist, metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList}
