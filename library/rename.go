@@ -319,15 +319,23 @@ func mergeHint(keep, other folderID, dir string) string {
 // It returns an error per rename (nil when done).
 func Apply(fsys afero.Fs, renames []Rename) []error {
 	errs := make([]error, len(renames))
-	ApplyEach(fsys, renames, func(i int, err error) { errs[i] = err })
+	_ = ApplyEach(fsys, renames, nil, func(i int, err error) error {
+		errs[i] = err
+		return nil
+	})
 	return errs
 }
 
-// ApplyEach is Apply telling each rename's error (nil when done) as soon as it's done.
-func ApplyEach(fsys afero.Fs, renames []Rename, done func(i int, err error)) {
+// ApplyEach is Apply telling where it is (onProgress, may be nil) and each rename's error
+// (nil when done) as soon as it's done. It stops at the first error done returns.
+func ApplyEach(fsys afero.Fs, renames []Rename, onProgress func(Progress), done func(i int, err error) error) error {
 	for i, r := range renames {
-		done(i, applyRename(fsys, r))
+		report(onProgress, Progress{Phase: "renaming", Done: i + 1, Total: len(renames), Item: filepath.Base(r.From)})
+		if err := done(i, applyRename(fsys, r)); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func applyRename(fsys afero.Fs, r Rename) error {

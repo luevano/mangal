@@ -44,8 +44,9 @@ const (
 const configKeyAnnotation = "mangal.config_key"
 
 var rootArgs = struct {
-	Config string
-	Debug  bool
+	Config  string
+	Debug   bool
+	Verbose bool
 }{}
 
 // loadErr is the error loading the config, before the command runs.
@@ -67,6 +68,7 @@ func init() {
 	f := rootCmd.PersistentFlags()
 	f.StringVar(&rootArgs.Config, "config", config.Path, "Config file path")
 	f.BoolVar(&rootArgs.Debug, "debug", false, "Log debug messages (e.g. every page downloaded)")
+	f.BoolVar(&rootArgs.Verbose, "verbose", false, "Print what long commands are doing as lines on stderr (a terminal shows one changing line without it)")
 
 	rootCmd.AddGroup(&cobra.Group{
 		ID:    groupMode,

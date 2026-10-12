@@ -58,6 +58,8 @@ manga stay, and the old directory goes once empty. Only lists the renames unless
 is set.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		st := newStatus(cmd)
+		defer st.Done()
 		loaders, err := manager.Loaders()
 		if err != nil {
 			return err
@@ -73,13 +75,15 @@ is set.`,
 			MangaName:    template.Manga,
 			Metadata:     anilist.MetadataByIDsBatch,
 			Library:      index,
+			OnProgress:   st.Progress,
 		}
 
 		dir, err := path.Ensure(path.Downloads())
 		if err != nil {
 			return err
 		}
-		renames, err := namer.Plan(cmd.Context(), dir, config.Download.Provider.CreateDir.Get())
+		renames, err := namer.Plan(st.Context(cmd.Context()), dir, config.Download.Provider.CreateDir.Get())
+		st.Clear()
 		if err != nil {
 			return err
 		}
@@ -108,25 +112,25 @@ is set.`,
 			cmd.Println("run with --apply to rename")
 			return nil
 		}
-		for i, err := range library.Apply(afs.Afero, renames) {
+		return library.ApplyEach(afs.Afero, renames, st.Progress, func(i int, err error) error {
 			r := renames[i]
 			switch {
 			case errors.Is(err, library.ErrNotEmpty):
-				cmd.Printf("kept %s: not empty\n", rel(r.From))
-				continue
+				st.Print(func() { cmd.Printf("kept %s: not empty\n", rel(r.From)) })
+				return nil
 			case err != nil:
-				cmd.PrintErrf("skipped %s: %s\n", rel(r.From), err)
-				continue
+				st.Print(func() { cmd.PrintErrf("skipped %s: %s\n", rel(r.From), err) })
+				return nil
 			case r.RemoveEmpty:
-				cmd.Printf("removed %s\n", rel(r.From))
-				continue
+				st.Print(func() { cmd.Printf("removed %s\n", rel(r.From)) })
+				return nil
 			}
 			if err := index.Moved(r.From, r.To); err != nil {
 				return err
 			}
-			cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To))
-		}
-		return nil
+			st.Print(func() { cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To)) })
+			return nil
+		})
 	},
 }
 
@@ -275,6 +279,8 @@ recognize the folder by it. Folders with nothing to go by are left as they are, 
 existing .libmangal.json is never replaced.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		st := newStatus(cmd)
+		defer st.Done()
 		lib, err := libraryOf()
 		if err != nil {
 			return err
@@ -284,8 +290,9 @@ existing .libmangal.json is never replaced.`,
 			return err
 		}
 		providerDirs := config.Download.Provider.CreateDir.Get()
-		scanner := library.Scanner{FS: afs.Afero, Library: lib}
+		scanner := library.Scanner{FS: afs.Afero, Library: lib, OnProgress: st.Progress}
 		res, err := scanner.Scan(root, providerDirs)
+		st.Clear()
 		if err != nil {
 			return err
 		}
@@ -297,7 +304,9 @@ existing .libmangal.json is never replaced.`,
 				return err
 			}
 			root = dir
-			if res, err = scanner.Scan(root, providerDirs); err != nil {
+			res, err = scanner.Scan(root, providerDirs)
+			st.Clear()
+			if err != nil {
 				return err
 			}
 		}
@@ -328,39 +337,45 @@ existing .libmangal.json is never replaced.`,
 			}
 		}
 		if libraryScanArgs.Mark {
-			if err := markFolders(cmd, lib, root); err != nil {
+			if err := markFolders(cmd, st, lib, root); err != nil {
 				return err
 			}
 		}
 		if libraryScanArgs.Check {
-			if err := checkIDs(cmd, lib); err != nil {
+			if err := checkIDs(cmd, st, lib); err != nil {
 				return err
 			}
 		}
+		st.Done()
 		printTrash(cmd)
 		return nil
 	},
 }
 
 // markFolders writes the missing .libmangal.json of the folders, from what's known.
-func markFolders(cmd *cobra.Command, lib storage.Library, root string) error {
+func markFolders(cmd *cobra.Command, st *status, lib storage.Library, root string) error {
 	loaders, err := manager.Loaders()
 	if err != nil {
 		return err
 	}
-	files := library.Files{FS: afs.Afero, Library: lib, Root: root, Modes: client.LibraryModes()}
-	res, err := files.Mark(library.MarkOptions{Loaders: loaders, ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider})
+	files := library.Files{FS: afs.Afero, Library: lib, Root: root, Modes: client.LibraryModes(), OnProgress: st.Progress}
+	res, err := files.Mark(library.MarkOptions{
+		Loaders: loaders, ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider,
+		OnMarked: func(m library.Marked) {
+			as := cmp.Or(m.Info.Provider, "no provider")
+			if m.Info.Manga.ID != "" {
+				as += " " + m.Info.Manga.ID
+			}
+			st.Print(func() { cmd.Printf("marked %s as %s (%s)\n", m.Manga.Path(), as, m.Evidence) })
+		},
+	})
+	st.Clear()
 	if err != nil {
 		return err
 	}
 	counts := map[library.MarkEvidence]int{}
 	for _, m := range res.Marked {
 		counts[m.Evidence]++
-		as := cmp.Or(m.Info.Provider, "no provider")
-		if m.Info.Manga.ID != "" {
-			as += " " + m.Info.Manga.ID
-		}
-		cmd.Printf("marked %s as %s (%s)\n", m.Manga.Path(), as, m.Evidence)
 	}
 	cmd.Printf("%d marked (%d from the library source, %d provider from its directory, %d metadata ids only), %d with nothing to go by (not marked)\n",
 		len(res.Marked), counts[library.MarkedFromSource], counts[library.MarkedFromDir], counts[library.MarkedFromIDs], len(res.Unknown))
@@ -368,16 +383,19 @@ func markFolders(cmd *cobra.Command, lib storage.Library, root string) error {
 }
 
 // checkIDs reports the metadata ids of the adopted folders that look wrong.
-func checkIDs(cmd *cobra.Command, lib storage.Library) error {
+func checkIDs(cmd *cobra.Command, st *status, lib storage.Library) error {
 	mangas, err := lib.Mangas()
 	if err != nil {
 		return err
 	}
-	checker, err := idChecker(cmd.Context())
+	ctx := st.Context(cmd.Context())
+	checker, err := idChecker(ctx)
 	if err != nil {
 		return err
 	}
-	checks, err := checker.Check(cmd.Context(), mangas)
+	checker.OnProgress = st.Progress
+	checks, err := checker.Check(ctx, mangas)
+	st.Clear()
 	if err != nil {
 		return err
 	}
@@ -449,6 +467,9 @@ Only lists what would happen unless --apply is set.`,
 		if err != nil {
 			return err
 		}
+		st := newStatus(cmd)
+		defer st.Done()
+		files.OnProgress = st.Progress
 		plan, err := files.PlanMerge(mangas[0], mangas[1])
 		if err != nil {
 			return err
@@ -464,7 +485,9 @@ Only lists what would happen unless --apply is set.`,
 			cmd.Println("run with --apply to merge")
 			return nil
 		}
-		if err := files.ApplyMerge(plan); err != nil {
+		err = files.ApplyMerge(plan)
+		st.Done()
+		if err != nil {
 			return err
 		}
 		cmd.Println("merged")
@@ -502,11 +525,14 @@ Only lists what would happen unless --apply is set.`,
 	Args:              cobra.MinimumNArgs(2),
 	ValidArgsFunction: completionMoveArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := cmd.Context()
+		st := newStatus(cmd)
+		defer st.Done()
+		ctx := st.Context(cmd.Context())
 		mover, err := client.LibraryMover()
 		if err != nil {
 			return err
 		}
+		mover.OnProgress = st.Progress
 		id, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid manga id %q", args[0])
@@ -518,22 +544,28 @@ Only lists what would happen unless --apply is set.`,
 		if !ok {
 			return fmt.Errorf("no manga %d in the library", id)
 		}
+		st.Set("loading " + args[1])
 		c, warnings, err := client.AcquireByID(ctx, args[1])
 		if err != nil {
 			return err
 		}
 		for _, w := range warnings {
-			cmd.PrintErrf("warning: %s\n", w)
+			st.Print(func() { cmd.PrintErrf("warning: %s\n", w) })
 		}
 		query := strings.Join(args[2:], " ")
 		if query == "" {
 			query = manga.Title
 		}
+		if !strings.HasPrefix(query, "mid:") {
+			st.Set(fmt.Sprintf("searching %q on %s", query, c.Info().Name))
+		}
 		to, err := selector.Find(ctx, client.Searcher(c), "", query, libraryMoveArgs.Selector)
 		if err != nil {
 			return err
 		}
+		st.Set("planning the move")
 		plan, err := mover.PlanMove(ctx, manga, c.Info(), to, library.MoveOptions{Full: libraryMoveArgs.Full})
+		st.Done()
 		if err != nil {
 			return err
 		}
