@@ -19,7 +19,7 @@ func init() {
 	rootCmd.AddCommand(healthCmd)
 	f := healthCmd.Flags()
 	f.BoolVar(&healthArgs.JSON, "json", false, "Print the report as JSON")
-	f.StringSliceVar(&healthArgs.Only, "only", nil, "Only these categories (watches, gaps, metadata, library, global) or checks (W1, G1, ...)")
+	f.StringSliceVar(&healthArgs.Only, "only", nil, "Only these categories (watches, gaps, metadata, library, global) or checks (W1, G1, ...); a summary check named here (W10) lists its mangas")
 }
 
 var healthCmd = &cobra.Command{
@@ -30,7 +30,8 @@ reads, changes nothing, makes no requests.
 
 Watches: needing a re-link (W1), not in the library (W2), paused (W3), failing (W4), no new
 chapter for 90 days (W5), provider not installed (W6), old provider id (W8), invalid
-schedule (W9), library mangas not watched (W10), watched on two providers (W11).
+schedule (W9), library mangas not watched (W10: one line by publication status, "--only
+W10" lists them), watched on two providers (W11).
 Gaps: chapters missing between the first and last downloaded (G1, whole numbers only, not
 up to a watch's --from or in its skip list), chapters to retry (G3).
 Metadata: no AniList link (M1, with the folder tag's id), links that disagree (M3),
@@ -43,7 +44,8 @@ With "mangal serve" running the watches are its. The exit code is 1 when somethi
 error (a watch that isn't checked any more).`,
 	Example: `  mangal health
   mangal health --only watches,gaps
-  mangal health --only M6 --json`,
+  mangal health --only M6 --json
+  mangal health --only W10`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
@@ -66,7 +68,7 @@ error (a watch that isn't checked any more).`,
 				return err
 			}
 		} else {
-			printHealth(cmd.OutOrStdout(), report)
+			printHealth(cmd.OutOrStdout(), report, healthArgs.Only)
 		}
 		if n := report.Counts.Error; n > 0 {
 			return fmt.Errorf("%s found", countNoun(n, "error", "errors"))
@@ -76,8 +78,9 @@ error (a watch that isn't checked any more).`,
 }
 
 // printHealth prints the findings by category: a header with the counts, each finding
-// with its details and fixes, then the totals.
-func printHealth(w io.Writer, report health.Report) {
+// with its details and fixes, then the totals. The items of a summary finding are listed
+// when only names its check.
+func printHealth(w io.Writer, report health.Report, only []string) {
 	for _, cat := range health.Categories {
 		var of []health.Finding
 		var counts health.Counts
@@ -109,6 +112,15 @@ func printHealth(w io.Writer, report health.Report) {
 			}
 			if f.Fix.Note != "" {
 				fmt.Fprintf(w, "      (%s)\n", f.Fix.Note)
+			}
+			if !slices.ContainsFunc(only, func(o string) bool { return strings.EqualFold(strings.TrimSpace(o), f.Check) }) {
+				continue
+			}
+			for _, item := range f.Items {
+				fmt.Fprintf(w, "      %s: %s\n", item.Subject, item.Message)
+				for _, c := range item.Fix.Commands {
+					fmt.Fprintf(w, "          fix: %s\n", c)
+				}
 			}
 		}
 		fmt.Fprintln(w)
