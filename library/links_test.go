@@ -105,7 +105,7 @@ func TestLinks(t *testing.T) {
 		"in: bindings of mango-mangadex berserk, library, .libmangal.json",
 		"  from mango-mangadex/OPM (2012) [alid-1]\n  to   mango-mangadex/One-Punch Man (2012) [alid-74347]\n  --rename renames it",
 		"watch 1 (mango-weebcentral w1) is bound to AniList 1, not 74347: --watches updates it",
-		`has AniList 74347 too, merge them`,
+		`has AniList 74347 too, merge them: mangal library merge 1 2`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("lines miss %q:\n%s", want, text)

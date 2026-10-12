@@ -247,8 +247,10 @@ type LinkPlan struct {
 	Changes []LinkChange
 	// Marker is the folder's new .libmangal.json, nil when it has none or it doesn't change.
 	Marker *libmangal.MangaDirInfo
-	// Bindings are the provider mangas whose bindings change (its sources).
+	// Bindings are the provider mangas whose bindings change (its sources), Watched the
+	// watch of each (0 if none).
 	Bindings [][2]string
+	Watched  []int64
 	Root     string
 
 	// Rename is the folder's rename to the name the template gives with the links, nil if
@@ -385,7 +387,7 @@ func (l Linker) planRename(ctx context.Context, plan *LinkPlan, final Links) err
 	if exists, err := afero.Exists(l.FS, r.To); err != nil {
 		return err
 	} else if exists && !sameFile(l.FS, r.From, r.To) {
-		r.Skip = r.To + " exists"
+		r.Skip = "a folder of that name exists"
 	}
 	plan.Rename = &r
 	return nil
@@ -428,8 +430,11 @@ func (l Linker) planWatches(plan *LinkPlan, final Links) error {
 	}
 	bindings := storage.Bindings{DB: l.Library.DB}
 	m := plan.Manga()
+	plan.Watched = make([]int64, len(plan.Bindings))
 	for _, w := range list {
-		if slices.Contains(plan.Bindings, [2]string{w.Provider, w.MangaID}) {
+		if i := slices.Index(plan.Bindings, [2]string{w.Provider, w.MangaID}); i >= 0 {
+			// its binding follows, as the source's
+			plan.Watched[i] = w.ID
 			continue
 		}
 		if w.LibraryManga != m.ID {
@@ -509,9 +514,15 @@ func (p LinkPlan) Lines() []string {
 		lines = append(lines, "  has these links already")
 	}
 	for _, c := range p.Changes {
+		var was []string
+		for _, o := range c.Old {
+			if o != c.New {
+				was = append(was, o)
+			}
+		}
 		old := "none"
-		if len(c.Old) != 0 {
-			old = strings.Join(c.Old, ", ")
+		if len(was) != 0 {
+			old = strings.Join(was, ", ")
 		}
 		switch c.New {
 		case "":
@@ -524,8 +535,12 @@ func (p LinkPlan) Lines() []string {
 		var where []string
 		if len(p.Bindings) != 0 {
 			var b []string
-			for _, k := range p.Bindings {
-				b = append(b, k[0]+" "+k[1])
+			for i, k := range p.Bindings {
+				if i < len(p.Watched) && p.Watched[i] != 0 {
+					b = append(b, fmt.Sprintf("%s %s (watch %d)", k[0], k[1], p.Watched[i]))
+				} else {
+					b = append(b, k[0]+" "+k[1])
+				}
 			}
 			where = append(where, "bindings of "+strings.Join(b, ", "))
 		}
@@ -574,8 +589,12 @@ func (p LinkPlan) ImpliedLines(how map[string]string) []string {
 		lines = append(lines, line)
 	}
 	for _, o := range p.Others {
-		lines = append(lines, fmt.Sprintf("library manga %d %q has %s %s too, merge them: mangal library merge <keep> <other> (%d, %d)",
-			o.Manga.ID, o.Manga.Title, sourceName(o.Code), o.ID, p.Manga().ID, o.Manga.ID))
+		keep, other := o.Manga, p.Manga()
+		if compareKeep(DuplicateManga{Manga: other}, DuplicateManga{Manga: keep}) < 0 {
+			keep, other = other, keep
+		}
+		lines = append(lines, fmt.Sprintf("library manga %d %q has %s %s too, merge them: mangal library merge %d %d",
+			o.Manga.ID, o.Manga.Title, sourceName(o.Code), o.ID, keep.ID, other.ID))
 	}
 	return lines
 }

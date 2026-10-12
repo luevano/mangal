@@ -19,6 +19,9 @@ type Backup struct {
 	Conflicts []LinkChange
 	// NoKitsu and NoMAL are sources nothing gave an id of.
 	NoKitsu, NoMAL bool
+	// Disagree are sources linking another AniList id (their links aren't used), as
+	// "mango-mangadex links AniList 1".
+	Disagree []string
 }
 
 // BackupFinder finds the backups of library mangas.
@@ -71,6 +74,7 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 	var backups []Backup
 	for i, t := range todos {
 		found := Links{}
+		var disagree []string
 		if metas[i] != nil {
 			if mal := idOf(metas[i].ExtraIDs(), metadata.IDCodeMyAnimeList); mal != "" {
 				found[metadata.IDCodeMyAnimeList] = mal
@@ -85,6 +89,7 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 				}
 				// only when the provider agrees on the AniList id
 				if al := idOf(pids, metadata.IDCodeAnilist); al != "" && al != t.al {
+					disagree = append(disagree, fmt.Sprintf("%s links AniList %s", src.Provider, al))
 					continue
 				}
 				if kt := idOf(pids, metadata.IDCodeKitsu); kt != "" && found[metadata.IDCodeKitsu] == "" {
@@ -95,7 +100,7 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 				}
 			}
 		}
-		backup := Backup{Manga: t.info.Manga, AniList: t.al, Fill: Links{}}
+		backup := Backup{Manga: t.info.Manga, AniList: t.al, Fill: Links{}, Disagree: disagree}
 		for _, code := range []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList} {
 			s := t.info.Source(code)
 			id := found[code]
@@ -114,7 +119,7 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 				backup.Conflicts = append(backup.Conflicts, LinkChange{Code: code, Old: []string{s.Current()}, New: id})
 			}
 		}
-		if len(backup.Fill) != 0 || len(backup.Conflicts) != 0 || backup.NoKitsu || backup.NoMAL {
+		if len(backup.Fill) != 0 || len(backup.Conflicts) != 0 || backup.NoKitsu || backup.NoMAL || len(disagree) != 0 {
 			backups = append(backups, backup)
 		}
 	}
@@ -145,6 +150,9 @@ func (b Backup) Lines() []string {
 	}
 	for _, c := range b.Conflicts {
 		lines = append(lines, fmt.Sprintf("%d %q: %s is %s, AniList %s says %s (not replaced unless asked)", b.Manga.ID, b.Manga.Title, sourceName(c.Code), c.Old[0], b.AniList, c.New))
+	}
+	for _, d := range b.Disagree {
+		lines = append(lines, fmt.Sprintf("%d %q: linked to AniList %s, but %s (check it: mangal library bind %d)", b.Manga.ID, b.Manga.Title, b.AniList, d, b.Manga.ID))
 	}
 	return lines
 }
