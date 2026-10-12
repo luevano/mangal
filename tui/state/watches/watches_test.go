@@ -3,7 +3,6 @@ package watches
 import (
 	"context"
 	"errors"
-	"github.com/charmbracelet/bubbles/key"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"slices"
@@ -15,7 +14,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
-	"github.com/luevano/mangal/v5/tui/util"
+	"github.com/luevano/mangal/v5/tui/state/pick"
 )
 
 type fakeManager struct {
@@ -666,7 +665,7 @@ func TestRelink(t *testing.T) {
 		t.Fatal("m: no cmd")
 	}
 	r, ok := cmd().(*relinkState)
-	if !ok || r.provider != "mango-mangaplus" || r.Search.Query() != "Dandadan" {
+	if !ok || r.Provider() != "mango-mangaplus" || r.Search.Query() != "Dandadan" {
 		t.Fatalf("m: %#v", r)
 	}
 	s.Update(ctx, press("n"))
@@ -675,9 +674,9 @@ func TestRelink(t *testing.T) {
 	}
 
 	// the search on another provider, the current manga marked
-	search := searchProvider
-	t.Cleanup(func() { searchProvider = search })
-	searchProvider = func(_ context.Context, provider, query string) ([]mangadata.Manga, string, error) {
+	search := pick.SearchProvider
+	t.Cleanup(func() { pick.SearchProvider = search })
+	pick.SearchProvider = func(_ context.Context, provider, query string) ([]mangadata.Manga, string, error) {
 		if old, ok := strings.CutPrefix(provider, "old-"); ok {
 			provider = "mango-" + old
 		}
@@ -686,22 +685,22 @@ func TestRelink(t *testing.T) {
 			&testManga{mangadata.MangaInfo{ID: "dandadan", Title: query + " (old)"}},
 		}, provider, nil
 	}
-	r.Update(ctx, providerPickedMsg{provider: "old-weebcentral"})
-	res, err := relinkSearch(ctx, r.w, r.provider, "Dandadan")
-	if err != nil || res.provider != "mango-weebcentral" || len(res.items) != 2 || res.items[0].(*mangaItem).current {
+	r.Update(ctx, pick.ProviderPickedMsg{Provider: "old-weebcentral"})
+	res, err := r.Results(ctx, r.Provider(), "Dandadan")
+	if err != nil || res.Provider != "mango-weebcentral" || len(res.Items) != 2 || res.Items[0].(*pick.MangaItem).Current {
 		t.Fatalf("search %+v, %v", res, err)
 	}
 	r.Update(ctx, res)
-	if r.provider != "mango-weebcentral" || len(r.List.Items()) != 2 || !r.assign.Enabled() {
-		t.Errorf("results: %s, %d", r.provider, len(r.List.Items()))
+	if r.Provider() != "mango-weebcentral" || len(r.List.Items()) != 2 || !r.Assign.Enabled() {
+		t.Errorf("results: %s, %d", r.Provider(), len(r.List.Items()))
 	}
-	if res, _ := relinkSearch(ctx, r.w, "mango-mangaplus", "Dandadan"); !res.items[1].(*mangaItem).current {
+	if res, _ := r.Results(ctx, "mango-mangaplus", "Dandadan"); !res.Items[1].(*pick.MangaItem).Current {
 		t.Error("the watch's manga isn't marked")
 	}
 	if cmd := r.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
 		t.Error("enter: no cmd")
 	}
-	done, err := relink(ctx, m, 2, r.provider, r.List.Items()[0].(*mangaItem).manga)
+	done, err := relink(ctx, m, 2, r.Provider(), r.List.Items()[0].(*pick.MangaItem).Manga)
 	if err != nil || m.relinked[2] != (watch.RelinkOptions{Provider: "mango-weebcentral", MangaID: "01J76", Query: "Dandadan"}) || done.w.ID != 2 {
 		t.Errorf("re-linked %+v, %v", m.relinked, err)
 	}
@@ -735,7 +734,7 @@ func TestKeys(t *testing.T) {
 	runs := newRunsState(m)
 	run := newRunState(m, 1)
 	r := newRelinkState(m, w)
-	p := newProviderPick(w.Provider)
+	p := pick.NewProviders(w.Provider, nil)
 	live := newLiveState(m, &w)
 	for name, keys := range map[string][]string{
 		"list":          base.KeyCollisions(l.keyMap(), l.List.KeyMap.Browsing()...),
@@ -743,8 +742,8 @@ func TestKeys(t *testing.T) {
 		"history":       base.KeyCollisions(h.keyMap(), h.List.KeyMap.Browsing()...),
 		"runs":          base.KeyCollisions(runs.keyMap(), runs.List.KeyMap.Browsing()...),
 		"run":           base.KeyCollisions(run.keyMap(), run.List.KeyMap.Browsing()...),
-		"relink":        base.KeyCollisions(util.KeyMap{Short: []key.Binding{r.assign, r.search, r.pick}}, r.List.KeyMap.Browsing()...),
-		"provider pick": base.KeyCollisions(p.keyMap(), p.List.KeyMap.Browsing()...),
+		"relink":        base.KeyCollisions(r.Keys(), r.List.KeyMap.Browsing()...),
+		"provider pick": base.KeyCollisions(p.Keys(), p.List.KeyMap.Browsing()...),
 		"live":          base.KeyCollisions(live.KeyMap()),
 	} {
 		if len(keys) != 0 {
