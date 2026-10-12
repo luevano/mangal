@@ -93,12 +93,24 @@ type Watch struct {
 	// LibraryElsewhere is the issue of a library manga in another provider's directory:
 	// even an explicit check is refused until it's moved.
 	LibraryElsewhere bool `json:"library_elsewhere,omitempty"`
+	// LibraryNote is why a watch without an issue has no library manga (nothing matches
+	// it yet), empty when it has one.
+	LibraryNote string `json:"library_note,omitempty"`
 }
 
 // Scheduled is true when the scheduler checks it: enabled, its provider installed, no
 // re-link needed, no library issue.
 func (w Watch) Scheduled() bool {
 	return w.Enabled && !w.ProviderMissing && !w.NeedsRelink && w.LibraryIssue == ""
+}
+
+// LibraryProblem is why it has no library manga: its issue, else its note; empty when
+// it's linked.
+func (w Watch) LibraryProblem() string {
+	if w.LibraryIssue != "" {
+		return w.LibraryIssue
+	}
+	return w.LibraryNote
 }
 
 // LibraryHold is the short status of a watch the scheduler skips for its library issue,
@@ -562,13 +574,26 @@ func (s *Service) completeWith(w storage.Watch, since time.Time, view libraryVie
 	}
 	libraryManga := w.LibraryManga
 	if libraryManga == 0 {
-		match := storage.MatchLibrary(view.mangas, view.provider(w.Provider), w.MangaID, storage.BindingIDs(bindings), s.Options.ProviderDirs)
-		if match.Linked {
-			// linked by its next check
+		ids := storage.BindingIDs(bindings)
+		match := storage.MatchLibrary(view.mangas, view.provider(w.Provider), w.MangaID, ids, s.Options.ProviderDirs)
+		switch {
+		case match.Linked:
 			libraryManga = match.Manga.ID
+			if err := s.Watches.SetLibraryManga(w.ID, libraryManga); err != nil {
+				s.warn(err)
+			} else {
+				full.LibraryManga = libraryManga
+				if err := s.linkSource(full.Watch); err != nil {
+					s.warn(err)
+				}
+			}
+		default:
+			full.LibraryIssue = libraryIssue(match, view.downloads[w.ID])
+			full.LibraryElsewhere = match.Elsewhere
+			if full.LibraryIssue == "" {
+				full.LibraryNote = libraryNote(ids)
+			}
 		}
-		full.LibraryIssue = libraryIssue(match, view.downloads[w.ID])
-		full.LibraryElsewhere = match.Elsewhere
 	}
 	full.fillBindings(bindings)
 	last, err := s.lastDownloaded(w, libraryManga)
@@ -593,6 +618,18 @@ func libraryIssue(match storage.LibraryMatch, downloaded bool) string {
 		return "its downloads aren't in the library (library scan?)"
 	}
 	return ""
+}
+
+// libraryNote is why a watch has no library manga when nothing matches it.
+func libraryNote(ids []metadata.ID) string {
+	if len(ids) == 0 {
+		return "no library manga: no metadata ids to match by (bind its AniList id)"
+	}
+	var parts []string
+	for _, id := range ids {
+		parts = append(parts, string(id.Code)+" "+id.Raw)
+	}
+	return "no library manga with " + strings.Join(parts, ", ") + " where its downloads go"
 }
 
 // ElsewhereReason is why a watch whose library manga is in another provider's directory

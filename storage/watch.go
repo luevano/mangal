@@ -364,6 +364,14 @@ func (s Watches) Remove(id int64) error {
 	return nil
 }
 
+// SetLibraryManga links the watch to its library manga, unless it's linked already.
+func (s Watches) SetLibraryManga(id, manga int64) error {
+	if _, err := s.DB.Exec(`UPDATE watches SET library_manga = ? WHERE id = ? AND library_manga IS NULL`, manga, id); err != nil {
+		return fmt.Errorf("link watch %d to library manga %d: %w", id, manga, err)
+	}
+	return nil
+}
+
 // Save writes every field of the watch but its provider, manga id and added time.
 func (s Watches) Save(w Watch) error {
 	res, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = ?, enabled = ?, schedule = ?, gaps = ?,

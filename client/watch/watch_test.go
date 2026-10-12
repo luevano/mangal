@@ -1244,3 +1244,44 @@ func TestDownloadsNotInLibrary(t *testing.T) {
 		t.Errorf("explicit check: %+v, %v", report.Results, err)
 	}
 }
+
+// a folder adopted by scan (no source, named after the AniList title) is linked to the
+// watch by its AniList binding as soon as the watches are listed
+func TestListLinksAdoptedFolder(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.svc.Options.ProviderDirs = true
+	al := metadata.ID{Raw: "98522", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}
+	if err := e.svc.Library.RememberMangaDir("/lib/mango-mangadex", "Teisou Gyakuten Sekai (2018) [alid-98522]",
+		libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "Teisou Gyakuten Sekai"}, MetadataIDs: []metadata.ID{al}}); err != nil {
+		t.Fatal(err)
+	}
+	w, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangadex", MangaID: "f6333441", Title: "Chastity Reverse World", Offline: true, AnilistID: 98522})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangadex", MangaID: "x", Title: "Nope", Offline: true, AnilistID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	all, err := e.svc.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all[0].LibraryManga == 0 || all[0].LibraryProblem() != "" {
+		t.Fatalf("not linked: %+v", all[0])
+	}
+	if stored, _ := e.svc.Watches.Get(w.ID); stored.LibraryManga != all[0].LibraryManga {
+		t.Errorf("link not saved: %d", stored.LibraryManga)
+	}
+	if m, found, _ := e.svc.Library.MangaBySource("mango-mangadex", "f6333441"); !found || m.ID != all[0].LibraryManga {
+		t.Errorf("source not added: %+v %v", m, found)
+	}
+	if p := all[1].LibraryProblem(); all[1].ID != other.ID || all[1].LibraryManga != 0 || !strings.Contains(p, "al 1") || all[1].LibraryIssue != "" {
+		t.Errorf("unmatched watch: %q %+v", p, all[1])
+	}
+	if resumed, _ := e.svc.SetEnabled(ctx, other.ID, true); !resumed.Scheduled() {
+		t.Errorf("a watch with only a note isn't checked: %+v", resumed)
+	}
+}
