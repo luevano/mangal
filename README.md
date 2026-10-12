@@ -158,10 +158,11 @@ mangal library scan                        # check against the files: moved, rem
 mangal library scan --check                # also check the guessed metadata ids of folders without a .libmangal.json
 mangal library downloads [provider]        # the downloaded chapters
 mangal library merge <keep> <other> --apply  # one manga in two directories, duplicates go to the trash
+mangal library move <id> <provider> [query|mid:id] --apply  # switch a manga to another provider (folder, watch and bindings follow)
 mangal library trash [empty]               # see or empty the trash
 ```
 
-The TUI has the same under `l` on the home screen (`s` scan, `S` scan and check ids, `m` merge, `t` trash), where `d` deletes a manga or a chapter (to the trash).
+The TUI has the same under `l` on the home screen (`s` scan, `S` scan and check ids, `m` merge, `M` move to another provider, `t` trash), where `d` deletes a manga or a chapter (to the trash).
 
 ### Accounts
 
