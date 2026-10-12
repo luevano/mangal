@@ -36,6 +36,8 @@ type state struct {
 	manga    mangadata.Manga
 	src      client.MetadataSource
 	provider *lmmeta.ProviderWithCache
+	// pick, if set, gets the chosen manga instead of binding it (a library manga's link)
+	pick func(lmmeta.Metadata) tea.Cmd
 
 	confirm,
 	search,
@@ -63,16 +65,28 @@ func sourceColor(code lmmeta.IDCode) lipgloss.Color {
 // newSearch is the search of the source's manga to bind the manga to, starting with its
 // title. A number (or "id:<n>") gets the manga with that id.
 func newSearch(c *libmangal.Client, src client.MetadataSource, provider *lmmeta.ProviderWithCache, manga mangadata.Manga) base.State {
+	s := newState(src, provider, manga.Info().Title)
+	s.client, s.manga = c, manga
+	return s
+}
+
+// NewPick is the search of the source's manga for query (a number or "id:<n>" gets that
+// id); enter goes back and runs pick with the chosen one.
+func NewPick(src client.MetadataSource, provider *lmmeta.ProviderWithCache, query string, pick func(lmmeta.Metadata) tea.Cmd) base.State {
+	s := newState(src, provider, query)
+	s.pick = pick
+	return s
+}
+
+func newState(src client.MetadataSource, provider *lmmeta.ProviderWithCache, query string) *state {
 	l := list.New(2, 1, src.Key+" manga", src.Key+" mangas", []lmmeta.Metadata{}, func(meta lmmeta.Metadata) _list.DefaultItem {
 		return &item{src: src, meta: meta}
 	})
 	s := &state{
-		Screen: searchlist.New(search.New("Search "+src.Name+" manga or id...", manga.Info().Title, 64, 5), l, searchlist.History{
+		Screen: searchlist.New(search.New("Search "+src.Name+" manga or id...", query, 64, 5), l, searchlist.History{
 			Get: cache.GetAnilistSearchHistory,
 			Set: cache.SetAnilistSearchHistory,
 		}),
-		client:   c,
-		manga:    manga,
 		src:      src,
 		provider: provider,
 		confirm:  util.Bind("bind", "enter"),
@@ -117,6 +131,9 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		case key.Matches(msg, s.confirm) && ok:
 			if base.Busy(ctx) {
 				return nil
+			}
+			if s.pick != nil {
+				return tea.Sequence(base.Back, s.pick(i.meta))
 			}
 			return s.bindCmd(ctx, i.meta)
 		case key.Matches(msg, s.search):
