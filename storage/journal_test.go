@@ -30,7 +30,7 @@ func TestSnapshotRestore(t *testing.T) {
 	}
 
 	backups := filepath.Join(dir, "backups")
-	snap, _, err := db.Snapshot(backups, "rename", 10)
+	snap, err := db.Snapshot(backups, "rename")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,8 +146,11 @@ func TestPruneSnapshots(t *testing.T) {
 	}
 	var made []string
 	for range 4 {
-		snap, _, err := db.Snapshot(backups, "merge", 2)
+		snap, err := db.Snapshot(backups, "merge")
 		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := PruneSnapshots(backups, 2); err != nil {
 			t.Fatal(err)
 		}
 		made = append(made, snap)

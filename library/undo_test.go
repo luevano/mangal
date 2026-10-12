@@ -20,7 +20,7 @@ func journaled(t *testing.T, do func(j Journal) error) Undoer {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	snap, _, err := db.Snapshot(filepath.Join(dir, "backups"), "test", 10)
+	snap, err := db.Snapshot(filepath.Join(dir, "backups"), "test")
 	if err != nil {
 		t.Fatal(err)
 	}

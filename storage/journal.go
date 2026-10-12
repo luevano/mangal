@@ -423,11 +423,10 @@ const SnapshotPrefix = "mangal-"
 
 // Snapshot copies the database into dir as mangal-<YYYYMMDD-HHMMSS>-<name>.sqlite
 // (VACUUM INTO: a consistent copy, with what's still in the WAL, while other processes
-// use it), only readable by the user, and deletes the oldest snapshots past keep.
-// It returns the snapshot and the ones deleted.
-func (db *DB) Snapshot(dir, name string, keep int) (string, []string, error) {
+// use it), only readable by the user.
+func (db *DB) Snapshot(dir, name string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", nil, fmt.Errorf("snapshot: %w", err)
+		return "", fmt.Errorf("snapshot: %w", err)
 	}
 	base := filepath.Join(dir, SnapshotPrefix+time.Now().Format("20060102-150405")+"-"+name)
 	path := base + ".sqlite"
@@ -442,18 +441,14 @@ func (db *DB) Snapshot(dir, name string, keep int) (string, []string, error) {
 		path = fmt.Sprintf("%s-%d.sqlite", base, i)
 	}
 	if err != nil {
-		return "", nil, fmt.Errorf("snapshot: %w", err)
+		return "", fmt.Errorf("snapshot: %w", err)
 	}
 	_ = f.Close()
 	if _, err := db.Exec(`VACUUM INTO ?`, path); err != nil {
 		_ = os.Remove(path)
-		return "", nil, fmt.Errorf("snapshot %s: %w", path, err)
+		return "", fmt.Errorf("snapshot %s: %w", path, err)
 	}
-	removed, err := pruneSnapshots(dir, keep)
-	if err != nil {
-		return path, removed, fmt.Errorf("delete old snapshots: %w", err)
-	}
-	return path, removed, nil
+	return path, nil
 }
 
 // Snapshots are the snapshots in dir, oldest first.
@@ -499,13 +494,16 @@ func Snapshots(dir string) ([]string, error) {
 	return paths, nil
 }
 
-func pruneSnapshots(dir string, keep int) ([]string, error) {
+// PruneSnapshots deletes the oldest snapshots in dir past keep (at least 1), it returns
+// the ones deleted.
+func PruneSnapshots(dir string, keep int) ([]string, error) {
+	keep = max(keep, 1)
 	snaps, err := Snapshots(dir)
 	if err != nil || len(snaps) <= keep {
 		return nil, err
 	}
 	var removed []string
-	for _, s := range snaps[:len(snaps)-max(keep, 1)] {
+	for _, s := range snaps[:len(snaps)-keep] {
 		if err := os.Remove(s); err != nil {
 			return removed, err
 		}
