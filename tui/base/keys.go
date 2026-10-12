@@ -95,7 +95,7 @@ var (
 	KeyNeedsRelink     = util.Bind("needs re-link only", "N")
 	KeyNotInLibrary    = util.Bind("not in library only", "I")
 
-	// for the health screen, not bound yet
+	// the health screen's: a and A are select all and bindings (old)
 	KeyApplyFix = util.Bind("apply fix", "x")
 	KeyNetwork  = util.Bind("network checks", "alt+n")
 )
