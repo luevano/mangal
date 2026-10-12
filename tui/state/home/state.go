@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/provider/manager"
@@ -17,6 +18,7 @@ import (
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/accounts"
+	healthstate "github.com/luevano/mangal/v5/tui/state/health"
 	"github.com/luevano/mangal/v5/tui/state/library"
 	"github.com/luevano/mangal/v5/tui/state/migrate"
 	"github.com/luevano/mangal/v5/tui/state/providers"
@@ -34,12 +36,19 @@ type state struct {
 	// shown again: tui.skip_home only applies at the start
 	restored bool
 
+	// health is the offline health check's summary line, empty until it ran
+	health string
+
 	confirm,
 	library,
 	watches,
 	accounts,
-	migrate key.Binding
+	migrate,
+	healthKey key.Binding
 }
+
+// healthMsg is the summary of an offline health check.
+type healthMsg struct{ line string }
 
 // loadedMsg are the providers, with what to tell about them.
 type loadedMsg struct {
@@ -51,11 +60,12 @@ type loadedMsg struct {
 
 func New() base.State {
 	return &state{
-		confirm:  util.Bind("providers", "enter"),
-		library:  base.KeyLibrary,
-		watches:  base.KeyWatches,
-		accounts: base.KeyAccounts,
-		migrate:  base.KeyMigrate,
+		confirm:   util.Bind("providers", "enter"),
+		library:   base.KeyLibrary,
+		watches:   base.KeyWatches,
+		accounts:  base.KeyAccounts,
+		migrate:   base.KeyMigrate,
+		healthKey: base.KeyHealth,
 	}
 }
 
@@ -67,11 +77,41 @@ func (s *state) Status() string                { return "" }
 func (s *state) Resize(size base.Size) tea.Cmd { return nil }
 
 func (s *state) KeyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.confirm, s.library, s.watches, s.accounts, s.migrate}}
+	return util.KeyMap{Short: []key.Binding{s.confirm, s.library, s.watches, s.accounts, s.migrate, s.healthKey}}
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	return s.load(ctx)
+	return tea.Batch(s.load(ctx), s.checkHealth(ctx))
+}
+
+// checkHealth runs the offline health checks (local, cheap) for the summary line.
+func (s *state) checkHealth(ctx context.Context) tea.Cmd {
+	key := s.healthKey.Help().Key
+	return base.Load(ctx, "", func(ctx context.Context) (healthMsg, error) {
+		checker, err := health.New(ctx)
+		if err != nil {
+			log.Warn("health: %s", err)
+			return healthMsg{}, nil
+		}
+		report, err := checker.Run(ctx, health.Options{})
+		if err != nil {
+			log.Warn("health: %s", err)
+			return healthMsg{}, nil
+		}
+		return healthMsg{line: healthLine(report, key)}, nil
+	}, func(msg healthMsg) tea.Msg { return msg })
+}
+
+// healthLine is "health: 3 problems (!)": errors and warnings, info isn't a problem.
+func healthLine(report health.Report, key string) string {
+	n := report.Counts.Error + report.Counts.Warning
+	switch n {
+	case 0:
+		return fmt.Sprintf("health: no problems (%s)", key)
+	case 1:
+		return fmt.Sprintf("health: 1 problem (%s)", key)
+	}
+	return fmt.Sprintf("health: %d problems (%s)", n, key)
 }
 
 func (s *state) load(ctx context.Context) tea.Cmd {
@@ -107,12 +147,15 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return func() tea.Msg { return s.providers }
 		}
 		return base.Notify("Providers loaded")
+	case healthMsg:
+		s.health = msg.line
 	case base.RestoredMsg:
 		s.restored = true
 		// left before they loaded
 		if s.providers == nil {
-			return s.load(ctx)
+			return tea.Batch(s.load(ctx), s.checkHealth(ctx))
 		}
+		return s.checkHealth(ctx)
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, s.confirm):
@@ -128,11 +171,21 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return func() tea.Msg { return accounts.New(false) }
 		case key.Matches(msg, s.migrate):
 			return func() tea.Msg { return migrate.New() }
+		case key.Matches(msg, s.healthKey):
+			return func() tea.Msg { return healthstate.New() }
 		}
 	}
 	return nil
 }
 
 func (s *state) View() string {
-	return lipgloss.JoinVertical(lipgloss.Center, style.Bold.Accent.Render(meta.Logo), "\n"+meta.Versions())
+	view := lipgloss.JoinVertical(lipgloss.Center, style.Bold.Accent.Render(meta.Logo), "\n"+meta.Versions())
+	if s.health != "" {
+		st := style.Normal.Secondary
+		if !strings.HasPrefix(s.health, "health: no ") {
+			st = style.Normal.Warning
+		}
+		view = lipgloss.JoinVertical(lipgloss.Center, view, "\n"+st.Render(s.health))
+	}
+	return view
 }
