@@ -168,3 +168,23 @@ func TestPruneSnapshots(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestSetSummary(t *testing.T) {
+	db, err := OpenData(filepath.Join(t.TempDir(), FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	j := Journal{DB: db}
+	op, err := j.Begin("rename", "rename 14 folders", "/x.sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	op.SetSummary("rename 12 folders")
+	if err := op.Finish(nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := j.Last(); got.Summary != "rename 12 folders" {
+		t.Errorf("summary %q", got.Summary)
+	}
+}

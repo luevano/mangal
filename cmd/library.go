@@ -178,17 +178,21 @@ a name already taken is skipped, as chapters without a recorded title). Folders 
 				folders++
 			}
 		}
-		var what []string
-		if folders != 0 || files == 0 {
-			what = append(what, fmt.Sprintf("%d folders", folders))
-		}
-		if files != 0 {
-			what = append(what, fmt.Sprintf("%d chapter files", files))
-		}
-		summary := "rename " + strings.Join(what, ", ")
-		snapshot, err := client.Operation("rename", summary, func(j library.Journal) error {
+		snapshot, err := client.Operation("rename", renameSummary(folders, files), func(j library.Journal) error {
+			// the journal says what was renamed, not what was planned
+			folders, files := 0, 0
+			if op, ok := j.(interface{ SetSummary(string) }); ok {
+				defer func() { op.SetSummary(renameSummary(folders, files)) }()
+			}
 			return library.ApplyEach(afs.Afero, j, renames, st.Progress, func(i int, err error) error {
 				r := renames[i]
+				if err == nil && r.Skip == "" && !r.RemoveEmpty {
+					if r.Chapter {
+						files++
+					} else {
+						folders++
+					}
+				}
 				switch {
 				case errors.Is(err, library.ErrNotEmpty):
 					st.Print(func() { cmd.Printf("kept %s: not empty\n", rel(r.From)) })
@@ -218,6 +222,18 @@ a name already taken is skipped, as chapters without a recorded title). Folders 
 		undoHint(cmd, snapshot, err)
 		return err
 	},
+}
+
+// renameSummary is the journal's summary of a rename.
+func renameSummary(folders, files int) string {
+	var what []string
+	if folders != 0 || files == 0 {
+		what = append(what, fmt.Sprintf("%d folders", folders))
+	}
+	if files != 0 {
+		what = append(what, fmt.Sprintf("%d chapter files", files))
+	}
+	return "rename " + strings.Join(what, ", ")
 }
 
 func init() {

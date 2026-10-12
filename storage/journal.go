@@ -131,8 +131,12 @@ func (o *Op) Record(s Step) error {
 	return nil
 }
 
+// SetSummary replaces the summary with what was done after all (e.g. without the changes
+// that were skipped), Finish stores it.
+func (o *Op) SetSummary(summary string) { o.Summary = summary }
+
 // Finish ends the operation, opErr is why it stopped (nil when it's done). It records
-// what the database looks like now, an undo checks nothing changed since.
+// what the database looks like now (an undo checks nothing changed since) and the summary.
 func (o *Op) Finish(opErr error) error {
 	sum, err := fingerprint(o.db)
 	if err != nil {
@@ -143,8 +147,8 @@ func (o *Op) Finish(opErr error) error {
 		msg = opErr.Error()
 	}
 	o.Finished, o.Error, o.fingerprint = time.Now(), msg, sum
-	_, err = o.db.Exec(`UPDATE journal SET finished = ?, error = ?, fingerprint = ? WHERE id = ?`,
-		o.Finished.UnixMilli(), msg, sum, o.ID)
+	_, err = o.db.Exec(`UPDATE journal SET finished = ?, error = ?, fingerprint = ?, summary = ? WHERE id = ?`,
+		o.Finished.UnixMilli(), msg, sum, o.Summary, o.ID)
 	if err != nil {
 		return fmt.Errorf("journal %s: %w", o.Kind, err)
 	}
