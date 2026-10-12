@@ -306,26 +306,27 @@ func (s *mangasState) onLoaded(msg mangasLoadedMsg) tea.Cmd {
 func (s *mangasState) scanCmd(ctx context.Context, check bool) tea.Cmd {
 	files := s.files
 	providerDirs := config.Download.Provider.CreateDir.Get()
-	return base.Load(ctx, "Scanning the library", func(ctx context.Context) (scannedMsg, error) {
+	return base.LoadWithStatus(ctx, "Scanning the library", func(ctx context.Context, status func(string)) (scannedMsg, error) {
 		root, err := path.Ensure(files.Root)
 		if err != nil {
 			return scannedMsg{}, err
 		}
-		scanner := library.Scanner{FS: files.FS, Library: files.Library}
+		onProgress := func(p library.Progress) { status(p.String()) }
+		scanner := library.Scanner{FS: files.FS, Library: files.Library, OnProgress: onProgress}
 		res, err := scanner.Scan(root, providerDirs)
 		if err != nil {
 			return scannedMsg{}, err
 		}
 		msg := scannedMsg{result: res, otherRoot: library.OtherRoot(files.FS, res.Missing, root, providerDirs), checked: check}
 		if check && msg.otherRoot == "" {
-			msg.checks, msg.checkErr = checkIDs(ctx, files)
+			msg.checks, msg.checkErr = checkIDs(ctx, files, onProgress)
 		}
 		return msg, nil
 	}, func(msg scannedMsg) tea.Msg { return msg })
 }
 
 // checkIDs checks the ids of the adopted folders on AniList and Kitsu.
-func checkIDs(ctx context.Context, files library.Files) ([]library.IDCheck, error) {
+func checkIDs(ctx context.Context, files library.Files, onProgress func(library.Progress)) ([]library.IDCheck, error) {
 	mangas, err := files.Library.Mangas()
 	if err != nil {
 		return nil, err
@@ -340,9 +341,10 @@ func checkIDs(ctx context.Context, files library.Files) ([]library.IDCheck, erro
 		return nil, err
 	}
 	checker := library.IDChecker{
-		FS:        files.FS,
-		Providers: map[metadata.IDSource]library.IDProvider{metadata.IDSourceAnilist: ani, metadata.IDSourceKitsu: kt},
-		Suggest:   ani,
+		FS:         files.FS,
+		Providers:  map[metadata.IDSource]library.IDProvider{metadata.IDSourceAnilist: ani, metadata.IDSourceKitsu: kt},
+		Suggest:    ani,
+		OnProgress: onProgress,
 	}
 	return checker.Check(ctx, mangas)
 }
@@ -426,7 +428,8 @@ func (s *mangasState) askMerge(msg mergePlannedMsg) {
 		msg.other.Title, msg.keep.Title, len(msg.plan.Moves), len(msg.plan.Trashed))
 	files := s.files
 	s.confirm.Ask("Merge", message, s.View(), func() tea.Msg {
-		return actionMsg{label: "Merging", do: func() (reloadMsg, error) {
+		return actionMsg{label: "Merging", do: func(status func(string)) (reloadMsg, error) {
+			files.OnProgress = func(p library.Progress) { status(p.String()) }
 			return reloadMsg{notify: "merged into " + msg.keep.Title, merged: true}, files.ApplyMerge(msg.plan)
 		}}
 	})

@@ -124,17 +124,19 @@ func (s *moveState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 func (s *moveState) planCmd(ctx context.Context, provider string, to mangadata.Manga) tea.Cmd {
 	m := s.manga
-	return base.Load(ctx, fmt.Sprintf("Planning the move to %q", to.Info().Title), func(ctx context.Context) (movePlannedMsg, error) {
-		return planMove(ctx, m, provider, to)
+	return base.LoadWithStatus(ctx, fmt.Sprintf("Planning the move to %q", to.Info().Title), func(ctx context.Context, status func(string)) (movePlannedMsg, error) {
+		return planMove(ctx, m, provider, to, func(p library.Progress) { status(p.String()) })
 	}, func(msg movePlannedMsg) tea.Msg { return msg })
 }
 
-// planMove plans moving the library manga to the provider's manga.
-func planMove(ctx context.Context, m storage.Manga, provider string, to mangadata.Manga) (movePlannedMsg, error) {
+// planMove plans moving the library manga to the provider's manga, telling onProgress
+// (may be nil) where it is.
+func planMove(ctx context.Context, m storage.Manga, provider string, to mangadata.Manga, onProgress func(library.Progress)) (movePlannedMsg, error) {
 	mover, err := newMover()
 	if err != nil {
 		return movePlannedMsg{}, err
 	}
+	mover.OnProgress = onProgress
 	info, err := acquireInfo(ctx, provider)
 	if err != nil {
 		return movePlannedMsg{}, err

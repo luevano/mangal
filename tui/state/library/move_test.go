@@ -74,7 +74,7 @@ func TestMove(t *testing.T) {
 	ms.Update(ctx, res)
 
 	// another title: keep it or adopt the new one
-	asked, err := planMove(ctx, m, "mango-weebcentral", &testManga{mangadata.MangaInfo{ID: "01K", Title: "Berserk Deluxe"}})
+	asked, err := planMove(ctx, m, "mango-weebcentral", &testManga{mangadata.MangaInfo{ID: "01K", Title: "Berserk Deluxe"}}, nil)
 	if err != nil || asked.full == nil {
 		t.Fatalf("planned %+v, %v", asked, err)
 	}
@@ -95,7 +95,7 @@ func TestMove(t *testing.T) {
 	}
 	ms.Update(ctx, press("n"))
 
-	planned, err := planMove(ctx, m, "mango-weebcentral", res.Items[0].(*pick.MangaItem).Manga)
+	planned, err := planMove(ctx, m, "mango-weebcentral", res.Items[0].(*pick.MangaItem).Manga, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestMove(t *testing.T) {
 	if !ok {
 		t.Fatal("yes isn't the move")
 	}
-	reload, err := act.do()
+	reload, err := act.do(func(string) {})
 	if err != nil {
 		t.Fatal(err)
 	}

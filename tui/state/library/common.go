@@ -17,13 +17,14 @@ import (
 // made, the dialog's cmd may never run.
 type actionMsg struct {
 	label string
-	do    func() (reloadMsg, error)
+	// do may tell its status, the label follows it
+	do func(status func(string)) (reloadMsg, error)
 }
 
 // action is a confirmed change, do returns the notification.
 func action(label string, do func() (string, error)) tea.Cmd {
 	return func() tea.Msg {
-		return actionMsg{label: label, do: func() (reloadMsg, error) {
+		return actionMsg{label: label, do: func(func(string)) (reloadMsg, error) {
 			notify, err := do()
 			return reloadMsg{notify: notify}, err
 		}}
@@ -38,8 +39,8 @@ type reloadMsg struct {
 }
 
 func (msg actionMsg) run(ctx context.Context) tea.Cmd {
-	return base.Load(ctx, msg.label, func(context.Context) (reloadMsg, error) {
-		return msg.do()
+	return base.LoadWithStatus(ctx, msg.label, func(_ context.Context, status func(string)) (reloadMsg, error) {
+		return msg.do(status)
 	}, func(msg reloadMsg) tea.Msg { return msg })
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/tui/util"
 )
 
@@ -240,5 +241,47 @@ func TestShutdownCancels(t *testing.T) {
 	}
 	if _, ok := Track(s.ctx); ok {
 		t.Error("work can start after quitting")
+	}
+}
+
+func TestLoadWithStatus(t *testing.T) {
+	s := &fakeState{title: "home"}
+	m := newTestModel(t, s)
+
+	gate := make(chan struct{})
+	cmd := LoadWithStatus(s.ctx, "Scanning", func(ctx context.Context, status func(string)) (int, error) {
+		status("scanning library: 1/2 (x)")
+		<-gate
+		progress.Report(ctx, progress.Status{Message: "AniList rate limited, retrying in 58s"})
+		<-gate
+		return 0, nil
+	}, func(int) tea.Msg { return resultMsg{} })
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("not a batch of the load and its labels: %T", cmd())
+	}
+	start, work := splitLoad(t, batch[0])
+	m.Update(start)
+	if m.loadingLabel() != "Scanning" {
+		t.Errorf("label %q", m.loadingLabel())
+	}
+	done := make(chan tea.Msg)
+	go func() { done <- work() }()
+
+	listen := batch[1]
+	for _, want := range []string{"Scanning library: 1/2 (x)", "AniList rate limited, retrying in 58s"} {
+		_, next := m.Update(listen())
+		if m.loadingLabel() != want {
+			t.Errorf("label %q, want %q", m.loadingLabel(), want)
+		}
+		listen = next
+		gate <- struct{}{}
+	}
+	m.Update(<-done)
+	if !s.received(resultMsg{}) || m.loadingLabel() != "" {
+		t.Errorf("result not delivered or label %q left", m.loadingLabel())
+	}
+	if msg := listen(); msg != nil {
+		t.Errorf("labels still listened to after the load: %#v", msg)
 	}
 }

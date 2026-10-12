@@ -66,6 +66,13 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		}
 	case loadStartMsg:
 		return m.startLoad(msg)
+	case loadLabelMsg:
+		for i := range m.loads {
+			if m.loads[i].id == msg.id {
+				m.loads[i].label = msg.label
+			}
+		}
+		return msg.next
 	case loadDoneMsg:
 		m.stopLoad(msg.id)
 		if sc := scopeOf(msg.ctx); sc != nil {
