@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -147,12 +148,21 @@ func TestScanAddsMarkedFolders(t *testing.T) {
 	writeMarker(t, folder, libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "vagabond", Title: "Vagabond"}})
 	writeCBZ(t, filepath.Join(folder, "[0001.0] x.cbz"), "1")
 
-	res, err := Scanner{FS: afero.NewOsFs(), Library: library}.Scan(root, false)
+	var progress []string
+	scanner := Scanner{FS: afero.NewOsFs(), Library: library, OnProgress: func(p Progress) { progress = append(progress, p.String()) }}
+	res, err := scanner.Scan(root, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.New != 1 || res.Added != 1 {
 		t.Errorf("got %+v", res)
+	}
+	if want := []string{"looking for new manga folders", "looking for new manga folders: 1/1 (Vagabond)"}; !slices.Equal(progress, want) {
+		t.Errorf("progress %q, want %q", progress, want)
+	}
+	progress = nil
+	if _, err := scanner.Scan(root, false); err != nil || len(progress) == 0 || progress[0] != "scanning library: 1/1 (Vagabond)" {
+		t.Errorf("progress of the second scan %q, %v", progress, err)
 	}
 	mangas, _ := library.Mangas()
 	if len(mangas) != 1 || mangas[0].Title != "Vagabond" || mangas[0].Chapters != 1 || len(mangas[0].Sources) != 1 {

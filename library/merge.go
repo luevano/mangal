@@ -101,7 +101,13 @@ func (f Files) ApplyMerge(plan MergePlan) error {
 	}
 
 	batch := newTrashBatch()
+	total, done := len(plan.Trashed)+len(plan.Moves), 0
+	step := func(path string) {
+		done++
+		report(f.OnProgress, Progress{Phase: "merging", Done: done, Total: total, Item: filepath.Base(path)})
+	}
 	for _, path := range plan.Trashed {
+		step(path)
 		if err := moveToTrash(f.FS, f.Root, batch, path, f.Modes); err != nil {
 			return fail(fmt.Errorf("trash %s: %w", path, err))
 		}
@@ -111,6 +117,7 @@ func (f Files) ApplyMerge(plan MergePlan) error {
 		}
 	}
 	for _, m := range plan.Moves {
+		step(m.From)
 		if err := moveFile(f.FS, m.From, m.To, f.Modes); err != nil {
 			return fail(fmt.Errorf("move %s: %w", m.From, err))
 		}

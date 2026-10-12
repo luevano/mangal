@@ -97,10 +97,15 @@ func TestCheckIDs(t *testing.T) {
 
 	ani := &fakeIDProvider{name: "Anilist", code: metadata.IDCodeAnilist, titles: map[int]string{30583: "Claymore", 1: "Cowboy Bebop", 2: "Something Else", 656: "Vagabond"}}
 	kitsu := &fakeIDProvider{name: "Kitsu", code: metadata.IDCodeKitsu, titles: map[int]string{12345: "Some Manga"}}
-	checker := IDChecker{FS: fs, Providers: map[metadata.IDSource]IDProvider{metadata.IDSourceAnilist: ani, metadata.IDSourceKitsu: kitsu}, Suggest: ani}
+	var progress []string
+	checker := IDChecker{FS: fs, Providers: map[metadata.IDSource]IDProvider{metadata.IDSourceAnilist: ani, metadata.IDSourceKitsu: kitsu}, Suggest: ani,
+		OnProgress: func(p Progress) { progress = append(progress, p.String()) }}
 	checks, err := checker.Check(context.Background(), mangas)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if want := []string{"checking the ids on Anilist", "checking the ids on Kitsu", "looking for ids on Anilist"}; !slices.Equal(progress, want) {
+		t.Errorf("progress %q, want %q", progress, want)
 	}
 
 	var got []string

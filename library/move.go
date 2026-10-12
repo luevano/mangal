@@ -145,6 +145,7 @@ func (m Mover) planFolder(ctx context.Context, plan *MovePlan) error {
 		}
 		var meta metadata.Metadata
 		if m.Metadata != nil {
+			report(m.OnProgress, Progress{Phase: "looking up metadata"})
 			if meta, err = m.Metadata(ctx, ids); err != nil {
 				return fmt.Errorf("metadata: %w", err)
 			}

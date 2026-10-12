@@ -29,6 +29,8 @@ type Files struct {
 	// Root is the download directory, with the trash.
 	Root  string
 	Modes Modes
+	// OnProgress, if set, is told where Mark and ApplyMerge are.
+	OnProgress func(Progress)
 }
 
 // moveFile renames a file or folder, copying it (and removing the original) when it's on

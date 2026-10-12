@@ -37,12 +37,18 @@ func TestMark(t *testing.T) {
 	}
 
 	weeb := libmangal.ProviderInfo{ID: "mango-weebcentral", Name: "Weeb Central", History: []libmangal.ProviderAlias{{ID: "mango-mangasee"}}}
-	res, err := files.Mark(MarkOptions{Loaders: []libmangal.ProviderLoader{loader{weeb}}})
+	var told []Marked
+	var progress int
+	files.OnProgress = func(Progress) { progress++ }
+	res, err := files.Mark(MarkOptions{Loaders: []libmangal.ProviderLoader{loader{weeb}}, OnMarked: func(m Marked) { told = append(told, m) }})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(res.Marked) != 1 || len(res.Unknown) != 1 || res.Unknown[0].Dir != "Guessed" {
 		t.Fatalf("result %+v", res)
+	}
+	if len(told) != 1 || told[0].Manga.Dir != res.Marked[0].Manga.Dir || progress != 3 {
+		t.Errorf("told %+v, %d progress reports", told, progress)
 	}
 	info, err := libmangal.ReadMangaDirInfo(files.FS, filepath.Join(see, "Berserk"))
 	if err != nil || info.Provider != "mango-weebcentral" || info.Manga.ID != "berserk" || info.Manga.Title != "Berserk" || len(info.MetadataIDs) != 1 || info.MetadataIDs[0] != al {

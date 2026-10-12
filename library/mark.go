@@ -49,6 +49,8 @@ type MarkOptions struct {
 	// (current or old name) of exactly one loaded provider.
 	ProviderDirs bool
 	ProviderName func(libmangal.ProviderInfo) string
+	// OnMarked, if set, is told each folder marked as soon as it is.
+	OnMarked func(Marked)
 }
 
 // Mark writes a libmangal.MangaDirInfo (as libmangal does on download) into the folders of
@@ -64,7 +66,8 @@ func (f Files) Mark(opts MarkOptions) (MarkResult, error) {
 	if err != nil {
 		return res, err
 	}
-	for _, m := range mangas {
+	for i, m := range mangas {
+		report(f.OnProgress, Progress{Phase: "marking", Done: i + 1, Total: len(mangas), Item: m.Title})
 		if m.Dir == "" {
 			continue
 		}
@@ -86,7 +89,11 @@ func (f Files) Mark(opts MarkOptions) (MarkResult, error) {
 		if err := libmangal.WriteMangaDirInfo(f.FS, m.Path(), info, f.Modes.File); err != nil {
 			return res, fmt.Errorf("mark %s: %w", m.Path(), err)
 		}
-		res.Marked = append(res.Marked, Marked{Manga: m, Info: info, Evidence: evidence})
+		marked := Marked{Manga: m, Info: info, Evidence: evidence}
+		res.Marked = append(res.Marked, marked)
+		if opts.OnMarked != nil {
+			opts.OnMarked(marked)
+		}
 	}
 	return res, nil
 }

@@ -276,6 +276,7 @@ func TestPlanMetadataBatched(t *testing.T) {
 		return metadata.ID{Raw: raw, Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}
 	}
 	var calls [][][]metadata.ID
+	var progress []string
 	n := Namer{
 		FS:           fsys,
 		ProviderName: func(p libmangal.ProviderInfo) string { return p.ID },
@@ -295,6 +296,7 @@ func TestPlanMetadataBatched(t *testing.T) {
 			}
 			return metas, nil
 		},
+		OnProgress: func(p Progress) { progress = append(progress, p.String()) },
 	}
 	writeInfo(t, fsys, "/lib/Berserk (1989) [alid-30002]", libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "x"}, MetadataIDs: []metadata.ID{al("30002")}})
 	writeInfo(t, fsys, "/lib/One Piece", libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "One Piece"}, MetadataIDs: []metadata.ID{al("30013")}})
@@ -309,5 +311,8 @@ func TestPlanMetadataBatched(t *testing.T) {
 	}
 	if want := (Rename{From: "/lib/Berserk (1989) [alid-30002]", To: "/lib/Berserk"}); len(renames) != 1 || renames[0] != want {
 		t.Errorf("got %v, want %v", renames, want)
+	}
+	if len(progress) == 0 || progress[0] != "looking up metadata" {
+		t.Errorf("progress %q", progress)
 	}
 }

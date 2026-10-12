@@ -45,6 +45,8 @@ func (r *ScanResult) add(o ScanResult) {
 type Scanner struct {
 	FS      afero.Fs
 	Library storage.Library
+	// OnProgress, if set, is told where Scan is.
+	OnProgress func(Progress)
 }
 
 // ScanManga reconciles a library manga with its folder. A missing folder is looked for
@@ -165,7 +167,8 @@ func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
 		return res, err
 	}
 	marked := &markedCache{}
-	for _, m := range mangas {
+	for i, m := range mangas {
+		report(s.OnProgress, Progress{Phase: "scanning library", Done: i + 1, Total: len(mangas), Item: m.Title})
 		r, err := s.scanManga(m, root, providerDirs, marked)
 		if err != nil {
 			return res, err
@@ -173,12 +176,14 @@ func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
 		res.add(r)
 	}
 
+	report(s.OnProgress, Progress{Phase: "looking for new manga folders"})
 	folders, err := walkMangaDirs(s.FS, root, providerDirs)
 	if err != nil {
 		return res, err
 	}
-	for _, folder := range folders {
+	for i, folder := range folders {
 		parent, dir := filepath.Dir(folder.path), filepath.Base(folder.path)
+		report(s.OnProgress, Progress{Phase: "looking for new manga folders", Done: i + 1, Total: len(folders), Item: dir})
 		if _, ok, err := s.Library.MangaByFolder(parent, dir); err != nil || ok {
 			if err != nil {
 				return res, err

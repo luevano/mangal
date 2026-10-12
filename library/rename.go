@@ -44,6 +44,9 @@ type Namer struct {
 	// its ids: a result per manga, nil when it has none. Nil looks nothing up.
 	Metadata func(ctx context.Context, ids [][]metadata.ID) ([]metadata.Metadata, error)
 
+	// OnProgress, if set, is told where Plan is.
+	OnProgress func(Progress)
+
 	// Library tells the mangas of the folders when a provider directory's mangas move into
 	// an existing one, may be zero (only the .libmangal.json files tell then).
 	Library storage.Library
@@ -63,6 +66,7 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 		for i, f := range folders {
 			ids[i] = f.info.MetadataIDs
 		}
+		report(n.OnProgress, Progress{Phase: "looking up metadata"})
 		if metas, err = n.Metadata(ctx, ids); err != nil {
 			return nil, fmt.Errorf("metadata: %w", err)
 		}

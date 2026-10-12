@@ -67,6 +67,8 @@ type IDChecker struct {
 	Providers map[metadata.IDSource]IDProvider
 	// Suggest finds an id for the adopted mangas without any, nil to not.
 	Suggest IDProvider
+	// OnProgress, if set, is told where Check is.
+	OnProgress func(Progress)
 }
 
 // Check reports the adopted mangas' ids not found or unlike the manga's title (its
@@ -110,6 +112,7 @@ func (c IDChecker) Check(ctx context.Context, mangas []storage.Manga) ([]IDCheck
 				ids = append(ids, n)
 			}
 		}
+		report(c.OnProgress, Progress{Phase: "checking the ids on " + name})
 		metas, err := provider.SearchByIDsContext(ctx, ids)
 		if err != nil {
 			return nil, fmt.Errorf("check %s ids: %w", name, err)
@@ -135,6 +138,7 @@ func (c IDChecker) Check(ctx context.Context, mangas []storage.Manga) ([]IDCheck
 		queries[i] = query(m)
 	}
 	name := c.Suggest.Info().Name
+	report(c.OnProgress, Progress{Phase: "looking for ids on " + name})
 	matches, found, err := c.Suggest.FindClosestManyContext(ctx, queries)
 	if err != nil {
 		return nil, fmt.Errorf("search %s: %w", name, err)
