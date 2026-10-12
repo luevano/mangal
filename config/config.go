@@ -410,6 +410,8 @@ var Data = configData{
 	Path: pathEntry("data.path", "",
 		"Directory of mangal's data database (library, logins, watches), empty for the XDG data directory (~/.local/share/mangal). Another mangal instance (e.g. a second `mangal serve`) uses another config pointing to another directory.",
 		false),
+	Backups: intEntry("data.backups", 10, 1, 1000,
+		"How many snapshots of the data database are kept in its backups folder (the newest). One is taken before each library operation that changes files (rename, merge, move, mark, migrate, delete, emptying the trash) and before an undo; `mangal library undo` restores it."),
 }
 
 var Watch = configWatch{

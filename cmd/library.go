@@ -112,25 +112,36 @@ is set.`,
 			cmd.Println("run with --apply to rename")
 			return nil
 		}
-		return library.ApplyEach(afs.Afero, nil, renames, st.Progress, func(i int, err error) error {
-			r := renames[i]
-			switch {
-			case errors.Is(err, library.ErrNotEmpty):
-				st.Print(func() { cmd.Printf("kept %s: not empty\n", rel(r.From)) })
-				return nil
-			case err != nil:
-				st.Print(func() { cmd.PrintErrf("skipped %s: %s\n", rel(r.From), err) })
-				return nil
-			case r.RemoveEmpty:
-				st.Print(func() { cmd.Printf("removed %s\n", rel(r.From)) })
-				return nil
+		n := 0
+		for _, r := range renames {
+			if r.Skip == "" && !r.RemoveEmpty {
+				n++
 			}
-			if err := index.Moved(r.From, r.To); err != nil {
-				return err
-			}
-			st.Print(func() { cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To)) })
-			return nil
+		}
+		snapshot, err := client.Operation("rename", fmt.Sprintf("rename %d folders", n), func(j library.Journal) error {
+			return library.ApplyEach(afs.Afero, j, renames, st.Progress, func(i int, err error) error {
+				r := renames[i]
+				switch {
+				case errors.Is(err, library.ErrNotEmpty):
+					st.Print(func() { cmd.Printf("kept %s: not empty\n", rel(r.From)) })
+					return nil
+				case err != nil:
+					st.Print(func() { cmd.PrintErrf("skipped %s: %s\n", rel(r.From), err) })
+					return nil
+				case r.RemoveEmpty:
+					st.Print(func() { cmd.Printf("removed %s\n", rel(r.From)) })
+					return nil
+				}
+				if err := index.Moved(r.From, r.To); err != nil {
+					return err
+				}
+				st.Print(func() { cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To)) })
+				return nil
+			})
 		})
+		st.Done()
+		undoHint(cmd, snapshot, err)
+		return err
 	},
 }
 
@@ -485,8 +496,12 @@ Only lists what would happen unless --apply is set.`,
 			cmd.Println("run with --apply to merge")
 			return nil
 		}
-		err = files.ApplyMerge(plan)
+		snapshot, err := client.Operation("merge", fmt.Sprintf("merge %d %q into %d %q", plan.Other.ID, plan.Other.Title, plan.Keep.ID, plan.Keep.Title), func(j library.Journal) error {
+			files.Journal = j
+			return files.ApplyMerge(plan)
+		})
 		st.Done()
+		undoHint(cmd, snapshot, err)
 		if err != nil {
 			return err
 		}
@@ -576,7 +591,12 @@ Only lists what would happen unless --apply is set.`,
 			cmd.Println("run with --apply to move")
 			return nil
 		}
-		if err := mover.ApplyMove(plan); err != nil {
+		snapshot, err := client.Operation("move", fmt.Sprintf("move %d %q to %s %s", plan.Manga.ID, plan.Manga.Title, plan.Provider.ID, plan.To.ID), func(j library.Journal) error {
+			mover.Journal = j
+			return mover.ApplyMove(plan)
+		})
+		undoHint(cmd, snapshot, err)
+		if err != nil {
 			return err
 		}
 		cmd.Println("moved")
@@ -625,10 +645,26 @@ var libraryTrashEmptyCmd = &cobra.Command{
 		if !confirm(cmd, fmt.Sprintf("Delete the %d files in the trash?", files)) {
 			return nil
 		}
+		snapshot, err := client.Snapshot("empty-trash")
+		if err != nil {
+			return err
+		}
+		cmd.PrintErrf("database snapshot: %s\n", snapshot)
 		if err := library.EmptyTrash(afs.Afero, root); err != nil {
 			return err
 		}
-		cmd.Println("emptied")
+		cmd.Println("emptied (can't be undone)")
 		return nil
 	},
+}
+
+// undoHint tells where the database snapshot of an operation went and how to undo it.
+func undoHint(cmd *cobra.Command, snapshot string, err error) {
+	switch {
+	case snapshot == "":
+	case err != nil:
+		cmd.PrintErrf("database snapshot: %s, \"mangal library undo\" undoes what was done\n", snapshot)
+	default:
+		cmd.PrintErrf("database snapshot: %s, \"mangal library undo\" undoes it\n", snapshot)
+	}
 }

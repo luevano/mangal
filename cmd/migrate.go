@@ -66,7 +66,11 @@ Only lists what would change unless --apply is set.`,
 			cmd.Println("run with --apply to migrate")
 			return nil
 		}
-		if err := migration.ApplyTo(afs.Afero, nil, st, client.LibraryModes()); err != nil {
+		snapshot, err := client.Operation("migrate", fmt.Sprintf("migrate %d old provider ids, %d markers", len(migration.OldIDs), len(migration.Markers)), func(j library.Journal) error {
+			return migration.ApplyTo(afs.Afero, j, st, client.LibraryModes())
+		})
+		undoHint(cmd, snapshot, err)
+		if err != nil {
 			return err
 		}
 		cmd.Println("migrated")

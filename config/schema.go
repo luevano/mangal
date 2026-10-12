@@ -159,7 +159,8 @@ type configNotificationDiscord struct {
 }
 
 type configData struct {
-	Path *entry[string, string]
+	Path    *entry[string, string]
+	Backups *entry[int64, int]
 }
 
 type configWatch struct {
