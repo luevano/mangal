@@ -205,7 +205,8 @@ func init() {
 	libraryCmd.AddCommand(libraryLsCmd)
 	libraryCmd.AddCommand(libraryScanCmd)
 	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Check, "check", false, "Check the metadata ids of the folders without a .libmangal.json on AniList and Kitsu")
-	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Mark, "mark", false, "Write a .libmangal.json into the folders without one whose provider manga is known")
+	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Mark, "mark", false, "List the folders without a .libmangal.json that can get one, from what's known")
+	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Apply, "apply", false, "With --mark, write the .libmangal.json files instead of only listing them")
 	libraryCmd.AddCommand(libraryMergeCmd)
 	libraryMergeCmd.Flags().BoolVar(&libraryMergeArgs.Apply, "apply", false, "Merge, instead of only listing what would happen")
 	libraryCmd.AddCommand(libraryMoveCmd)
@@ -267,6 +268,7 @@ func printTrash(cmd *cobra.Command) {
 var libraryScanArgs = struct {
 	Check bool
 	Mark  bool
+	Apply bool
 }{}
 
 var libraryScanCmd = &cobra.Command{
@@ -282,7 +284,8 @@ else guessed from their series.json, chapters and name (with the metadata id of 
 whose manga doesn't look like the folder's, and suggests an AniList id for the folders
 without any. It only reports, a download from a provider links the folder for good.
 
---mark writes a .libmangal.json (as downloads do) into the manga folders without one,
+--mark lists the manga folders without a .libmangal.json that --mark --apply writes one
+(as downloads do) into,
 from what's known: the library's source of it (provider and manga id, also found from
 its watch or recorded downloads), else the provider of the provider directory it's in
 (no manga id), else only its title and metadata ids, so downloads, scans and renames
@@ -290,6 +293,9 @@ recognize the folder by it. Folders with nothing to go by are left as they are, 
 existing .libmangal.json is never replaced.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		if libraryScanArgs.Apply && !libraryScanArgs.Mark {
+			return errors.New("--apply goes with --mark")
+		}
 		st := newStatus(cmd)
 		defer st.Done()
 		lib, err := libraryOf()
@@ -348,7 +354,7 @@ existing .libmangal.json is never replaced.`,
 			}
 		}
 		if libraryScanArgs.Mark {
-			if err := markFolders(cmd, st, lib, root); err != nil {
+			if err := markFolders(cmd, st, lib, root, libraryScanArgs.Apply); err != nil {
 				return err
 			}
 		}
@@ -363,24 +369,42 @@ existing .libmangal.json is never replaced.`,
 	},
 }
 
-// markFolders writes the missing .libmangal.json of the folders, from what's known.
-func markFolders(cmd *cobra.Command, st *status, lib storage.Library, root string) error {
+// markFolders writes (apply) or lists the missing .libmangal.json of the folders, from
+// what's known.
+func markFolders(cmd *cobra.Command, st *status, lib storage.Library, root string, apply bool) error {
 	loaders, err := manager.Loaders()
 	if err != nil {
 		return err
 	}
 	files := library.Files{FS: afs.Afero, Library: lib, Root: root, Modes: client.LibraryModes(), OnProgress: st.Progress}
-	res, err := files.Mark(library.MarkOptions{
-		Loaders: loaders, ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider,
-		OnMarked: func(m library.Marked) {
-			as := cmp.Or(m.Info.Provider, "no provider")
-			if m.Info.Manga.ID != "" {
-				as += " " + m.Info.Manga.ID
-			}
-			st.Print(func() { cmd.Printf("marked %s as %s (%s)\n", m.Manga.Path(), as, m.Evidence) })
-		},
-	})
+	verb := "would mark"
+	if apply {
+		verb = "marked"
+	}
+	var res library.MarkResult
+	mark := func(j library.Journal) error {
+		files.Journal = j
+		res, err = files.Mark(library.MarkOptions{
+			Loaders: loaders, ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider,
+			DryRun: !apply,
+			OnMarked: func(m library.Marked) {
+				as := cmp.Or(m.Info.Provider, "no provider")
+				if m.Info.Manga.ID != "" {
+					as += " " + m.Info.Manga.ID
+				}
+				st.Print(func() { cmd.Printf("%s %s as %s (%s)\n", verb, m.Manga.Path(), as, m.Evidence) })
+			},
+		})
+		return err
+	}
+	snapshot := ""
+	if apply {
+		snapshot, err = client.Operation("mark", "mark the folders without a .libmangal.json", mark)
+	} else {
+		err = mark(nil)
+	}
 	st.Clear()
+	undoHint(cmd, snapshot, err)
 	if err != nil {
 		return err
 	}
@@ -388,8 +412,11 @@ func markFolders(cmd *cobra.Command, st *status, lib storage.Library, root strin
 	for _, m := range res.Marked {
 		counts[m.Evidence]++
 	}
-	cmd.Printf("%d marked (%d from the library source, %d provider from its directory, %d metadata ids only), %d with nothing to go by (not marked)\n",
-		len(res.Marked), counts[library.MarkedFromSource], counts[library.MarkedFromDir], counts[library.MarkedFromIDs], len(res.Unknown))
+	cmd.Printf("%d %s (%d from the library source, %d provider from its directory, %d metadata ids only), %d with nothing to go by (not marked)\n",
+		len(res.Marked), verb, counts[library.MarkedFromSource], counts[library.MarkedFromDir], counts[library.MarkedFromIDs], len(res.Unknown))
+	if !apply && len(res.Marked) != 0 {
+		cmd.Println("run with --mark --apply to write them")
+	}
 	return nil
 }
 
