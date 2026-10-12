@@ -822,3 +822,14 @@ func TestLibraryIssue(t *testing.T) {
 		t.Errorf("edit %q", got)
 	}
 }
+
+// with a filter on, the titles are plain (the list highlights matches by rune position)
+func TestTitlePlainWhenFiltered(t *testing.T) {
+	s := loaded(t, testManager())
+	dandadan := s.List.Items()[1].(*item)
+	s.List.SetFilterText("Dand")
+	if title := dandadan.Title(); title != "Dandadan (paused)" {
+		t.Errorf("filtered title %q", title)
+	}
+	_ = s.View()
+}

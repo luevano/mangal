@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
@@ -50,18 +51,32 @@ type item struct {
 func (i *item) FilterValue() string { return i.w.Title + " " + i.w.Provider }
 
 func (i *item) Title() string {
+	// with a filter on, the list highlights the matches by rune position in the title: it
+	// has to be plain and start with the watch's title
+	plain := i.s != nil && i.s.List != nil && !i.s.List.Unfiltered()
+	render := func(st lipgloss.Style, s string) string {
+		if plain {
+			return s
+		}
+		return st.Render(s)
+	}
 	title := i.w.Title
 	if !i.w.Enabled {
-		title += " " + pausedStyle.Render("(paused)")
+		title += " " + render(pausedStyle, "(paused)")
 	}
 	if i.w.NeedsRelink {
-		title += " " + relinkStyle.Render("(needs re-link)")
+		title += " " + render(relinkStyle, "(needs re-link)")
 	}
 	if i.w.LibraryProblem() != "" {
-		title += " " + libraryStyle.Render("(not in library)")
+		title += " " + render(libraryStyle, "(not in library)")
 	}
 	if _, ok := i.checking(); ok {
-		title = style.Normal.Accent.Render(spinnerFrames[i.s.frame%len(spinnerFrames)]) + " " + title
+		frame := spinnerFrames[i.s.frame%len(spinnerFrames)]
+		if plain {
+			title += " " + frame
+		} else {
+			title = style.Normal.Accent.Render(frame) + " " + title
+		}
 	}
 	return title
 }
