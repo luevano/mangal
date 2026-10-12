@@ -78,7 +78,7 @@ type mangasState struct {
 }
 
 type mangasKeyMap struct {
-	confirm, scan, check, merge, remove, trash, delete, watch key.Binding
+	confirm, scan, check, merge, move, remove, trash, delete, watch key.Binding
 }
 
 type mangasLoadedMsg struct {
@@ -124,6 +124,7 @@ func newMangasState(files library.Files) *mangasState {
 			scan:    util.Bind("scan", "s"),
 			check:   util.Bind("scan and check ids", "S"),
 			merge:   util.Bind("merge", "m"),
+			move:    util.Bind("move to a provider", "M"),
 			remove:  util.Bind("remove missing", "x"),
 			trash:   util.Bind("trash", "t"),
 			delete:  util.Bind("delete", "d"),
@@ -139,7 +140,7 @@ func newMangasState(files library.Files) *mangasState {
 func (s *mangasState) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.check, k.remove, k.watch)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.remove, k.watch)}}
 }
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
@@ -262,6 +263,8 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 		return func() tea.Msg { return newMangaState(files, item.manga) }, true
 	case key.Matches(msg, s.keys.merge):
 		return s.merge(ctx, item), true
+	case key.Matches(msg, s.keys.move):
+		return moveCmd(item.manga), true
 	case key.Matches(msg, s.keys.watch):
 		return watches.JumpCmd(item.watches, ""), true
 	case key.Matches(msg, s.keys.delete):

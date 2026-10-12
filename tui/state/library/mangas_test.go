@@ -11,6 +11,7 @@ import (
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/state/pick"
 )
 
 func press(k string) tea.KeyMsg {
@@ -109,10 +110,14 @@ func TestKeys(t *testing.T) {
 	mangas := newMangasState(library.Files{})
 	manga := newMangaState(library.Files{}, storage.Manga{ID: 7, Title: "Berserk"})
 	trash := newTrashState(library.Files{})
+	move := newMoveState(storage.Manga{ID: 7, Title: "Berserk"}, "mango-mangapill")
+	providers := pick.NewProviders("", nil)
 	for name, keys := range map[string][]string{
-		"mangas": base.KeyCollisions(mangas.keyMap(), mangas.List.KeyMap.Browsing()...),
-		"manga":  base.KeyCollisions(manga.keyMap(), manga.List.KeyMap.Browsing()...),
-		"trash":  base.KeyCollisions(trash.keyMap(), trash.List.KeyMap.Browsing()...),
+		"move":      base.KeyCollisions(move.Keys(), move.List.KeyMap.Browsing()...),
+		"providers": base.KeyCollisions(providers.Keys(), providers.List.KeyMap.Browsing()...),
+		"mangas":    base.KeyCollisions(mangas.keyMap(), mangas.List.KeyMap.Browsing()...),
+		"manga":     base.KeyCollisions(manga.keyMap(), manga.List.KeyMap.Browsing()...),
+		"trash":     base.KeyCollisions(trash.keyMap(), trash.List.KeyMap.Browsing()...),
 	} {
 		if len(keys) != 0 {
 			t.Errorf("%s: %v", name, keys)
