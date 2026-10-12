@@ -140,9 +140,13 @@ It is placed in the providers path.
 Downloaded chapters are named with the `download.*.name_template` config templates (see [Templates](#templates)). Each manga directory gets a `.libmangal.json` so it's found again when its name changes (title updates, renamed providers): new chapters keep going into the same directory. To rename the existing directories to what the current templates give:
 
 ```sh
-mangal library rename          # list the renames
-mangal library rename --apply  # do them
+mangal library rename             # list the renames
+mangal library rename --apply     # do them
+mangal library rename --refresh   # with fresh AniList metadata (titles changed there)
+mangal library rename --chapters  # also rename the chapter files to the chapter template
 ```
+
+The folder names come from each library manga's links (`mangal library bind`, below), which win over the ids in `.libmangal.json` and the folder name.
 
 The cache and mangal's data (logins, metadata and title bindings, search and read history, the library, watches) are kept in SQLite databases, see `mangal path`. The cache can be cleared with `mangal cache clear [provider]`.
 
@@ -154,20 +158,24 @@ mangal keeps track of what's downloaded, whichever provider got it: a chapter al
 
 ```sh
 mangal library ls                          # the mangas
-mangal library scan                        # check against the files: moved, removed, added by hand, older downloads
+mangal library scan                        # check against the files: moved, removed, added by hand, older downloads; lists mangas sharing a metadata id
 mangal library scan --check                # also check the guessed metadata ids of folders without a .libmangal.json
 mangal library scan --mark [--apply]       # also list (--apply: write) a .libmangal.json for folders without one (from the library source, else the provider directory and ids)
 mangal library downloads [provider]        # the downloaded chapters
 mangal library merge <keep> <other> --apply  # one manga in two directories, duplicates go to the trash
 mangal library move <id> <provider> [query|mid:id] --apply  # switch a manga to another provider (folder, watch and bindings follow; names stay)
 mangal library move <id> <provider> --full --apply          # also adopt the new provider's title and the folder name it gives
+mangal library bind <id> [--anilist N] [--kitsu N] [--mal N] [--rename] [--watches]  # link a library manga (also without a provider source)
+mangal library bind [id] --backups         # fill the Kitsu and MyAnimeList links from AniList
 mangal library trash [empty]               # see or empty the trash
 mangal library undo [--list] [--apply]     # undo the last operation: files moved back, database restored from its snapshot
 ```
 
-Every operation that changes files (rename, merge, move, `scan --mark --apply`, `migrate`, a TUI delete) first snapshots the data database into `<data dir>/backups/` (the last `data.backups`, 10 by default, are kept) and journals its file changes, so `mangal library undo` can revert it. Nothing is overwritten, and an undo that would lose later changes is refused unless `--force`.
+A library manga's links replace the old ids everywhere: its sources' bindings, its own ids and its `.libmangal.json`, so a wrong id stops matching. What a link implies (the folder's new name, a watch bound to another id, another library manga with the id) is shown and only done when asked (`--rename`, `--watches`, merge).
 
-The TUI has the same under `L` on the home screen (`s` scan, `S` scan and check ids, `m` merge, `M` move to another provider, `t` trash, `U` undo the last operation), where `D` deletes a manga or a chapter (to the trash).
+Every operation that changes files (rename, merge, move, link, `scan --mark --apply`, `migrate`, a TUI delete) first snapshots the data database into `<data dir>/backups/` (the last `data.backups`, 10 by default, are kept) and journals its file changes, so `mangal library undo` can revert it. Nothing is overwritten, and an undo that would lose later changes is refused unless `--force`.
+
+The TUI has the same under `L` on the home screen (`s` scan, `S` scan and check ids, `m` merge, `2` duplicates only, `M` move to another provider, `A` links, `B` fill backup links, `t` trash, `U` undo the last operation), where `D` deletes a manga or a chapter (to the trash).
 
 ### Accounts
 
