@@ -492,9 +492,31 @@ func checkNoAnilist(s *snapshot) []Finding {
 }
 
 // M3: library mangas whose links disagree: their own ids, their sources' bindings, the
-// folder tag (library.LinkSource.Disagreements, the .libmangal.json only in the fs tier).
+// folder tag (library.LinkSource.Disagreements, the .libmangal.json only in the fs tier);
+// and the links to pick the backups saved (a MangaDex Kitsu link against Kitsu's mapping).
 func checkDisagreements(s *snapshot) []Finding {
 	var out []Finding
+	byID := map[int64]storage.Manga{}
+	for _, m := range s.mangas {
+		byID[m.ID] = m
+	}
+	for _, p := range s.picks {
+		m, ok := byID[p.Manga]
+		if !ok {
+			continue
+		}
+		name, flag := linkNames[p.Source], linkFlags[p.Source]
+		var froms []string
+		f := Finding{Severity: Warning, Subject: mangaSubject(m), Fix: Fix{TUI: tuiLibrary + ": links (pick)"}}
+		for _, c := range p.Candidates {
+			froms = append(froms, fmt.Sprintf("%s (%s)", c.ID, c.FromName()))
+			f.Fix.Commands = append(f.Fix.Commands, fmt.Sprintf("mangal library bind %d %s %s --apply", m.ID, flag, c.ID))
+		}
+		f.Message = fmt.Sprintf("%s: pick between %s", name, strings.Join(froms, " and "))
+		f.Details = []string{fmt.Sprintf("found on %s for AniList %s, nothing linked meanwhile", p.Found.Format(time.DateOnly), p.AniList)}
+		f.Fix.Note = fmt.Sprintf("linking either settles it; neither: mangal library bind %d --dismiss", m.ID)
+		out = append(out, f)
+	}
 	for _, m := range s.mangas {
 		info := library.LinkInfoOf(m, s.sourceBindings(m), nil)
 		for _, src := range info.Sources {

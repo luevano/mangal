@@ -78,6 +78,11 @@ func newChecker(t *testing.T) Checker {
 	// 3: bound to another id than its folder tag, watched on two providers
 	record(md, "Berserk (1989) [alid-30002]", "mango-mangadex", "berserk", "Berserk", 1, 2)
 	bind("mango-mangadex", "berserk", "21")
+	// a Kitsu id to pick (the backups found two)
+	if _, err := lib.SetLinkPick(storage.LinkPick{Manga: 3, Source: metadata.IDCodeKitsu, AniList: "21", Found: now,
+		Candidates: []storage.LinkCandidate{{ID: "30", From: "mango-mangadex"}, {ID: "31", From: storage.FromKitsu}}}); err != nil {
+		t.Fatal(err)
+	}
 	// 4: its provider is gone, no AniList link
 	record("/dl/mango-old", "Vagabond", "mango-old", "vag", "Vagabond", 1)
 	// 5: in another provider's directory than its watch's
@@ -166,6 +171,7 @@ func TestRun(t *testing.T) {
 		{"G3", Warning, "watch", 2, "mangal watch check 2", "3"},
 		{"M1", Warning, "manga", 4, "mangal library scan --check", "no AniList link"},
 		{"M3", Warning, "manga", 3, "mangal library bind 3 --rename", "AniList links disagree: 21"},
+		{"M3", Warning, "manga", 3, "mangal library bind 3 --kitsu 31 --apply", "Kitsu: pick between 30 (mango-mangadex) and 31 (Kitsu mapping)"},
 		{"M6", Warning, "manga", 1, "mangal library merge 1 2", "AniList 74347 is in 2 folders, keep 1"},
 		{"L3", Warning, "provider", 0, "mangal migrate", "mango-mangasee"},
 		{"L7", Warning, "manga", 4, "mangal library move 4 <provider>", "mango-old"},

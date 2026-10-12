@@ -26,6 +26,8 @@ type snapshot struct {
 	// bindings are by provider + manga id, allBindings every one
 	bindings    map[[2]string][]storage.Binding
 	allBindings []storage.Binding
+	// picks are the links to pick (not dismissed)
+	picks []storage.LinkPick
 
 	watches       []watch.Watch
 	watchesLoaded bool
@@ -43,6 +45,9 @@ func (s *snapshot) loadLibrary(lib storage.Library) error {
 		return err
 	}
 	if s.allBindings, err = (storage.Bindings{DB: lib.DB}).List("", ""); err != nil {
+		return err
+	}
+	if s.picks, err = lib.LinkPicks(); err != nil {
 		return err
 	}
 	for _, b := range s.allBindings {
