@@ -217,6 +217,10 @@ func DuplicateLines(dups []Duplicate, root string) []string {
 	return lines
 }
 
+// Line describes the manga (folder relative to root): id, title, chapters, sources,
+// watched, folder.
+func (m DuplicateManga) Line(root string) string { return duplicateLine(m, root) }
+
 func duplicateLine(m DuplicateManga, root string) string {
 	var how []string
 	if len(m.Manga.Sources) == 0 {

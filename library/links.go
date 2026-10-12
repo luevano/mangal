@@ -144,25 +144,34 @@ func (i LinkInfo) Current() Links {
 // LinkInfo reads what tells the manga's links: its ids, its sources' bindings, its
 // .libmangal.json and its folder's name.
 func (f Files) LinkInfo(manga storage.Manga) (LinkInfo, error) {
-	info := LinkInfo{Manga: manga}
 	bindings := storage.Bindings{DB: f.Library.DB}
 	var bound []storage.Binding
 	for _, src := range manga.Sources {
 		list, err := bindings.Get(src.Provider, src.MangaID)
 		if err != nil {
-			return info, err
+			return LinkInfo{Manga: manga}, err
 		}
 		bound = append(bound, list...)
 	}
-	var tags []metadata.ID
+	var marker *libmangal.MangaDirInfo
 	if manga.Dir != "" {
-		marker, err := libmangal.ReadMangaDirInfo(f.FS, manga.Path())
+		info, err := libmangal.ReadMangaDirInfo(f.FS, manga.Path())
 		switch {
 		case err == nil:
-			info.Marker = &marker
+			marker = &info
 		case !errors.Is(err, fs.ErrNotExist):
 			// an invalid one is like none, as for scans
 		}
+	}
+	return LinkInfoOf(manga, bound, marker), nil
+}
+
+// LinkInfoOf is the manga's LinkInfo from its sources' bindings (the current source's
+// first) and its .libmangal.json (nil for none); the folder tags come from its name.
+func LinkInfoOf(manga storage.Manga, bound []storage.Binding, marker *libmangal.MangaDirInfo) LinkInfo {
+	info := LinkInfo{Manga: manga, Marker: marker}
+	var tags []metadata.ID
+	if manga.Dir != "" {
 		tags = tagIDs(manga.Dir)
 	}
 	for _, code := range LinkSources {
@@ -177,13 +186,13 @@ func (f Files) LinkInfo(manga storage.Manga) (LinkInfo, error) {
 				s.Bindings = append(s.Bindings, b)
 			}
 		}
-		if info.Marker != nil {
-			s.Marker = idOf(info.Marker.MetadataIDs, code)
+		if marker != nil {
+			s.Marker = idOf(marker.MetadataIDs, code)
 		}
 		s.Tag = idOf(tags, code)
 		info.Sources = append(info.Sources, s)
 	}
-	return info, nil
+	return info
 }
 
 func idOf(ids []metadata.ID, code metadata.IDCode) string {
