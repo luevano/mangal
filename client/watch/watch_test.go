@@ -1188,8 +1188,14 @@ func TestLibraryLink(t *testing.T) {
 	_ = e2.svc.Library.RememberMangaDir("/lib/Weeb Central", "Teisou Gyakuten Sekai", libmangal.MangaDirInfo{Provider: "mango-weebcentral",
 		Manga: mangadata.MangaInfo{ID: "01J"}, MetadataIDs: []metadata.ID{al}})
 	e2.source("mango-mangadex", m)
-	if w, err := e2.svc.Add(ctx, AddOptions{Provider: "mango-mangadex", MangaID: "f6", AnilistID: 98522}); err != nil || w.LibraryManga == 0 || w.LibraryIssue != "" {
-		t.Errorf("no provider dirs: %d %q, %v", w.LibraryManga, w.LibraryIssue, err)
+	w2, err := e2.svc.Add(ctx, AddOptions{Provider: "mango-mangadex", MangaID: "f6", AnilistID: 98522})
+	if err != nil || w2.LibraryManga == 0 || w2.LibraryIssue != "" {
+		t.Fatalf("no provider dirs: %d %q, %v", w2.LibraryManga, w2.LibraryIssue, err)
+	}
+	// linked: its manga is a source of the library manga now (it had one of another provider)
+	if m, _, _ := e2.svc.Library.MangaByID(w2.LibraryManga); len(m.Sources) != 2 ||
+		!slices.ContainsFunc(m.Sources, func(src storage.Source) bool { return src.Provider == "mango-mangadex" && src.MangaID == "f6" }) {
+		t.Errorf("sources %+v", m.Sources)
 	}
 }
 

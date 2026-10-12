@@ -683,6 +683,8 @@ func (s *Service) finish(ctx context.Context, w storage.Watch, r *Result) {
 	}
 	if err := s.Watches.Save(w); err != nil {
 		s.warn(err)
+	} else if err := s.linkSource(w); err != nil {
+		s.warn(err)
 	}
 	recorded, err := s.Watches.RecordWatchRun(r.WatchRun)
 	if err != nil {

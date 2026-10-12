@@ -346,10 +346,24 @@ func (s *Service) Add(ctx context.Context, opts AddOptions) (Watch, error) {
 	if w, err = s.Watches.Add(w); err != nil {
 		return Watch{}, err
 	}
+	if err := s.linkSource(w); err != nil {
+		return Watch{}, err
+	}
 	if err := s.bindAnilist(w, opts.AnilistID); err != nil {
 		return Watch{}, err
 	}
 	return s.complete(w)
+}
+
+// linkSource makes the watched manga a source of its library manga (e.g. a folder adopted
+// by a scan, linked by a metadata id), unless another library manga has it or the
+// library manga has one of the provider already.
+func (s *Service) linkSource(w storage.Watch) error {
+	if w.LibraryManga == 0 {
+		return nil
+	}
+	_, err := s.Library.AddSource(w.LibraryManga, storage.Source{Provider: w.Provider, MangaID: w.MangaID, Title: w.Title})
+	return err
 }
 
 // addOffline adds the watch as AddOptions say, the provider isn't asked.
@@ -753,6 +767,11 @@ func (s *Service) Relink(ctx context.Context, id int64, opts RelinkOptions) (Wat
 	}
 	if w, err = s.Watches.Get(id); err != nil {
 		return Watch{}, err
+	}
+	if libraryManga != 0 {
+		if err := s.linkSource(w); err != nil {
+			return Watch{}, err
+		}
 	}
 	if err := s.bindAnilist(w, opts.AnilistID); err != nil {
 		return Watch{}, err
