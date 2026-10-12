@@ -377,17 +377,20 @@ func markFolders(cmd *cobra.Command, st *status, lib storage.Library, root strin
 		return err
 	}
 	files := library.Files{FS: afs.Afero, Library: lib, Root: root, Modes: client.LibraryModes(), OnProgress: st.Progress}
-	verb := "would mark"
+	verb, count := "would mark", "to mark"
 	if apply {
-		verb = "marked"
+		verb, count = "marked", "marked"
 	}
 	var res library.MarkResult
-	mark := func(j library.Journal) error {
+	mark := func(j library.Journal, dryRun, tell bool) error {
 		files.Journal = j
 		res, err = files.Mark(library.MarkOptions{
 			Loaders: loaders, ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider,
-			DryRun: !apply,
+			DryRun: dryRun,
 			OnMarked: func(m library.Marked) {
+				if !tell {
+					return
+				}
 				as := cmp.Or(m.Info.Provider, "no provider")
 				if m.Info.Manga.ID != "" {
 					as += " " + m.Info.Manga.ID
@@ -397,11 +400,13 @@ func markFolders(cmd *cobra.Command, st *status, lib storage.Library, root strin
 		})
 		return err
 	}
+	// a dry run first: no snapshot nor journal when there's nothing to mark
+	err = mark(nil, true, !apply)
 	snapshot := ""
-	if apply {
-		snapshot, err = client.Operation("mark", "mark the folders without a .libmangal.json", mark)
-	} else {
-		err = mark(nil)
+	if apply && err == nil && len(res.Marked) != 0 {
+		snapshot, err = client.Operation("mark", fmt.Sprintf("mark %d folders", len(res.Marked)), func(j library.Journal) error {
+			return mark(j, false, true)
+		})
 	}
 	st.Clear()
 	undoHint(cmd, snapshot, err)
@@ -413,7 +418,7 @@ func markFolders(cmd *cobra.Command, st *status, lib storage.Library, root strin
 		counts[m.Evidence]++
 	}
 	cmd.Printf("%d %s (%d from the library source, %d provider from its directory, %d metadata ids only), %d with nothing to go by (not marked)\n",
-		len(res.Marked), verb, counts[library.MarkedFromSource], counts[library.MarkedFromDir], counts[library.MarkedFromIDs], len(res.Unknown))
+		len(res.Marked), count, counts[library.MarkedFromSource], counts[library.MarkedFromDir], counts[library.MarkedFromIDs], len(res.Unknown))
 	if !apply && len(res.Marked) != 0 {
 		cmd.Println("run with --mark --apply to write them")
 	}
