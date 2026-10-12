@@ -243,7 +243,7 @@ func (n Namer) intoExisting(r Rename, renames []Rename) ([]Rename, error) {
 			if exists, err := afero.Exists(n.FS, move.To); err != nil {
 				return nil, err
 			} else if exists {
-				move.Skip = fmt.Sprintf("%s is another manga's folder: rename one of them", move.To)
+				move.Skip = fmt.Sprintf("%s is another manga's folder: rename one of them", filepath.Join(filepath.Base(r.To), name))
 			}
 		}
 		out = append(out, move)
@@ -253,9 +253,9 @@ func (n Namer) intoExisting(r Rename, renames []Rename) ([]Rename, error) {
 
 // mergeHint is the skip of a manga the target directory has already.
 func mergeHint(keep, other folderID, dir string) string {
-	where := fmt.Sprintf("%s has it already", dir)
+	where := fmt.Sprintf("%s has it already", filepath.Base(dir))
 	if keep.manga.ID != 0 {
-		where = fmt.Sprintf("%s has it already (library manga %d %q)", dir, keep.manga.ID, keep.manga.Title)
+		where = fmt.Sprintf("%s has it already (library manga %d %q)", filepath.Base(dir), keep.manga.ID, keep.manga.Title)
 	}
 	switch {
 	case keep.manga.ID != 0 && other.manga.ID != 0:
