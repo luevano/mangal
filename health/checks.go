@@ -312,6 +312,9 @@ func checkNotWatched(s *snapshot) []Finding {
 			Note:     "lists them with the command that watches each; mangal health --network looks for new chapters of the ongoing ones",
 			TUI:      "health: open the finding",
 		}}
+	if s.network {
+		f.Fix.Note = "lists them with the command that watches each; W12 has those with new chapters"
+	}
 	return []Finding{f}
 }
 

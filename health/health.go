@@ -373,7 +373,7 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool) (
 		staleAfter = DefaultStaleAfter
 	}
 	s := &snapshot{now: c.now(), root: c.Root, providerDirs: c.ProviderDirs, staleAfter: staleAfter, backoff: c.Backoff,
-		loaders: c.Loaders, bindings: map[[2]string][]storage.Binding{}, newChapters: map[int64]newChapters{}}
+		loaders: c.Loaders, bindings: map[[2]string][]storage.Binding{}, newChapters: map[int64]newChapters{}, network: network}
 	failed := map[part]error{}
 	if needed[partLibrary] {
 		c.progress("loading the library")

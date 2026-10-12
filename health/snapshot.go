@@ -35,7 +35,9 @@ type snapshot struct {
 	oldIDs   []storage.OldID
 	accounts Accounts
 
-	// newChapters are the unwatched mangas' new chapters on their source (network)
+	// network is true when the network checks run, newChapters are the unwatched mangas'
+	// new chapters on their source
+	network     bool
 	newChapters map[int64]newChapters
 
 	// errors are what didn't load without skipping a check, and what a check couldn't do
