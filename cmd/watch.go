@@ -215,6 +215,9 @@ ones after --from.`,
 			state = ", provider missing"
 		}
 		successf(cmd, "watching %q from %s (id %d), last downloaded %s%s", w.Title, w.Provider, w.ID, formatLast(w.LastDownloaded), state)
+		if w.LibraryIssue != "" {
+			cmd.Printf("library: %s\n", w.LibraryIssue)
+		}
 		if len(w.Bindings) != 0 {
 			cmd.Printf("metadata: %s\n", formatBindings(w.Bindings))
 		}
@@ -286,9 +289,23 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 		if w.Gaps {
 			title += " (gaps)"
 		}
+		if w.LibraryIssue != "" {
+			title += " (not in library)"
+		}
 		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", w.ID, w.Provider, title, formatLast(w.LastDownloaded), formatTime(w.LastChecked), next, errs)
 	}
 	_ = tw.Flush()
+	first := true
+	for _, w := range watches {
+		if w.LibraryIssue == "" {
+			continue
+		}
+		if first {
+			fmt.Fprintln(out, "\nnot in the library:")
+			first = false
+		}
+		fmt.Fprintf(out, "  %d  %s: %s\n", w.ID, firstLine(w.Title, 50), w.LibraryIssue)
+	}
 }
 
 // firstLine is the first line of s, cut to max runes.
