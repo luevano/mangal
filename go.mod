@@ -22,7 +22,7 @@ require (
 	github.com/luevano/libmangal v0.27.0
 	github.com/luevano/luaprovider v0.16.0
 	github.com/luevano/mangoplus v0.7.2
-	github.com/luevano/mangoprovider v0.19.0
+	github.com/luevano/mangoprovider v0.19.1
 	github.com/oapi-codegen/runtime v1.2.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/philippgille/gokv v0.7.0
