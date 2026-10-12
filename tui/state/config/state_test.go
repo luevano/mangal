@@ -198,7 +198,7 @@ func TestMirrors(t *testing.T) {
 	}
 
 	// the cursor is on mango-b, remove mango-a
-	press(s, "k", "d")
+	press(s, "k", "x")
 	if got := mconfig.Providers.Mirrors.Get(); len(got) != 1 || got["mango-b"] == "" {
 		t.Errorf("mirrors %v", got)
 	}
@@ -323,5 +323,9 @@ func TestKeys(t *testing.T) {
 	k := s.keys
 	if keys := base.KeyCollisions(util.KeyMap{Short: []key.Binding{k.change, k.reset, k.expandAll}}, s.list.KeyMap.Browsing()...); len(keys) != 0 {
 		t.Error(keys)
+	}
+	entries := util.KeyMap{Short: []key.Binding{k.add, k.editEntry, k.remove, k.up, k.down, k.close}}
+	if keys := append(util.Collisions(util.Bindings(entries)...), base.KeyInconsistencies(entries)...); len(keys) != 0 {
+		t.Errorf("entries editor: %v", keys)
 	}
 }

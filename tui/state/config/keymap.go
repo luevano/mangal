@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/util"
 )
 
@@ -27,8 +28,8 @@ func newKeyMap() keyMap {
 		save:      util.Bind("save", "enter"),
 		cancel:    util.Bind("cancel", "esc"),
 		add:       util.Bind("add", "a"),
-		editEntry: util.Bind("edit", "enter"),
-		remove:    util.Bind("remove", "d"),
+		editEntry: util.BindNamedKey("enter/e", "edit", "enter", "e"),
+		remove:    base.KeyRemove,
 		up:        util.BindNamedKey("↑/k", "up", "up", "k"),
 		down:      util.BindNamedKey("↓/j", "down", "down", "j"),
 		close:     util.Bind("done", "esc"),
