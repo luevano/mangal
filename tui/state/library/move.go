@@ -53,7 +53,17 @@ type moveState struct {
 	confirm *confirm.Dialog
 }
 
+// movePlannedMsg is the planned move, and the full one (adopting the new title) when the
+// titles differ, or why it can't be.
 type movePlannedMsg struct {
+	mover   library.Mover
+	plan    library.MovePlan
+	full    *library.MovePlan
+	fullErr error
+}
+
+// moveChosenMsg is the move picked (keeping the title or adopting the new one), to confirm.
+type moveChosenMsg struct {
 	mover library.Mover
 	plan  library.MovePlan
 }
@@ -99,7 +109,10 @@ func (s *moveState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	}
 	switch msg := msg.(type) {
 	case movePlannedMsg:
-		s.askMove(msg)
+		s.askTitle(msg)
+		return nil
+	case moveChosenMsg:
+		s.askMove(msg.mover, msg.plan)
 		return nil
 	case actionMsg:
 		return msg.run(ctx)
@@ -133,11 +146,47 @@ func planMove(ctx context.Context, m storage.Manga, provider string, to mangadat
 		m = fresh
 	}
 	plan, err := mover.PlanMove(ctx, m, info, to, library.MoveOptions{})
-	return movePlannedMsg{mover: mover, plan: plan}, err
+	if err != nil {
+		return movePlannedMsg{}, err
+	}
+	msg := movePlannedMsg{mover: mover, plan: plan}
+	if t := to.Info().Title; t != "" && t != m.Title {
+		full, err := mover.PlanMove(ctx, m, info, to, library.MoveOptions{Full: true})
+		if err != nil {
+			msg.fullErr = err
+		} else {
+			msg.full = &full
+		}
+	}
+	return msg, nil
 }
 
-func (s *moveState) askMove(msg movePlannedMsg) {
-	plan, mover := msg.plan, msg.mover
+// askTitle asks whether to keep the library title or adopt the new manga's, when they
+// differ; else it confirms the move.
+func (s *moveState) askTitle(msg movePlannedMsg) {
+	if msg.full == nil && msg.fullErr == nil {
+		s.askMove(msg.mover, msg.plan)
+		return
+	}
+	plan := msg.plan
+	lines := []string{
+		fmt.Sprintf("%q is %q on %s.", plan.Manga.Title, plan.To.Title, plan.Provider.ID),
+		"",
+		"k keeps the title:",
+		"  folder " + plan.FolderChange(),
+	}
+	choices := []confirm.Choice{{Key: "k", Label: "keep the title", Cmd: func() tea.Msg { return moveChosenMsg{mover: msg.mover, plan: plan} }}}
+	if msg.full != nil {
+		full := *msg.full
+		lines = append(lines, "a adopts the new title:", "  title "+full.TitleChange(), "  folder "+full.FolderChange())
+		choices = append(choices, confirm.Choice{Key: "a", Label: "adopt the new title", Cmd: func() tea.Msg { return moveChosenMsg{mover: msg.mover, plan: full} }})
+	} else {
+		lines = append(lines, "can't adopt it: "+msg.fullErr.Error())
+	}
+	s.confirm.Choose("Library title", strings.Join(lines, "\n"), s.View(), choices...)
+}
+
+func (s *moveState) askMove(mover library.Mover, plan library.MovePlan) {
 	s.confirm.Ask("Move", strings.Join(plan.Lines(), "\n"), s.View(), action("Moving "+plan.Manga.Title, func() (string, error) {
 		return fmt.Sprintf("moved %s to %s (%s)", plan.Manga.Title, plan.Provider.ID, plan.To.Title), mover.ApplyMove(plan)
 	}))

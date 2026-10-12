@@ -73,9 +73,34 @@ func TestMove(t *testing.T) {
 	res, _ := ms.Results(ctx, "mango-weebcentral", "Berserk")
 	ms.Update(ctx, res)
 
+	// another title: keep it or adopt the new one
+	asked, err := planMove(ctx, m, "mango-weebcentral", &testManga{mangadata.MangaInfo{ID: "01K", Title: "Berserk Deluxe"}})
+	if err != nil || asked.full == nil {
+		t.Fatalf("planned %+v, %v", asked, err)
+	}
+	ms.Update(ctx, asked)
+	view := ms.View()
+	for _, want := range []string{`"Berserk" -> "Berserk Deluxe"`, "Weeb Central/Berserk Deluxe", "k keep the title", "a adopt the new title"} {
+		if !strings.Contains(strings.Join(strings.Fields(view), " "), want) {
+			t.Errorf("question misses %q:\n%s", want, view)
+		}
+	}
+	chosen, ok := ms.Update(ctx, press("a"))().(moveChosenMsg)
+	if !ok || !chosen.plan.Full || chosen.plan.Title != "Berserk Deluxe" {
+		t.Fatalf("a: %+v", chosen)
+	}
+	ms.Update(ctx, chosen)
+	if !ms.confirm.Active() || !strings.Contains(ms.View(), "title:") {
+		t.Fatalf("no confirmation of the full move:\n%s", ms.View())
+	}
+	ms.Update(ctx, press("n"))
+
 	planned, err := planMove(ctx, m, "mango-weebcentral", res.Items[0].(*pick.MangaItem).Manga)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if planned.full != nil {
+		t.Error("same title, still asked")
 	}
 	ms.Update(ctx, planned)
 	if !ms.confirm.Active() || !strings.Contains(ms.View(), "Weeb Central/Berserk") {
