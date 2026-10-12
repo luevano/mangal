@@ -156,15 +156,18 @@ mangal keeps track of what's downloaded, whichever provider got it: a chapter al
 mangal library ls                          # the mangas
 mangal library scan                        # check against the files: moved, removed, added by hand, older downloads
 mangal library scan --check                # also check the guessed metadata ids of folders without a .libmangal.json
-mangal library scan --mark                 # also write a .libmangal.json into folders without one (from the library source, else the provider directory and ids)
+mangal library scan --mark [--apply]       # also list (--apply: write) a .libmangal.json for folders without one (from the library source, else the provider directory and ids)
 mangal library downloads [provider]        # the downloaded chapters
 mangal library merge <keep> <other> --apply  # one manga in two directories, duplicates go to the trash
 mangal library move <id> <provider> [query|mid:id] --apply  # switch a manga to another provider (folder, watch and bindings follow; names stay)
 mangal library move <id> <provider> --full --apply          # also adopt the new provider's title and the folder name it gives
 mangal library trash [empty]               # see or empty the trash
+mangal library undo [--list] [--apply]     # undo the last operation: files moved back, database restored from its snapshot
 ```
 
-The TUI has the same under `L` on the home screen (`s` scan, `S` scan and check ids, `m` merge, `M` move to another provider, `t` trash), where `D` deletes a manga or a chapter (to the trash).
+Every operation that changes files (rename, merge, move, `scan --mark --apply`, `migrate`, a TUI delete) first snapshots the data database into `<data dir>/backups/` (the last `data.backups`, 10 by default, are kept) and journals its file changes, so `mangal library undo` can revert it. Nothing is overwritten, and an undo that would lose later changes is refused unless `--force`.
+
+The TUI has the same under `L` on the home screen (`s` scan, `S` scan and check ids, `m` merge, `M` move to another provider, `t` trash, `U` undo the last operation), where `D` deletes a manga or a chapter (to the trash).
 
 ### Accounts
 
