@@ -122,3 +122,38 @@ func providerLinks(ctx context.Context, src storage.Source) ([]metadata.ID, erro
 	}
 	return meta.ExtraIDs(), nil
 }
+
+// LibraryStatuses fills in the publication status of library mangas from AniList: the
+// cached metadata, the rest fetched (batched) when asked.
+func LibraryStatuses(lib storage.Library) library.StatusFinder {
+	return library.StatusFinder{
+		Library: lib,
+		Cached: func(ids []int) (map[int]metadata.Metadata, error) {
+			ani, err := anilist.Anilist()
+			if err != nil {
+				return nil, err
+			}
+			return ani.CachedByIDs(ids)
+		},
+		Fetch: func(ctx context.Context, ids []int) (map[int]metadata.Metadata, error) {
+			ani, err := anilist.Anilist()
+			if err != nil {
+				return nil, err
+			}
+			_ = anilist.EnsureLogin(ctx)
+			return ani.SearchByIDsContext(ctx, ids)
+		},
+	}
+}
+
+// UpdateLibraryStatuses fills in the statuses of the mangas (in place), fetching from
+// AniList only when fetch.
+func UpdateLibraryStatuses(ctx context.Context, lib storage.Library, mangas []storage.Manga, fetch bool, onProgress func(library.Progress)) error {
+	bindings, err := storage.Bindings{DB: lib.DB}.List("", "")
+	if err != nil {
+		return err
+	}
+	finder := LibraryStatuses(lib)
+	finder.OnProgress = onProgress
+	return finder.Update(ctx, mangas, bindings, fetch)
+}

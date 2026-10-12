@@ -313,10 +313,21 @@ func libraryOf() (storage.Library, error) {
 	return cache.Library()
 }
 
+var libraryLsArgs = struct {
+	Refresh bool
+}{}
+
+func init() {
+	libraryLsCmd.Flags().BoolVar(&libraryLsArgs.Refresh, "refresh", false, "Look the publication statuses up on AniList (batched): the unknown ones and those not looked up lately")
+}
+
 var libraryLsCmd = &cobra.Command{
 	Use:   "ls",
 	Short: "List the mangas in the library",
-	Args:  cobra.NoArgs,
+	Long: `List the mangas in the library: id, title, chapters, publication status (finished,
+ongoing, hiatus, cancelled, upcoming; from the AniList metadata already cached, --refresh
+asks AniList), folder and sources.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		lib, err := libraryOf()
 		if err != nil {
@@ -326,11 +337,24 @@ var libraryLsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		st := newStatus(cmd)
+		err = client.UpdateLibraryStatuses(st.Context(cmd.Context()), lib, mangas, libraryLsArgs.Refresh, st.Progress)
+		st.Done()
+		if err != nil {
+			if libraryLsArgs.Refresh {
+				return err
+			}
+			cmd.PrintErrf("warning: publication statuses: %s\n", err)
+		}
 		if len(mangas) == 0 {
 			cmd.Println(`the library is empty, "mangal library scan" adds the mangas already downloaded`)
 		}
 		for _, m := range mangas {
-			line := fmt.Sprintf("%d  %s  %d chapters  %s", m.ID, m.Title, m.Chapters, m.Path())
+			line := fmt.Sprintf("%d  %s  %d chapters  ", m.ID, m.Title, m.Chapters)
+			if status := library.StatusLabel(m.Status); status != "" {
+				line += status + "  "
+			}
+			line += m.Path()
 			if sources := library.SourcesSummary(m.Sources); sources != "" {
 				line += "  [" + sources + "]"
 			}
