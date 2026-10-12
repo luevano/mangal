@@ -1331,3 +1331,53 @@ func TestListLinksAdoptedFolder(t *testing.T) {
 		t.Errorf("a watch with only a note isn't checked: %+v", resumed)
 	}
 }
+
+func TestRemoveRun(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	a := &fakeManga{info: mangadata.MangaInfo{ID: "a", Title: "A"}}
+	b := &fakeManga{info: mangadata.MangaInfo{ID: "b", Title: "B"}}
+	src := e.source("mango-mangaplus", a, b)
+	src.chs["a"], src.chs["b"] = a.chapters(1, 2), b.chapters(1)
+	wa, _ := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", MangaID: "a"})
+	wb, _ := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", MangaID: "b"})
+	report, err := e.svc.Check(ctx, nil, CheckOptions{})
+	if err != nil || report.Watches != 2 || report.NewChapters != 3 {
+		t.Fatalf("check %+v, %v", report.CheckRun, err)
+	}
+	var ops []string
+	e.svc.Operation = func(kind, summary string, do func() error) (string, error) {
+		ops = append(ops, kind+": "+summary)
+		return "/backups/snap.sqlite", do()
+	}
+	runA := report.Results[0].ID
+	if report.Results[0].Watch != wa.ID {
+		runA = report.Results[1].ID
+	}
+	removed, err := e.svc.RemoveRun(ctx, runA)
+	if err != nil || removed.CheckRunRemoved || removed.Run.Title != "A" || removed.Snapshot != "/backups/snap.sqlite" ||
+		!slices.Equal(ops, []string{fmt.Sprintf("history: remove watch run %d from the history", runA)}) {
+		t.Fatalf("removed %+v, %v, ops %v", removed, err, ops)
+	}
+	run, err := e.svc.RunDetails(ctx, report.ID)
+	if err != nil || run.Watches != 1 || run.NewChapters != 1 || len(run.Results) != 1 || run.Results[0].Watch != wb.ID {
+		t.Errorf("check run after %+v, %v", run, err)
+	}
+	if _, err := e.svc.RemoveRun(ctx, runA); !errors.Is(err, storage.ErrRunNotFound) || ErrorCode(err) != CodeNotFound {
+		t.Errorf("removed twice: %v", err)
+	}
+	removed, err = e.svc.RemoveRun(ctx, run.Results[0].ID)
+	if err != nil || !removed.CheckRunRemoved {
+		t.Errorf("last one %+v, %v", removed, err)
+	}
+	if runs, _ := e.svc.Runs(ctx, RunFilter{}); len(runs) != 0 {
+		t.Errorf("runs left %+v", runs)
+	}
+
+	// a check still running
+	started, _ := e.svc.Watches.StartRun(storage.CheckRun{Kind: KindManual, Started: e.now})
+	r, _ := e.svc.Watches.RecordWatchRun(storage.WatchRun{CheckRun: started.ID, Watch: wa.ID, Provider: "mango-mangaplus", MangaID: "a", Title: "A", Status: storage.StatusNone})
+	if _, err := e.svc.RemoveRun(ctx, r.ID); !errors.Is(err, storage.ErrRunUnfinished) || ErrorCode(err) != CodeBusy {
+		t.Errorf("running: %v", err)
+	}
+}

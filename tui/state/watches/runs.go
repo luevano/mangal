@@ -175,6 +175,7 @@ type runState struct {
 	run     watch.CheckRun
 
 	open, history, library key.Binding
+	remove                 *runRemover
 }
 
 type runMsg watch.CheckRun
@@ -188,11 +189,27 @@ func newRunState(m watch.Manager, id int64) *runState {
 		library: base.KeyLibraryManga,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "watch", "watches", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
+	s.remove = newRunRemover()
 	return s
 }
 
 func (s *runState) keyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.open, s.library, s.history}}
+	return util.KeyMap{Short: []key.Binding{s.open, s.library, s.history, s.remove.key}}
+}
+
+func (s *runState) KeyMap() help.KeyMap { return s.remove.keyMap(s.Screen.KeyMap()) }
+func (s *runState) Backable() bool      { return s.Screen.Backable() && !s.remove.confirm.Active() }
+func (s *runState) Inputting() bool     { return s.Screen.Inputting() || s.remove.confirm.Active() }
+func (s *runState) Resize(size base.Size) tea.Cmd {
+	s.remove.confirm.Resize(size)
+	return s.Screen.Resize(size)
+}
+
+func (s *runState) View() string {
+	if s.remove.confirm.Active() {
+		return s.remove.confirm.View()
+	}
+	return s.List.View()
 }
 
 func (s *runState) Title() base.Title {
@@ -214,7 +231,21 @@ func (s *runState) Init(ctx context.Context) tea.Cmd {
 	}, func(run runMsg) tea.Msg { return run })
 }
 
+// afterRemove reloads the run after one of its checks was deleted, or goes back when the
+// run went with it.
+func (s *runState) afterRemove(ctx context.Context) func(bool) tea.Cmd {
+	return func(gone bool) tea.Cmd {
+		if gone {
+			return base.Back
+		}
+		return s.Init(ctx)
+	}
+}
+
 func (s *runState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
+	if cmd, ok := s.remove.update(ctx, msg, s.List, s.manager, s.View, s.afterRemove(ctx)); ok {
+		return cmd
+	}
 	switch msg := msg.(type) {
 	case runMsg:
 		s.run = watch.CheckRun(msg)

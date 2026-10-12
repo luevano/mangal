@@ -27,6 +27,8 @@ type fakeManager struct {
 	enabled  map[int64]bool
 	checked  [][]int64
 	relinked map[int64]watch.RelinkOptions
+	// removedRuns are the watch runs RemoveRun was given
+	removedRuns []int64
 	// events is what Subscribe gives, nil for an error
 	events chan watch.LiveEvent
 }
@@ -98,6 +100,10 @@ func (f *fakeManager) RunDetails(ctx context.Context, id int64) (watch.CheckRun,
 	return watch.CheckRun{}, nil
 }
 func (f *fakeManager) Status(ctx context.Context) (watch.Status, error) { return f.status, nil }
+func (f *fakeManager) RemoveRun(ctx context.Context, id int64) (watch.RemovedRun, error) {
+	f.removedRuns = append(f.removedRuns, id)
+	return watch.RemovedRun{Run: storage.WatchRun{ID: id}, Snapshot: "/backups/x.sqlite"}, nil
+}
 
 var _ watch.Manager = (*fakeManager)(nil)
 
@@ -852,4 +858,46 @@ func TestTitlePlainWhenFiltered(t *testing.T) {
 		t.Errorf("filtered title %q", title)
 	}
 	_ = s.View()
+}
+
+// TestDeleteRun: d on a check asks, d (or y) again deletes it; the run screen goes back
+// when the check run went with it.
+func TestDeleteRun(t *testing.T) {
+	m := testManager()
+	ctx := context.Background()
+	h := newHistoryState(m, "")
+	msg, err := loadHistory(ctx, m, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Update(ctx, msg)
+	selected, ok := h.List.SelectedItem().(*runItem)
+	if !ok {
+		t.Fatal("no check selected")
+	}
+	if cmd := h.Update(ctx, press("d")); cmd != nil || !h.remove.confirm.Active() || h.Backable() || !h.Inputting() {
+		t.Fatal("d doesn't ask")
+	}
+	if !strings.Contains(h.View(), "Delete check") {
+		t.Errorf("no dialog:\n%s", h.View())
+	}
+	cmd := h.Update(ctx, press("d"))
+	if cmd == nil {
+		t.Fatal("d d: no cmd")
+	}
+	rm, ok := cmd().(removeRunMsg)
+	if !ok || rm.r.ID != selected.r.ID || h.remove.confirm.Active() {
+		t.Fatalf("d d: %#v", rm)
+	}
+	if cmd := h.Update(ctx, rm); cmd == nil {
+		t.Error("no removal")
+	}
+	if cmd := h.Update(ctx, runRemovedMsg{notify: "deleted"}); cmd == nil {
+		t.Error("no reload after the removal")
+	}
+
+	run := newRunState(m, 1)
+	if cmd := run.afterRemove(ctx)(true); cmd == nil || cmd() != base.Back() {
+		t.Error("the run screen doesn't go back once its run is gone")
+	}
 }

@@ -496,6 +496,14 @@ func TestRemote(t *testing.T) {
 	if err := r.Remove(ctx, w.ID); !errors.Is(err, watch.ErrNotFound) {
 		t.Errorf("remove twice: %v", err)
 	}
+	// the history stays after the watch is removed, a run of it can be removed
+	run, _ := r.RunDetails(ctx, report.ID)
+	if removed, err := r.RemoveRun(ctx, run.Results[0].ID); err != nil || !removed.CheckRunRemoved || removed.Run.ID != run.Results[0].ID {
+		t.Errorf("remove run: %+v, %v", removed, err)
+	}
+	if _, err := r.RemoveRun(ctx, run.Results[0].ID); !errors.Is(err, watch.ErrNotFound) {
+		t.Errorf("remove run twice: %v", err)
+	}
 
 	bad := watch.NewRemote(s.URL, "")
 	var apiErr *watch.APIError

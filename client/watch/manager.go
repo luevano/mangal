@@ -25,6 +25,9 @@ type Manager interface {
 	Stale(ctx context.Context, since time.Duration) ([]Watch, error)
 	Runs(ctx context.Context, filter RunFilter) ([]CheckRun, error)
 	RunDetails(ctx context.Context, id int64) (CheckRun, error)
+	// RemoveRun removes a watch run from the history (its check run too when it had no
+	// other), after a snapshot of the data db.
+	RemoveRun(ctx context.Context, id int64) (RemovedRun, error)
 	Status(ctx context.Context) (Status, error)
 	// Subscribe is the live progress of the checks until ctx is done (the channel is
 	// closed then): the recent events of the running checks first, then each one as it

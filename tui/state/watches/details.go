@@ -32,6 +32,7 @@ type detailsState struct {
 	now     func() time.Time
 
 	open, edit, pause, refresh, library, history, live, relink key.Binding
+	remove                                                     *runRemover
 }
 
 type detailsMsg struct {
@@ -58,13 +59,18 @@ func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState 
 		relink:  base.KeyRelink,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
+	s.remove = newRunRemover()
 	return s
 }
 
 func (s *detailsState) keyMap() help.KeyMap {
 	short := []key.Binding{s.open, s.live, s.edit, s.pause, s.library, s.history}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, s.relink, s.refresh)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, s.relink, s.refresh, s.remove.key)}}
 }
+
+func (s *detailsState) KeyMap() help.KeyMap { return s.remove.keyMap(s.Screen.KeyMap()) }
+func (s *detailsState) Backable() bool      { return s.Screen.Backable() && !s.remove.confirm.Active() }
+func (s *detailsState) Inputting() bool     { return s.Screen.Inputting() || s.remove.confirm.Active() }
 
 func (s *detailsState) Title() base.Title { return base.Title{Text: s.w.Title} }
 
@@ -85,6 +91,7 @@ func (s *detailsState) header() string {
 }
 
 func (s *detailsState) Resize(size base.Size) tea.Cmd {
+	s.remove.confirm.Resize(size)
 	s.size = size
 	size.Height = max(1, size.Height-lipgloss.Height(s.header())-1)
 	return s.Screen.Resize(size)
@@ -128,6 +135,9 @@ func historyItems(id int64, runs []watch.CheckRun) []_list.Item {
 }
 
 func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
+	if cmd, ok := s.remove.update(ctx, msg, s.List, s.manager, s.View, func(bool) tea.Cmd { return s.reload(ctx, "") }); ok {
+		return cmd
+	}
 	switch msg := msg.(type) {
 	case detailsMsg:
 		s.manager, s.w, s.status = msg.manager, msg.w, msg.status
@@ -171,5 +181,8 @@ func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 }
 
 func (s *detailsState) View() string {
+	if s.remove.confirm.Active() {
+		return s.remove.confirm.View()
+	}
 	return strings.Join([]string{s.header(), s.List.View()}, "\n")
 }

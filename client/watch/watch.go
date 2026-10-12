@@ -24,6 +24,7 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -251,6 +252,9 @@ type Service struct {
 	OnError func(error)
 	// Events broadcasts the progress of the checks (Subscribe), may be nil.
 	Events *Hub
+	// Operation runs do as an operation "mangal library undo" can undo (client.Operation:
+	// a snapshot of the data db first) and returns the snapshot; nil runs it as is.
+	Operation func(kind, summary string, do func() error) (snapshot string, err error)
 }
 
 // New is the Service over mangal's databases, with the config's options and the
@@ -270,6 +274,9 @@ func New(notifier Notifier) (*Service, error) {
 		Notifier:  notifier,
 		Now:       time.Now,
 		Events:    NewHub(),
+		Operation: func(kind, summary string, do func() error) (string, error) {
+			return client.Operation(kind, summary, func(library.Journal) error { return do() })
+		},
 	}, nil
 }
 
@@ -997,6 +1004,34 @@ func (s *Service) Stale(ctx context.Context, since time.Duration) ([]Watch, erro
 // Runs lists the check runs (with what each watch got), latest first.
 func (s *Service) Runs(ctx context.Context, filter RunFilter) ([]CheckRun, error) {
 	return s.Watches.Runs(filter)
+}
+
+// RemovedRun is a watch run removed from the history.
+type RemovedRun struct {
+	// Run is the removed one, without its chapters.
+	Run WatchRun `json:"run"`
+	// CheckRunRemoved is true when its check run had nothing else and went too.
+	CheckRunRemoved bool `json:"check_run_removed,omitempty"`
+	// Snapshot is the data db's snapshot taken before ("mangal library undo" restores it).
+	Snapshot string `json:"snapshot,omitempty"`
+}
+
+// RemoveRun removes a watch run (the check of one watch in a check run) and its chapters
+// from the history, as an operation "mangal library undo" can undo. A check run left
+// without watch runs goes too. Unknown = ErrNotFound.
+func (s *Service) RemoveRun(ctx context.Context, id int64) (RemovedRun, error) {
+	var removed RemovedRun
+	do := func() error {
+		var err error
+		removed.Run, removed.CheckRunRemoved, err = s.Watches.RemoveWatchRun(id)
+		return err
+	}
+	if s.Operation == nil {
+		return removed, do()
+	}
+	var err error
+	removed.Snapshot, err = s.Operation("history", fmt.Sprintf("remove watch run %d from the history", id), do)
+	return removed, err
 }
 
 // RunDetails is the check run with the id, ErrNotFound if none.

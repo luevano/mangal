@@ -2,6 +2,8 @@ package watch
 
 import (
 	"errors"
+
+	"github.com/luevano/mangal/v5/storage"
 )
 
 // The JSON bodies of the `mangal serve` API (serve/), besides Watch, Report, CheckRun and
@@ -91,11 +93,11 @@ type ErrorResponse struct {
 // ErrorCode is the Code of err, empty if none.
 func ErrorCode(err error) string {
 	switch {
-	case errors.Is(err, ErrNotFound):
+	case errors.Is(err, ErrNotFound), errors.Is(err, storage.ErrRunNotFound):
 		return CodeNotFound
 	case errors.Is(err, ErrExists):
 		return CodeExists
-	case errors.Is(err, ErrBusy):
+	case errors.Is(err, ErrBusy), errors.Is(err, storage.ErrRunUnfinished):
 		return CodeBusy
 	}
 	return ""

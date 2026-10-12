@@ -518,6 +518,62 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.CheckRun, nullID(r.Watch), r.Pro
 	return r, nil
 }
 
+var (
+	// ErrRunNotFound is a run id that doesn't exist.
+	ErrRunNotFound = errors.New("run not found")
+	// ErrRunUnfinished is removing a run of a check that's still going.
+	ErrRunUnfinished = errors.New("its check is still running")
+)
+
+// RemoveWatchRun removes the watch run with its chapters from the history, and its check
+// run's totals; a check run left without watch runs goes too (checkRunGone). It returns the
+// removed run (without chapters). Unknown = ErrRunNotFound, a check run that hasn't
+// finished = ErrRunUnfinished.
+func (s Watches) RemoveWatchRun(id int64) (removed WatchRun, checkRunGone bool, err error) {
+	err = s.DB.InTx(func(tx *sql.Tx) error {
+		var finished, started int64
+		var from sql.NullFloat64
+		err := tx.QueryRow(`SELECT w.check_run, coalesce(w.watch, 0), w.provider, w.manga_id, w.title, w.from_number, w.status, w.started, w.new_chapters, c.finished
+FROM watch_runs w JOIN check_runs c ON c.id = w.check_run WHERE w.id = ?`, id).Scan(&removed.CheckRun, &removed.Watch, &removed.Provider,
+			&removed.MangaID, &removed.Title, &from, &removed.Status, &started, &removed.NewChapters, &finished)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrRunNotFound
+		}
+		if err != nil {
+			return err
+		}
+		removed.ID, removed.From, removed.Started = id, floatPtr(from), fromUnix(started)
+		if finished == 0 {
+			return ErrRunUnfinished
+		}
+		if _, err := tx.Exec(`DELETE FROM watch_runs WHERE id = ?`, id); err != nil {
+			return err
+		}
+		var left int
+		if err := tx.QueryRow(`SELECT count(*) FROM watch_runs WHERE check_run = ?`, removed.CheckRun).Scan(&left); err != nil {
+			return err
+		}
+		if checkRunGone = left == 0; checkRunGone {
+			_, err = tx.Exec(`DELETE FROM check_runs WHERE id = ?`, removed.CheckRun)
+			return err
+		}
+		if removed.Status == StatusSkipped {
+			return nil
+		}
+		isError := 0
+		if removed.Status == StatusError {
+			isError = 1
+		}
+		_, err = tx.Exec(`UPDATE check_runs SET watches = max(watches - 1, 0), new_chapters = max(new_chapters - ?, 0), errors = max(errors - ?, 0) WHERE id = ?`,
+			removed.NewChapters, isError, removed.CheckRun)
+		return err
+	})
+	if err != nil {
+		return removed, false, fmt.Errorf("remove watch run %d: %w", id, err)
+	}
+	return removed, checkRunGone, nil
+}
+
 // RunFilter selects check runs: started at or after Since (zero for any), with a check of
 // Watch (0 for any, then only its checks are listed), the Limit latest (0 for all).
 // Provider (and MangaID with it) select the checks the same way, by what was checked:

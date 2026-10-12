@@ -174,6 +174,12 @@ func (r *Remote) RunDetails(ctx context.Context, id int64) (CheckRun, error) {
 	return run, err
 }
 
+func (r *Remote) RemoveRun(ctx context.Context, id int64) (RemovedRun, error) {
+	var removed RemovedRun
+	err := r.do(ctx, http.MethodDelete, "/api/watch-runs/"+strconv.FormatInt(id, 10), nil, &removed)
+	return removed, err
+}
+
 func (r *Remote) Status(ctx context.Context) (Status, error) {
 	var st Status
 	err := r.do(ctx, http.MethodGet, "/api/status", nil, &st)

@@ -792,6 +792,7 @@ var watchLogArgs = struct {
 	MangaID  string
 	Limit    int
 	JSON     bool
+	Remove   []int64
 }{}
 
 func init() {
@@ -804,14 +805,22 @@ func init() {
 	_ = watchLogCmd.RegisterFlagCompletionFunc("provider", completionProviderIDs)
 	f.IntVar(&watchLogArgs.Limit, "limit", 0, "Only the latest N check runs")
 	f.BoolVar(&watchLogArgs.JSON, "json", false, "Print JSON")
+	f.Int64SliceVar(&watchLogArgs.Remove, "rm", nil, "Delete these runs (the \"run N\" of a line) from the history")
 }
 
 var watchLogCmd = &cobra.Command{
 	Use:   "log",
 	Short: "Show the history of the checks",
-	Long:  `Show the check runs, latest first, with what each watch got: the chapters downloaded, nothing new or the error.`,
-	Args:  cobra.NoArgs,
+	Long: `Show the check runs, latest first, with what each watch got: the chapters downloaded, nothing new or the error.
+
+--rm deletes runs (one watch's check, "run N") from the history, e.g. one that recorded a
+fake chapter; a check run left without runs goes too. The downloads stay. The data
+database is snapshotted first: "mangal library undo" brings them back.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		if len(watchLogArgs.Remove) > 0 {
+			return removeRuns(cmd, watchLogArgs.Remove)
+		}
 		since, err := parseSince(watchLogArgs.Since)
 		if err != nil {
 			return err
@@ -848,6 +857,27 @@ var watchLogCmd = &cobra.Command{
 	},
 }
 
+// removeRuns deletes the watch runs from the history.
+func removeRuns(cmd *cobra.Command, ids []int64) error {
+	svc, err := newWatchManager(cmd)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		removed, err := svc.RemoveRun(cmd.Context(), id)
+		undoHint(cmd, removed.Snapshot, err)
+		if err != nil {
+			return err
+		}
+		r := removed.Run
+		successf(cmd, "deleted run %d (%s from %s, %s check %d, %s) from the history", id, r.Title, r.Provider, r.Status, r.CheckRun, formatTime(r.Started))
+		if removed.CheckRunRemoved {
+			cmd.Printf("check %d had no other run, deleted too\n", r.CheckRun)
+		}
+	}
+	return nil
+}
+
 func printRun(cmd *cobra.Command, run watch.CheckRun) {
 	took := "unfinished"
 	if !run.Finished.IsZero() {
@@ -861,7 +891,7 @@ func printRun(cmd *cobra.Command, run watch.CheckRun) {
 		if r.From != nil {
 			from = stringutil.FormatFloa32(*r.From) + "-"
 		}
-		line := fmt.Sprintf("  %s (%s) [%s]: ", r.Title, r.Provider, from)
+		line := fmt.Sprintf("  run %d  %s (%s) [%s]: ", r.ID, r.Title, r.Provider, from)
 		switch r.Status {
 		case storage.StatusNew:
 			line += fmt.Sprintf("%d new", r.New())

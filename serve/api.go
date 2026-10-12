@@ -113,6 +113,7 @@ func (a *API) Register(mux *http.ServeMux) {
 	handle("GET /api/runs", a.runs)
 	handle("GET /api/runs/{id}", a.run)
 	handle("POST /api/runs/{id}/cancel", a.cancel)
+	handle("DELETE /api/watch-runs/{id}", a.removeRun)
 	handle("GET /api/events", a.events)
 }
 
@@ -344,6 +345,20 @@ func (a *API) remove(w http.ResponseWriter, r *http.Request) error {
 	}
 	a.Log.Infof("stopped watching %d", id)
 	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (a *API) removeRun(w http.ResponseWriter, r *http.Request) error {
+	id, err := pathID(r)
+	if err != nil {
+		return err
+	}
+	removed, err := a.Manager().RemoveRun(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	a.Log.Infof("removed watch run %d from the history (snapshot %s)", id, removed.Snapshot)
+	writeJSON(w, http.StatusOK, removed)
 	return nil
 }
 

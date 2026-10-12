@@ -29,6 +29,7 @@ type historyState struct {
 	shown *string
 
 	open, next, refresh, library, check key.Binding
+	remove                              *runRemover
 }
 
 type historyMsg struct {
@@ -48,12 +49,28 @@ func newHistoryState(m watch.Manager, provider string) *historyState {
 		check:    base.KeyCheckProvider,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
+	s.remove = newRunRemover()
 	return s
 }
 
 func (s *historyState) keyMap() help.KeyMap {
 	s.check.SetEnabled(s.provider != "")
-	return util.KeyMap{Short: []key.Binding{s.open, s.next, s.check, s.library, s.refresh}}
+	return util.KeyMap{Short: []key.Binding{s.open, s.next, s.check, s.library, s.refresh, s.remove.key}}
+}
+
+func (s *historyState) KeyMap() help.KeyMap { return s.remove.keyMap(s.Screen.KeyMap()) }
+func (s *historyState) Backable() bool      { return s.Screen.Backable() && !s.remove.confirm.Active() }
+func (s *historyState) Inputting() bool     { return s.Screen.Inputting() || s.remove.confirm.Active() }
+func (s *historyState) Resize(size base.Size) tea.Cmd {
+	s.remove.confirm.Resize(size)
+	return s.Screen.Resize(size)
+}
+
+func (s *historyState) View() string {
+	if s.remove.confirm.Active() {
+		return s.remove.confirm.View()
+	}
+	return s.List.View()
 }
 
 func (s *historyState) Title() base.Title { return base.Title{Text: "History"} }
@@ -129,6 +146,9 @@ func nextProvider(providers []string, p string) string {
 }
 
 func (s *historyState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
+	if cmd, ok := s.remove.update(ctx, msg, s.List, s.manager, s.View, func(bool) tea.Cmd { return s.reload(ctx, "") }); ok {
+		return cmd
+	}
 	switch msg := msg.(type) {
 	case historyMsg:
 		// a reload of another provider, the cycle went on
