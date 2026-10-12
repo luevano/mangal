@@ -186,12 +186,15 @@ func (b BackupFinder) kitsuIDs(ctx context.Context, anilist []string) (map[strin
 // a Kitsu or MyAnimeList id.
 func (b BackupFinder) Summary(backups []Backup) string {
 	fill, conflicts, noKitsu, noMAL := BackupSummary(backups)
-	why := "Kitsu maps none of their AniList ids, no MangaDex source links one"
-	if b.KitsuIDs == nil {
-		why = "no MangaDex source with a Kitsu link, Kitsu isn't asked: metadata.kitsu.enabled is off"
+	kitsu := fmt.Sprintf("no Kitsu id for %d", noKitsu)
+	switch {
+	case noKitsu == 0:
+	case b.KitsuIDs == nil:
+		kitsu += " (no MangaDex source with a Kitsu link, Kitsu isn't asked: metadata.kitsu.enabled is off)"
+	default:
+		kitsu += " (Kitsu maps none of their AniList ids, no MangaDex source links one)"
 	}
-	return fmt.Sprintf("%d mangas to fill, %d links differ; no Kitsu id for %d (%s), no MyAnimeList id for %d",
-		fill, conflicts, noKitsu, why, noMAL)
+	return fmt.Sprintf("%d mangas to fill, %d links differ; %s, no MyAnimeList id for %d", fill, conflicts, kitsu, noMAL)
 }
 
 // Links are the links to set: the fills, and the conflicts' new ids when replace.
