@@ -212,13 +212,13 @@ func check(fsys existsFS, s storage.Step) (UndoAction, string) {
 			// only the case changed
 			return UndoMoveBack, ""
 		case there && back:
-			return UndoBlocked, s.Path + " exists (never overwritten)"
+			return UndoBlocked, "something is there again (never overwritten)"
 		case there:
 			return UndoMoveBack, ""
 		case back:
 			return UndoNothing, "not moved (never done or moved back)"
 		}
-		return UndoBlocked, s.Dest + " is gone"
+		return UndoBlocked, "it's gone from there"
 	case storage.StepMkdir:
 		if exists, err := fsys.exists(s.Path); err != nil {
 			return UndoBlocked, err.Error()
@@ -244,7 +244,9 @@ func check(fsys existsFS, s storage.Step) (UndoAction, string) {
 				return UndoRemove, ""
 			}
 			return UndoRestore, ""
-		case cur == nil && s.Old == nil, cur != nil && s.Old != nil && sameJSON(cur, s.Old):
+		case cur == nil && s.Old == nil:
+			return UndoNothing, "not there (never written, or removed or moved since)"
+		case cur != nil && s.Old != nil && sameJSON(cur, s.Old):
 			return UndoNothing, "as it was (never written or restored)"
 		case cur == nil:
 			return UndoBlocked, "gone"
