@@ -83,7 +83,7 @@ By default if just executing the `mangal` command, it will start the TUI. To lis
 mangal -h
 ```
 
-In the TUI `?` shows the keys of each screen and `,` opens the config window from any of them. A key means one thing on every screen, `d` deletes (and confirms the delete). On the home screen: `L` library, `W` watches, `K` accounts, `X` migrate; on a manga: `A` its metadata bindings, `w` watch it. In the watches: `u` check, `p` pause, `e` edit (`b` re-links the manga), `d` stop watching, `F` fill gaps, `O` live log, `V` every check, ctrl+r refresh; lists keep `g`/`G` (start/end), `h`/`l` (pages) and `/` (filter).
+In the TUI `?` shows the keys of each screen and `,` opens the config window from any of them. A key means one thing on every screen, `d` deletes (and confirms the delete). On the home screen: `L` library, `W` watches, `K` accounts, `X` migrate, `!` health; on a manga: `A` its metadata bindings, `w` watch it. In the watches: `u` check, `p` pause, `e` edit (`b` re-links the manga), `d` stop watching, `F` fill gaps, `O` live log, `V` every check, ctrl+r refresh; lists keep `g`/`G` (start/end), `h`/`l` (pages) and `/` (filter).
 
 **Note:** A v4 config (usually `~/.config/mangal/mangal.toml`) doesn't work with v5: its keys are ignored with a warning, remove it.
 
@@ -157,7 +157,7 @@ Only one download per provider runs at a time, across every mangal on the same d
 mangal keeps track of what's downloaded, whichever provider got it: a chapter already in a manga's directory (same number and format) isn't downloaded again, and the reason is shown.
 
 ```sh
-mangal library ls                          # the mangas
+mangal library ls [--refresh]              # the mangas, with their publication status (finished, ongoing, hiatus...; --refresh asks AniList)
 mangal library scan                        # check against the files: moved, removed, added by hand, older downloads; lists mangas sharing a metadata id
 mangal library scan --check                # also check the guessed metadata ids of folders without a .libmangal.json
 mangal library scan --mark [--apply]       # also list (--apply: write) a .libmangal.json for folders without one (from the library source, else the provider directory and ids)
@@ -166,16 +166,32 @@ mangal library merge <keep> <other> --apply  # one manga in two directories, dup
 mangal library move <id> <provider> [query|mid:id] --apply  # switch a manga to another provider (folder, watch and bindings follow; names stay)
 mangal library move <id> <provider> --full --apply          # also adopt the new provider's title and the folder name it gives
 mangal library bind <id> [--anilist N] [--kitsu N] [--mal N] [--rename] [--watches] --apply  # link a library manga (also without a provider source)
+mangal library bind <id>                   # its links, where each comes from, and a Kitsu id to pick
 mangal library bind [id] --backups --apply # fill the Kitsu and MyAnimeList links from AniList
+mangal library bind <id> --dismiss         # link neither of the Kitsu ids to pick from
 mangal library trash [empty]               # see or empty the trash
 mangal library undo [--list] [--apply]     # undo the last operation: files moved back, database restored from its snapshot
 ```
+
+When a MangaDex source links one Kitsu id and Kitsu maps the AniList id to another, `--backups` links neither and keeps both to pick from: `mangal library bind <id>`, `mangal health` and the TUI links screen (enter on the Kitsu row) show them until one is linked or dismissed.
+
+The publication status comes from the AniList metadata mangal already has; `library ls --refresh`, `health --network` and the TUI's `S` ask AniList (batched).
 
 A library manga's links replace the old ids everywhere: its sources' bindings, its own ids and its `.libmangal.json`, so a wrong id stops matching. What a link implies (the folder's new name, a watch bound to another id, another library manga with the id) is shown and only done when asked (`--rename`, `--watches`, merge).
 
 Every operation that changes files (rename, merge, move, link, `scan --mark --apply`, `migrate`, a TUI delete) first snapshots the data database into `<data dir>/backups/` (the last `data.backups`, 10 by default, are kept) and journals its file changes, so `mangal library undo` can revert it. Nothing is overwritten, and an undo that would lose later changes is refused unless `--force`.
 
 The TUI has the same under `L` on the home screen (`u` scan, `S` scan and check ids, `J` merge, `D` duplicates only, `X` move to another provider, `A` links, `B` fill backup links, `t` trash, `U` undo the last operation), where `d` deletes a manga or a chapter (to the trash; a manga whose folder is gone is forgotten).
+
+### Health
+
+```sh
+mangal health [--only watches,W10,...] [--json]  # problems of the library and the watches, with the command that fixes each
+mangal health --only W10                         # the library mangas no watch keeps up to date, one by one
+mangal health --network                          # also look for new chapters of the unwatched ongoing mangas on their providers
+```
+
+Only reads; it makes no requests unless `--network` (the publication statuses from AniList, and the chapter lists of the unwatched mangas that may still get chapters, one provider at a time like a watch check). In the TUI, `!` on the home screen (which shows "health: N problems"): enter opens what a finding is about (the watch, the library manga, its links, migrate), `x` applies its fix after asking (link the id the folder name says, pick a Kitsu id, resume a watch, watch a manga with new chapters), `J` merges duplicates, `tab` shows one category, alt+n runs the network checks, `i` shows the whole finding, ctrl+r checks again.
 
 ### Accounts
 
