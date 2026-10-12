@@ -1,6 +1,8 @@
 package confirm
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -76,5 +78,49 @@ func TestChoose(t *testing.T) {
 	}
 	if cmd := d.Update(keyPress("y")); cmd == nil {
 		t.Error("y didn't confirm")
+	}
+}
+
+func TestScroll(t *testing.T) {
+	d := NewDialog(30, lipgloss.Color("1"))
+	d.Resize(base.Size{Width: 60, Height: 14})
+	var lines []string
+	for i := range 10 {
+		lines = append(lines, fmt.Sprintf("line %d", i))
+	}
+	d.Ask("Long", strings.Join(lines, "\n"), "", func() tea.Msg { return yesMsg{} })
+	v := d.View()
+	if !strings.Contains(v, "line 0") || strings.Contains(v, "line 9") || !strings.Contains(v, "↓ more") || !strings.Contains(v, "y yes") {
+		t.Fatalf("view:\n%s", v)
+	}
+	d.Update(keyPress("j"))
+	d.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	d.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if v := d.View(); !strings.Contains(v, "line 9") || strings.Contains(v, "line 0") || !strings.Contains(v, "↑ more") {
+		t.Errorf("scrolled:\n%s", v)
+	}
+	// k is an answer here: it chooses, down scrolls
+	d.Choose("Long", strings.Join(lines, "\n"), "", Choice{Key: "k", Label: "keep", Cmd: func() tea.Msg { return keepMsg{} }})
+	if cmd := d.Update(tea.KeyMsg{Type: tea.KeyDown}); cmd != nil || !d.Active() || !strings.Contains(d.View(), "line 4") {
+		t.Errorf("down didn't scroll:\n%s", d.View())
+	}
+	if cmd := d.Update(keyPress("k")); cmd == nil || d.Active() {
+		t.Error("k scrolled instead of choosing")
+	}
+	// a short message doesn't scroll
+	d.Ask("Short", "sure?", "", nil)
+	if v := d.View(); strings.Contains(v, "more") || strings.Contains(v, "scroll") {
+		t.Errorf("short:\n%s", v)
+	}
+}
+
+func TestWrap(t *testing.T) {
+	got := wrap("  from mango-mangadex/Auto Hunting With My Clones (2022) [alid-155950]", 40)
+	want := []string{"  from mango-mangadex/Auto Hunting With", "    My Clones (2022) [alid-155950]"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q", got)
+	}
+	if got := wrap("  to   mango-mangasee/AutoHuntingWithMyClonesTheLongName", 30); got[0] != "  to   mango-mangasee/" {
+		t.Errorf("separator: %q", got)
 	}
 }

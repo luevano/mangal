@@ -51,6 +51,7 @@ func (d *Dialog) AskDelete(title, message, behind string, onYes tea.Cmd) {
 func (d *Dialog) AskWith(yes []string, title, message, behind string, onYes tea.Cmd) {
 	d.model.setChoices(nil)
 	d.model.SetYesKeys(yes...)
+	d.model.keyMap.scroll, _, _, _ = scrollKeys(d.answers())
 	d.model.SetData(title, message)
 	d.active, d.onYes, d.choices, d.behind = true, onYes, nil, behind
 }
@@ -69,6 +70,7 @@ func (d *Dialog) Choose(title, message, behind string, choices ...Choice) {
 		bindings[i] = util.Bind(c.Label, c.Key)
 	}
 	d.model.setChoices(bindings)
+	d.model.keyMap.scroll, _, _, _ = scrollKeys(d.answers())
 	d.model.SetData(title, message)
 	d.active, d.onYes, d.choices, d.behind = true, nil, choices, behind
 }
@@ -78,15 +80,47 @@ func (d *Dialog) Active() bool {
 	return d.active
 }
 
-// Resize sets the size of the State's view, the dialog is centered in it.
+// Resize sets the size of the State's view, the dialog is centered in it; a message
+// taller than what fits scrolls.
 func (d *Dialog) Resize(size base.Size) tea.Cmd {
 	d.size = size
+	// the border, title, blank lines, scroll line and help, and a line of margin each side
+	d.model.setHeight(max(3, size.Height-10))
 	return nil
+}
+
+// answers are the keys that answer the dialog.
+func (d *Dialog) answers() []key.Binding {
+	k := d.model.keyMap
+	return append([]key.Binding{k.yes, k.no}, k.choices...)
+}
+
+// scrolled handles the scroll keys of an overflowing message.
+func (d *Dialog) scrolled(msg tea.Msg) bool {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok || !d.model.overflows() {
+		return false
+	}
+	up, down, pageUp, pageDown := scrollKeys(d.answers())
+	page := max(1, d.model.height-1)
+	switch {
+	case key.Matches(keyMsg, up):
+		d.model.scroll(-1)
+	case key.Matches(keyMsg, down):
+		d.model.scroll(1)
+	case key.Matches(keyMsg, pageUp):
+		d.model.scroll(-page)
+	case key.Matches(keyMsg, pageDown):
+		d.model.scroll(page)
+	default:
+		return false
+	}
+	return true
 }
 
 // Update handles the keys while active: yes closes it and runs onYes, no closes it.
 func (d *Dialog) Update(msg tea.Msg) tea.Cmd {
-	if !d.active {
+	if !d.active || d.scrolled(msg) {
 		return nil
 	}
 	if len(d.choices) != 0 {

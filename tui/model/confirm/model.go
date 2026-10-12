@@ -1,6 +1,7 @@
 package confirm
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -16,6 +17,10 @@ type Model struct {
 	message string
 
 	width int
+	// lines are the message wrapped to width, offset the first one shown and height how
+	// many fit (0 for all)
+	lines          []string
+	offset, height int
 
 	// pre-rendered as the content is static
 	view string
@@ -28,6 +33,30 @@ type Model struct {
 func (m *Model) SetData(title, message string) {
 	m.title = title
 	m.message = message
+	m.lines = wrap(message, m.width)
+	m.offset = 0
+	m.preRender()
+}
+
+// setHeight sets how many lines of the message fit, the rest scrolls (0 for all).
+func (m *Model) setHeight(height int) {
+	m.height = height
+	m.scroll(0)
+}
+
+// overflows is a message taller than the dialog.
+func (m *Model) overflows() bool {
+	return m.height > 0 && len(m.lines) > m.height
+}
+
+// scroll moves the message by n lines.
+func (m *Model) scroll(n int) {
+	m.offset += n
+	if m.overflows() {
+		m.offset = max(0, min(m.offset, len(m.lines)-m.height))
+	} else {
+		m.offset = 0
+	}
 	m.preRender()
 }
 
@@ -52,9 +81,24 @@ func (m *Model) setChoices(choices []key.Binding) {
 
 func (m *Model) preRender() {
 	title := m.styles.title.Render(m.title)
-	message := m.styles.message.Render(m.message)
+	shown := m.lines
+	m.keyMap.scrolling = m.overflows()
+	if m.overflows() {
+		shown = m.lines[m.offset : m.offset+m.height]
+	}
+	parts := []string{title, " ", m.styles.message.Render(strings.Join(shown, "\n"))}
+	if m.overflows() {
+		var more []string
+		if m.offset > 0 {
+			more = append(more, "↑ more")
+		}
+		if m.offset+m.height < len(m.lines) {
+			more = append(more, "↓ more")
+		}
+		parts = append(parts, m.styles.more.Render(fmt.Sprintf("%s (%d-%d of %d lines)", strings.Join(more, ", "), m.offset+1, m.offset+m.height, len(m.lines))))
+	}
 	helpStr := lipgloss.PlaceHorizontal(m.width, lipgloss.Center, m.help.View(m.keyMap))
-	m.view = lipgloss.JoinVertical(lipgloss.Left, title, " ", message, " ", helpStr)
+	m.view = lipgloss.JoinVertical(lipgloss.Left, append(parts, " ", helpStr)...)
 }
 
 type answer int

@@ -23,17 +23,21 @@ type keyMap struct {
 	no key.Binding
 	// choices replace yes, see Dialog.Choose
 	choices []key.Binding
+	// scroll is shown while the message overflows
+	scroll    key.Binding
+	scrolling bool
 }
 
 // ShortHelp implements help.keyMap.
 func (k keyMap) ShortHelp() []key.Binding {
+	keys := []key.Binding{k.yes, k.no}
 	if len(k.choices) != 0 {
-		return append(slices.Clone(k.choices), k.no)
+		keys = append(slices.Clone(k.choices), k.no)
 	}
-	return []key.Binding{
-		k.yes,
-		k.no,
+	if k.scrolling {
+		keys = append(keys, k.scroll)
 	}
+	return keys
 }
 
 // FullHelp implements help.keyMap.
