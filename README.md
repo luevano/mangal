@@ -83,7 +83,7 @@ By default if just executing the `mangal` command, it will start the TUI. To lis
 mangal -h
 ```
 
-In the TUI `?` shows the keys of each screen and `,` opens the config window from any of them. On the home screen: `l` library, `w` watches, `a` accounts, `M` migrate; on a manga: `A` its metadata bindings, `w` watch it. In the watches: `c` check, `p` pause, `e` edit (`m` re-links the manga), `x` stop watching, `F` fill gaps, `t` live log, `V` every check; lists keep `g`/`G` (start/end), `h`/`l` (pages) and `/` (filter).
+In the TUI `?` shows the keys of each screen and `,` opens the config window from any of them. On the home screen: `L` library, `W` watches, `a` accounts, `M` migrate; on a manga: `A` its metadata bindings, `w` watch it. In the watches: `c` check, `p` pause, `e` edit (`m` re-links the manga), `x` stop watching, `F` fill gaps, `t` live log, `V` every check; lists keep `g`/`G` (start/end), `h`/`l` (pages) and `/` (filter).
 
 **Note:** A v4 config (usually `~/.config/mangal/mangal.toml`) doesn't work with v5: its keys are ignored with a warning, remove it.
 
@@ -164,7 +164,7 @@ mangal library move <id> <provider> --full --apply          # also adopt the new
 mangal library trash [empty]               # see or empty the trash
 ```
 
-The TUI has the same under `l` on the home screen (`s` scan, `S` scan and check ids, `m` merge, `M` move to another provider, `t` trash), where `d` deletes a manga or a chapter (to the trash).
+The TUI has the same under `L` on the home screen (`s` scan, `S` scan and check ids, `m` merge, `M` move to another provider, `t` trash), where `D` deletes a manga or a chapter (to the trash).
 
 ### Accounts
 
