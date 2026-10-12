@@ -55,7 +55,7 @@ func TestMove(t *testing.T) {
 		t.Fatalf("plan %+v", plan)
 	}
 	lines := strings.Join(plan.Lines(), "\n")
-	for _, want := range []string{"source: add pill 1/berserk (keeps asura berserk)", "-> " + newDir, ".libmangal.json: asura berserk -> pill 1/berserk", "(re-linked)", "copied: al 30002"} {
+	for _, want := range []string{"source: add pill 1/berserk (keeps asura berserk)", "Asura/Berserk -> Mangapill/Berserk (Pill)", ".libmangal.json: asura berserk -> pill 1/berserk", "(re-linked)", "copied: al 30002"} {
 		if !strings.Contains(lines, want) {
 			t.Errorf("lines miss %q:\n%s", want, lines)
 		}

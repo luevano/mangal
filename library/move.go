@@ -41,6 +41,8 @@ type MovePlan struct {
 	HasSource bool
 	// From and Dir are the folder before and after, the same when it stays.
 	From, Dir string
+	// Root is the download directory, Lines shows the folders relative to it.
+	Root string
 	// Marker is the folder's new .libmangal.json, Old the one it had (nil if none);
 	// nil for a manga without a folder of its own.
 	Marker, Old *libmangal.MangaDirInfo
@@ -54,7 +56,7 @@ type MovePlan struct {
 // PlanMove plans moving the library manga to the provider's manga. A manga of another
 // library manga is an error that says to merge them.
 func (m Mover) PlanMove(ctx context.Context, manga storage.Manga, provider libmangal.ProviderInfo, to mangadata.Manga) (MovePlan, error) {
-	plan := MovePlan{Manga: manga, Provider: provider, To: to.Info(), From: manga.Path(), Dir: manga.Path()}
+	plan := MovePlan{Manga: manga, Provider: provider, To: to.Info(), From: manga.Path(), Dir: manga.Path(), Root: m.Root}
 	fail := func(err error) (MovePlan, error) {
 		return plan, fmt.Errorf("move %q to %s: %w", manga.Title, provider.ID, err)
 	}
@@ -250,13 +252,19 @@ func (p MovePlan) Lines() []string {
 		source += " (keeps " + strings.Join(kept, ", ") + ")"
 	}
 	lines = append(lines, source)
+	rel := func(path string) string {
+		if r, err := filepath.Rel(p.Root, path); err == nil && p.Root != "" && isInside(p.Root, path) {
+			return r
+		}
+		return path
+	}
 	switch {
 	case p.Marker == nil:
-		lines = append(lines, "  folder: none of its own, the files stay in "+p.From)
+		lines = append(lines, "  folder: none of its own, the files stay in "+rel(p.From))
 	case p.Dir == p.From:
-		lines = append(lines, "  folder: stays "+p.From)
+		lines = append(lines, "  folder: stays "+rel(p.From))
 	default:
-		lines = append(lines, "  folder: "+p.From+" -> "+p.Dir)
+		lines = append(lines, "  folder: "+rel(p.From)+" -> "+rel(p.Dir))
 	}
 	if p.Marker != nil {
 		was := "none"
