@@ -3,9 +3,11 @@ package library
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -16,6 +18,8 @@ import (
 // Rename moves a directory to the name it would get now.
 type Rename struct {
 	From, To string
+	// Skip is why it can't be done (e.g. To exists), empty when it can.
+	Skip string
 }
 
 // Namer computes the names manga and provider directories would get now.
@@ -65,6 +69,41 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 			renames = append(renames, Rename{From: providerDir, To: filepath.Join(dir, name)})
 		}
 	}
+	if providerDirs {
+		// the directories of a provider's old names, also without marked mangas in them
+		// (downloaded before the markers), as libmangal's downloads reuse them
+		for _, loader := range n.Loaders {
+			info := loader.Info()
+			name := n.ProviderName(info)
+			for _, alias := range info.History {
+				old := info
+				old.ID, old.Name, old.Website, old.History = alias.ID, alias.Name, alias.Website, nil
+				if old.Name == "" {
+					old.Name = info.Name
+				}
+				from := filepath.Join(dir, n.ProviderName(old))
+				if filepath.Base(from) == name || slices.ContainsFunc(renames, func(r Rename) bool { return r.From == from }) {
+					continue
+				}
+				if exists, err := afero.DirExists(n.FS, from); err != nil {
+					return nil, err
+				} else if exists {
+					renames = append(renames, Rename{From: from, To: filepath.Join(dir, name)})
+				}
+			}
+		}
+	}
+	for i, r := range renames {
+		// a provider directory: moving onto an existing one would mean merging them
+		if !providerDirs || filepath.Dir(r.From) != dir {
+			continue
+		}
+		if exists, err := afero.Exists(n.FS, r.To); err != nil {
+			return nil, err
+		} else if exists && !sameFile(n.FS, r.From, r.To) {
+			renames[i].Skip = fmt.Sprintf("%s already exists: move its mangas there (mangal library move) or merge them, directories aren't merged", r.To)
+		}
+	}
 	return renames, nil
 }
 
@@ -75,6 +114,8 @@ func Apply(fsys afero.Fs, renames []Rename) []error {
 	for i, r := range renames {
 		exists, err := afero.Exists(fsys, r.To)
 		switch {
+		case r.Skip != "":
+			errs[i] = errors.New(r.Skip)
 		case err != nil:
 			errs[i] = err
 		case exists && sameFile(fsys, r.From, r.To):

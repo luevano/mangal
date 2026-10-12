@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/luevano/libmangal"
@@ -101,5 +102,44 @@ func TestOldMarkers(t *testing.T) {
 	}
 	if markers, _ := OldMarkers(fsys, "/lib", false, loaders); len(markers) != 0 {
 		t.Errorf("still old: %+v", markers)
+	}
+}
+
+// TestPlanOldProviderDirs: a provider directory with an old name is renamed without marked
+// mangas in it; onto an existing directory it's skipped.
+func TestPlanOldProviderDirs(t *testing.T) {
+	fsys := afero.NewMemMapFs()
+	weebCentral := libmangal.ProviderInfo{ID: "mango-weebcentral", Name: "Weeb Central", History: []libmangal.ProviderAlias{{ID: "mango-mangasee", Name: "MangaSee"}}}
+	n := Namer{
+		FS:           fsys,
+		Loaders:      []libmangal.ProviderLoader{loader{weebCentral}},
+		ProviderName: func(p libmangal.ProviderInfo) string { return p.ID },
+		MangaName:    func(_ libmangal.ProviderInfo, m mangadata.Manga) string { return m.Info().Title },
+		Metadata:     func(context.Context, []metadata.ID) (metadata.Metadata, error) { return nil, nil },
+	}
+	_ = fsys.MkdirAll("/lib/mango-mangasee/Berserk", 0o755)
+	_ = afero.WriteFile(fsys, "/lib/mango-mangasee/Berserk/1.cbz", []byte("x"), 0o644)
+
+	renames, err := n.Plan(context.Background(), "/lib", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(renames) != 1 || renames[0] != (Rename{From: "/lib/mango-mangasee", To: "/lib/mango-weebcentral"}) {
+		t.Fatalf("got %+v", renames)
+	}
+	if renames, _ := n.Plan(context.Background(), "/lib", false); len(renames) != 0 {
+		t.Errorf("without provider directories: %+v", renames)
+	}
+
+	_ = fsys.MkdirAll("/lib/mango-weebcentral", 0o755)
+	renames, _ = n.Plan(context.Background(), "/lib", true)
+	if len(renames) != 1 || !strings.Contains(renames[0].Skip, "/lib/mango-weebcentral already exists: move its mangas there") {
+		t.Fatalf("existing target: %+v", renames)
+	}
+	if errs := Apply(fsys, renames); errs[0] == nil {
+		t.Error("applied a skipped rename")
+	}
+	if ok, _ := afero.Exists(fsys, "/lib/mango-mangasee/Berserk/1.cbz"); !ok {
+		t.Error("moved anyway")
 	}
 }

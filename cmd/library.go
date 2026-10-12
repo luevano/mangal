@@ -84,6 +84,10 @@ templates give them. Only lists the renames unless --apply is set.`,
 		}
 		if !libraryRenameArgs.Apply {
 			for _, r := range renames {
+				if r.Skip != "" {
+					cmd.Printf("skip %s: %s\n", rel(r.From), r.Skip)
+					continue
+				}
 				cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To))
 			}
 			cmd.Println("run with --apply to rename")
