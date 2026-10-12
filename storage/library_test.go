@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -436,5 +437,30 @@ func TestSetLinks(t *testing.T) {
 	old := libmangal.MangaDirInfo{Provider: "q", Manga: mangadata.MangaInfo{ID: "x"}, MetadataIDs: []metadata.ID{al("1")}}
 	if _, found, _ := library.FindMangaDir("/lib", libmangal.ProviderInfo{ID: "q"}, old); found {
 		t.Error("the old AniList id still finds the folder")
+	}
+}
+
+func TestChapterNumbers(t *testing.T) {
+	library := Library{DB: openData(t)}
+	for _, dl := range []struct {
+		dir string
+		n   float32
+	}{{"Berserk", 3}, {"Berserk", 1}, {"Berserk", 2.5}, {"Vagabond", 10}} {
+		file := filepath.Join("/lib", dl.dir, fmt.Sprintf("%g.cbz", dl.n))
+		if err := library.RecordDownload("/lib", dl.dir, Download{Path: file, Provider: "p", MangaID: dl.dir, MangaTitle: dl.dir, Chapter: dl.n, Format: "CBZ"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// a chapter whose download is gone doesn't count
+	if err := library.RemoveDownload(filepath.Join("/lib", "Vagabond", "10.cbz")); err != nil {
+		t.Fatal(err)
+	}
+	numbers, err := library.ChapterNumbers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	berserk, _, _ := library.MangaByFolder("/lib", "Berserk")
+	if got := numbers[berserk.ID]; !slices.Equal(got, []float32{1, 2.5, 3}) || len(numbers) != 1 {
+		t.Errorf("got %v", numbers)
 	}
 }

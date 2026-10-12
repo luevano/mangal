@@ -465,6 +465,29 @@ func (l Library) Downloads(manga int64) ([]Download, error) {
 	return queryDownloads(l.DB, `WHERE c.manga = ? ORDER BY c.number, d.format, d.path`, manga)
 }
 
+// ChapterNumbers are the downloaded chapter numbers of every library manga, sorted, by
+// library manga.
+func (l Library) ChapterNumbers() (map[int64][]float32, error) {
+	type row struct {
+		manga  int64
+		number float32
+	}
+	rows, err := queryAll(l.DB, func(rows *sql.Rows) (row, error) {
+		var r row
+		err := rows.Scan(&r.manga, &r.number)
+		return r, err
+	}, `SELECT c.manga, c.number FROM library_chapters c
+WHERE EXISTS (SELECT 1 FROM downloads d WHERE d.chapter_id = c.id) ORDER BY c.manga, c.number`)
+	if err != nil {
+		return nil, fmt.Errorf("library chapter numbers: %w", err)
+	}
+	numbers := map[int64][]float32{}
+	for _, r := range rows {
+		numbers[r.manga] = append(numbers[r.manga], r.number)
+	}
+	return numbers, nil
+}
+
 // Moved updates the library after a directory was renamed from one path to another:
 // a manga folder, or a directory with manga folders (e.g. a provider's).
 func (l Library) Moved(from, to string) error {
