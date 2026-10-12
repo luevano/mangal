@@ -80,11 +80,10 @@ func newMangaState(files library.Files, manga storage.Manga) *mangaState {
 		confirm: newDialog(),
 		open:    util.Bind("open", "enter"),
 		scan:    base.KeyScan,
-		delete:  util.Bind("delete", "d"),
+		delete:  base.KeyDelete,
 		watch:   base.KeyItsWatch,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "chapter", "chapters", []*downloadItem{}, func(i *downloadItem) _list.DefaultItem { return i }), s.keyMap)
-	s.List.Reserve("d")
 	return s
 }
 

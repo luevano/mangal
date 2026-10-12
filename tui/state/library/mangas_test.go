@@ -51,7 +51,7 @@ func TestDeleteKeepsTheMergeMarkUntilDone(t *testing.T) {
 	if s.keep != 1 || !items[0].keep {
 		t.Fatalf("keep = %d, want 1", s.keep)
 	}
-	s.Update(ctx, press("d"))
+	s.Update(ctx, press("D"))
 	if !s.confirm.Active() {
 		t.Fatal("no delete dialog")
 	}

@@ -123,13 +123,11 @@ func newMangasState(files library.Files) *mangasState {
 			move:    util.Bind("move to a provider", "M"),
 			remove:  util.Bind("remove missing", "x"),
 			trash:   util.Bind("trash", "t"),
-			delete:  util.Bind("delete", "d"),
+			delete:  base.KeyDelete,
 			watch:   base.KeyItsWatch,
 		},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "manga", "mangas", []*mangaItem{}, func(i *mangaItem) _list.DefaultItem { return i }), s.keyMap)
-	// delete had it before the list's next page
-	s.List.Reserve("d")
 	return s
 }
 
