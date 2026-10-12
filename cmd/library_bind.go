@@ -20,6 +20,7 @@ var libraryBindArgs = struct {
 	Remove                      []string
 	Rename, Watches             bool
 	Backups, Yes, Apply         bool
+	Dismiss                     bool
 }{}
 
 func init() {
@@ -34,6 +35,7 @@ func init() {
 	f.BoolVar(&libraryBindArgs.Backups, "backups", false, "Fill the missing Kitsu and MyAnimeList links from AniList (all mangas without an id)")
 	f.BoolVarP(&libraryBindArgs.Yes, "yes", "y", false, "With --backups --apply, set them without asking (ids that differ are still only replaced when asked)")
 	f.BoolVar(&libraryBindArgs.Apply, "apply", false, "Link (rename, bind, fill), instead of only listing what would happen")
+	f.BoolVar(&libraryBindArgs.Dismiss, "dismiss", false, "Link neither of the Kitsu ids to pick from (not asked again until others are found)")
 }
 
 var libraryBindCmd = &cobra.Command{
@@ -55,7 +57,8 @@ Only lists what would happen (the ids are checked) unless --apply is set.
 --backups fills the Kitsu and MyAnimeList links of the mangas linked to AniList (the given
 one, else all): MyAnimeList from AniList (batched), Kitsu from the links of a MangaDex
 source, else from Kitsu's own AniList mappings (batched; when both exist and disagree,
-neither is set and it's listed to check). A link that
+neither is set and the two are saved: "mangal library bind <id>" lists them, linking any
+Kitsu id settles it, --dismiss keeps neither). A link that
 differs is only replaced when you say so (with --apply). Every change can be undone
 ("mangal library undo").`,
 	Example: `  mangal library bind 12
@@ -63,6 +66,7 @@ differs is only replaced when you say so (with --apply). Every change can be und
   mangal library bind 12 --anilist 74347 --apply
   mangal library bind 12 --anilist 74347 --rename --watches --apply
   mangal library bind 12 --remove kitsu --apply
+  mangal library bind 12 --dismiss
   mangal library bind --backups --apply`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -103,6 +107,20 @@ differs is only replaced when you say so (with --apply). Every change can be und
 			return fmt.Errorf("no manga %d in the library", id)
 		}
 
+		if libraryBindArgs.Dismiss {
+			if len(links) != 0 || libraryBindArgs.Rename || libraryBindArgs.Watches || libraryBindArgs.Backups {
+				return errors.New("--dismiss goes alone")
+			}
+			ok, err := linker.Library.DismissLinkPick(manga.ID, metadata.IDCodeKitsu)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("library manga %d has no Kitsu ids to pick from", manga.ID)
+			}
+			cmd.Println("dismissed, no Kitsu id linked")
+			return nil
+		}
 		if len(links) == 0 && !libraryBindArgs.Rename && !libraryBindArgs.Watches {
 			if !libraryBindArgs.Backups {
 				if libraryBindArgs.Apply {
@@ -254,11 +272,26 @@ func printLinks(cmd *cobra.Command, linker library.Linker, manga storage.Manga) 
 		default:
 			cmd.Printf("  %s: not linked\n", src.Name)
 		}
+		if pick, ok, err := linker.Library.LinkPick(manga.ID, s.Code); err != nil {
+			return err
+		} else if ok && !pick.Dismissed {
+			cmd.Printf("    %s\n", pickLine(pick, src.Key))
+		}
 	}
 	if info.Marker == nil && manga.Dir != "" {
 		cmd.Printf("  no %s (mangal library scan --mark writes one)\n", libmangal.FilenameMangaDirInfo)
 	}
 	return nil
+}
+
+// pickLine is "pick one (found 2026-10-12, AniList 3): 30 (mango-mangadex): --kitsu 30, 31
+// (Kitsu mapping): --kitsu 31; or --dismiss".
+func pickLine(pick storage.LinkPick, flag string) string {
+	parts := make([]string, len(pick.Candidates))
+	for i, c := range pick.Candidates {
+		parts[i] = fmt.Sprintf("%s (%s): --%s %s", c.ID, c.FromName(), flag, c.ID)
+	}
+	return fmt.Sprintf("pick one (found %s for AniList %s): %s; or --dismiss", pick.Found.Format("2006-01-02"), pick.AniList, strings.Join(parts, ", "))
 }
 
 // libraryBackups fills the Kitsu and MyAnimeList links of the mangas from AniList, asking
