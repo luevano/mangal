@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -210,5 +211,67 @@ func TestBackups(t *testing.T) {
 	}
 	if fill, conflicts, noKitsu, noMAL := BackupSummary(backups); fill != 1 || conflicts != 1 || noKitsu != 1 || noMAL != 0 {
 		t.Errorf("summary %d %d %d %d", fill, conflicts, noKitsu, noMAL)
+	}
+}
+
+func TestBackupsKitsu(t *testing.T) {
+	root := t.TempDir()
+	l := newLinker(t, root, nil)
+	lib := l.Library
+	bindings := storage.Bindings{DB: lib.DB}
+	for i, dir := range []string{"Agree", "Differs", "Disagree", "Unmapped"} {
+		if err := lib.RememberMangaDir(root, dir, libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: dir, Title: dir}}); err != nil {
+			t.Fatal(err)
+		}
+		_ = bindings.Set(storage.Binding{Provider: "mango-mangadex", MangaID: dir, Source: "al", ID: strconv.Itoa(i + 1)})
+	}
+	_ = bindings.Set(storage.Binding{Provider: "mango-mangadex", MangaID: "Differs", Source: "kt", ID: "21"})
+	mangas, _ := lib.Mangas()
+
+	var asked [][]int
+	finder := BackupFinder{
+		Files: l.Files,
+		AniList: func(_ context.Context, ids [][]metadata.ID) ([]metadata.Metadata, error) {
+			return make([]metadata.Metadata, len(ids)), nil
+		},
+		ProviderIDs: func(_ context.Context, src storage.Source) ([]metadata.ID, error) {
+			kt := map[string]string{"Agree": "10", "Disagree": "30"}[src.MangaID]
+			if kt == "" {
+				return nil, nil
+			}
+			return []metadata.ID{{Raw: kt, Source: metadata.IDSourceKitsu, Code: metadata.IDCodeKitsu}}, nil
+		},
+		KitsuIDs: func(_ context.Context, anilist []int) (map[int]int, error) {
+			asked = append(asked, anilist)
+			return map[int]int{1: 10, 2: 20, 3: 31}, nil
+		},
+	}
+	backups, err := finder.Find(context.Background(), mangas)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != 1 || len(asked[0]) != 4 {
+		t.Errorf("asked Kitsu %v, want the 4 AniList ids at once", asked)
+	}
+	byTitle := map[string]Backup{}
+	for _, b := range backups {
+		byTitle[b.Manga.Title] = b
+	}
+	if b := byTitle["Agree"]; b.Fill[metadata.IDCodeKitsu] != "10" || b.NoKitsu {
+		t.Errorf("Agree %+v", b)
+	}
+	if b := byTitle["Differs"]; len(b.Conflicts) != 1 || b.Conflicts[0].Old[0] != "21" || b.Conflicts[0].New != "20" {
+		t.Errorf("Differs %+v", b)
+	}
+	if b := byTitle["Disagree"]; b.Fill[metadata.IDCodeKitsu] != "" || b.NoKitsu || len(b.Disagree) != 1 {
+		t.Errorf("Disagree %+v", b)
+	} else if got := b.Lines()[len(b.Lines())-1]; !strings.Contains(got, "linked to AniList 3, but mango-mangadex links Kitsu 30 and Kitsu maps it to 31 (check it") {
+		t.Errorf("Disagree line %q", got)
+	}
+	if b := byTitle["Unmapped"]; !b.NoKitsu || b.Fill[metadata.IDCodeKitsu] != "" {
+		t.Errorf("Unmapped %+v", b)
+	}
+	if got := finder.Summary(backups); !strings.HasPrefix(got, "1 mangas to fill, 1 links differ; no Kitsu id for 1 (Kitsu maps none") {
+		t.Errorf("summary %q", got)
 	}
 }

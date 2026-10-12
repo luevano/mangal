@@ -3,13 +3,15 @@ package library
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/storage"
 )
 
 // Backup is the Kitsu and MyAnimeList links a library manga linked to AniList can get from
-// it: AniList's MyAnimeList id, the Kitsu id of its sources' links (MangaDex has them).
+// it: AniList's MyAnimeList id, the Kitsu id of its sources' links (MangaDex has them), else
+// the one Kitsu maps the AniList id to.
 type Backup struct {
 	Manga   storage.Manga
 	AniList string
@@ -33,7 +35,13 @@ type BackupFinder struct {
 	// ProviderIDs are the metadata ids a provider gives one of its mangas (MangaDex's
 	// links), nil when it gives none. Nil asks no provider.
 	ProviderIDs func(ctx context.Context, src storage.Source) ([]metadata.ID, error)
+	// KitsuIDs maps AniList ids to Kitsu ids (Kitsu's mappings), unknown ones left out.
+	// Nil looks nothing up on Kitsu.
+	KitsuIDs func(ctx context.Context, anilist []int) (map[int]int, error)
 }
+
+// kitsuBatch is how many AniList ids each KitsuIDs call gets, for the progress.
+const kitsuBatch = 20
 
 // Find works out the backups of the mangas linked to AniList, those with nothing to fill
 // or change left out unless they lack a source (NoKitsu, NoMAL).
@@ -71,10 +79,21 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 		return nil, fmt.Errorf("AniList metadata: %d results for %d mangas", len(metas), len(todos))
 	}
 
+	als := make([]string, len(todos))
+	for i, t := range todos {
+		als[i] = t.al
+	}
+	kitsuIDs, err := b.kitsuIDs(ctx, als)
+	if err != nil {
+		return nil, err
+	}
+
 	var backups []Backup
 	for i, t := range todos {
 		found := Links{}
 		var disagree []string
+		// the Kitsu id of a MangaDex source that agrees on the AniList id
+		var kitsuProvider, kitsuFrom string
 		if metas[i] != nil {
 			if mal := idOf(metas[i].ExtraIDs(), metadata.IDCodeMyAnimeList); mal != "" {
 				found[metadata.IDCodeMyAnimeList] = mal
@@ -92,13 +111,23 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 					disagree = append(disagree, fmt.Sprintf("%s links AniList %s", src.Provider, al))
 					continue
 				}
-				if kt := idOf(pids, metadata.IDCodeKitsu); kt != "" && found[metadata.IDCodeKitsu] == "" {
-					found[metadata.IDCodeKitsu] = kt
+				if kt := idOf(pids, metadata.IDCodeKitsu); kt != "" && kitsuProvider == "" {
+					kitsuProvider, kitsuFrom = kt, src.Provider
 				}
 				if mal := idOf(pids, metadata.IDCodeMyAnimeList); mal != "" && found[metadata.IDCodeMyAnimeList] == "" {
 					found[metadata.IDCodeMyAnimeList] = mal
 				}
 			}
+		}
+		mapped := kitsuIDs[t.al]
+		switch {
+		case kitsuProvider != "" && mapped != "" && kitsuProvider != mapped:
+			// neither is used, the user checks which is right
+			disagree = append(disagree, fmt.Sprintf("%s links Kitsu %s and Kitsu maps it to %s", kitsuFrom, kitsuProvider, mapped))
+		case kitsuProvider != "":
+			found[metadata.IDCodeKitsu] = kitsuProvider
+		case mapped != "":
+			found[metadata.IDCodeKitsu] = mapped
 		}
 		backup := Backup{Manga: t.info.Manga, AniList: t.al, Fill: Links{}, Disagree: disagree}
 		for _, code := range []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList} {
@@ -106,7 +135,7 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 			id := found[code]
 			switch {
 			case id == "":
-				if !s.Linked() {
+				if !s.Linked() && (code != metadata.IDCodeKitsu || kitsuProvider == "") {
 					if code == metadata.IDCodeKitsu {
 						backup.NoKitsu = true
 					} else {
@@ -124,6 +153,45 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 		}
 	}
 	return backups, nil
+}
+
+// kitsuIDs looks the AniList ids up on Kitsu (KitsuIDs), in batches for the progress.
+// The result maps an AniList id to its Kitsu id, as strings.
+func (b BackupFinder) kitsuIDs(ctx context.Context, anilist []string) (map[string]string, error) {
+	found := map[string]string{}
+	if b.KitsuIDs == nil {
+		return found, nil
+	}
+	var ids []int
+	for _, al := range anilist {
+		if n, err := strconv.Atoi(al); err == nil && n > 0 {
+			ids = append(ids, n)
+		}
+	}
+	for start := 0; start < len(ids); start += kitsuBatch {
+		chunk := ids[start:min(start+kitsuBatch, len(ids))]
+		report(b.OnProgress, Progress{Phase: "looking up Kitsu ids", Done: start, Total: len(ids)})
+		mapped, err := b.KitsuIDs(ctx, chunk)
+		if err != nil {
+			return nil, fmt.Errorf("Kitsu ids of AniList %v: %w", chunk, err)
+		}
+		for al, kt := range mapped {
+			found[strconv.Itoa(al)] = strconv.Itoa(kt)
+		}
+	}
+	return found, nil
+}
+
+// Summary sums the backups up: mangas to fill, links that differ, and those nothing gave
+// a Kitsu or MyAnimeList id.
+func (b BackupFinder) Summary(backups []Backup) string {
+	fill, conflicts, noKitsu, noMAL := BackupSummary(backups)
+	why := "Kitsu maps none of their AniList ids, no MangaDex source links one"
+	if b.KitsuIDs == nil {
+		why = "no MangaDex source with a Kitsu link, Kitsu isn't asked: metadata.kitsu.enabled is off"
+	}
+	return fmt.Sprintf("%d mangas to fill, %d links differ; no Kitsu id for %d (%s), no MyAnimeList id for %d",
+		fill, conflicts, noKitsu, why, noMAL)
 }
 
 // Links are the links to set: the fills, and the conflicts' new ids when replace.
