@@ -14,6 +14,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/provider/manager"
@@ -293,6 +294,10 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 		}
 		if w.LibraryProblem() != "" {
 			title += " (not in library)"
+		}
+		// ongoing is what's expected of a watch
+		if status := library.StatusLabel(w.Status); status != "" && status != "ongoing" {
+			title += " (" + status + ")"
 		}
 		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", w.ID, w.Provider, title, formatLast(w.LastDownloaded), formatTime(w.LastChecked), next, errs)
 	}

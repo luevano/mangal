@@ -1306,6 +1306,8 @@ func TestListLinksAdoptedFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	adopted, _, _ := e.svc.Library.MangaByFolder("/lib/mango-mangadex", "Teisou Gyakuten Sekai (2018) [alid-98522]")
+	_ = e.svc.Library.SetStatuses(map[int64]string{adopted.ID: string(metadata.StatusHiatus)}, e.now)
 	other, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangadex", MangaID: "x", Title: "Nope", Offline: true, AnilistID: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -1317,6 +1319,9 @@ func TestListLinksAdoptedFolder(t *testing.T) {
 	}
 	if all[0].LibraryManga == 0 || all[0].LibraryProblem() != "" {
 		t.Fatalf("not linked: %+v", all[0])
+	}
+	if all[0].Status != "HIATUS" || all[1].Status != "" {
+		t.Errorf("statuses %q %q, want the library manga's", all[0].Status, all[1].Status)
 	}
 	if stored, _ := e.svc.Watches.Get(w.ID); stored.LibraryManga != all[0].LibraryManga {
 		t.Errorf("link not saved: %d", stored.LibraryManga)

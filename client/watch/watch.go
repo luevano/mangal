@@ -97,6 +97,9 @@ type Watch struct {
 	// LibraryNote is why a watch without an issue has no library manga (nothing matches
 	// it yet), empty when it has one.
 	LibraryNote string `json:"library_note,omitempty"`
+	// Status is the publication status of its library manga (storage.Manga.Status), empty
+	// when unknown.
+	Status string `json:"status,omitempty"`
 }
 
 // Scheduled is true when the scheduler checks it: enabled, its provider installed, no
@@ -603,6 +606,11 @@ func (s *Service) completeWith(w storage.Watch, since time.Time, view libraryVie
 		}
 	}
 	full.fillBindings(bindings)
+	for _, m := range view.mangas {
+		if m.ID == libraryManga {
+			full.Status = m.Status
+		}
+	}
 	last, err := s.lastDownloaded(w, libraryManga)
 	if err != nil {
 		return Watch{}, err
