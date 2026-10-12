@@ -82,7 +82,7 @@ func DiscordAccount() AccountEntry {
 		entry.Status = "webhook set"
 		entry.Details = append(entry.Details, "from "+config.Notification.Discord.WebhookURL.Key)
 	default:
-		entry.Details = append(entry.Details, "l sets the webhook")
+		entry.Details = append(entry.Details, "i sets the webhook")
 	}
 	return entry
 }
@@ -222,7 +222,7 @@ func kitsuAccount(ctx context.Context, refresh bool) AccountEntry {
 func myAnimeListAccount(ctx context.Context, refresh bool) AccountEntry {
 	id, _, err := cache.MyAnimeListClient()
 	if err != nil || id == "" {
-		details := []string{"l sets the client id"}
+		details := []string{"i sets the client id"}
 		if err != nil {
 			details = []string{err.Error()}
 		}
