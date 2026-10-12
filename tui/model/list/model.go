@@ -83,6 +83,13 @@ func (m *Model) SetItems(items []list.Item) tea.Cmd {
 	return cmd
 }
 
+// Select selects the item at index of the shown ones, clamped to them: with a filter on,
+// an index of all the items can be past the shown ones (or they're still being filtered),
+// and a page past them panics on render.
+func (m *Model) Select(index int) {
+	m.Model.Select(min(max(index, 0), max(len(m.VisibleItems())-1, 0)))
+}
+
 // SetItemHeight sets the height of the delegate, which translates to the items' height.
 //
 // Clamps to a minimum of 1, in which case the description is hidden.
