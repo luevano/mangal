@@ -247,3 +247,29 @@ func TestPlanIntoExisting(t *testing.T) {
 		t.Error("the emptied old directory is still there")
 	}
 }
+
+// TestPlanMixedProviderDir: a provider directory with mangas of several providers isn't
+// taken for any of theirs.
+func TestPlanMixedProviderDir(t *testing.T) {
+	fsys := afero.NewMemMapFs()
+	weebCentral := libmangal.ProviderInfo{ID: "mango-weebcentral", Name: "Weeb Central"}
+	mangadex := libmangal.ProviderInfo{ID: "mango-mangadex", Name: "MangaDex"}
+	n := Namer{
+		FS:           fsys,
+		Loaders:      []libmangal.ProviderLoader{loader{weebCentral}, loader{mangadex}},
+		ProviderName: func(p libmangal.ProviderInfo) string { return p.ID },
+		MangaName:    func(_ libmangal.ProviderInfo, m mangadata.Manga) string { return m.Info().Title },
+		Metadata:     func(context.Context, []metadata.ID) (metadata.Metadata, error) { return nil, nil },
+	}
+	writeInfo(t, fsys, "/lib/MangaDex/A", libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "a", Title: "A"}})
+	writeInfo(t, fsys, "/lib/MangaDex/B", libmangal.MangaDirInfo{Provider: "mango-weebcentral", Manga: mangadata.MangaInfo{ID: "b", Title: "B"}})
+	if renames, err := n.Plan(context.Background(), "/lib", true); err != nil || len(renames) != 0 {
+		t.Errorf("mixed directory: %+v, %v", renames, err)
+	}
+	// only another provider's manga in it: still that provider's directory by its name
+	_ = fsys.RemoveAll("/lib/MangaDex/A")
+	writeInfo(t, fsys, "/lib/mango-mangadex/C", libmangal.MangaDirInfo{Provider: "mango-weebcentral", Manga: mangadata.MangaInfo{ID: "c", Title: "C"}})
+	if renames, err := n.Plan(context.Background(), "/lib", true); err != nil || len(renames) != 1 || renames[0].From != "/lib/MangaDex" {
+		t.Errorf("another provider's directory: %+v, %v", renames, err)
+	}
+}

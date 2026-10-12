@@ -57,16 +57,23 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 		return nil, err
 	}
 	var renames []Rename
-	// the provider of each provider directory: its first manga with a known provider
+	// the provider of each provider directory: the one of its mangas with a known
+	// provider, none when they're of several (e.g. a manga moved there by hand)
 	var providerDirsSeen []string
 	providers := map[string]libmangal.ProviderInfo{}
+	mixed := map[string]bool{}
 	for _, f := range folders {
 		provider := libmangal.ProviderInfo{ID: f.info.Provider, Name: f.info.Provider}
 		if loader, _, ok := libmangal.FindLoader(n.Loaders, f.info.Provider); ok {
 			provider = loader.Info()
-			if _, seen := providers[f.providerDir]; f.providerDir != "" && !seen {
+			seen, ok := providers[f.providerDir]
+			switch {
+			case f.providerDir == "":
+			case !ok:
 				providers[f.providerDir] = provider
 				providerDirsSeen = append(providerDirsSeen, f.providerDir)
+			case seen.ID != provider.ID:
+				mixed[f.providerDir] = true
 			}
 		}
 		meta, err := n.Metadata(ctx, f.info.MetadataIDs)
@@ -78,6 +85,9 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 		}
 	}
 	for _, providerDir := range providerDirsSeen {
+		if mixed[providerDir] || n.otherProviders(filepath.Base(providerDir), providers[providerDir].ID) {
+			continue
+		}
 		if name := n.ProviderName(providers[providerDir]); name != filepath.Base(providerDir) {
 			renames = append(renames, Rename{From: providerDir, To: filepath.Join(dir, name)})
 		}
@@ -127,6 +137,31 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 		planned = append(planned, into...)
 	}
 	return planned, nil
+}
+
+// otherProviders is a directory name of a loaded provider other than id (its current or an
+// old one): mangas of id in it don't make it id's directory.
+func (n Namer) otherProviders(name, id string) bool {
+	for _, loader := range n.Loaders {
+		info := loader.Info()
+		if info.ID == id {
+			continue
+		}
+		if n.ProviderName(info) == name {
+			return true
+		}
+		for _, alias := range info.History {
+			old := info
+			old.ID, old.Name, old.Website, old.History = alias.ID, alias.Name, alias.Website, nil
+			if old.Name == "" {
+				old.Name = info.Name
+			}
+			if n.ProviderName(old) == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // folderID is what tells a manga folder's manga: its library manga (0 if none), its
