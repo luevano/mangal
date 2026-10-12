@@ -24,7 +24,7 @@ func init() {
 	f.StringVarP(&scriptArgs.String, "string", "s", "", "Read script from the given string")
 	f.BoolVarP(&scriptArgs.Stdin, "stdin", "i", false, "Read script from stdin")
 	f.StringVarP(&scriptArgs.Provider, "provider", "p", "", "Load provider by tag")
-	f.StringToStringVarP(&scriptArgs.Variables, "vars", "v", nil, "Variables to set in the `Vars` table")
+	f.StringToStringVarP(&scriptArgs.Variables, "vars", "V", nil, "Variables to set in the `Vars` table")
 	addLoaderFlags(f)
 
 	scriptCmd.MarkFlagRequired("provider")

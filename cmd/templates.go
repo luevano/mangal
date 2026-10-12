@@ -46,7 +46,7 @@ func init() {
 	templatesCmd.AddCommand(templatesExecCmd)
 
 	f := templatesExecCmd.Flags()
-	f.StringVarP(&templatesExecArgs.Value, "value", "v", `{"Title":"Example Title","Number":32.5}`, "JSON object to use as value")
+	f.StringVarP(&templatesExecArgs.Value, "value", "V", `{"Title":"Example Title","Number":32.5}`, "JSON object to use as value")
 }
 
 var templatesExecCmd = &cobra.Command{

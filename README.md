@@ -241,13 +241,13 @@ mangal templates funcs
 Run a template with custom functions available:
 
 ```sh
-mangal templates exec <template> -v <values>
+mangal templates exec <template> -V <values>
 ```
 
 Where `<template>` is in the form of a go [text/template](https://pkg.go.dev/text/template) and `<values>` a JSON. For example:
 
 ```sh
-mangal templates exec "{{sanitizeWindows .Test}}" -v "{\"Test\":\"asdfg<>:?\"}"
+mangal templates exec "{{sanitizeWindows .Test}}" -V "{\"Test\":\"asdfg<>:?\"}"
 ```
 
 Which will output `asdfg`.
@@ -298,7 +298,7 @@ mangal web --open
 Similar to [mangalorg/mangalcli](https://github.com/mangalorg/mangalcli) where a `run.lua` and a provider are required:
 
 ```sh
-mangal script -f run.lua -p mango-mangapill -v "title=tengoku"
+mangal script -f run.lua -p mango-mangapill -V "title=tengoku"
 ```
 
 For example, with this `run.lua`:

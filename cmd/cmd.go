@@ -68,7 +68,7 @@ func init() {
 	f := rootCmd.PersistentFlags()
 	f.StringVar(&rootArgs.Config, "config", config.Path, "Config file path")
 	f.BoolVar(&rootArgs.Debug, "debug", false, "Log debug messages (e.g. every page downloaded)")
-	f.BoolVar(&rootArgs.Verbose, "verbose", false, "Print what long commands are doing as lines on stderr (a terminal shows one changing line without it)")
+	f.BoolVarP(&rootArgs.Verbose, "verbose", "v", false, "Print what long commands are doing as lines on stderr (a terminal shows one changing line without it)")
 
 	rootCmd.AddGroup(&cobra.Group{
 		ID:    groupMode,
