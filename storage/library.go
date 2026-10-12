@@ -36,6 +36,10 @@ type Manga struct {
 	MetadataIDs []metadata.ID
 	Sources     []Source
 	Chapters    int
+	// Status is the publication status of its AniList manga (metadata.Status), "" when
+	// unknown; StatusUpdated is when it was looked up.
+	Status        string
+	StatusUpdated time.Time
 }
 
 // Path is the manga's folder.
@@ -264,6 +268,10 @@ func (l Library) SetLinks(c LinkChange) error {
 		if err := json.Unmarshal([]byte(raw), &ids); err != nil {
 			return err
 		}
+		oldAnilist := ""
+		if i := slices.IndexFunc(ids, func(id metadata.ID) bool { return id.Code == metadata.IDCodeAnilist }); i >= 0 {
+			oldAnilist = ids[i].Raw
+		}
 		ids = ReplaceIDs(ids, c.Links)
 		data, err := json.Marshal(ids)
 		if err != nil {
@@ -274,6 +282,12 @@ func (l Library) SetLinks(c LinkChange) error {
 		}
 		if err := clearPicks(tx, c.Manga, c.Links); err != nil {
 			return err
+		}
+		if al, ok := c.Links[metadata.IDCodeAnilist]; ok && al != oldAnilist {
+			// the status was the old AniList manga's
+			if _, err := tx.Exec(`UPDATE library_mangas SET status = '', status_updated = 0 WHERE id = ?`, c.Manga); err != nil {
+				return err
+			}
 		}
 		for _, b := range c.Bindings {
 			for code, id := range c.Links {
@@ -405,11 +419,13 @@ func (l Library) mangas(where string, args ...any) ([]Manga, error) {
 	mangas, err := queryAll(l.DB, func(rows *sql.Rows) (Manga, error) {
 		var m Manga
 		var ids string
-		if err := rows.Scan(&m.ID, &m.Title, &m.Parent, &m.Dir, &ids, &m.Chapters); err != nil {
+		var updated int64
+		if err := rows.Scan(&m.ID, &m.Title, &m.Parent, &m.Dir, &ids, &m.Status, &updated, &m.Chapters); err != nil {
 			return m, err
 		}
+		m.StatusUpdated = fromUnix(updated)
 		return m, json.Unmarshal([]byte(ids), &m.MetadataIDs)
-	}, `SELECT m.id, m.title, m.parent, m.dir, m.metadata_ids,
+	}, `SELECT m.id, m.title, m.parent, m.dir, m.metadata_ids, m.status, m.status_updated,
 	(SELECT count(*) FROM library_chapters c WHERE c.manga = m.id AND EXISTS (SELECT 1 FROM downloads d WHERE d.chapter_id = c.id))
 FROM library_mangas m `+where, args...)
 	if err != nil || len(mangas) == 0 {
