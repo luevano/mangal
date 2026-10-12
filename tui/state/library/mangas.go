@@ -85,7 +85,9 @@ type mangasState struct {
 	items      []*mangaItem
 	dups       []library.Duplicate
 	duplicates bool
-	keys       mangasKeyMap
+	// pendingMerge is merged into keep once the mangas load (NewMerge), 0 if none
+	pendingMerge int64
+	keys         mangasKeyMap
 }
 
 type mangasKeyMap struct {
@@ -259,7 +261,18 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	}
 	switch msg := msg.(type) {
 	case mangasLoadedMsg:
-		return s.onLoaded(msg)
+		cmd := s.onLoaded(msg)
+		if other := s.pendingMerge; other != 0 {
+			s.pendingMerge = 0
+			for i, item := range s.List.Items() {
+				if item, ok := item.(*mangaItem); ok && item.manga.ID == other {
+					s.List.Select(i)
+					return tea.Batch(cmd, s.merge(ctx, item))
+				}
+			}
+			return tea.Batch(cmd, base.Notify("Nothing to merge any more"))
+		}
+		return cmd
 	case base.RestoredMsg:
 		return s.reload(ctx)
 	case scannedMsg:

@@ -4,7 +4,9 @@ import (
 	"context"
 
 	tea "github.com/charmbracelet/bubbletea"
+	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -58,11 +60,38 @@ func withNotify(cmd tea.Cmd, notify string) tea.Cmd {
 
 func init() {
 	// the watches' screens open a watch's library manga, that package can't import this one
-	watches.LibraryScreen = func(m storage.Manga) (base.State, error) {
-		files, err := client.LibraryFiles()
-		if err != nil {
-			return nil, err
-		}
-		return newMangaState(files, m), nil
+	watches.LibraryScreen = NewManga
+}
+
+// NewManga is the screen of a library manga: its chapters.
+func NewManga(m storage.Manga) (base.State, error) {
+	files, err := client.LibraryFiles()
+	if err != nil {
+		return nil, err
 	}
+	return newMangaState(files, m), nil
+}
+
+// NewLinks is the links screen of a library manga, planning the links right away (then
+// asking) when there are some.
+func NewLinks(m storage.Manga, links library.Links) base.State {
+	s := newLinksState(m)
+	s.autoLinks = links
+	return s
+}
+
+// NewLinksPick is the links screen of a library manga asking right away which id of its
+// link pick of the source to link.
+func NewLinksPick(m storage.Manga, source lmmeta.IDCode) base.State {
+	s := newLinksState(m)
+	s.autoPick = source
+	return s
+}
+
+// NewMerge is the library's duplicates with keep marked, planning the merge of other into
+// it right away (then asking).
+func NewMerge(keep, other int64) base.State {
+	s := New().(*mangasState)
+	s.keep, s.duplicates, s.pendingMerge = keep, true, other
+	return s
 }

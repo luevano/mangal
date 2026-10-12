@@ -78,6 +78,10 @@ type linksState struct {
 	list.Screen
 	manga   storage.Manga
 	confirm *confirm.Dialog
+	// autoLinks are planned, the pick of autoPick asked, once the links load (NewLinks,
+	// NewLinksPick)
+	autoLinks library.Links
+	autoPick  lmmeta.IDCode
 
 	search, remove, backups, metadata key.Binding
 }
@@ -209,6 +213,20 @@ func (s *linksState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		selected := s.List.Index()
 		cmd := s.List.SetItems(items)
 		s.List.Select(selected)
+		if links := s.autoLinks; len(links) != 0 {
+			s.autoLinks = nil
+			return tea.Batch(cmd, planLinks(ctx, s.manga, links))
+		}
+		if source := s.autoPick; source != "" {
+			s.autoPick = ""
+			for i, it := range msg.items {
+				if it.src.Code == source && it.pick != nil {
+					s.List.Select(i)
+					return tea.Batch(cmd, loadPick(ctx, *it.pick))
+				}
+			}
+			return tea.Batch(cmd, base.Notify("Nothing to pick any more"))
+		}
 		return cmd
 	case linkPickedMsg:
 		return planLinks(ctx, s.manga, library.Links{msg.code: msg.id})
