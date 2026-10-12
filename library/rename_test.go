@@ -13,6 +13,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/spf13/afero"
 )
 
@@ -314,5 +315,91 @@ func TestPlanMetadataBatched(t *testing.T) {
 	}
 	if len(progress) == 0 || progress[0] != "looking up metadata" {
 		t.Errorf("progress %q", progress)
+	}
+}
+
+// TestPlanUsesLinks: the library manga's links win over the .libmangal.json's ids, the
+// disagreement is told.
+func TestPlanUsesLinks(t *testing.T) {
+	root := t.TempDir()
+	lib := newLibrary(t)
+	dex := filepath.Join(root, "mango-mangadex")
+	folder := filepath.Join(dex, "OPM [alid-1]")
+	touch(t, filepath.Join(folder, "[0001.0] One.cbz"))
+	writeMarker(t, folder, libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "berserk", Title: "OPM"}, MetadataIDs: []metadata.ID{alID("1")}})
+	record(t, lib, dex, filepath.Base(folder), "[0001.0] One.cbz", 1, "mango-mangadex")
+	m, _, _ := lib.MangaByFolder(dex, filepath.Base(folder))
+	if err := lib.SetLinks(storage.LinkChange{Manga: m.ID, Links: map[metadata.IDCode]string{metadata.IDCodeAnilist: "74347"}, Bindings: [][2]string{{"mango-mangadex", "berserk"}}}); err != nil {
+		t.Fatal(err)
+	}
+	var asked [][]metadata.ID
+	var disagree []string
+	n := Namer{
+		FS: afero.NewOsFs(), Library: lib,
+		ProviderName: func(p libmangal.ProviderInfo) string { return p.ID },
+		MangaName: func(_ libmangal.ProviderInfo, m mangadata.Manga) string {
+			if m.Metadata() != nil {
+				return m.Metadata().String()
+			}
+			return m.Info().Title
+		},
+		Metadata: func(_ context.Context, ids [][]metadata.ID) ([]metadata.Metadata, error) {
+			asked = ids
+			metas := make([]metadata.Metadata, len(ids))
+			for i, mangaIDs := range ids {
+				if len(mangaIDs) != 0 && mangaIDs[0].Raw == "74347" {
+					metas[i] = testMeta("One-Punch Man", "74347", "")
+				}
+			}
+			return metas, nil
+		},
+		OnDisagree: func(folder string, d []string) { disagree = append(disagree, d...) },
+		ChapterName: func(_ libmangal.ProviderInfo, c mangadata.Chapter) string {
+			return fmt.Sprintf("[%06.1f] %s", c.Info().Number, c.Info().Title)
+		},
+	}
+	renames, err := n.Plan(context.Background(), root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != 1 || len(asked[0]) != 1 || asked[0][0].Raw != "74347" {
+		t.Errorf("asked %v, want the link 74347", asked)
+	}
+	if len(renames) != 1 || renames[0].To != filepath.Join(dex, "One-Punch Man (2012) [alid-74347]") {
+		t.Errorf("renames %+v", renames)
+	}
+	if want := "AniList 74347 used, disagree: .libmangal.json 1, folder tag 1"; len(disagree) != 1 || disagree[0] != want {
+		t.Errorf("disagree %q, want %q", disagree, want)
+	}
+
+	// chapter files: titled ones get the template's name, never over another file
+	if err := lib.RecordDownload(dex, filepath.Base(folder), storage.Download{Path: filepath.Join(folder, "2.cbz"), Provider: "mango-mangadex", MangaID: "berserk",
+		Chapter: 2, ChapterTitle: "Two", Format: libmangal.FormatCBZ.String()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.RecordDownload(dex, filepath.Base(folder), storage.Download{Path: filepath.Join(folder, "3.cbz"), Provider: "mango-mangadex", MangaID: "berserk",
+		Chapter: 3, ChapterTitle: "Three", Format: libmangal.FormatCBZ.String()}); err != nil {
+		t.Fatal(err)
+	}
+	touch(t, filepath.Join(folder, "2.cbz"))
+	touch(t, filepath.Join(folder, "3.cbz"))
+	touch(t, filepath.Join(folder, "[0003.0] Three.cbz"))
+	mangas, _ := lib.Mangas()
+	chapters, err := n.PlanChapters(mangas)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Rename{}
+	for _, r := range chapters {
+		got[filepath.Base(r.From)] = r
+	}
+	if r := got["2.cbz"]; r.To != filepath.Join(folder, "[0002.0] Two.cbz") || r.Skip != "" || !r.Chapter {
+		t.Errorf("2: %+v", r)
+	}
+	if r := got["3.cbz"]; r.Skip != "a file of that name exists" {
+		t.Errorf("3: %+v", r)
+	}
+	if r := got["[0001.0] One.cbz"]; r.Skip != "no chapter title recorded" {
+		t.Errorf("1: %+v", r)
 	}
 }

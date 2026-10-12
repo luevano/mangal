@@ -26,6 +26,8 @@ type Rename struct {
 	// RemoveEmpty removes From (To is empty) when it's empty by then: a provider directory
 	// whose mangas moved into the one of its current name.
 	RemoveEmpty bool
+	// Chapter is a chapter file's rename (PlanChapters): its download's path follows.
+	Chapter bool
 }
 
 // ErrNotEmpty is a directory Apply leaves as it isn't empty (Rename.RemoveEmpty).
@@ -48,8 +50,17 @@ type Namer struct {
 	OnProgress func(Progress)
 
 	// Library tells the mangas of the folders when a provider directory's mangas move into
-	// an existing one, may be zero (only the .libmangal.json files tell then).
+	// an existing one, and their links (bindings and own ids), which win over the
+	// .libmangal.json's ids; may be zero (only the .libmangal.json files tell then).
 	Library storage.Library
+
+	// OnDisagree, if set, is told of the folders whose .libmangal.json or name has other ids
+	// than their links (the links are used), e.g. "AniList 74347 (binding, library) used,
+	// disagree: folder tag 1".
+	OnDisagree func(folder string, disagreements []string)
+
+	// ChapterName is the chapter name template, for PlanChapters.
+	ChapterName func(libmangal.ProviderInfo, mangadata.Chapter) string
 }
 
 // Plan lists the renames of the manga directories under dir (found by their
@@ -64,7 +75,9 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 	if n.Metadata != nil && len(folders) != 0 {
 		ids := make([][]metadata.ID, len(folders))
 		for i, f := range folders {
-			ids[i] = f.info.MetadataIDs
+			if ids[i], err = n.linkedIDs(f); err != nil {
+				return nil, err
+			}
 		}
 		report(n.OnProgress, Progress{Phase: "looking up metadata"})
 		if metas, err = n.Metadata(ctx, ids); err != nil {
@@ -95,7 +108,11 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 			}
 		}
 		if name := n.MangaName(provider, &dirManga{info: f.info.Manga, meta: metas[i]}); name != filepath.Base(f.path) {
-			renames = append(renames, Rename{From: f.path, To: filepath.Join(filepath.Dir(f.path), name)})
+			r := Rename{From: f.path, To: filepath.Join(filepath.Dir(f.path), name)}
+			if r.Skip, err = n.taken(r); err != nil {
+				return nil, err
+			}
+			renames = append(renames, r)
 		}
 	}
 	for _, providerDir := range providerDirsSeen {
@@ -151,6 +168,61 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 		planned = append(planned, into...)
 	}
 	return planned, nil
+}
+
+// taken is why a manga folder can't get its name: another folder has it (another library
+// manga's: merge them), empty when it can.
+func (n Namer) taken(r Rename) (string, error) {
+	exists, err := afero.Exists(n.FS, r.To)
+	if err != nil || !exists || sameFile(n.FS, r.From, r.To) {
+		return "", err
+	}
+	if n.Library.DB != nil {
+		other, ok, err := n.Library.MangaByFolder(filepath.Dir(r.To), filepath.Base(r.To))
+		if err != nil {
+			return "", err
+		}
+		this, thisOK, err := n.Library.MangaByFolder(filepath.Dir(r.From), filepath.Base(r.From))
+		if err != nil {
+			return "", err
+		}
+		if ok && thisOK {
+			return fmt.Sprintf("%s is library manga %d %q's folder, the same manga? mangal library merge %d %d",
+				filepath.Base(r.To), other.ID, other.Title, other.ID, this.ID), nil
+		}
+	}
+	return filepath.Base(r.To) + " exists", nil
+}
+
+// linkedIDs are the folder's metadata ids with its library manga's links (its bindings, its
+// own ids) in place of the .libmangal.json's, telling OnDisagree what differs.
+func (n Namer) linkedIDs(f mangaFolder) ([]metadata.ID, error) {
+	if n.Library.DB == nil {
+		return f.info.MetadataIDs, nil
+	}
+	m, ok, err := n.Library.MangaByFolder(filepath.Dir(f.path), filepath.Base(f.path))
+	if err != nil || !ok {
+		return f.info.MetadataIDs, err
+	}
+	info, err := Files{FS: n.FS, Library: n.Library}.LinkInfo(m)
+	if err != nil {
+		return nil, err
+	}
+	links := map[metadata.IDCode]string{}
+	var disagree []string
+	for _, s := range info.Sources {
+		if !s.Linked() {
+			continue
+		}
+		links[s.Code] = s.Current()
+		if d := s.Disagreements(); len(d) != 0 {
+			disagree = append(disagree, fmt.Sprintf("%s %s used, disagree: %s", sourceName(s.Code), s.Current(), strings.Join(d, ", ")))
+		}
+	}
+	if len(disagree) != 0 && n.OnDisagree != nil {
+		n.OnDisagree(f.path, disagree)
+	}
+	return storage.ReplaceIDs(f.info.MetadataIDs, links), nil
 }
 
 // otherProviders is a directory name of a loaded provider other than id (its current or an
@@ -390,6 +462,83 @@ func sameFile(fsys afero.Fs, a, b string) bool {
 	infoB, err := fsys.Stat(b)
 	return err == nil && os.SameFile(infoA, infoB)
 }
+
+// PlanChapters lists the renames of the mangas' chapter files to the names the chapter
+// name template gives them (ChapterName), in the same folder. They go before the folders'
+// renames (Plan), whose paths they use. A name taken (by a file or another chapter) is
+// skipped, as a chapter without a recorded title: its name may say more than the
+// template would.
+func (n Namer) PlanChapters(mangas []storage.Manga) ([]Rename, error) {
+	if n.ChapterName == nil {
+		return nil, errors.New("no chapter name template")
+	}
+	var renames []Rename
+	taken := map[string]bool{}
+	for i, m := range mangas {
+		report(n.OnProgress, Progress{Phase: "planning chapter names", Done: i + 1, Total: len(mangas), Item: m.Title})
+		downloads, err := n.Library.Downloads(m.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, dl := range downloads {
+			r := Rename{From: dl.Path, Chapter: true}
+			if exists, err := afero.Exists(n.FS, dl.Path); err != nil {
+				return nil, err
+			} else if !exists {
+				continue
+			}
+			if dl.ChapterTitle == "" {
+				r.Skip = "no chapter title recorded"
+				renames = append(renames, r)
+				continue
+			}
+			provider := libmangal.ProviderInfo{ID: dl.Provider, Name: dl.Provider}
+			if loader, _, ok := libmangal.FindLoader(n.Loaders, dl.Provider); ok {
+				provider = loader.Info()
+			}
+			name := n.ChapterName(provider, &dirChapter{
+				info:   mangadata.ChapterInfo{Title: dl.ChapterTitle, URL: dl.ChapterURL, Number: dl.Chapter},
+				volume: &dirVolume{info: mangadata.VolumeInfo{Number: dl.Volume}, manga: &dirManga{info: mangadata.MangaInfo{ID: dl.MangaID, Title: dl.MangaTitle}}},
+			})
+			if format, err := libmangal.FormatString(dl.Format); err == nil {
+				name += format.Extension()
+			}
+			r.To = filepath.Join(filepath.Dir(dl.Path), name)
+			if name == "" || r.To == dl.Path {
+				continue
+			}
+			switch exists, err := afero.Exists(n.FS, r.To); {
+			case err != nil:
+				return nil, err
+			case exists && !sameFile(n.FS, r.From, r.To):
+				r.Skip = "a file of that name exists"
+			case taken[r.To]:
+				r.Skip = "another chapter gets that name"
+			}
+			taken[r.To] = true
+			renames = append(renames, r)
+		}
+	}
+	return renames, nil
+}
+
+type dirVolume struct {
+	info  mangadata.VolumeInfo
+	manga *dirManga
+}
+
+func (v *dirVolume) String() string             { return fmt.Sprintf("Vol. %g", v.info.Number) }
+func (v *dirVolume) Info() mangadata.VolumeInfo { return v.info }
+func (v *dirVolume) Manga() mangadata.Manga     { return v.manga }
+
+type dirChapter struct {
+	info   mangadata.ChapterInfo
+	volume *dirVolume
+}
+
+func (c *dirChapter) String() string              { return c.info.Title }
+func (c *dirChapter) Info() mangadata.ChapterInfo { return c.info }
+func (c *dirChapter) Volume() mangadata.Volume    { return c.volume }
 
 // dirManga is a manga rebuilt from its directory info, for the name templates.
 type dirManga struct {

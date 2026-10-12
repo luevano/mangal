@@ -75,3 +75,16 @@ func markedDirs(fsys afero.Fs, root string, providerDirs bool) ([]mangaFolder, e
 	}
 	return marked, err
 }
+
+// Unmarked are the folders of walkMangaDirs without a .libmangal.json: rename doesn't know
+// their manga.
+func Unmarked(fsys afero.Fs, root string, providerDirs bool) ([]string, error) {
+	folders, err := walkMangaDirs(fsys, root, providerDirs)
+	var unmarked []string
+	for _, f := range folders {
+		if !f.marked {
+			unmarked = append(unmarked, f.path)
+		}
+	}
+	return unmarked, err
+}
