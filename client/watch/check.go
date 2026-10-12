@@ -71,8 +71,12 @@ type Result struct {
 	Gaps bool `json:"gaps,omitempty"`
 	// Unavailable is how many chapters the provider can't download (skipped).
 	Unavailable int `json:"unavailable,omitempty"`
-	// Failed is how many chapters failed to download.
-	Failed int `json:"failed,omitempty"`
+	// Failed is how many chapters failed to download, Retry their numbers (the next check
+	// tries them again).
+	Failed int       `json:"failed,omitempty"`
+	Retry  []float32 `json:"retry,omitempty"`
+	// downloaded is true when the check got to download: the watch's Retry is replaced.
+	downloaded bool
 	// Relink is set when the provider doesn't have the manga (ErrMangaNotFound): the
 	// watch needs a re-link (not counted as a failure, not notified).
 	Relink string `json:"relink,omitempty"`
@@ -503,7 +507,11 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 	if last := highest(have); last != nil && (r.From == nil || *last > *r.From) {
 		r.From = last
 	}
-	picked, unavailable := Pick(chapters, have, highest(have), w.From, gaps)
+	retry := map[float32]bool{}
+	for _, n := range w.Retry {
+		retry[n] = true
+	}
+	picked, unavailable := Pick(chapters, have, highest(have), w.From, gaps, retry)
 	r.Unavailable = unavailable
 	if onFound != nil {
 		found := Found{Chapters: len(chapters), From: r.From, Unavailable: unavailable}
@@ -523,10 +531,12 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 
 	var errs []string
 	results := src.Download(ctx, picked, onChapter)
+	r.downloaded = true
 	for _, res := range results {
 		switch {
 		case res.Err != nil:
 			r.Failed++
+			r.Retry = append(r.Retry, res.Chapter.Info().Number)
 			errs = append(errs, fmt.Sprintf("chapter %s: %s", stringutil.FormatFloa32(res.Chapter.Info().Number), res.Err))
 		case res.Unavailable != "":
 			r.Unavailable++
@@ -586,10 +596,10 @@ func (s *Service) manga(ctx context.Context, src Source, w storage.Watch) (manga
 
 // Pick are the chapters to download given the chapter numbers the library has: the ones
 // from the last downloaded number up (a .5 published after it too) the library doesn't
-// have, with gaps also the missing ones below it. Chapters up to from (if not nil) count
-// as done. Without a last and from, every chapter. One chapter per number, the first;
+// have, with gaps also the missing ones below it, and the ones in retry (a check failed to
+// download them) wherever they are. Chapters up to from (if not nil) count as done. Without a last and from, every chapter. One chapter per number, the first;
 // unavailable ones aren't picked, only counted.
-func Pick(chapters []mangadata.Chapter, have map[float32]bool, last, from *float32, gaps bool) (picked []mangadata.Chapter, unavailable int) {
+func Pick(chapters []mangadata.Chapter, have map[float32]bool, last, from *float32, gaps bool, retry map[float32]bool) (picked []mangadata.Chapter, unavailable int) {
 	seen := map[float32]bool{}
 	for _, ch := range chapters {
 		info := ch.Info()
@@ -601,7 +611,7 @@ func Pick(chapters []mangadata.Chapter, have map[float32]bool, last, from *float
 		if from != nil && n <= *from {
 			continue
 		}
-		if last != nil && n < *last && !gaps {
+		if last != nil && n < *last && !gaps && !retry[n] {
 			continue
 		}
 		if info.Unavailable != "" {
@@ -640,6 +650,9 @@ func (s *Service) finish(ctx context.Context, w storage.Watch, r *Result) {
 		w.NeedsRelink, w.RelinkReason = false, ""
 	}
 	w.LastError = r.Error
+	if r.downloaded {
+		w.Retry = r.Retry
+	}
 	if w.LibraryManga == 0 {
 		if m, found, err := s.Library.MangaBySource(w.Provider, w.MangaID); err != nil {
 			s.warn(err)

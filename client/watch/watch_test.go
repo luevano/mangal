@@ -282,7 +282,7 @@ func TestPick(t *testing.T) {
 	all := []mangadata.Chapter{m.chapter(1), m.chapter(2), m.chapter(3), m.chapter(4), m.chapter(4.5), m.chapter(5), m.chapter(5), m.unavailable(6), m.chapter(7)}
 	have := map[float32]bool{1: true, 3: true, 4: true}
 	pick := func(have map[float32]bool, last, from *float32, gaps bool) ([]float32, int) {
-		picked, unavailable := Pick(all, have, last, from, gaps)
+		picked, unavailable := Pick(all, have, last, from, gaps, nil)
 		var ns []float32
 		for _, c := range picked {
 			ns = append(ns, c.Info().Number)
@@ -1043,5 +1043,43 @@ func TestNextScheduled(t *testing.T) {
 	}
 	if st, err := e.svc.Status(ctx); err != nil || !st.NextCheck.Equal(e.svc.Options.Schedule.Next(lock.Acquired)) {
 		t.Errorf("status next check %s (%v)", st.NextCheck, err)
+	}
+}
+
+func TestCheckRetriesFailed(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.svc.Options.Notify = NotifyNone
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "do", Title: "Dungeon Odyssey"}}
+	src := e.source("mango-asurascans", m)
+	src.chs["do"] = m.chapters(1, 2, 3, 4, 5)
+	src.fail = map[float32]bool{2: true, 3: true}
+	w, err := e.svc.Add(ctx, AddOptions{Provider: "mango-asurascans", MangaID: "do"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := e.svc.Check(ctx, []int64{w.ID}, CheckOptions{})
+	if err != nil || report.Results[0].Failed != 2 {
+		t.Fatalf("first check: %+v, %v", report.Results, err)
+	}
+	if w, _ = e.svc.Get(ctx, w.ID); !slices.Equal(w.Retry, []float32{2, 3}) {
+		t.Fatalf("retry %v", w.Retry)
+	}
+
+	// below the last downloaded (5), without gaps: tried again, 3 still fails
+	src.fail = map[float32]bool{3: true}
+	report, _ = e.svc.Check(ctx, []int64{w.ID}, CheckOptions{})
+	if got := numbers(report.Results[0].Chapters); !slices.Equal(got, []float32{2}) {
+		t.Errorf("second check got %v", got)
+	}
+	if w, _ = e.svc.Get(ctx, w.ID); !slices.Equal(w.Retry, []float32{3}) {
+		t.Errorf("retry %v", w.Retry)
+	}
+
+	src.fail = nil
+	e.svc.Check(ctx, []int64{w.ID}, CheckOptions{})
+	if w, _ = e.svc.Get(ctx, w.ID); len(w.Retry) != 0 {
+		t.Errorf("retry %v after all downloaded", w.Retry)
 	}
 }

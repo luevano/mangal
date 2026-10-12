@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/luevano/mangal/v5/util/cron"
@@ -63,6 +65,9 @@ type Watch struct {
 	// or a check finds the manga. RelinkReason says why.
 	NeedsRelink  bool   `json:"needs_relink,omitempty"`
 	RelinkReason string `json:"relink_reason,omitempty"`
+	// Retry are the chapters the last check failed to download: the next one tries them
+	// again, also when they're below the last downloaded one.
+	Retry []float32 `json:"retry,omitempty"`
 }
 
 // PlaceholderPrefix starts the manga id of a watch added without one (e.g. "title:Berserk"
@@ -275,14 +280,16 @@ func fromUnix(s int64) time.Time {
 }
 
 const watchColumns = `id, provider, manga_id, title, coalesce(library_manga, 0), enabled, schedule, gaps,
-	from_number, added, last_checked, last_gap_check, last_new, last_new_at, last_error, failures, relink`
+	from_number, added, last_checked, last_gap_check, last_new, last_new_at, last_error, failures, relink, retry`
 
 func scanWatch(rows *sql.Rows) (Watch, error) {
 	var w Watch
 	var added, checked, gapChecked, newAt int64
 	var from, lastNew sql.NullFloat64
+	var retry string
 	err := rows.Scan(&w.ID, &w.Provider, &w.MangaID, &w.Title, &w.LibraryManga, &w.Enabled, &w.Schedule, &w.Gaps,
-		&from, &added, &checked, &gapChecked, &lastNew, &newAt, &w.LastError, &w.Failures, &w.RelinkReason)
+		&from, &added, &checked, &gapChecked, &lastNew, &newAt, &w.LastError, &w.Failures, &w.RelinkReason, &retry)
+	w.Retry = parseNumbers(retry)
 	w.NeedsRelink = w.RelinkReason != ""
 	w.From, w.LastNew = floatPtr(from), floatPtr(lastNew)
 	w.Added, w.LastChecked, w.LastGapCheck, w.LastNewAt = fromUnix(added), fromUnix(checked), fromUnix(gapChecked), fromUnix(newAt)
@@ -356,10 +363,10 @@ func (s Watches) Remove(id int64) error {
 // Save writes every field of the watch but its provider, manga id and added time.
 func (s Watches) Save(w Watch) error {
 	res, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = ?, enabled = ?, schedule = ?, gaps = ?,
-	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?
+	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?, retry = ?
 WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, w.Schedule, w.Gaps,
 		nullFloat(w.From), unix(w.LastChecked), unix(w.LastGapCheck), nullFloat(w.LastNew), unix(w.LastNewAt), w.LastError, w.Failures,
-		w.relinkColumn(), w.ID)
+		w.relinkColumn(), formatNumbers(w.Retry), w.ID)
 	if err != nil {
 		return fmt.Errorf("save watch %d: %w", w.ID, err)
 	}
@@ -725,6 +732,28 @@ WHERE watch IN (SELECT o.id FROM watches o JOIN watches n ON n.manga_id = o.mang
 	}
 	_, err := tx.Exec(`UPDATE watch_runs SET provider = ? WHERE provider = ?`, newID, oldID)
 	return err
+}
+
+// watchRetry: the chapters a watch's last check failed to download.
+const watchRetry = `ALTER TABLE watches ADD COLUMN retry TEXT NOT NULL DEFAULT ''`
+
+// formatNumbers stores chapter numbers as "1,2.5,3", parseNumbers reads them back.
+func formatNumbers(ns []float32) string {
+	parts := make([]string, len(ns))
+	for i, n := range ns {
+		parts[i] = strconv.FormatFloat(float64(n), 'f', -1, 32)
+	}
+	return strings.Join(parts, ",")
+}
+
+func parseNumbers(s string) []float32 {
+	var ns []float32
+	for part := range strings.SplitSeq(s, ",") {
+		if n, err := strconv.ParseFloat(part, 32); err == nil {
+			ns = append(ns, float32(n))
+		}
+	}
+	return ns
 }
 
 // runNewChapters gives every watch run its count of new chapters (the existing ones: the
