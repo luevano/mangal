@@ -138,3 +138,38 @@ func TestSourcesShown(t *testing.T) {
 		t.Errorf("header %q", h)
 	}
 }
+
+func TestDuplicatesFilter(t *testing.T) {
+	ctx := context.Background()
+	s := newMangasState(library.Files{})
+	keep := storage.Manga{ID: 2, Title: "One-Punch Man", Dir: "OPM2", Chapters: 40}
+	other := storage.Manga{ID: 1, Title: "OPM", Dir: "OPM1", Chapters: 3}
+	dups := []library.Duplicate{{ID: "al", Raw: "74347", Mangas: []library.DuplicateManga{{Manga: keep}, {Manga: other}}}}
+	items := []*mangaItem{
+		{manga: storage.Manga{ID: 3, Title: "Berserk"}},
+		{manga: other, duplicate: true, dupKeep: 2},
+		{manga: keep, duplicate: true},
+	}
+	s.onLoaded(mangasLoadedMsg{items: items, dups: dups})
+	if got := s.Subtitle(); !strings.Contains(got, "2 duplicates (2)") {
+		t.Errorf("subtitle %q", got)
+	}
+	if !strings.Contains(items[1].Title(), "(duplicate)") {
+		t.Errorf("title %q", items[1].Title())
+	}
+	s.Update(ctx, press("2"))
+	shown := s.List.Items()
+	if len(shown) != 2 || shown[0].(*mangaItem).manga.ID != 2 || shown[1].(*mangaItem).manga.ID != 1 {
+		t.Fatalf("duplicates only: %v", shown)
+	}
+	// m on the other one merges it into its keep
+	s.List.Select(1)
+	s.Update(ctx, press("m"))
+	if s.keep != 2 || !items[2].keep {
+		t.Errorf("keep = %d, want the suggested 2", s.keep)
+	}
+	s.Update(ctx, press("2"))
+	if len(s.List.Items()) != 3 {
+		t.Errorf("all again: %d", len(s.List.Items()))
+	}
+}

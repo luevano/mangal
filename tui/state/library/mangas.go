@@ -17,6 +17,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -35,6 +36,10 @@ type mangaItem struct {
 	missing bool
 	keep    bool
 	watches []watch.Watch
+	// duplicate shares a metadata id with another manga, dupKeep is the suggested keep
+	// (0 when it's the keep)
+	duplicate bool
+	dupKeep   int64
 }
 
 func (i *mangaItem) FilterValue() string { return i.manga.Title }
@@ -46,6 +51,9 @@ func (i *mangaItem) Title() string {
 	}
 	if i.missing {
 		title += " (missing)"
+	}
+	if i.duplicate {
+		title += " (duplicate)"
 	}
 	if len(i.watches) != 0 {
 		title += " " + watches.Mark()
@@ -70,15 +78,20 @@ type mangasState struct {
 	// keep is the manga a merge keeps, 0 if none
 	keep  int64
 	trash string
-	keys  mangasKeyMap
+	// items are all the mangas, the list shows them or only the duplicates
+	items      []*mangaItem
+	dups       []library.Duplicate
+	duplicates bool
+	keys       mangasKeyMap
 }
 
 type mangasKeyMap struct {
-	confirm, scan, check, merge, move, remove, trash, delete, watch, undo key.Binding
+	confirm, scan, check, merge, move, remove, trash, delete, watch, undo, duplicates key.Binding
 }
 
 type mangasLoadedMsg struct {
 	items []*mangaItem
+	dups  []library.Duplicate
 	trash string
 }
 
@@ -90,6 +103,7 @@ type scannedMsg struct {
 	checked   bool
 	checks    []library.IDCheck
 	checkErr  error
+	dups      []library.Duplicate
 }
 
 type mergePlannedMsg struct {
@@ -126,6 +140,8 @@ func newMangasState(files library.Files) *mangasState {
 			delete:  base.KeyDelete,
 			undo:    base.KeyUndo,
 			watch:   base.KeyItsWatch,
+			// screen-wide filter like the watches' "n", "i"
+			duplicates: util.Bind("duplicates only", "2"),
 		},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "manga", "mangas", []*mangaItem{}, func(i *mangaItem) _list.DefaultItem { return i }), s.keyMap)
@@ -135,7 +151,7 @@ func newMangasState(files library.Files) *mangasState {
 func (s *mangasState) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.remove, k.watch, k.undo)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.remove, k.watch, k.undo, k.duplicates)}}
 }
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
@@ -146,13 +162,27 @@ func (s *mangasState) reload(ctx context.Context) tea.Cmd {
 			return mangasLoadedMsg{}, err
 		}
 		watched, _ := watches.Watched(ctx)
+		dups := duplicates(files.Library, mangas, watched)
+		ids := library.DuplicateIDs(dups)
 		items := make([]*mangaItem, len(mangas))
 		for i, m := range mangas {
 			exists, _ := afero.DirExists(files.FS, m.Path())
-			items[i] = &mangaItem{manga: m, missing: !exists, watches: watched.ForLibrary(m)}
+			keep, dup := ids[m.ID]
+			items[i] = &mangaItem{manga: m, missing: !exists, watches: watched.ForLibrary(m), duplicate: dup, dupKeep: keep}
 		}
-		return mangasLoadedMsg{items: items, trash: trashSummary(files)}, nil
+		return mangasLoadedMsg{items: items, dups: dups, trash: trashSummary(files)}, nil
 	}, func(msg mangasLoadedMsg) tea.Msg { return msg })
+}
+
+// duplicates are the library mangas sharing a metadata id, the error is logged (a mark
+// isn't worth an error screen).
+func duplicates(lib storage.Library, mangas []storage.Manga, watched watches.Set) []library.Duplicate {
+	bindings, err := storage.Bindings{DB: lib.DB}.List("", "")
+	if err != nil {
+		log.Warn("duplicates: %s", err)
+		return nil
+	}
+	return library.Duplicates(mangas, bindings, func(m storage.Manga) bool { return len(watched.ForLibrary(m)) != 0 })
 }
 
 // trashSummary is the size of the trash, empty if it's empty.
@@ -172,6 +202,23 @@ func (s *mangasState) Backable() bool  { return s.Screen.Backable() && !s.confir
 func (s *mangasState) Inputting() bool { return s.Screen.Inputting() || s.confirm.Active() }
 func (s *mangasState) Title() base.Title {
 	return base.Title{Text: "Library"}
+}
+
+func (s *mangasState) Subtitle() string {
+	parts := []string{s.List.Subtitle()}
+	n := 0
+	for _, i := range s.items {
+		if i.duplicate {
+			n++
+		}
+	}
+	switch {
+	case s.duplicates:
+		parts = append(parts, "duplicates")
+	case n > 0:
+		parts = append(parts, fmt.Sprintf("%d duplicates (%s)", n, s.keys.duplicates.Help().Key))
+	}
+	return strings.Join(parts, " · ")
 }
 
 func (s *mangasState) Status() string {
@@ -251,6 +298,13 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 		return func() tea.Msg { return newTrashState(files) }, true
 	case key.Matches(msg, s.keys.undo):
 		return s.undo(ctx), true
+	case key.Matches(msg, s.keys.duplicates):
+		s.duplicates = !s.duplicates
+		cmd := s.setItems()
+		if s.duplicates && len(s.List.Items()) == 0 {
+			cmd = tea.Batch(cmd, base.Notify("No two mangas share a metadata id"))
+		}
+		return cmd, true
 	}
 	item, ok := s.List.SelectedItem().(*mangaItem)
 	if !ok {
@@ -294,19 +348,57 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 
 func (s *mangasState) onLoaded(msg mangasLoadedMsg) tea.Cmd {
 	s.trash = msg.trash
+	s.items, s.dups = msg.items, msg.dups
 	kept := false
-	items := make([]_list.Item, len(msg.items))
-	for i, item := range msg.items {
+	for _, item := range msg.items {
 		if s.keep != 0 && item.manga.ID == s.keep {
 			item.keep, kept = true, true
 		}
-		items[i] = item
 	}
 	// e.g. it was deleted
 	if !kept {
 		s.keep = 0
 	}
-	return s.List.SetItems(items)
+	return s.setItems()
+}
+
+// setItems shows the mangas, or only the duplicates grouped (the suggested keep first),
+// the selected one stays selected.
+func (s *mangasState) setItems() tea.Cmd {
+	var selected int64
+	if i, ok := s.List.SelectedItem().(*mangaItem); ok {
+		selected = i.manga.ID
+	}
+	shown := s.items
+	if s.duplicates {
+		byID := map[int64]*mangaItem{}
+		for _, i := range s.items {
+			byID[i.manga.ID] = i
+		}
+		shown = nil
+		seen := map[int64]bool{}
+		for _, d := range s.dups {
+			for _, m := range d.Mangas {
+				if i, ok := byID[m.Manga.ID]; ok && !seen[m.Manga.ID] {
+					seen[m.Manga.ID] = true
+					shown = append(shown, i)
+				}
+			}
+		}
+	}
+	items := make([]_list.Item, len(shown))
+	index := -1
+	for n, i := range shown {
+		items[n] = i
+		if i.manga.ID == selected {
+			index = n
+		}
+	}
+	cmd := s.List.SetItems(items)
+	if index >= 0 {
+		s.List.Select(index)
+	}
+	return cmd
 }
 
 func (s *mangasState) scanCmd(ctx context.Context, check bool) tea.Cmd {
@@ -324,6 +416,10 @@ func (s *mangasState) scanCmd(ctx context.Context, check bool) tea.Cmd {
 			return scannedMsg{}, err
 		}
 		msg := scannedMsg{result: res, otherRoot: library.OtherRoot(files.FS, res.Missing, root, providerDirs), checked: check}
+		if mangas, err := files.Library.Mangas(); err == nil {
+			watched, _ := watches.Watched(ctx)
+			msg.dups = duplicates(files.Library, mangas, watched)
+		}
 		if check && msg.otherRoot == "" {
 			msg.checks, msg.checkErr = checkIDs(ctx, files, onProgress)
 		}
@@ -362,6 +458,9 @@ func (s *mangasState) onScanned(msg scannedMsg) tea.Cmd {
 		return nil
 	}
 	report := scanReport(msg.result)
+	if lines := library.DuplicateLines(msg.dups, s.files.Root); len(lines) != 0 {
+		report += "\n\n" + strings.Join(lines, "\n") + "\n(" + s.keys.duplicates.Help().Key + " shows them, m on one merges it into its keep)"
+	}
 	if msg.checked {
 		report += "\n\n" + checkReport(msg.checks, msg.checkErr)
 	}
@@ -405,6 +504,10 @@ func scanReport(res library.ScanResult) string {
 
 // merge marks the manga to keep, the next one is merged into it.
 func (s *mangasState) merge(ctx context.Context, item *mangaItem) tea.Cmd {
+	if s.keep == 0 && s.duplicates && item.dupKeep != 0 {
+		// a duplicate merges into its suggested keep right away
+		s.keep = item.dupKeep
+	}
 	switch {
 	case s.keep == 0:
 		s.keep, item.keep = item.manga.ID, true
@@ -414,9 +517,9 @@ func (s *mangasState) merge(ctx context.Context, item *mangaItem) tea.Cmd {
 		return base.Notify("merge cancelled")
 	}
 	var keep storage.Manga
-	for _, i := range s.List.Items() {
-		if i := i.(*mangaItem); i.manga.ID == s.keep {
-			keep = i.manga
+	for _, i := range s.items {
+		if i.manga.ID == s.keep {
+			keep, i.keep = i.manga, true
 		}
 	}
 	if base.Busy(ctx) {
