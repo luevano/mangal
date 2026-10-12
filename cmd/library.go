@@ -172,6 +172,7 @@ func init() {
 	libraryCmd.AddCommand(libraryLsCmd)
 	libraryCmd.AddCommand(libraryScanCmd)
 	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Check, "check", false, "Check the metadata ids of the folders without a .libmangal.json on AniList and Kitsu")
+	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Mark, "mark", false, "Write a .libmangal.json into the folders without one whose provider manga is known")
 	libraryCmd.AddCommand(libraryMergeCmd)
 	libraryMergeCmd.Flags().BoolVar(&libraryMergeArgs.Apply, "apply", false, "Merge, instead of only listing what would happen")
 	libraryCmd.AddCommand(libraryMoveCmd)
@@ -232,6 +233,7 @@ func printTrash(cmd *cobra.Command) {
 
 var libraryScanArgs = struct {
 	Check bool
+	Mark  bool
 }{}
 
 var libraryScanCmd = &cobra.Command{
@@ -245,7 +247,12 @@ else guessed from their series.json, chapters and name (with the metadata id of 
 
 --check looks the guessed ids up on AniList and Kitsu and lists those not found or
 whose manga doesn't look like the folder's, and suggests an AniList id for the folders
-without any. It only reports, a download from a provider links the folder for good.`,
+without any. It only reports, a download from a provider links the folder for good.
+
+--mark writes a .libmangal.json (as downloads do) into the manga folders without one
+whose provider manga the library knows (its current source, with its metadata ids), so
+downloads, scans and renames recognize them by it. Folders known only from guesses are
+left as they are, an existing .libmangal.json is never replaced.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		lib, err := libraryOf()
@@ -297,6 +304,11 @@ without any. It only reports, a download from a provider links the folder for go
 				cmd.Println("removed")
 			}
 		}
+		if libraryScanArgs.Mark {
+			if err := markFolders(cmd, lib, root); err != nil {
+				return err
+			}
+		}
 		if libraryScanArgs.Check {
 			if err := checkIDs(cmd, lib); err != nil {
 				return err
@@ -305,6 +317,24 @@ without any. It only reports, a download from a provider links the folder for go
 		printTrash(cmd)
 		return nil
 	},
+}
+
+// markFolders writes the missing .libmangal.json of the folders with a known source.
+func markFolders(cmd *cobra.Command, lib storage.Library, root string) error {
+	loaders, err := manager.Loaders()
+	if err != nil {
+		return err
+	}
+	files := library.Files{FS: afs.Afero, Library: lib, Root: root, Modes: client.LibraryModes()}
+	res, err := files.Mark(loaders)
+	if err != nil {
+		return err
+	}
+	for _, m := range res.Marked {
+		cmd.Printf("marked %s as %s %s\n", m.Manga.Path(), m.Info.Provider, m.Info.Manga.ID)
+	}
+	cmd.Printf("%d marked, %d without a known source (not marked)\n", len(res.Marked), len(res.Unknown))
+	return nil
 }
 
 // checkIDs reports the metadata ids of the adopted folders that look wrong.
