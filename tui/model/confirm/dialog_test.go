@@ -35,8 +35,11 @@ func TestDialog(t *testing.T) {
 	if cmd := d.Update(keyPress("enter")); cmd != nil || !d.Active() {
 		t.Error("enter confirmed a delete")
 	}
-	if cmd := d.Update(keyPress("d")); cmd == nil || d.Active() {
-		t.Fatal("d didn't confirm")
+	if cmd := d.Update(keyPress("d")); cmd != nil || !d.Active() {
+		t.Error("d confirmed a delete")
+	}
+	if cmd := d.Update(keyPress("D")); cmd == nil || d.Active() {
+		t.Fatal("D didn't confirm")
 	} else if _, ok := cmd().(yesMsg); !ok {
 		t.Error("onYes not returned")
 	}
