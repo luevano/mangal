@@ -87,14 +87,18 @@ type Watch struct {
 	// Bindings are the manga's metadata bindings (source, id, default), the default first.
 	Bindings []storage.Binding `json:"bindings,omitempty"`
 	// LibraryIssue is why it isn't linked to its library manga, with what to do; empty
-	// when it is, or when nothing was downloaded yet (see Service.libraryIssue).
+	// when it is, or when nothing was downloaded yet (see libraryIssue). The scheduler
+	// skips such a watch: a check would download into a folder of its own.
 	LibraryIssue string `json:"library_issue,omitempty"`
+	// LibraryElsewhere is the issue of a library manga in another provider's directory:
+	// even an explicit check is refused until it's moved.
+	LibraryElsewhere bool `json:"library_elsewhere,omitempty"`
 }
 
 // Scheduled is true when the scheduler checks it: enabled, its provider installed, no
-// re-link needed.
+// re-link needed, no library issue.
 func (w Watch) Scheduled() bool {
-	return w.Enabled && !w.ProviderMissing && !w.NeedsRelink
+	return w.Enabled && !w.ProviderMissing && !w.NeedsRelink && w.LibraryIssue == ""
 }
 
 // UnmarshalJSON fills AnilistID from the bindings (the API's watches, see Remote).
@@ -538,6 +542,7 @@ func (s *Service) completeWith(w storage.Watch, since time.Time, view libraryVie
 			libraryManga = match.Manga.ID
 		}
 		full.LibraryIssue = libraryIssue(match, view.downloads[w.ID])
+		full.LibraryElsewhere = match.Elsewhere
 	}
 	full.fillBindings(bindings)
 	last, err := s.lastDownloaded(w, libraryManga)
@@ -562,6 +567,13 @@ func libraryIssue(match storage.LibraryMatch, downloaded bool) string {
 		return "its downloads aren't in the library (library scan?)"
 	}
 	return ""
+}
+
+// ElsewhereReason is why a watch whose library manga is in another provider's directory
+// isn't checked, with what moves it.
+func ElsewhereReason(m storage.Manga, provider string) string {
+	return fmt.Sprintf("not checked: its library manga %q is under %s, move it first (M in the library, or mangal library move %d %s)",
+		m.Title, filepath.Base(m.Parent), m.ID, provider)
 }
 
 // matchLibrary is the library manga of the watch (its source, else a folder sharing a

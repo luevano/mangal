@@ -449,3 +449,16 @@ func TestSchedulerNoCatchUp(t *testing.T) {
 		t.Errorf("checks %v, want %v", f.checks, want)
 	}
 }
+
+// TestSchedulerLibraryIssue: a watch with a library issue isn't checked, nor counted for
+// the sleep.
+func TestSchedulerLibraryIssue(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	f := &fakeChecker{now: now, watches: []watch.Watch{testWatch(1, now.Add(-time.Hour), true), testWatch(2, now.Add(10*time.Second), true)}}
+	f.watches[0].LibraryIssue, f.watches[0].LibraryElsewhere = "in the library under q (m): move it there (M in the library)", true
+	f.watches[1].LibraryIssue = "its downloads aren't in the library (library scan?)"
+	s := newTestScheduler(f)
+	if sleep := cycle(s); len(f.callList()) != 0 || sleep != time.Minute {
+		t.Errorf("sleep %s, calls %+v", sleep, f.callList())
+	}
+}

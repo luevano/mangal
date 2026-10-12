@@ -1147,6 +1147,25 @@ func TestLibraryLink(t *testing.T) {
 	if len(list) != 1 || list[0].LibraryIssue != w.LibraryIssue {
 		t.Errorf("list issue %+v", list)
 	}
+	if list[0].Scheduled() || !list[0].LibraryElsewhere {
+		t.Error("an elsewhere watch is scheduled")
+	}
+	// not checked: neither due, nor in a check of every watch, nor by its id
+	e.now = e.now.Add(48 * time.Hour)
+	if due, _ := e.svc.Due(ctx, e.now); len(due) != 0 {
+		t.Errorf("due %+v", due)
+	}
+	if report, err := e.svc.Check(ctx, nil, CheckOptions{}); err != nil || len(report.Results) != 0 {
+		t.Errorf("check all: %+v, %v", report, err)
+	}
+	report, err := e.svc.Check(ctx, []int64{w.ID}, CheckOptions{})
+	if err != nil || len(report.Results) != 1 || report.Results[0].Status != storage.StatusSkipped ||
+		!strings.Contains(report.Results[0].Error, fmt.Sprintf("move it first (M in the library, or mangal library move %d mango-mangadex)", lib.ID)) {
+		t.Fatalf("check by id: %+v, %v", report.Results, err)
+	}
+	if got := e.sources["mango-mangadex"].downloaded; len(got) != 0 {
+		t.Errorf("downloaded %v", got)
+	}
 
 	// moved: its source now, no issue, linked by the next check
 	if err := e.svc.Library.Move(storage.MangaMove{Manga: lib.ID, Source: storage.Source{Provider: "mango-mangadex", MangaID: "f6", Title: m.info.Title},
@@ -1189,5 +1208,33 @@ func TestLibraryIssue(t *testing.T) {
 		if got := libraryIssue(c.match, c.downloaded); got != c.want {
 			t.Errorf("%+v, %t: %q, want %q", c.match, c.downloaded, got, c.want)
 		}
+	}
+}
+
+// TestDownloadsNotInLibrary: a watch whose downloads aren't in the library isn't
+// scheduled (it would download every chapter again), an explicit check still runs.
+func TestDownloadsNotInLibrary(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "m", Title: "M"}}
+	e.source("p", m).chs["m"] = m.chapters(1)
+	w, err := e.svc.Add(ctx, AddOptions{Provider: "p", MangaID: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, _ := e.svc.Watches.StartRun(storage.CheckRun{Kind: KindManual, Started: e.now})
+	if _, err := e.svc.Watches.RecordWatchRun(storage.WatchRun{CheckRun: run.ID, Watch: w.ID, Provider: "p", MangaID: "m", Status: storage.StatusNew,
+		Started: e.now, Finished: e.now, Chapters: []storage.RunChapter{{Number: 1, Path: "/gone/1.cbz"}}}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.svc.Get(ctx, w.ID)
+	if got.LibraryIssue != "its downloads aren't in the library (library scan?)" || got.LibraryElsewhere || got.Scheduled() {
+		t.Fatalf("watch %+v", got)
+	}
+	if report, _ := e.svc.Check(ctx, nil, CheckOptions{}); len(report.Results) != 0 {
+		t.Errorf("checked with the others: %+v", report.Results)
+	}
+	if report, err := e.svc.Check(ctx, []int64{w.ID}, CheckOptions{}); err != nil || report.Results[0].Status == storage.StatusSkipped {
+		t.Errorf("explicit check: %+v, %v", report.Results, err)
 	}
 }

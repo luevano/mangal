@@ -132,7 +132,7 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 	if opts.Kind == "" {
 		opts.Kind = KindManual
 	}
-	watches, err := s.toCheck(ids)
+	watches, err := s.toCheck(ctx, ids)
 	if err != nil {
 		return Report{}, err
 	}
@@ -258,15 +258,20 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 	return report, nil
 }
 
-// toCheck are the watches with the ids, or every enabled one.
-func (s *Service) toCheck(ids []int64) ([]storage.Watch, error) {
+// toCheck are the watches with the ids, or every scheduled one (Watch.Scheduled).
+func (s *Service) toCheck(ctx context.Context, ids []int64) ([]storage.Watch, error) {
 	if len(ids) == 0 {
-		all, err := s.Watches.List()
+		all, err := s.List(ctx)
 		if err != nil {
 			return nil, err
 		}
-		installed := s.installed()
-		return slices.DeleteFunc(all, func(w storage.Watch) bool { return !w.Enabled || w.NeedsRelink || !installed(w.Provider) }), nil
+		var watches []storage.Watch
+		for _, w := range all {
+			if w.Scheduled() {
+				watches = append(watches, w.Watch)
+			}
+		}
+		return watches, nil
 	}
 	var watches []storage.Watch
 	for _, id := range ids {
@@ -471,6 +476,17 @@ func (s *Service) failed(w storage.Watch, started time.Time, err error) Result {
 // checkOne checks a watch: gets the manga and its chapters, picks the ones to download and
 // downloads them (unless dryRun). Nothing is saved here.
 func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gaps, dryRun bool, onFound func(Found), onChapter func(client.Event)) Result {
+	if w.LibraryManga == 0 {
+		// its library manga in another provider's directory: its downloads would go to a
+		// folder of their own, and the chapters it has there wouldn't count
+		match, err := s.matchLibrary(src.Info(), w, nil)
+		if err != nil {
+			return s.failed(w, s.now(), err)
+		}
+		if match.Elsewhere {
+			return s.skipped(w, ElsewhereReason(match.Manga, w.Provider))
+		}
+	}
 	started := s.now()
 	manga, err := s.manga(ctx, src, w)
 	if err != nil {
