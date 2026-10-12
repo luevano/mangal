@@ -11,14 +11,16 @@ import (
 )
 
 var healthArgs = struct {
-	JSON bool
-	Only []string
+	JSON    bool
+	Network bool
+	Only    []string
 }{}
 
 func init() {
 	rootCmd.AddCommand(healthCmd)
 	f := healthCmd.Flags()
 	f.BoolVar(&healthArgs.JSON, "json", false, "Print the report as JSON")
+	f.BoolVar(&healthArgs.Network, "network", false, "Also run the checks that make requests (W12) and look the publication statuses up on AniList")
 	f.StringSliceVar(&healthArgs.Only, "only", nil, "Only these categories (watches, gaps, metadata, library, global) or checks (W1, G1, ...); a summary check named here (W10) lists its mangas")
 }
 
@@ -26,12 +28,13 @@ var healthCmd = &cobra.Command{
 	Use:   "health",
 	Short: "Check the library and the watches for problems",
 	Long: `Check the library and the watches for problems and say how to fix each one. Only
-reads, changes nothing, makes no requests.
+reads, changes nothing, makes no requests unless --network.
 
 Watches: needing a re-link (W1), not in the library (W2), paused (W3), failing (W4), no new
 chapter for 90 days (W5), provider not installed (W6), old provider id (W8), invalid
 schedule (W9), library mangas not watched (W10: one line by publication status, "--only
-W10" lists them), watched on two providers (W11).
+W10" lists them), watched on two providers (W11), unwatched mangas with new chapters on
+their source (W12, --network).
 Gaps: chapters missing between the first and last downloaded (G1, whole numbers only, not
 up to a watch's --from or in its skip list), chapters to retry (G3).
 Metadata: no AniList link (M1, with the folder tag's id), links that disagree (M3),
@@ -40,12 +43,19 @@ Library: data under old provider ids (L3), mangas whose providers are all gone (
 Global: expired logins, Lua providers that didn't load, notifications without a Discord
 webhook (A1).
 
+--network: the publication statuses come from AniList (batched; else from the cached
+metadata), and the unwatched mangas that may still get chapters (ongoing or unknown, with
+an installed source) have their providers' chapter lists checked for chapters newer than
+the library's (W12, "watch it?"; one provider's mangas at a time, holding its lock, like a
+watch check; watch.parallel_providers at once).
+
 With "mangal serve" running the watches are its. The exit code is 1 when something is an
 error (a watch that isn't checked any more).`,
 	Example: `  mangal health
   mangal health --only watches,gaps
   mangal health --only M6 --json
-  mangal health --only W10`,
+  mangal health --only W10
+  mangal health --network --only watches`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
@@ -55,7 +65,7 @@ error (a watch that isn't checked any more).`,
 			return err
 		}
 		checker.OnProgress = st.Set
-		report, err := checker.Run(cmd.Context(), health.Options{Only: healthArgs.Only})
+		report, err := checker.Run(st.Context(cmd.Context()), health.Options{Only: healthArgs.Only, Network: healthArgs.Network})
 		st.Done()
 		if err != nil {
 			return err
