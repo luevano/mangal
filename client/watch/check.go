@@ -593,29 +593,58 @@ func runChapter(ch mangadata.Chapter, path string) storage.RunChapter {
 	return rc
 }
 
-// manga gets the watch's manga by its id, or (providers that can't) by searching its
-// title for the id.
+// manga gets the watch's manga (FindManga).
 func (s *Service) manga(ctx context.Context, src Source, w storage.Watch) (mangadata.Manga, error) {
-	manga, found, err := src.MangaByID(ctx, w.MangaID)
+	return FindManga(ctx, src, w.MangaID, w.Title)
+}
+
+// FindManga gets the provider's manga by its id, or (providers that can't) by searching
+// its title for the id. ErrMangaNotFound when the provider doesn't have it.
+func FindManga(ctx context.Context, src Source, mangaID, title string) (mangadata.Manga, error) {
+	manga, found, err := src.MangaByID(ctx, mangaID)
 	if errors.Is(err, libmangal.ErrMangaByIDUnsupported) {
-		mangas, err := src.SearchMangas(ctx, w.Title)
+		mangas, err := src.SearchMangas(ctx, title)
 		if err != nil {
-			return nil, fmt.Errorf("search %q: %w", w.Title, err)
+			return nil, fmt.Errorf("search %q: %w", title, err)
 		}
 		for _, m := range mangas {
-			if m.Info().ID == w.MangaID {
+			if m.Info().ID == mangaID {
 				return m, nil
 			}
 		}
-		return nil, fmt.Errorf("manga %q in a search of %q: %w", w.MangaID, w.Title, ErrMangaNotFound)
+		return nil, fmt.Errorf("manga %q in a search of %q: %w", mangaID, title, ErrMangaNotFound)
 	}
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		return nil, fmt.Errorf("manga %q: %w", w.MangaID, ErrMangaNotFound)
+		return nil, fmt.Errorf("manga %q: %w", mangaID, ErrMangaNotFound)
 	}
 	return manga, nil
+}
+
+// NewChapters are the chapter numbers of the provider's manga newer than the highest one
+// the library has (have), as a check without gaps would pick them (Pick): unavailable
+// ones left out.
+func NewChapters(ctx context.Context, src Source, mangaID, title string, have []float32) ([]float32, error) {
+	manga, err := FindManga(ctx, src, mangaID, title)
+	if err != nil {
+		return nil, err
+	}
+	chapters, err := src.Chapters(ctx, manga)
+	if err != nil {
+		return nil, err
+	}
+	haveSet := map[float32]bool{}
+	for _, n := range have {
+		haveSet[n] = true
+	}
+	picked, _, _ := Pick(chapters, haveSet, highest(haveSet), nil, false, nil, nil)
+	numbers := make([]float32, len(picked))
+	for i, ch := range picked {
+		numbers[i] = ch.Info().Number
+	}
+	return numbers, nil
 }
 
 // Pick are the chapters to download given the chapter numbers the library has: the ones

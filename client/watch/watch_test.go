@@ -1386,3 +1386,17 @@ func TestRemoveRun(t *testing.T) {
 		t.Errorf("running: %v", err)
 	}
 }
+
+func TestNewChapters(t *testing.T) {
+	e := newEnv(t)
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "dn", Title: "Death Note"}}
+	src := e.source("mango-mangadex", m)
+	src.chs["dn"] = m.chapters(1, 2, 3, 3.5, 4, 5)
+	got, err := NewChapters(context.Background(), src, "dn", "Death Note", []float32{1, 3})
+	if err != nil || !slices.Equal(got, []float32{3.5, 4, 5}) {
+		t.Errorf("new %v, %v; want after 3 only", got, err)
+	}
+	if _, err := NewChapters(context.Background(), src, "gone", "Gone", nil); !errors.Is(err, ErrMangaNotFound) {
+		t.Errorf("missing manga: %v", err)
+	}
+}
