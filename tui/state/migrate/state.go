@@ -93,7 +93,10 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			if err != nil {
 				return migratedMsg{}, err
 			}
-			if err := migration.ApplyTo(afs.Afero, nil, st, modes); err != nil {
+			summary := fmt.Sprintf("migrate %d old provider ids, %d markers", len(migration.OldIDs), len(migration.Markers))
+			if _, err := client.Operation("migrate", summary, func(j library.Journal) error {
+				return migration.ApplyTo(afs.Afero, j, st, modes)
+			}); err != nil {
 				return migratedMsg{}, err
 			}
 			watches, err := st.Watches().List()

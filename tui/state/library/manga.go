@@ -262,7 +262,11 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			files, manga, dl, title := s.files, s.manga, item.download, item.Title()
 			message := fmt.Sprintf("Delete chapter %s (%s)? The file goes to the trash.", title, dl.Format)
 			s.confirm.AskDelete("Delete", message, s.View(), action("Deleting chapter "+title, func() (string, error) {
-				return fmt.Sprintf("deleted chapter %s (in the trash until emptied)", title), files.DeleteDownload(manga, dl)
+				summary := fmt.Sprintf("delete chapter %s of %d %q", title, manga.ID, manga.Title)
+				return journaled("delete", summary, fmt.Sprintf("deleted chapter %s (in the trash until emptied)", title), func(j library.Journal) error {
+					files.Journal = j
+					return files.DeleteDownload(manga, dl)
+				})
 			}))
 			return nil
 		case key.Matches(msg, s.open):

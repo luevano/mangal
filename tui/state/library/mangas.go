@@ -74,7 +74,7 @@ type mangasState struct {
 }
 
 type mangasKeyMap struct {
-	confirm, scan, check, merge, move, remove, trash, delete, watch key.Binding
+	confirm, scan, check, merge, move, remove, trash, delete, watch, undo key.Binding
 }
 
 type mangasLoadedMsg struct {
@@ -124,6 +124,7 @@ func newMangasState(files library.Files) *mangasState {
 			remove:  util.Bind("remove missing", "x"),
 			trash:   util.Bind("trash", "t"),
 			delete:  base.KeyDelete,
+			undo:    base.KeyUndo,
 			watch:   base.KeyItsWatch,
 		},
 	}
@@ -134,7 +135,7 @@ func newMangasState(files library.Files) *mangasState {
 func (s *mangasState) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.remove, k.watch)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.remove, k.watch, k.undo)}}
 }
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
@@ -211,6 +212,8 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case mergePlannedMsg:
 		s.askMerge(msg)
 		return nil
+	case undoPlannedMsg:
+		return s.askUndo(msg)
 	case setRootMsg:
 		// in Update, the config isn't safe to write from the background
 		if err := config.WriteKey(config.Download.Path.Key, msg.dir); err != nil {
@@ -246,6 +249,8 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 	case key.Matches(msg, s.keys.trash):
 		files := s.files
 		return func() tea.Msg { return newTrashState(files) }, true
+	case key.Matches(msg, s.keys.undo):
+		return s.undo(ctx), true
 	}
 	item, ok := s.List.SelectedItem().(*mangaItem)
 	if !ok {
@@ -268,7 +273,10 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 			message = fmt.Sprintf("Delete %q? Its %d chapters go to the trash and it leaves the library.", m.Title, m.Chapters)
 		}
 		s.confirm.AskDelete("Delete", message, s.View(), action("Deleting "+m.Title, func() (string, error) {
-			return fmt.Sprintf("deleted %s (in the trash until emptied)", m.Title), files.DeleteManga(m)
+			return journaled("delete", fmt.Sprintf("delete %d %q", m.ID, m.Title), fmt.Sprintf("deleted %s (in the trash until emptied)", m.Title), func(j library.Journal) error {
+				files.Journal = j
+				return files.DeleteManga(m)
+			})
 		}))
 		return nil, true
 	case key.Matches(msg, s.keys.remove):
@@ -428,7 +436,12 @@ func (s *mangasState) askMerge(msg mergePlannedMsg) {
 	s.confirm.Ask("Merge", message, s.View(), func() tea.Msg {
 		return actionMsg{label: "Merging", do: func(status func(string)) (reloadMsg, error) {
 			files.OnProgress = func(p library.Progress) { status(p.String()) }
-			return reloadMsg{notify: "merged into " + msg.keep.Title, merged: true}, files.ApplyMerge(msg.plan)
+			summary := fmt.Sprintf("merge %d %q into %d %q", msg.other.ID, msg.other.Title, msg.keep.ID, msg.keep.Title)
+			notify, err := journaled("merge", summary, "merged into "+msg.keep.Title, func(j library.Journal) error {
+				files.Journal = j
+				return files.ApplyMerge(msg.plan)
+			})
+			return reloadMsg{notify: notify, merged: true}, err
 		}}
 	})
 }

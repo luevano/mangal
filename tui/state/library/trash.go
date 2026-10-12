@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
@@ -97,6 +98,9 @@ func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		files := s.files
 		s.confirm.Ask("Empty the trash", "Delete everything in the trash? It can't be undone.", s.View(), action("Emptying the trash", func() (string, error) {
+			if _, err := client.Snapshot("empty-trash"); err != nil {
+				return "", err
+			}
 			return "trash emptied", library.EmptyTrash(files.FS, files.Root)
 		}))
 		return nil

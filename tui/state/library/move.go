@@ -197,7 +197,11 @@ func (s *moveState) askTitle(msg movePlannedMsg) {
 
 func (s *moveState) askMove(mover library.Mover, plan library.MovePlan) {
 	s.confirm.Ask("Move", strings.Join(plan.Lines(), "\n"), s.View(), action("Moving "+plan.Manga.Title, func() (string, error) {
-		return fmt.Sprintf("moved %s to %s (%s)", plan.Manga.Title, plan.Provider.ID, plan.To.Title), mover.ApplyMove(plan)
+		summary := fmt.Sprintf("move %d %q to %s %s", plan.Manga.ID, plan.Manga.Title, plan.Provider.ID, plan.To.ID)
+		return journaled("move", summary, fmt.Sprintf("moved %s to %s (%s)", plan.Manga.Title, plan.Provider.ID, plan.To.Title), func(j library.Journal) error {
+			mover.Journal = j
+			return mover.ApplyMove(plan)
+		})
 	}))
 }
 
