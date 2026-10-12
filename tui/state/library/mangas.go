@@ -152,8 +152,8 @@ func newMangasState(files library.Files) *mangasState {
 
 func (s *mangasState) keyMap() help.KeyMap {
 	k := s.keys
-	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.remove, k.watch, k.undo, k.duplicates, k.links, k.backups)}}
+	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash, k.undo}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.remove, k.watch, k.duplicates, k.links, k.backups)}}
 }
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
