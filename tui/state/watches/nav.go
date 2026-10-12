@@ -57,6 +57,9 @@ func libraryScreen(screen func(storage.Manga) (base.State, error), w watch.Watch
 		return nil, fmt.Errorf("library manga of %q: %w", w.Title, err)
 	}
 	if !found {
+		if p := w.LibraryProblem(); p != "" {
+			return base.NotificationMsg{Message: w.Title + ": " + p}, nil
+		}
 		return base.NotificationMsg{Message: w.Title + " isn't in the library, nothing of it downloaded yet"}, nil
 	}
 	return screen(m)

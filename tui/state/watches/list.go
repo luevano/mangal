@@ -57,7 +57,7 @@ func (i *item) Title() string {
 	if i.w.NeedsRelink {
 		title += " " + relinkStyle.Render("(needs re-link)")
 	}
-	if i.w.LibraryIssue != "" {
+	if i.w.LibraryProblem() != "" {
 		title += " " + libraryStyle.Render("(not in library)")
 	}
 	if _, ok := i.checking(); ok {
@@ -508,7 +508,7 @@ func (s *listState) countMissing() int {
 func (s *listState) countUnlinked() int {
 	n := 0
 	for _, w := range s.watches {
-		if w.LibraryIssue != "" {
+		if w.LibraryProblem() != "" {
 			n++
 		}
 	}
@@ -519,7 +519,7 @@ func (s *listState) countUnlinked() int {
 func (s *listState) shown() []watch.Watch {
 	var shown []watch.Watch
 	for _, w := range s.watches {
-		if (s.provider == "" || w.Provider == s.provider) && (!s.missing || missingManga(w)) && (!s.unlinked || w.LibraryIssue != "") {
+		if (s.provider == "" || w.Provider == s.provider) && (!s.missing || missingManga(w)) && (!s.unlinked || w.LibraryProblem() != "") {
 			shown = append(shown, w)
 		}
 	}

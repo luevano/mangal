@@ -162,8 +162,8 @@ func settings(w watch.Watch, backoff int, now time.Time) string {
 	if w.NeedsRelink {
 		lines = append(lines, relinkStyle.Render("needs re-link: "+w.RelinkReason+" (m: search the manga)"))
 	}
-	if w.LibraryIssue != "" {
-		lines = append(lines, libraryStyle.Render("not in library: "+w.LibraryIssue))
+	if p := w.LibraryProblem(); p != "" {
+		lines = append(lines, libraryStyle.Render("not in library: "+p))
 	}
 	if w.LastError != "" {
 		lines = append(lines, fmt.Sprintf("%s in a row, last: %s", stringutil.Quantify(w.Failures, "failure", "failures"), w.LastError))
