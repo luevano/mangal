@@ -63,6 +63,9 @@ func mangaDisplay(w watch.Watch) string {
 	} else if w.ProviderMissing {
 		display += " · " + relinkStyle.Render("provider missing")
 	}
+	if w.LibraryIssue != "" {
+		display += " · " + libraryStyle.Render("not in library: "+w.LibraryIssue)
+	}
 	return display
 }
 

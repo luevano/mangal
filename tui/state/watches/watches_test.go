@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -777,5 +778,43 @@ func TestStopWatching(t *testing.T) {
 	}
 	if !strings.Contains(action.label, "Berserk") {
 		t.Errorf("action %q", action.label)
+	}
+}
+
+// TestLibraryIssue: the tag, its own color, the filter and the details.
+func TestLibraryIssue(t *testing.T) {
+	m := testManager()
+	m.watches[2].LibraryIssue = "in the library under mango-mangasee (Sousou no Frieren): move it there (M in the library)"
+	s := loaded(t, m)
+	ctx := context.Background()
+	if title := s.List.Items()[2].(*item).Title(); !strings.Contains(title, "(not in library)") {
+		t.Errorf("title %q", title)
+	}
+	if title := s.List.Items()[1].(*item).Title(); !strings.Contains(title, "(paused)") || strings.Contains(title, "library") {
+		t.Errorf("paused title %q", title)
+	}
+	colors := map[any]string{}
+	for name, st := range map[string]lipgloss.Style{"re-link": relinkStyle, "library": libraryStyle, "paused": pausedStyle} {
+		if other, ok := colors[st.GetForeground()]; ok {
+			t.Errorf("%s and %s have the same color", name, other)
+		}
+		colors[st.GetForeground()] = name
+	}
+	if !strings.Contains(s.Subtitle(), "1 not in library (i)") {
+		t.Errorf("subtitle %q", s.Subtitle())
+	}
+	s.Update(ctx, press("i"))
+	if n := len(s.List.Items()); n != 1 || s.List.Items()[0].(*item).w.ID != 3 {
+		t.Errorf("filtered to %d", n)
+	}
+	s.Update(ctx, press("i"))
+	if n := len(s.List.Items()); n != 3 {
+		t.Errorf("unfiltered %d", n)
+	}
+	if got := settings(m.watches[2], 3, now); !strings.Contains(got, "not in library: in the library under mango-mangasee (Sousou no Frieren): move it there (M in the library)") {
+		t.Errorf("details %q", got)
+	}
+	if got := mangaDisplay(m.watches[2]); !strings.Contains(got, "not in library: in the library under") {
+		t.Errorf("edit %q", got)
 	}
 }

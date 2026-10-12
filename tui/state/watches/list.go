@@ -52,10 +52,13 @@ func (i *item) FilterValue() string { return i.w.Title + " " + i.w.Provider }
 func (i *item) Title() string {
 	title := i.w.Title
 	if !i.w.Enabled {
-		title += " (paused)"
+		title += " " + pausedStyle.Render("(paused)")
 	}
 	if i.w.NeedsRelink {
 		title += " " + relinkStyle.Render("(needs re-link)")
+	}
+	if i.w.LibraryIssue != "" {
+		title += " " + libraryStyle.Render("(not in library)")
 	}
 	if _, ok := i.checking(); ok {
 		title = style.Normal.Accent.Render(spinnerFrames[i.s.frame%len(spinnerFrames)]) + " " + title
@@ -125,8 +128,9 @@ type listState struct {
 	last       map[int64]storage.WatchRun
 	provider   string
 	byProvider bool
-	// missing shows only the watches whose manga needs fixing (missingManga)
-	missing bool
+	// missing shows only the watches whose manga needs fixing (missingManga), unlinked
+	// those with a library issue
+	missing, unlinked bool
 
 	// feed are the live events; live the watches being checked and liveProviders the
 	// providers, as the events tell (the status, polled, has the rest)
@@ -142,7 +146,7 @@ type listState struct {
 
 type listKeyMap struct {
 	details, check, checkDue, checkProvider, pause, pauseProvider, delete, edit, gaps, refresh, runs,
-	library, history, nextProvider, group, live, running, relink, missing key.Binding
+	library, history, nextProvider, group, live, running, relink, missing, unlinked key.Binding
 }
 
 type loadedMsg struct {
@@ -194,6 +198,7 @@ func newListState(connect connector) *listState {
 			running:       util.Bind("every live check", "T"),
 			relink:        util.Bind("re-link manga", "m"),
 			missing:       util.Bind("needs re-link only", "n"),
+			unlinked:      util.Bind("not in library only", "i"),
 		},
 		live:          map[int64]liveWatch{},
 		liveProviders: map[string]bool{},
@@ -217,7 +222,7 @@ func (s *listState) keyMap() help.KeyMap {
 		short,
 		{k.checkDue, k.checkProvider, k.gaps, k.pauseProvider, k.delete, k.refresh},
 		{k.library, k.history, k.nextProvider, k.group, k.running},
-		{k.relink, k.missing},
+		{k.relink, k.missing, k.unlinked},
 	}}
 }
 
@@ -239,6 +244,11 @@ func (s *listState) Subtitle() string {
 		parts = append(parts, "needing re-link")
 	} else if n := s.countMissing(); n > 0 {
 		parts = append(parts, fmt.Sprintf("%d need a re-link (%s)", n, s.keys.missing.Help().Key))
+	}
+	if s.unlinked {
+		parts = append(parts, "not in library")
+	} else if n := s.countUnlinked(); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d not in library (%s)", n, s.keys.unlinked.Help().Key))
 	}
 	if s.manager != nil {
 		parts = append(parts, managerName(s.status))
@@ -494,11 +504,22 @@ func (s *listState) countMissing() int {
 	return n
 }
 
+// countUnlinked is how many watches have a library issue.
+func (s *listState) countUnlinked() int {
+	n := 0
+	for _, w := range s.watches {
+		if w.LibraryIssue != "" {
+			n++
+		}
+	}
+	return n
+}
+
 // shown are the watches of the provider filter, in the order chosen.
 func (s *listState) shown() []watch.Watch {
 	var shown []watch.Watch
 	for _, w := range s.watches {
-		if (s.provider == "" || w.Provider == s.provider) && (!s.missing || missingManga(w)) {
+		if (s.provider == "" || w.Provider == s.provider) && (!s.missing || missingManga(w)) && (!s.unlinked || w.LibraryIssue != "") {
 			shown = append(shown, w)
 		}
 	}
@@ -572,6 +593,13 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		cmd := s.setItems()
 		if s.missing && len(s.List.Items()) == 0 {
 			cmd = tea.Batch(cmd, base.Notify("No watch needs a re-link"))
+		}
+		return cmd, true
+	case key.Matches(msg, s.keys.unlinked):
+		s.unlinked = !s.unlinked
+		cmd := s.setItems()
+		if s.unlinked && len(s.List.Items()) == 0 {
+			cmd = tea.Batch(cmd, base.Notify("Every watch is in the library (or has downloaded nothing yet)"))
 		}
 		return cmd, true
 	case key.Matches(msg, s.keys.running):

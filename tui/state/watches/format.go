@@ -15,7 +15,11 @@ import (
 
 const timeLayout = "2006-01-02 15:04"
 
-var relinkStyle = lipgloss.NewStyle().Foreground(color.Warning)
+var (
+	relinkStyle  = lipgloss.NewStyle().Foreground(color.Warning)
+	libraryStyle = lipgloss.NewStyle().Foreground(color.Anilist)
+	pausedStyle  = lipgloss.NewStyle().Foreground(color.Viewport)
+)
 
 // missingManga is a watch whose manga can't be checked as it is: it needs a re-link (a
 // placeholder id too) or its provider is missing.
@@ -155,6 +159,9 @@ func settings(w watch.Watch, backoff int, now time.Time) string {
 	}
 	if w.NeedsRelink {
 		lines = append(lines, relinkStyle.Render("needs re-link: "+w.RelinkReason+" (m: search the manga)"))
+	}
+	if w.LibraryIssue != "" {
+		lines = append(lines, libraryStyle.Render("not in library: "+w.LibraryIssue))
 	}
 	if w.LastError != "" {
 		lines = append(lines, fmt.Sprintf("%s in a row, last: %s", stringutil.Quantify(w.Failures, "failure", "failures"), w.LastError))
