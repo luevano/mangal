@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/kitsu"
+	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
@@ -169,6 +170,9 @@ func init() {
 	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Check, "check", false, "Check the metadata ids of the folders without a .libmangal.json on AniList and Kitsu")
 	libraryCmd.AddCommand(libraryMergeCmd)
 	libraryMergeCmd.Flags().BoolVar(&libraryMergeArgs.Apply, "apply", false, "Merge, instead of only listing what would happen")
+	libraryCmd.AddCommand(libraryMoveCmd)
+	libraryMoveCmd.Flags().BoolVar(&libraryMoveArgs.Apply, "apply", false, "Move, instead of only listing what would happen")
+	libraryMoveCmd.Flags().StringVarP(&libraryMoveArgs.Selector, "manga-selector", "m", "exact", "Manga selector of the search (first|last|exact|closest|<index>)")
 	libraryCmd.AddCommand(libraryTrashCmd)
 	libraryTrashCmd.AddCommand(libraryTrashEmptyCmd)
 }
@@ -404,6 +408,81 @@ Only lists what would happen unless --apply is set.`,
 		}
 		cmd.Println("merged")
 		printTrash(cmd)
+		return nil
+	},
+}
+
+var libraryMoveArgs = struct {
+	Apply    bool
+	Selector string
+}{}
+
+var libraryMoveCmd = &cobra.Command{
+	Use:   "move <id> <provider> [query|mid:id]",
+	Short: "Move a library manga to another provider",
+	Long: `Move the library manga (id from "mangal library ls") to a manga of another provider: the
+one with the id ("mid:<id>"), or the one the manga selector picks from a search of the
+query (without a query, the library manga's title, an exact match).
+
+The library manga gets that manga as a source (its other sources stay), its folder moves
+to where that manga's downloads go (the provider's directory with
+download.provider.create_dir, named by the name template) with its .libmangal.json
+rewritten, its watch is re-linked to it and it gets the metadata bindings it hasn't got.
+A manga that's another library manga's already is an error: merge them instead.
+
+Only lists what would happen unless --apply is set.`,
+	Example: `  mangal library move 12 mango-mangapill
+  mangal library move 12 mango-weebcentral "Dungeon Odyssey" --apply
+  mangal library move 12 mango-mangadex mid:7c145eb7-2ee0-4a82-8d5c-bbb7ba0a4d42`,
+	Args:              cobra.MinimumNArgs(2),
+	ValidArgsFunction: completionMoveArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
+		mover, err := client.LibraryMover()
+		if err != nil {
+			return err
+		}
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid manga id %q", args[0])
+		}
+		manga, ok, err := mover.Library.MangaByID(id)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("no manga %d in the library", id)
+		}
+		c, warnings, err := client.AcquireByID(ctx, args[1])
+		if err != nil {
+			return err
+		}
+		for _, w := range warnings {
+			cmd.PrintErrf("warning: %s\n", w)
+		}
+		query := strings.Join(args[2:], " ")
+		if query == "" {
+			query = manga.Title
+		}
+		to, err := selector.Find(ctx, client.Searcher(c), "", query, libraryMoveArgs.Selector)
+		if err != nil {
+			return err
+		}
+		plan, err := mover.PlanMove(ctx, manga, c.Info(), to)
+		if err != nil {
+			return err
+		}
+		for _, line := range plan.Lines() {
+			cmd.Println(line)
+		}
+		if !libraryMoveArgs.Apply {
+			cmd.Println("run with --apply to move")
+			return nil
+		}
+		if err := mover.ApplyMove(plan); err != nil {
+			return err
+		}
+		cmd.Println("moved")
 		return nil
 	},
 }

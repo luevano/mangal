@@ -235,3 +235,56 @@ func TestMangaFor(t *testing.T) {
 		t.Error("not found without provider directories")
 	}
 }
+
+func TestLibraryMove(t *testing.T) {
+	data := openData(t)
+	library, watches, bindings := Library{DB: data}, Watches{DB: data}, Bindings{DB: data}
+	file := "/lib/Asura/Berserk/[0001.0] Ch 1.cbz"
+	if err := library.RecordDownload("/lib/Asura", "Berserk", Download{Path: file, Provider: "asura", MangaID: "b", MangaTitle: "Berserk", Chapter: 1, Format: "CBZ"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := library.RecordDownload("/lib/Asura", "Vagabond", Download{Path: "/lib/Asura/Vagabond/1.cbz", Provider: "asura", MangaID: "v", MangaTitle: "Vagabond", Chapter: 1, Format: "CBZ"}); err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ := library.MangaBySource("asura", "b")
+	vagabond, _, _ := library.MangaBySource("asura", "v")
+	w, _ := watches.Add(Watch{Provider: "asura", MangaID: "b", Title: "Berserk", LibraryManga: m.ID, RelinkReason: "gone"})
+	_ = bindings.Set(Binding{Provider: "asura", MangaID: "b", Source: "al", ID: "30002"})
+	_ = bindings.Set(Binding{Provider: "asura", MangaID: "b", Source: "kt", ID: "1"})
+	_ = bindings.Set(Binding{Provider: "pill", MangaID: "1/berserk", Source: "kt", ID: "2"})
+
+	move := MangaMove{
+		Manga: m.ID, Source: Source{Provider: "asura", MangaID: "v", Title: "Vagabond"},
+		From: m.Path(), To: "/lib/Pill/Berserk", Watch: w.ID, At: time.Unix(1_000_000, 0),
+	}
+	if err := library.Move(move); err == nil {
+		t.Error("moved onto another library manga's source")
+	}
+	if got, _, _ := library.MangaByID(vagabond.ID); len(got.Sources) != 1 {
+		t.Errorf("vagabond %+v", got)
+	}
+
+	move.Source = Source{Provider: "pill", MangaID: "1/berserk", Title: "Berserk (pill)"}
+	move.Bindings = []Binding{{Source: "al", ID: "30002"}, {Source: "kt", ID: "1"}}
+	if err := library.Move(move); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _ := library.MangaByID(m.ID)
+	if got.Path() != "/lib/Pill/Berserk" || len(got.Sources) != 2 || got.Sources[1].Provider != "pill" || got.Title != "Berserk" {
+		t.Errorf("manga %+v", got)
+	}
+	if ok, _ := library.HasDownload("/lib/Pill/Berserk/[0001.0] Ch 1.cbz"); !ok {
+		t.Error("the download didn't move")
+	}
+	gotW, _ := watches.Get(w.ID)
+	if gotW.Provider != "pill" || gotW.MangaID != "1/berserk" || gotW.Title != "Berserk (pill)" || gotW.NeedsRelink || gotW.LibraryManga != m.ID {
+		t.Errorf("watch %+v", gotW)
+	}
+	// the new manga's own Kitsu binding stays, the old manga keeps its bindings
+	if list, _ := bindings.Get("pill", "1/berserk"); len(list) != 2 || list[0].ID != "30002" || list[1].ID != "2" {
+		t.Errorf("new bindings %+v", list)
+	}
+	if list, _ := bindings.Get("asura", "b"); len(list) != 2 {
+		t.Errorf("old bindings %+v", list)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -346,23 +347,24 @@ func (l Library) Downloads(manga int64) ([]Download, error) {
 // Moved updates the library after a directory was renamed from one path to another:
 // a manga folder, or a directory with manga folders (e.g. a provider's).
 func (l Library) Moved(from, to string) error {
-	err := l.DB.InTx(func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`UPDATE library_mangas SET parent = ?, dir = ? WHERE parent = ? AND dir = ?`,
-			filepath.Dir(to), filepath.Base(to), filepath.Dir(from), filepath.Base(from)); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`UPDATE library_mangas SET parent = ? WHERE parent = ?`, to, from); err != nil {
-			return err
-		}
-		// substr and length count characters, not bytes
-		_, err := tx.Exec(`UPDATE downloads SET path = ?1 || substr(path, length(?2)) WHERE substr(path, 1, length(?2)) = ?2`,
-			to, from+string(filepath.Separator))
-		return err
-	})
-	if err != nil {
+	if err := l.DB.InTx(func(tx *sql.Tx) error { return moved(tx, from, to) }); err != nil {
 		return fmt.Errorf("move %s in the library: %w", from, err)
 	}
 	return nil
+}
+
+func moved(tx *sql.Tx, from, to string) error {
+	if _, err := tx.Exec(`UPDATE library_mangas SET parent = ?, dir = ? WHERE parent = ? AND dir = ?`,
+		filepath.Dir(to), filepath.Base(to), filepath.Dir(from), filepath.Base(from)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE library_mangas SET parent = ? WHERE parent = ?`, to, from); err != nil {
+		return err
+	}
+	// substr and length count characters, not bytes
+	_, err := tx.Exec(`UPDATE downloads SET path = ?1 || substr(path, length(?2)) WHERE substr(path, 1, length(?2)) = ?2`,
+		to, from+string(filepath.Separator))
+	return err
 }
 
 // MangaByFolder is the library manga of the folder.
@@ -556,6 +558,60 @@ func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) e
 	})
 	if err != nil {
 		return fmt.Errorf("merge manga %d into %d: %w", other, keep, err)
+	}
+	return nil
+}
+
+// MangaMove is a library manga moving to another provider's manga (library.MovePlan).
+type MangaMove struct {
+	Manga int64
+	// Source is the provider's manga, the manga's other sources stay.
+	Source Source
+	// From and To are the manga's folder before and after, the same when it stays.
+	From, To string
+	// Watch is re-linked to the source (its bindings stay), 0 if none.
+	Watch int64
+	// Bindings are copied to the source, those of a source it has already are skipped.
+	Bindings []Binding
+	At       time.Time
+}
+
+// Move links the library manga to another provider's manga, moves its folder and re-links
+// its watch, in one transaction. A source of another library manga is an error.
+func (l Library) Move(m MangaMove) error {
+	err := l.DB.InTx(func(tx *sql.Tx) error {
+		var other int64
+		err := tx.QueryRow(`SELECT manga FROM library_sources WHERE provider = ? AND manga_id = ?`, m.Source.Provider, m.Source.MangaID).Scan(&other)
+		switch {
+		case err == nil && other != m.Manga:
+			return fmt.Errorf("it's library manga %d already", other)
+		case err != nil && !errors.Is(err, sql.ErrNoRows):
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title) VALUES (?, ?, ?, ?)
+ON CONFLICT (provider, manga_id) DO UPDATE SET title = excluded.title`, m.Source.Provider, m.Source.MangaID, m.Manga, m.Source.Title); err != nil {
+			return err
+		}
+		if m.From != m.To {
+			if err := moved(tx, m.From, m.To); err != nil {
+				return err
+			}
+		}
+		if m.Watch != 0 {
+			if err := relinkWatch(tx, m.Watch, m.Source.Provider, m.Source.MangaID, m.Source.Title, m.Manga, m.At, false); err != nil {
+				return err
+			}
+		}
+		for _, b := range m.Bindings {
+			if _, err := tx.Exec(`INSERT INTO metadata_bindings (provider, manga_id, source, metadata_id, updated) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (provider, manga_id, source) DO NOTHING`, m.Source.Provider, m.Source.MangaID, b.Source, b.ID, unix(m.At)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("move library manga %d to %s %q: %w", m.Manga, m.Source.Provider, m.Source.MangaID, err)
 	}
 	return nil
 }

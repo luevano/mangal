@@ -1,9 +1,16 @@
 package client
 
 import (
+	"context"
+
+	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/template"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -25,4 +32,35 @@ func LibraryFiles() (library.Files, error) {
 // LibraryModes are download.mode_file and download.mode_dir.
 func LibraryModes() library.Modes {
 	return library.Modes{File: config.Download.ModeFile.Get(), Dir: config.Download.ModeDir.Get()}
+}
+
+// LibraryMover moves library mangas to other providers, with the configured name
+// templates and provider directories.
+func LibraryMover() (library.Mover, error) {
+	files, err := LibraryFiles()
+	if err != nil {
+		return library.Mover{}, err
+	}
+	return library.Mover{
+		Files:        files,
+		ProviderDirs: config.Download.Provider.CreateDir.Get(),
+		ProviderName: template.Provider,
+		MangaName:    template.Manga,
+		Metadata:     anilist.MetadataByIDs,
+	}, nil
+}
+
+// Searcher is the client as a selector.Searcher.
+func Searcher(c *libmangal.Client) selector.Searcher {
+	return searcher{c}
+}
+
+type searcher struct{ *libmangal.Client }
+
+func (s searcher) MangaByID(ctx context.Context, id string) (mangadata.Manga, bool, error) {
+	return s.MangaByIDContext(ctx, id)
+}
+
+func (s searcher) SearchMangas(ctx context.Context, query string) ([]mangadata.Manga, error) {
+	return s.SearchMangasContext(ctx, query)
 }

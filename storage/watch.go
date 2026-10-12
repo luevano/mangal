@@ -387,39 +387,44 @@ WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, w.Schedule, w.Gaps,
 // keeps the watch's). A manga another watch has is ErrWatchExists.
 func (s Watches) Relink(id int64, provider, mangaID, title string, libraryManga int64, at time.Time) error {
 	err := s.DB.InTx(func(tx *sql.Tx) error {
-		var oldProvider, oldManga string
-		if err := tx.QueryRow(`SELECT provider, manga_id FROM watches WHERE id = ?`, id).Scan(&oldProvider, &oldManga); errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("watch %d: %w", id, ErrWatchNotFound)
-		} else if err != nil {
-			return err
-		}
-		var other int
-		if err := tx.QueryRow(`SELECT count(*) FROM watches WHERE provider = ? AND manga_id = ? AND id != ?`, provider, mangaID, id).Scan(&other); err != nil {
-			return err
-		}
-		if other != 0 {
-			return fmt.Errorf("%s %q: %w", provider, mangaID, ErrWatchExists)
-		}
-		if _, err := tx.Exec(`UPDATE watches SET provider = ?, manga_id = ?, title = ?, library_manga = coalesce(?, library_manga),
-	resumed = CASE WHEN relink != '' THEN ? ELSE resumed END, relink = '', failures = 0, last_error = '' WHERE id = ?`,
-			provider, mangaID, title, nullID(libraryManga), unix(at), id); err != nil {
-			return err
-		}
-		if oldProvider == provider && oldManga == mangaID {
-			return nil
-		}
-		if _, err := tx.Exec(`DELETE FROM metadata_bindings WHERE provider = ?3 AND manga_id = ?4 AND source IN
-	(SELECT source FROM metadata_bindings WHERE provider = ?1 AND manga_id = ?2)`, oldProvider, oldManga, provider, mangaID); err != nil {
-			return err
-		}
-		_, err := tx.Exec(`UPDATE metadata_bindings SET provider = ?3, manga_id = ?4 WHERE provider = ?1 AND manga_id = ?2`,
-			oldProvider, oldManga, provider, mangaID)
-		return err
+		return relinkWatch(tx, id, provider, mangaID, title, libraryManga, at, true)
 	})
 	if err != nil {
 		return fmt.Errorf("re-link watch %d to %s %q: %w", id, provider, mangaID, err)
 	}
 	return nil
+}
+
+// relinkWatch is Watches.Relink in tx, moveBindings moves the metadata bindings too.
+func relinkWatch(tx *sql.Tx, id int64, provider, mangaID, title string, libraryManga int64, at time.Time, moveBindings bool) error {
+	var oldProvider, oldManga string
+	if err := tx.QueryRow(`SELECT provider, manga_id FROM watches WHERE id = ?`, id).Scan(&oldProvider, &oldManga); errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("watch %d: %w", id, ErrWatchNotFound)
+	} else if err != nil {
+		return err
+	}
+	var other int
+	if err := tx.QueryRow(`SELECT count(*) FROM watches WHERE provider = ? AND manga_id = ? AND id != ?`, provider, mangaID, id).Scan(&other); err != nil {
+		return err
+	}
+	if other != 0 {
+		return fmt.Errorf("%s %q: %w", provider, mangaID, ErrWatchExists)
+	}
+	if _, err := tx.Exec(`UPDATE watches SET provider = ?, manga_id = ?, title = ?, library_manga = coalesce(?, library_manga),
+	resumed = CASE WHEN relink != '' THEN ? ELSE resumed END, relink = '', failures = 0, last_error = '' WHERE id = ?`,
+		provider, mangaID, title, nullID(libraryManga), unix(at), id); err != nil {
+		return err
+	}
+	if !moveBindings || oldProvider == provider && oldManga == mangaID {
+		return nil
+	}
+	if _, err := tx.Exec(`DELETE FROM metadata_bindings WHERE provider = ?3 AND manga_id = ?4 AND source IN
+	(SELECT source FROM metadata_bindings WHERE provider = ?1 AND manga_id = ?2)`, oldProvider, oldManga, provider, mangaID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`UPDATE metadata_bindings SET provider = ?3, manga_id = ?4 WHERE provider = ?1 AND manga_id = ?2`,
+		oldProvider, oldManga, provider, mangaID)
+	return err
 }
 
 // LibraryNumbers are the chapter numbers the library manga has downloaded.
