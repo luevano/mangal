@@ -83,7 +83,7 @@ By default if just executing the `mangal` command, it will start the TUI. To lis
 mangal -h
 ```
 
-In the TUI `?` shows the keys of each screen and `,` opens the config window from any of them. On the home screen: `L` library, `W` watches, `a` accounts, `M` migrate; on a manga: `A` its metadata bindings, `w` watch it. In the watches: `c` check, `p` pause, `e` edit (`m` re-links the manga), `x` stop watching, `F` fill gaps, `t` live log, `V` every check; lists keep `g`/`G` (start/end), `h`/`l` (pages) and `/` (filter).
+In the TUI `?` shows the keys of each screen and `,` opens the config window from any of them. A key means one thing on every screen, `d` deletes (and confirms the delete). On the home screen: `L` library, `W` watches, `K` accounts, `X` migrate; on a manga: `A` its metadata bindings, `w` watch it. In the watches: `u` check, `p` pause, `e` edit (`b` re-links the manga), `d` stop watching, `F` fill gaps, `O` live log, `V` every check, ctrl+r refresh; lists keep `g`/`G` (start/end), `h`/`l` (pages) and `/` (filter).
 
 **Note:** A v4 config (usually `~/.config/mangal/mangal.toml`) doesn't work with v5: its keys are ignored with a warning, remove it.
 
@@ -119,7 +119,7 @@ These are either the native Go implementations already included (from [mangoprov
 mangal providers ls
 ```
 
-When a provider is renamed (e.g. MangaSee is now Weeb Central, `mango-weebcentral`), its old id still works with a warning. Data saved under the old id can be moved to the new one with `mangal migrate` (lists the changes, `--apply` does them), or with `M` on the TUI home. Moved watches need a re-link (the new site may use other manga ids): the scheduler skips them until a check finds the manga or `mangal watch move <id>` (`m` in the TUI watches, `n` lists them) points them to it.
+When a provider is renamed (e.g. MangaSee is now Weeb Central, `mango-weebcentral`), its old id still works with a warning. Data saved under the old id can be moved to the new one with `mangal migrate` (lists the changes, `--apply` does them), or with `X` on the TUI home. Moved watches need a re-link (the new site may use other manga ids): the scheduler skips them until a check finds the manga or `mangal watch move <id>` (`b` in the TUI watches, `N` lists them) points them to it.
 
 #### Lua providers
 
@@ -175,7 +175,7 @@ A library manga's links replace the old ids everywhere: its sources' bindings, i
 
 Every operation that changes files (rename, merge, move, link, `scan --mark --apply`, `migrate`, a TUI delete) first snapshots the data database into `<data dir>/backups/` (the last `data.backups`, 10 by default, are kept) and journals its file changes, so `mangal library undo` can revert it. Nothing is overwritten, and an undo that would lose later changes is refused unless `--force`.
 
-The TUI has the same under `L` on the home screen (`s` scan, `S` scan and check ids, `m` merge, `2` duplicates only, `M` move to another provider, `A` links, `B` fill backup links, `t` trash, `U` undo the last operation), where `D` deletes a manga or a chapter (to the trash).
+The TUI has the same under `L` on the home screen (`u` scan, `S` scan and check ids, `J` merge, `D` duplicates only, `X` move to another provider, `A` links, `B` fill backup links, `t` trash, `U` undo the last operation), where `d` deletes a manga or a chapter (to the trash; a manga whose folder is gone is forgotten).
 
 ### Accounts
 
@@ -183,7 +183,7 @@ The TUI has the same under `L` on the home screen (`s` scan, `S` scan and check 
 mangal accounts
 ```
 
-Shows every account mangal can use, logged in or not: Anilist, Kitsu, MyAnimeList and the provider accounts (e.g. the MangaPlus subscription), `a` on the TUI home. From there you can log into Anilist, Kitsu or MyAnimeList, set the MangaPlus secret or the Discord webhook. mangal tells you when the Anilist login expires. Without a browser on the same machine, `mangal anilist login` and `mangal myanimelist login` print the URL to open and take the redirected URL pasted back.
+Shows every account mangal can use, logged in or not: Anilist, Kitsu, MyAnimeList and the provider accounts (e.g. the MangaPlus subscription), `K` on the TUI home. From there you can log into Anilist, Kitsu or MyAnimeList, set the MangaPlus secret or the Discord webhook. mangal tells you when the Anilist login expires. Without a browser on the same machine, `mangal anilist login` and `mangal myanimelist login` print the URL to open and take the redirected URL pasted back.
 
 Metadata comes from [Anilist](https://anilist.co), then [Kitsu](https://kitsu.app) when Anilist finds nothing (`metadata.kitsu.enabled`), then MyAnimeList when configured (below), or the provider, and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config. Log in with `mangal anilist` to also sync the reading progress when reading from the TUI; `mangal kitsu` and `read.history.kitsu = true` do the same for Kitsu. MyAnimeList needs an API client id of your own: register an app at https://myanimelist.net/apiconfig (App Type "other", redirect URL `http://localhost:6969/oauth/mal/callback`), save its client id with `mangal myanimelist client` (or from `mangal myanimelist`, which asks for it), log in with `mangal myanimelist` and set `read.history.myanimelist = true`. Chapters read from the TUI are kept in a local history (`mangal history`, `read.history.local`).
 
