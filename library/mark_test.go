@@ -1,8 +1,10 @@
 package library
 
 import (
+	"archive/zip"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/luevano/libmangal"
@@ -35,7 +37,7 @@ func TestMark(t *testing.T) {
 	}
 
 	weeb := libmangal.ProviderInfo{ID: "mango-weebcentral", Name: "Weeb Central", History: []libmangal.ProviderAlias{{ID: "mango-mangasee"}}}
-	res, err := files.Mark([]libmangal.ProviderLoader{loader{weeb}})
+	res, err := files.Mark(MarkOptions{Loaders: []libmangal.ProviderLoader{loader{weeb}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +66,83 @@ func TestMark(t *testing.T) {
 	if err != nil || scan.Relocated != 1 {
 		t.Errorf("scan %+v, %v", scan, err)
 	}
-	if res, _ := files.Mark(nil); len(res.Marked) != 0 {
+	if res, _ := files.Mark(MarkOptions{}); len(res.Marked) != 0 {
 		t.Errorf("marked twice: %+v", res.Marked)
 	}
+}
+
+// TestMarkFromFolder: folders adopted by a scan without a source are marked from their
+// provider directory and name: the provider (no manga id), the title from ComicInfo.xml,
+// the id tag; a PDF (no ComicInfo.xml) one in no provider's directory with its ids only.
+func TestMarkFromFolder(t *testing.T) {
+	root := t.TempDir()
+	lib := newLibrary(t)
+	files := Files{FS: afero.NewOsFs(), Library: lib, Root: root, Modes: DefaultModes}
+	dex := libmangal.ProviderInfo{ID: "mango-mangadex", Name: "MangaDex"}
+	weeb := libmangal.ProviderInfo{ID: "mango-weebcentral", Name: "Weeb Central", History: []libmangal.ProviderAlias{{ID: "mango-mangasee", Name: "MangaSee"}}}
+	opts := MarkOptions{Loaders: []libmangal.ProviderLoader{loader{dex}, loader{weeb}}, ProviderDirs: true, ProviderName: func(p libmangal.ProviderInfo) string { return p.ID }}
+
+	writeSeriesCBZ(t, filepath.Join(root, "mango-mangadex", "Auto Hunting (2022) [alid-155950]", "[0001.0] Ch 1.cbz"))
+	touch(t, filepath.Join(root, "mango-mangasee", "Clones (2021) [alid-7]", "[0002.0] Ch 2.pdf"))
+	touch(t, filepath.Join(root, "batch", "Pluto [alid-8]", "[0003.0] Ch 3.pdf"))
+	touch(t, filepath.Join(root, "batch", "Unknown", "[0004.0] Ch 4.pdf"))
+	if _, err := (Scanner{FS: files.FS, Library: lib}).Scan(root, true); err != nil {
+		t.Fatal(err)
+	}
+	res, err := files.Mark(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Marked{}
+	for _, m := range res.Marked {
+		got[m.Manga.Dir] = m
+	}
+	al := func(id string) []metadata.ID {
+		return []metadata.ID{{Raw: id, Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}}
+	}
+	if m := got["Auto Hunting (2022) [alid-155950]"]; m.Evidence != MarkedFromDir || m.Info.Provider != "mango-mangadex" || m.Info.Manga.ID != "" ||
+		m.Info.Manga.Title != "Auto Hunting With My Clones" || !slices.Equal(m.Info.MetadataIDs, al("155950")) {
+		t.Errorf("cbz %+v", m)
+	}
+	if m := got["Clones (2021) [alid-7]"]; m.Evidence != MarkedFromDir || m.Info.Provider != "mango-weebcentral" || m.Info.Manga.Title != "Clones" {
+		t.Errorf("old directory name %+v", m)
+	}
+	if m := got["Pluto [alid-8]"]; m.Evidence != MarkedFromIDs || m.Info.Provider != "" || !slices.Equal(m.Info.MetadataIDs, al("8")) {
+		t.Errorf("ids only %+v", m)
+	}
+	if len(res.Unknown) != 1 || res.Unknown[0].Dir != "Unknown" {
+		t.Errorf("unknown %+v", res.Unknown)
+	}
+	// a provider-less marker matches a download only by metadata id, never by provider
+	have, _ := libmangal.ReadMangaDirInfo(files.FS, filepath.Join(root, "mango-mangadex", "Auto Hunting (2022) [alid-155950]"))
+	other := libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "x"}}
+	if libmangal.MatchMangaDir(dex, other, have) != libmangal.MangaDirNoMatch {
+		t.Error("an id-less marker matched another manga of its provider")
+	}
+	other.MetadataIDs = al("155950")
+	if libmangal.MatchMangaDir(dex, other, have) != libmangal.MangaDirMetadataMatch {
+		t.Error("the marker's metadata id doesn't match")
+	}
+}
+
+// writeSeriesCBZ writes a cbz with a ComicInfo.xml like libmangal's: the series, and the
+// chapter's url (which doesn't tell the manga id on MangaDex).
+func writeSeriesCBZ(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	page, _ := w.Create("0001.jpg")
+	_, _ = page.Write([]byte("img"))
+	ci, _ := w.Create(metadata.FilenameComicInfoXML)
+	_, _ = ci.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<ComicInfo><Title>Chapter 1</Title><Series>Auto Hunting With My Clones</Series><Number>1</Number>
+<Web>https://mangadex.org/chapter/0b7c5b4a-21ed-4d3e-9a06-bc02b4f4c1f1</Web><Year>2022</Year></ComicInfo>`))
+	_ = w.Close()
+	_ = f.Close()
 }

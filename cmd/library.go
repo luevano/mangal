@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -266,10 +267,12 @@ else guessed from their series.json, chapters and name (with the metadata id of 
 whose manga doesn't look like the folder's, and suggests an AniList id for the folders
 without any. It only reports, a download from a provider links the folder for good.
 
---mark writes a .libmangal.json (as downloads do) into the manga folders without one
-whose provider manga the library knows (its current source, with its metadata ids), so
-downloads, scans and renames recognize them by it. Folders known only from guesses are
-left as they are, an existing .libmangal.json is never replaced.`,
+--mark writes a .libmangal.json (as downloads do) into the manga folders without one,
+from what's known: the library's source of it (provider and manga id, also found from
+its watch or recorded downloads), else the provider of the provider directory it's in
+(no manga id), else only its title and metadata ids, so downloads, scans and renames
+recognize the folder by it. Folders with nothing to go by are left as they are, an
+existing .libmangal.json is never replaced.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		lib, err := libraryOf()
@@ -339,21 +342,28 @@ left as they are, an existing .libmangal.json is never replaced.`,
 	},
 }
 
-// markFolders writes the missing .libmangal.json of the folders with a known source.
+// markFolders writes the missing .libmangal.json of the folders, from what's known.
 func markFolders(cmd *cobra.Command, lib storage.Library, root string) error {
 	loaders, err := manager.Loaders()
 	if err != nil {
 		return err
 	}
 	files := library.Files{FS: afs.Afero, Library: lib, Root: root, Modes: client.LibraryModes()}
-	res, err := files.Mark(loaders)
+	res, err := files.Mark(library.MarkOptions{Loaders: loaders, ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider})
 	if err != nil {
 		return err
 	}
+	counts := map[library.MarkEvidence]int{}
 	for _, m := range res.Marked {
-		cmd.Printf("marked %s as %s %s\n", m.Manga.Path(), m.Info.Provider, m.Info.Manga.ID)
+		counts[m.Evidence]++
+		as := cmp.Or(m.Info.Provider, "no provider")
+		if m.Info.Manga.ID != "" {
+			as += " " + m.Info.Manga.ID
+		}
+		cmd.Printf("marked %s as %s (%s)\n", m.Manga.Path(), as, m.Evidence)
 	}
-	cmd.Printf("%d marked, %d without a known source (not marked)\n", len(res.Marked), len(res.Unknown))
+	cmd.Printf("%d marked (%d from the library source, %d provider from its directory, %d metadata ids only), %d with nothing to go by (not marked)\n",
+		len(res.Marked), counts[library.MarkedFromSource], counts[library.MarkedFromDir], counts[library.MarkedFromIDs], len(res.Unknown))
 	return nil
 }
 
