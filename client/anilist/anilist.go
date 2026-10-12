@@ -60,6 +60,8 @@ func newAnilist() (*metadata.ProviderWithCache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create anilist: %w", err)
 	}
+	// logged before any client sets its logger too (e.g. library commands)
+	provider.Logger().SetOnLog(mlog.ProviderHook("anilist"))
 	return provider, nil
 }
 

@@ -61,6 +61,8 @@ func newKitsu() (*metadata.ProviderWithCache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create kitsu: %w", err)
 	}
+	// logged before any client sets its logger too (e.g. library commands)
+	p.Logger().SetOnLog(mlog.ProviderHook("kitsu"))
 	// the login methods are only on the concrete client
 	kitsu_ = k
 	return p, nil

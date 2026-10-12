@@ -93,6 +93,8 @@ func MyAnimeList() (*metadata.ProviderWithCache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create myanimelist: %w", err)
 	}
+	// logged before any client sets its logger too (e.g. library commands)
+	p.Logger().SetOnLog(mlog.ProviderHook("myanimelist"))
 	mal, provider, providerID = m, p, id
 	return provider, nil
 }
