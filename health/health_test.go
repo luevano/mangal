@@ -200,6 +200,22 @@ func TestRun(t *testing.T) {
 			t.Errorf("unexpected %+v", f)
 		}
 	}
+	actions := map[string]string{}
+	for _, f := range report.Findings {
+		if a := f.Fix.Action; a != nil {
+			actions[fmt.Sprintf("%s %s %d", f.Check, f.Subject.Kind, f.Subject.ID)+" "+a.Kind] = fmt.Sprintln(a.Watch, a.Source, a.IDs, a.Mangas)
+		}
+	}
+	for k, v := range map[string]string{
+		"W3 watch 4 resume": "4  [] []\n",
+		"M6 manga 1 merge":  "0  [] [1 2]\n",
+		"M3 manga 3 pick":   "0 kt [30 31] []\n",
+		"M3 manga 3 link":   "0 al [21 30002] []\n",
+	} {
+		if actions[k] != v {
+			t.Errorf("action %s: %q, want %q (all %v)", k, actions[k], v, actions)
+		}
+	}
 	w10, _ := find(report, want{check: "W10", kind: "library"})
 	var items []string
 	for _, i := range w10.Items {

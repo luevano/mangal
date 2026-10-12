@@ -113,7 +113,8 @@ func checkPaused(s *snapshot) []Finding {
 			continue
 		}
 		out = append(out, Finding{Severity: Info, Subject: watchSubject(w), Message: "paused",
-			Fix: Fix{Commands: []string{fmt.Sprintf("mangal watch resume %d", w.ID)}, TUI: tuiWatches + ": pause/resume"}})
+			Fix: Fix{Commands: []string{fmt.Sprintf("mangal watch resume %d", w.ID)}, TUI: tuiWatches + ": pause/resume",
+				Action: &Action{Kind: ActionResume, Watch: w.ID}}})
 	}
 	return out
 }
@@ -268,6 +269,7 @@ func checkNotWatched(s *snapshot) []Finding {
 		}
 		if src, ok := installedSource(s, m); ok {
 			f.Fix.Commands = []string{fmt.Sprintf("mangal watch add %s mid:%s", src.Provider, quote(src.MangaID))}
+			f.Fix.Action = &Action{Kind: ActionWatch, Manga: m.ID, Provider: src.Provider, MangaID: src.MangaID}
 		} else {
 			f.Fix.Commands = []string{fmt.Sprintf("mangal watch add <provider> %s", quote(m.Title))}
 			f.Fix.Note = "no provider source (an adopted folder): search it on a provider"
@@ -555,6 +557,7 @@ func checkNoAnilist(s *snapshot) []Finding {
 		if suggest != "" {
 			f.Details = []string{fmt.Sprintf("%s AniList %s", from, suggest)}
 			f.Fix.Commands = []string{fmt.Sprintf("mangal library bind %d --anilist %s", m.ID, suggest)}
+			f.Fix.Action = &Action{Kind: ActionLink, Manga: m.ID, Source: metadata.IDCodeAnilist, IDs: []string{suggest}}
 		} else {
 			f.Fix.Commands = []string{"mangal library scan --check", fmt.Sprintf("mangal library bind %d --anilist <id>", m.ID)}
 			f.Fix.Note = "the check suggests AniList ids for folders without one (network)"
@@ -588,6 +591,7 @@ func checkDisagreements(s *snapshot) []Finding {
 		f.Message = fmt.Sprintf("%s: pick between %s", name, strings.Join(froms, " and "))
 		f.Details = []string{fmt.Sprintf("found on %s for AniList %s, nothing linked meanwhile", p.Found.Format(time.DateOnly), p.AniList)}
 		f.Fix.Note = fmt.Sprintf("linking either settles it; neither: mangal library bind %d --dismiss", m.ID)
+		f.Fix.Action = &Action{Kind: ActionPick, Manga: m.ID, Source: p.Source, IDs: p.IDs()}
 		out = append(out, f)
 	}
 	for _, m := range s.mangas {
@@ -602,11 +606,14 @@ func checkDisagreements(s *snapshot) []Finding {
 				Message: fmt.Sprintf("%s links disagree: %s (%s)", name, cur, src.Where()),
 				Fix:     Fix{TUI: tuiLibrary + ": links"}}
 			tagOnly := len(dis) == 1 && src.Tag != "" && src.Tag != cur
+			f.Fix.Action = &Action{Kind: ActionLink, Manga: m.ID, Source: src.Code, IDs: []string{cur}}
 			switch {
 			case tagOnly && src.Code == metadata.IDCodeAnilist:
+				f.Fix.Action.IDs = append(f.Fix.Action.IDs, src.Tag)
 				f.Fix.Commands = []string{fmt.Sprintf("mangal library bind %d --rename", m.ID), fmt.Sprintf("mangal library bind %d %s %s", m.ID, flag, src.Tag)}
 				f.Fix.Note = fmt.Sprintf("the folder name says %s: rename the folder if %s is right, else link %s", src.Tag, cur, src.Tag)
 			case tagOnly:
+				f.Fix.Action.IDs = []string{src.Tag, cur}
 				f.Fix.Commands = []string{fmt.Sprintf("mangal library bind %d %s %s", m.ID, flag, src.Tag)}
 				f.Fix.Note = fmt.Sprintf("the folder name says %s: link it, or rename the folder if %s is right", src.Tag, cur)
 			default:
@@ -618,6 +625,7 @@ func checkDisagreements(s *snapshot) []Finding {
 				f.Fix.Commands = []string{keep}
 				f.Fix.Note = fmt.Sprintf("linking replaces the other ids: keep %s", cur)
 				if sug := src.Suggested(); sug != "" && sug != cur {
+					f.Fix.Action.IDs = append(f.Fix.Action.IDs, sug)
 					f.Fix.Commands = append(f.Fix.Commands, fmt.Sprintf("mangal library bind %d %s %s", m.ID, flag, sug))
 					f.Fix.Note += fmt.Sprintf(", or the folder's %s", sug)
 				}
@@ -634,11 +642,16 @@ func checkDuplicates(s *snapshot) []Finding {
 	var out []Finding
 	for _, d := range library.Duplicates(s.mangas, s.allBindings, watched) {
 		keep := d.Keep()
+		action := &Action{Kind: ActionMerge}
+		for _, dm := range d.Mangas {
+			action.Mangas = append(action.Mangas, dm.Manga.ID)
+		}
 		f := Finding{Severity: Warning, Subject: mangaSubject(keep),
 			Message: fmt.Sprintf("%s %s is in %d folders, keep %d", d.Source(), d.Raw, len(d.Mangas), keep.ID),
 			Fix: Fix{
-				Note: "the keep is watched, then linked, then has more chapters; swap the ids to keep the other",
-				TUI:  tuiLibrary + ": duplicates only, merge (into the keep)",
+				Note:   "the keep is watched, then linked, then has more chapters; swap the ids to keep the other",
+				TUI:    tuiLibrary + ": duplicates only, merge (into the keep)",
+				Action: action,
 			}}
 		for i, dm := range d.Mangas {
 			mark := "     "

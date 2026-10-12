@@ -128,6 +128,7 @@ func checkNewChapters(s *snapshot) []Finding {
 					Commands: []string{fmt.Sprintf("mangal watch add %s mid:%s", r.provider, quote(r.mangaID))},
 					Note:     "its first check downloads them",
 					TUI:      "health: add a watch",
+					Action:   &Action{Kind: ActionWatch, Manga: m.ID, Provider: r.provider, MangaID: r.mangaID},
 				}})
 		}
 	}

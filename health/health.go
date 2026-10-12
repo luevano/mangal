@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
 )
@@ -78,6 +79,34 @@ type Fix struct {
 	Note     string   `json:"note,omitempty"`
 	// TUI is where the TUI fixes it.
 	TUI string `json:"tui,omitempty"`
+	// Action is the fix the TUI applies itself (after a confirm), nil when there's none.
+	Action *Action `json:"action,omitempty"`
+}
+
+// Kinds of Action.
+const (
+	// ActionLink links the library Manga to Source's id, one of IDs (the first suggested).
+	ActionLink = "link"
+	// ActionPick picks one of the ids of the library Manga's link pick of Source.
+	ActionPick = "pick"
+	// ActionResume resumes the Watch.
+	ActionResume = "resume"
+	// ActionWatch watches the Provider's MangaID (the library Manga's source).
+	ActionWatch = "watch"
+	// ActionMerge merges the library Mangas into one (the suggested keep first).
+	ActionMerge = "merge"
+)
+
+// Action is a fix the TUI can apply: the same change as the fix's command.
+type Action struct {
+	Kind     string          `json:"kind"`
+	Manga    int64           `json:"manga,omitempty"`
+	Watch    int64           `json:"watch,omitempty"`
+	Source   metadata.IDCode `json:"source,omitempty"`
+	IDs      []string        `json:"ids,omitempty"`
+	Provider string          `json:"provider,omitempty"`
+	MangaID  string          `json:"manga_id,omitempty"`
+	Mangas   []int64         `json:"mangas,omitempty"`
 }
 
 // Finding is a problem a check found.
