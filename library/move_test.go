@@ -46,16 +46,27 @@ func TestMove(t *testing.T) {
 
 	pill := libmangal.ProviderInfo{ID: "pill", Name: "Mangapill"}
 	to := &dirManga{info: mangadata.MangaInfo{ID: "1/berserk", Title: "Berserk (Pill)"}}
-	plan, err := m.PlanMove(ctx, manga, pill, to)
+	// a full move would adopt the new title and folder name
+	full, err := m.PlanMove(ctx, manga, pill, to, MoveOptions{Full: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	newDir := filepath.Join(root, "Mangapill", "Berserk (Pill)")
+	if full.Title != "Berserk (Pill)" || full.Dir != filepath.Join(root, "Mangapill", "Berserk (Pill)") ||
+		!strings.Contains(strings.Join(full.Lines(), "\n"), `title: "Berserk" -> "Berserk (Pill)"`) {
+		t.Errorf("full plan %+v\n%s", full, strings.Join(full.Lines(), "\n"))
+	}
+
+	// the default keeps the title and the folder's name
+	plan, err := m.PlanMove(ctx, manga, pill, to, MoveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newDir := filepath.Join(root, "Mangapill", "Berserk")
 	if plan.Dir != newDir || plan.Watch == nil || plan.Watch.ID != w.ID || len(plan.Bindings) != 1 || plan.Old == nil {
 		t.Fatalf("plan %+v", plan)
 	}
 	lines := strings.Join(plan.Lines(), "\n")
-	for _, want := range []string{"source: add pill 1/berserk (keeps asura berserk)", "Asura/Berserk -> Mangapill/Berserk (Pill)", ".libmangal.json: asura berserk -> pill 1/berserk", "(re-linked)", "copied: al 30002"} {
+	for _, want := range []string{"source: add pill 1/berserk (keeps asura berserk)", "folder: Asura/Berserk -> Mangapill/Berserk\n", ".libmangal.json: asura berserk -> pill 1/berserk", "(re-linked)", "copied: al 30002"} {
 		if !strings.Contains(lines, want) {
 			t.Errorf("lines miss %q:\n%s", want, lines)
 		}
@@ -71,7 +82,7 @@ func TestMove(t *testing.T) {
 		t.Errorf("marker %+v, %v", info, err)
 	}
 	got, _, _ := lib.MangaByID(manga.ID)
-	if got.Path() != newDir || len(got.Sources) != 2 {
+	if got.Path() != newDir || len(got.Sources) != 2 || got.Title != "Berserk" {
 		t.Errorf("manga %+v", got)
 	}
 	if ok, _ := lib.HasDownload(filepath.Join(newDir, "[0001.0] One.cbz")); !ok {
@@ -90,7 +101,7 @@ func TestMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	vagabond, _, _ := lib.MangaBySource("asura", "vagabond")
-	if _, err := m.PlanMove(ctx, vagabond, pill, to); err == nil || !strings.Contains(err.Error(), "mangal library merge") {
+	if _, err := m.PlanMove(ctx, vagabond, pill, to, MoveOptions{}); err == nil || !strings.Contains(err.Error(), "mangal library merge") {
 		t.Errorf("onto another manga: %v", err)
 	}
 }
@@ -105,7 +116,7 @@ func TestMoveUndo(t *testing.T) {
 	writeMarker(t, dir, old)
 	record(t, m.Library, filepath.Dir(dir), "Berserk", "1.cbz", 1, "asura")
 	manga, _, _ := m.Library.MangaBySource("asura", "berserk")
-	plan, err := m.PlanMove(context.Background(), manga, libmangal.ProviderInfo{ID: "pill", Name: "Mangapill"}, &dirManga{info: mangadata.MangaInfo{ID: "1", Title: "Berserk"}})
+	plan, err := m.PlanMove(context.Background(), manga, libmangal.ProviderInfo{ID: "pill", Name: "Mangapill"}, &dirManga{info: mangadata.MangaInfo{ID: "1", Title: "Berserk"}}, MoveOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,5 +129,22 @@ func TestMoveUndo(t *testing.T) {
 	}
 	if _, err := os.Stat(plan.Dir); !os.IsNotExist(err) {
 		t.Errorf("new folder left: %v", err)
+	}
+}
+
+func TestMoveFolderChange(t *testing.T) {
+	marker := &libmangal.MangaDirInfo{}
+	plan := MovePlan{Root: "/dl", From: "/dl/Asura/Berserk", Dir: "/dl/Pill/Berserk", Marker: marker, Full: true, NameFromMetadata: true}
+	if got := plan.FolderChange(); got != "Asura/Berserk -> Pill/Berserk (name unchanged: it uses the AniList title)" {
+		t.Errorf("metadata name: %q", got)
+	}
+	plan.NameFromMetadata = false
+	plan.Dir = plan.From
+	if got := plan.FolderChange(); got != "stays Asura/Berserk (name unchanged)" {
+		t.Errorf("same name: %q", got)
+	}
+	plan.Full = false
+	if got := plan.FolderChange(); got != "stays Asura/Berserk" {
+		t.Errorf("default: %q", got)
 	}
 }

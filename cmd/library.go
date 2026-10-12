@@ -172,6 +172,7 @@ func init() {
 	libraryMergeCmd.Flags().BoolVar(&libraryMergeArgs.Apply, "apply", false, "Merge, instead of only listing what would happen")
 	libraryCmd.AddCommand(libraryMoveCmd)
 	libraryMoveCmd.Flags().BoolVar(&libraryMoveArgs.Apply, "apply", false, "Move, instead of only listing what would happen")
+	libraryMoveCmd.Flags().BoolVar(&libraryMoveArgs.Full, "full", false, "Fully migrate: adopt the new provider's title and the folder name it gives")
 	libraryMoveCmd.Flags().StringVarP(&libraryMoveArgs.Selector, "manga-selector", "m", "exact", "Manga selector of the search (first|last|exact|closest|<index>)")
 	libraryCmd.AddCommand(libraryTrashCmd)
 	libraryTrashCmd.AddCommand(libraryTrashEmptyCmd)
@@ -414,6 +415,7 @@ Only lists what would happen unless --apply is set.`,
 
 var libraryMoveArgs = struct {
 	Apply    bool
+	Full     bool
 	Selector string
 }{}
 
@@ -425,14 +427,17 @@ one with the id ("mid:<id>"), or the one the manga selector picks from a search 
 query (without a query, the library manga's title, an exact match).
 
 The library manga gets that manga as a source (its other sources stay), its folder moves
-to where that manga's downloads go (the provider's directory with
-download.provider.create_dir, named by the name template) with its .libmangal.json
-rewritten, its watch is re-linked to it and it gets the metadata bindings it hasn't got.
-A manga that's another library manga's already is an error: merge them instead.
+into that provider's directory (with download.provider.create_dir) under the same name
+with its .libmangal.json rewritten, its watch is re-linked to it and it gets the metadata
+bindings it hasn't got. The library title and the folder's name stay; --full adopts the
+new manga's title and the folder name the manga name template gives it (unchanged when
+the template uses the AniList title). A manga that's another library manga's already is
+an error: merge them instead.
 
 Only lists what would happen unless --apply is set.`,
 	Example: `  mangal library move 12 mango-mangapill
   mangal library move 12 mango-weebcentral "Dungeon Odyssey" --apply
+  mangal library move 12 mango-weebcentral --full
   mangal library move 12 mango-mangadex mid:7c145eb7-2ee0-4a82-8d5c-bbb7ba0a4d42`,
 	Args:              cobra.MinimumNArgs(2),
 	ValidArgsFunction: completionMoveArgs,
@@ -468,7 +473,7 @@ Only lists what would happen unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		plan, err := mover.PlanMove(ctx, manga, c.Info(), to)
+		plan, err := mover.PlanMove(ctx, manga, c.Info(), to, library.MoveOptions{Full: libraryMoveArgs.Full})
 		if err != nil {
 			return err
 		}

@@ -30,15 +30,29 @@ type Mover struct {
 	Metadata func(ctx context.Context, ids []metadata.ID) (metadata.Metadata, error)
 }
 
+// MoveOptions say how a library manga moves.
+type MoveOptions struct {
+	// Full adopts the new manga's title as the library title, and the folder name the name
+	// template gives it. Otherwise both stay.
+	Full bool
+}
+
 // MovePlan is what moving a library manga to another provider's manga does: the manga
-// gets it as a source (its other sources stay), its folder goes where that manga's
-// downloads would go, its watch follows and the new manga gets its metadata bindings.
+// gets it as a source (its other sources stay), its folder goes to that provider's
+// directory (with provider directories), its watch follows and the new manga gets its
+// metadata bindings.
 type MovePlan struct {
 	Manga    storage.Manga
 	Provider libmangal.ProviderInfo
 	To       mangadata.MangaInfo
 	// HasSource is a manga that has the source already.
 	HasSource bool
+	// Full is MoveOptions.Full, Title the library title after the move.
+	Full  bool
+	Title string
+	// NameFromMetadata is a full move's folder named from the metadata (the template's
+	// AniList title), not from the new manga's title.
+	NameFromMetadata bool
 	// From and Dir are the folder before and after, the same when it stays.
 	From, Dir string
 	// Root is the download directory, Lines shows the folders relative to it.
@@ -55,8 +69,12 @@ type MovePlan struct {
 
 // PlanMove plans moving the library manga to the provider's manga. A manga of another
 // library manga is an error that says to merge them.
-func (m Mover) PlanMove(ctx context.Context, manga storage.Manga, provider libmangal.ProviderInfo, to mangadata.Manga) (MovePlan, error) {
-	plan := MovePlan{Manga: manga, Provider: provider, To: to.Info(), From: manga.Path(), Dir: manga.Path(), Root: m.Root}
+func (m Mover) PlanMove(ctx context.Context, manga storage.Manga, provider libmangal.ProviderInfo, to mangadata.Manga, opts MoveOptions) (MovePlan, error) {
+	plan := MovePlan{Manga: manga, Provider: provider, To: to.Info(), From: manga.Path(), Dir: manga.Path(), Root: m.Root,
+		Full: opts.Full, Title: manga.Title}
+	if opts.Full && plan.To.Title != "" {
+		plan.Title = plan.To.Title
+	}
 	fail := func(err error) (MovePlan, error) {
 		return plan, fmt.Errorf("move %q to %s: %w", manga.Title, provider.ID, err)
 	}
@@ -90,7 +108,8 @@ func (m Mover) PlanMove(ctx context.Context, manga storage.Manga, provider libma
 	return plan, nil
 }
 
-// planFolder works out where the folder goes and its new .libmangal.json.
+// planFolder works out where the folder goes (its name changes only in a full move) and
+// its new .libmangal.json.
 func (m Mover) planFolder(ctx context.Context, plan *MovePlan) error {
 	marker := libmangal.MangaDirInfo{MetadataIDs: plan.Manga.MetadataIDs}
 	old, err := libmangal.ReadMangaDirInfo(m.FS, plan.From)
@@ -104,25 +123,30 @@ func (m Mover) planFolder(ctx context.Context, plan *MovePlan) error {
 	marker.Provider, marker.Manga = plan.Provider.ID, plan.To
 	plan.Marker = &marker
 
-	ids := slices.Clone(marker.MetadataIDs)
-	for _, id := range plan.Manga.MetadataIDs {
-		if !slices.Contains(ids, id) {
-			ids = append(ids, id)
-		}
-	}
-	var meta metadata.Metadata
-	if m.Metadata != nil {
-		if meta, err = m.Metadata(ctx, ids); err != nil {
-			return fmt.Errorf("metadata: %w", err)
-		}
-	}
 	parent := plan.Manga.Parent
 	if m.ProviderDirs {
 		if parent, err = m.providerDir(plan.Provider); err != nil {
 			return err
 		}
 	}
-	plan.Dir = filepath.Join(parent, m.MangaName(plan.Provider, &dirManga{info: plan.To, meta: meta}))
+	name := filepath.Base(plan.From)
+	if plan.Full {
+		ids := slices.Clone(marker.MetadataIDs)
+		for _, id := range plan.Manga.MetadataIDs {
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+		var meta metadata.Metadata
+		if m.Metadata != nil {
+			if meta, err = m.Metadata(ctx, ids); err != nil {
+				return fmt.Errorf("metadata: %w", err)
+			}
+		}
+		plan.NameFromMetadata = metadata.Validate(meta) == nil
+		name = m.MangaName(plan.Provider, &dirManga{info: plan.To, meta: meta})
+	}
+	plan.Dir = filepath.Join(parent, name)
 	if plan.Dir == plan.From {
 		return nil
 	}
@@ -252,20 +276,10 @@ func (p MovePlan) Lines() []string {
 		source += " (keeps " + strings.Join(kept, ", ") + ")"
 	}
 	lines = append(lines, source)
-	rel := func(path string) string {
-		if r, err := filepath.Rel(p.Root, path); err == nil && p.Root != "" && isInside(p.Root, path) {
-			return r
-		}
-		return path
+	if p.Full {
+		lines = append(lines, "  title: "+p.TitleChange())
 	}
-	switch {
-	case p.Marker == nil:
-		lines = append(lines, "  folder: none of its own, the files stay in "+rel(p.From))
-	case p.Dir == p.From:
-		lines = append(lines, "  folder: stays "+rel(p.From))
-	default:
-		lines = append(lines, "  folder: "+rel(p.From)+" -> "+rel(p.Dir))
-	}
+	lines = append(lines, "  folder: "+p.FolderChange())
 	if p.Marker != nil {
 		was := "none"
 		if p.Old != nil {
@@ -287,6 +301,40 @@ func (p MovePlan) Lines() []string {
 		lines = append(lines, "  metadata bindings copied: "+strings.Join(bindings, ", "))
 	}
 	return lines
+}
+
+// TitleChange is the library title's change: "old -> new", or unchanged.
+func (p MovePlan) TitleChange() string {
+	if p.Title == p.Manga.Title {
+		return fmt.Sprintf("%q (unchanged)", p.Title)
+	}
+	return fmt.Sprintf("%q -> %q", p.Manga.Title, p.Title)
+}
+
+// FolderChange is what happens to the folder (relative to the root): "old -> new", it
+// stays, and in a full move why its name doesn't change.
+func (p MovePlan) FolderChange() string {
+	rel := func(path string) string {
+		if r, err := filepath.Rel(p.Root, path); err == nil && p.Root != "" && isInside(p.Root, path) {
+			return r
+		}
+		return path
+	}
+	if p.Marker == nil {
+		return "none of its own, the files stay in " + rel(p.From)
+	}
+	change := "stays " + rel(p.From)
+	if p.Dir != p.From {
+		change = rel(p.From) + " -> " + rel(p.Dir)
+	}
+	switch {
+	case !p.Full || filepath.Base(p.Dir) != filepath.Base(p.From):
+	case p.NameFromMetadata:
+		change += " (name unchanged: it uses the AniList title)"
+	default:
+		change += " (name unchanged)"
+	}
+	return change
 }
 
 // ApplyMove does the plan: the folder moves and gets its new .libmangal.json, then the
@@ -325,6 +373,7 @@ func (f Files) ApplyMove(plan MovePlan) error {
 		Source:   storage.Source{Provider: plan.Provider.ID, MangaID: plan.To.ID, Title: plan.To.Title},
 		From:     plan.From,
 		To:       plan.Dir,
+		Title:    plan.Title,
 		Bindings: plan.Bindings,
 		At:       time.Now(),
 	}

@@ -567,6 +567,8 @@ type MangaMove struct {
 	Manga int64
 	// Source is the provider's manga, the manga's other sources stay.
 	Source Source
+	// Title is the library title after, empty keeps it.
+	Title string
 	// From and To are the manga's folder before and after, the same when it stays.
 	From, To string
 	// Watch is re-linked to the source (its bindings stay), 0 if none.
@@ -591,6 +593,11 @@ func (l Library) Move(m MangaMove) error {
 		if _, err := tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title) VALUES (?, ?, ?, ?)
 ON CONFLICT (provider, manga_id) DO UPDATE SET title = excluded.title`, m.Source.Provider, m.Source.MangaID, m.Manga, m.Source.Title); err != nil {
 			return err
+		}
+		if m.Title != "" {
+			if _, err := tx.Exec(`UPDATE library_mangas SET title = ? WHERE id = ?`, m.Title, m.Manga); err != nil {
+				return err
+			}
 		}
 		if m.From != m.To {
 			if err := moved(tx, m.From, m.To); err != nil {

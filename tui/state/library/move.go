@@ -132,7 +132,7 @@ func planMove(ctx context.Context, m storage.Manga, provider string, to mangadat
 	} else if ok {
 		m = fresh
 	}
-	plan, err := mover.PlanMove(ctx, m, info, to)
+	plan, err := mover.PlanMove(ctx, m, info, to, library.MoveOptions{})
 	return movePlannedMsg{mover: mover, plan: plan}, err
 }
 

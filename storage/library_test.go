@@ -266,11 +266,12 @@ func TestLibraryMove(t *testing.T) {
 
 	move.Source = Source{Provider: "pill", MangaID: "1/berserk", Title: "Berserk (pill)"}
 	move.Bindings = []Binding{{Source: "al", ID: "30002"}, {Source: "kt", ID: "1"}}
+	move.Title = "Berserk (pill)"
 	if err := library.Move(move); err != nil {
 		t.Fatal(err)
 	}
 	got, _, _ := library.MangaByID(m.ID)
-	if got.Path() != "/lib/Pill/Berserk" || len(got.Sources) != 2 || got.Sources[1].Provider != "pill" || got.Title != "Berserk" {
+	if got.Path() != "/lib/Pill/Berserk" || len(got.Sources) != 2 || got.Sources[1].Provider != "pill" || got.Title != "Berserk (pill)" {
 		t.Errorf("manga %+v", got)
 	}
 	if ok, _ := library.HasDownload("/lib/Pill/Berserk/[0001.0] Ch 1.cbz"); !ok {
