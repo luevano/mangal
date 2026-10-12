@@ -40,6 +40,7 @@ var (
 	KeyDelete          = util.Bind("delete", "D")
 	KeyRemove          = util.Bind("remove", "x")
 	KeyUndo            = util.Bind("undo", "U")
+	KeyBackups         = util.Bind("fill backups", "B")
 )
 
 // sharedKeys are the Key* bindings, the old ones (from before v5.14) first.
@@ -47,7 +48,7 @@ func sharedKeys() (old, newer []key.Binding) {
 	return []key.Binding{KeyInfo, KeyMetadata, KeyBindings, KeySearch, KeyLogIn, KeyLogOut, KeyNewLogin, KeyForget},
 		[]key.Binding{
 			KeyWatch, KeyItsWatch, KeyLibraryManga, KeyProviderHistory, KeyLiveLog, KeyRelink, KeyPause, KeyEdit,
-			KeyRefresh, KeyCheckProvider, KeyNextProvider, KeyScan, KeyDelete, KeyRemove, KeyUndo,
+			KeyRefresh, KeyCheckProvider, KeyNextProvider, KeyScan, KeyDelete, KeyRemove, KeyUndo, KeyBackups,
 		}
 }
 

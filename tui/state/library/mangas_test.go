@@ -97,7 +97,7 @@ func TestFormatBindings(t *testing.T) {
 		t.Errorf("one source: %q", got)
 	}
 	several := append(one, storage.Binding{Provider: "q", MangaID: "9", Source: "al", ID: "132029", Default: true}, storage.Binding{Source: "kt", ID: "38"})
-	if got := formatBindings(several); got != "p: al 132029 (default), mal 30230; q: al 132029 (default); .libmangal.json: kt 38" {
+	if got := formatBindings(several); got != "p: al 132029 (default), mal 30230; q: al 132029 (default); library: kt 38" {
 		t.Errorf("several: %q", got)
 	}
 	if formatBindings(nil) != "" {
@@ -111,6 +111,7 @@ func TestKeys(t *testing.T) {
 	manga := newMangaState(library.Files{}, storage.Manga{ID: 7, Title: "Berserk"})
 	trash := newTrashState(library.Files{})
 	move := newMoveState(storage.Manga{ID: 7, Title: "Berserk"}, "mango-mangapill")
+	links := newLinksState(storage.Manga{ID: 7, Title: "Berserk"})
 	providers := pick.NewProviders("", nil)
 	for name, keys := range map[string][]string{
 		"move":      base.KeyCollisions(move.Keys(), move.List.KeyMap.Browsing()...),
@@ -118,6 +119,7 @@ func TestKeys(t *testing.T) {
 		"mangas":    base.KeyCollisions(mangas.keyMap(), mangas.List.KeyMap.Browsing()...),
 		"manga":     base.KeyCollisions(manga.keyMap(), manga.List.KeyMap.Browsing()...),
 		"trash":     base.KeyCollisions(trash.keyMap(), trash.List.KeyMap.Browsing()...),
+		"links":     base.KeyCollisions(links.keyMap(), links.List.KeyMap.Browsing()...),
 	} {
 		if len(keys) != 0 {
 			t.Errorf("%s: %v", name, keys)
@@ -171,5 +173,34 @@ func TestDuplicatesFilter(t *testing.T) {
 	s.Update(ctx, press("2"))
 	if len(s.List.Items()) != 3 {
 		t.Errorf("all again: %d", len(s.List.Items()))
+	}
+}
+
+func TestAskLinks(t *testing.T) {
+	d := newDialog()
+	d.Resize(base.Size{Width: 120, Height: 40})
+	m := storage.Manga{ID: 4, Title: "Onepunch-Man", Parent: "/dl/mango-mangadex", Dir: "Onepunch-Man"}
+	plan := library.LinkPlan{
+		Info:    library.LinkInfo{Manga: m},
+		Links:   library.Links{"al": "74347"},
+		Changes: []library.LinkChange{{Code: "al", Old: []string{"21087"}, New: "74347"}},
+		Rename:  &library.Rename{From: "/dl/mango-mangadex/Onepunch-Man", To: "/dl/mango-mangadex/One-Punch Man (2012) [alid-74347]"},
+		Watches: []library.LinkWatch{{Watch: storage.Watch{ID: 4, Provider: "mango-weebcentral", MangaID: "w"}, Code: "al", Has: "21087", Want: "74347"}},
+		Root:    "/dl",
+	}
+	if cmd := askLinks(d, "", linkPlannedMsg{plan: plan}); cmd != nil || !d.Active() {
+		t.Fatal("no choice dialog")
+	}
+	view := d.View()
+	for _, want := range []string{"AniList: 21087 -> 74347", "[alid-74347]", "watch 4", "link only", "rename the folder", "bind the watches", "all of it"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("dialog misses %q:\n%s", want, view)
+		}
+	}
+	// nothing to change nor imply
+	plan.Changes, plan.Rename, plan.Watches = nil, nil, nil
+	d = newDialog()
+	if msg, ok := askLinks(d, "", linkPlannedMsg{plan: plan})().(base.NotificationMsg); !ok || d.Active() || !strings.Contains(msg.Message, "already") {
+		t.Errorf("no change: %#v", msg)
 	}
 }

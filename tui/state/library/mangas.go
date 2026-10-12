@@ -86,7 +86,7 @@ type mangasState struct {
 }
 
 type mangasKeyMap struct {
-	confirm, scan, check, merge, move, remove, trash, delete, watch, undo, duplicates key.Binding
+	confirm, scan, check, merge, move, remove, trash, delete, watch, undo, duplicates, links, backups key.Binding
 }
 
 type mangasLoadedMsg struct {
@@ -142,6 +142,8 @@ func newMangasState(files library.Files) *mangasState {
 			watch:   base.KeyItsWatch,
 			// screen-wide filter like the watches' "n", "i"
 			duplicates: util.Bind("duplicates only", "2"),
+			links:      base.KeyBindings,
+			backups:    base.KeyBackups,
 		},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "manga", "mangas", []*mangaItem{}, func(i *mangaItem) _list.DefaultItem { return i }), s.keyMap)
@@ -151,7 +153,7 @@ func newMangasState(files library.Files) *mangasState {
 func (s *mangasState) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.remove, k.watch, k.undo, k.duplicates)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.remove, k.watch, k.undo, k.duplicates, k.links, k.backups)}}
 }
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
@@ -261,6 +263,8 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return nil
 	case undoPlannedMsg:
 		return s.askUndo(msg)
+	case backupsFoundMsg:
+		return askBackups(s.confirm, s.View(), msg)
 	case setRootMsg:
 		// in Update, the config isn't safe to write from the background
 		if err := config.WriteKey(config.Download.Path.Key, msg.dir); err != nil {
@@ -298,6 +302,12 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 		return func() tea.Msg { return newTrashState(files) }, true
 	case key.Matches(msg, s.keys.undo):
 		return s.undo(ctx), true
+	case key.Matches(msg, s.keys.backups):
+		mangas := make([]storage.Manga, len(s.items))
+		for i, item := range s.items {
+			mangas[i] = item.manga
+		}
+		return findBackups(ctx, mangas), true
 	case key.Matches(msg, s.keys.duplicates):
 		s.duplicates = !s.duplicates
 		cmd := s.setItems()
@@ -318,6 +328,8 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 		return s.merge(ctx, item), true
 	case key.Matches(msg, s.keys.move):
 		return moveCmd(item.manga), true
+	case key.Matches(msg, s.keys.links):
+		return linksCmd(item.manga), true
 	case key.Matches(msg, s.keys.watch):
 		return watches.JumpCmd(item.watches, ""), true
 	case key.Matches(msg, s.keys.delete):

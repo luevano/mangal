@@ -58,7 +58,7 @@ type mangaState struct {
 	bindings []storage.Binding
 	size     base.Size
 
-	open, scan, delete, watch key.Binding
+	open, scan, delete, watch, links key.Binding
 }
 
 type downloadsMsg []_list.Item
@@ -82,19 +82,39 @@ func newMangaState(files library.Files, manga storage.Manga) *mangaState {
 		scan:    base.KeyScan,
 		delete:  base.KeyDelete,
 		watch:   base.KeyItsWatch,
+		links:   base.KeyBindings,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "chapter", "chapters", []*downloadItem{}, func(i *downloadItem) _list.DefaultItem { return i }), s.keyMap)
 	return s
 }
 
 func (s *mangaState) keyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete, s.watch}}
+	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete, s.watch, s.links}}
 }
 
 // watchesCmd loads the manga's watches.
 func (s *mangaState) watchesCmd(ctx context.Context) tea.Cmd {
 	manga := s.manga
 	return base.Load(ctx, "", watches.Watched, func(set watches.Set) tea.Msg { return mangaWatchesMsg(set.ForLibrary(manga)) })
+}
+
+type mangaMsg storage.Manga
+
+// mangaCmd loads the manga again (its title or folder may have changed).
+func (s *mangaState) mangaCmd(ctx context.Context) tea.Cmd {
+	lib, id := s.files.Library, s.manga.ID
+	return base.Load(ctx, "", func(context.Context) (mangaMsg, error) {
+		m, ok, err := lib.MangaByID(id)
+		if err != nil || !ok {
+			return mangaMsg{}, err
+		}
+		return mangaMsg(m), nil
+	}, func(m mangaMsg) tea.Msg {
+		if m.ID == 0 {
+			return nil
+		}
+		return m
+	})
 }
 
 // bindingsCmd loads the manga's metadata bindings.
@@ -120,7 +140,7 @@ func (s *mangaState) header() string {
 
 // formatBindings are the bindings of a library manga's sources as "al 132029 (default),
 // mal 30230", each source's prefixed by its provider when there are several, and the
-// .libmangal.json ids none has.
+// library manga's own ids (its links) none has.
 func formatBindings(bindings []storage.Binding) string {
 	type group struct {
 		name string
@@ -131,7 +151,7 @@ func formatBindings(bindings []storage.Binding) string {
 	for _, b := range bindings {
 		name := b.Provider
 		if name == "" {
-			name = ".libmangal.json"
+			name = "library"
 		}
 		g, ok := byName[name]
 		if !ok {
@@ -145,7 +165,7 @@ func formatBindings(bindings []storage.Binding) string {
 		}
 		g.list = append(g.list, entry)
 	}
-	if len(groups) == 1 && groups[0].name != ".libmangal.json" {
+	if len(groups) == 1 && groups[0].name != "library" {
 		return strings.Join(groups[0].list, ", ")
 	}
 	parts := make([]string, len(groups))
@@ -234,8 +254,11 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		s.bindings = msg
 		return s.Resize(s.size)
 	case base.RestoredMsg:
-		// e.g. paused or bound on its watch's screen
-		return tea.Batch(s.watchesCmd(ctx), s.bindingsCmd(ctx))
+		// e.g. paused or bound on its watch's screen, linked (maybe renamed) on its links'
+		return tea.Batch(s.watchesCmd(ctx), s.bindingsCmd(ctx), s.mangaCmd(ctx))
+	case mangaMsg:
+		s.manga = storage.Manga(msg)
+		return nil
 	case mangaScannedMsg:
 		return s.onScanned(ctx, msg)
 	case actionMsg:
@@ -249,6 +272,8 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		switch {
 		case key.Matches(msg, s.watch):
 			return watches.JumpCmd(s.watches, "")
+		case key.Matches(msg, s.links):
+			return linksCmd(s.manga)
 		case key.Matches(msg, s.scan):
 			if base.Busy(ctx) {
 				return nil
