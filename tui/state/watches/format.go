@@ -117,6 +117,9 @@ func runReport(r storage.WatchRun) string {
 	if r.Error != "" {
 		fmt.Fprintf(&b, "Error:    %s\n", r.Error)
 	}
+	if len(r.Skipped) > 0 {
+		fmt.Fprintf(&b, "Skipped:  %s (skip list)\n", watch.FormatNumbers(r.Skipped))
+	}
 	switch n := r.New(); {
 	case n > len(r.Chapters):
 		// e.g. imported history that only had a count
@@ -158,6 +161,9 @@ func settings(w watch.Watch, backoff int, now time.Time) string {
 		fmt.Sprintf("%s · %s · manga id %s", w.Provider, enabled(w), w.MangaID),
 		fmt.Sprintf("schedule %s · gaps %s · metadata %s · from %s", schedule(w), onOff(w.Gaps), bindings(w), formatNumber(w.From)),
 		fmt.Sprintf("last downloaded %s · last checked %s · next check %s", formatNumber(w.LastDownloaded), ago(w.LastChecked, now), nextCheck(w, backoff, now)),
+	}
+	if len(w.Skip) > 0 {
+		lines = append(lines, "never downloaded (skip list): "+watch.FormatNumbers(w.Skip))
 	}
 	if w.NeedsRelink {
 		lines = append(lines, relinkStyle.Render("needs re-link: "+w.RelinkReason+" (m: search the manga)"))

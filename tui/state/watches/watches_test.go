@@ -472,6 +472,26 @@ func TestEditOptions(t *testing.T) {
 	}
 }
 
+func TestEditSkip(t *testing.T) {
+	w := watch.Watch{Watch: storage.Watch{ID: 1, Title: "X", Skip: []float32{189.5}}}
+	s := newEditState(&fakeManager{}, w)
+	if s.skip.value() != "189.5" || s.options().Skip != nil {
+		t.Errorf("unchanged: %q, %+v", s.skip.value(), s.options())
+	}
+	s.skip.input.SetValue("190 189.5,190")
+	if opts := s.options(); opts.Skip == nil || !slices.Equal(*opts.Skip, []float32{189.5, 190}) {
+		t.Errorf("added: %+v", opts)
+	}
+	s.skip.input.SetValue("")
+	if opts := s.options(); opts.Skip == nil || len(*opts.Skip) != 0 {
+		t.Errorf("cleared: %+v", opts)
+	}
+	s.skip.input.SetValue("189.5, fake")
+	if s.form.valid() || s.skip.err == "" {
+		t.Error("fake accepted as a chapter number")
+	}
+}
+
 func TestSet(t *testing.T) {
 	set := NewSet([]watch.Watch{{Watch: storage.Watch{Provider: "p", MangaID: "1", LibraryManga: 7}}})
 	if !set.Has("p", "1") || set.Has("p", "2") {

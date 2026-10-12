@@ -71,6 +71,8 @@ type Watch struct {
 	// Retry are the chapters the last check failed to download: the next one tries them
 	// again, also when they're below the last downloaded one.
 	Retry []float32 `json:"retry,omitempty"`
+	// Skip are chapter numbers never to download (fake or broken chapters), sorted.
+	Skip []float32 `json:"skip,omitempty"`
 }
 
 // PlaceholderPrefix starts the manga id of a watch added without one (e.g. "title:Berserk"
@@ -132,6 +134,8 @@ type WatchRun struct {
 	// NewChapters is how many chapters it downloaded: len(Chapters), or more when they
 	// weren't all recorded (e.g. history imported from elsewhere with only a count).
 	NewChapters int `json:"new_chapters"`
+	// Skipped are the chapters the watch's skip list kept it from downloading.
+	Skipped []float32 `json:"skipped,omitempty"`
 }
 
 // New is how many chapters the check downloaded, see NewChapters.
@@ -283,16 +287,16 @@ func fromUnix(s int64) time.Time {
 }
 
 const watchColumns = `id, provider, manga_id, title, coalesce(library_manga, 0), enabled, schedule, gaps,
-	from_number, added, last_checked, last_gap_check, last_new, last_new_at, last_error, failures, relink, retry, resumed`
+	from_number, added, last_checked, last_gap_check, last_new, last_new_at, last_error, failures, relink, retry, resumed, skip`
 
 func scanWatch(rows *sql.Rows) (Watch, error) {
 	var w Watch
 	var added, checked, gapChecked, newAt, resumed int64
 	var from, lastNew sql.NullFloat64
-	var retry string
+	var retry, skip string
 	err := rows.Scan(&w.ID, &w.Provider, &w.MangaID, &w.Title, &w.LibraryManga, &w.Enabled, &w.Schedule, &w.Gaps,
-		&from, &added, &checked, &gapChecked, &lastNew, &newAt, &w.LastError, &w.Failures, &w.RelinkReason, &retry, &resumed)
-	w.Retry = parseNumbers(retry)
+		&from, &added, &checked, &gapChecked, &lastNew, &newAt, &w.LastError, &w.Failures, &w.RelinkReason, &retry, &resumed, &skip)
+	w.Retry, w.Skip = parseNumbers(retry), parseNumbers(skip)
 	w.NeedsRelink = w.RelinkReason != ""
 	w.From, w.LastNew = floatPtr(from), floatPtr(lastNew)
 	w.Added, w.LastChecked, w.LastGapCheck, w.LastNewAt = fromUnix(added), fromUnix(checked), fromUnix(gapChecked), fromUnix(newAt)
@@ -312,9 +316,9 @@ func (s Watches) Add(w Watch) (Watch, error) {
 	if exists != 0 {
 		return w, fmt.Errorf("add watch of %s %q: %w", w.Provider, w.MangaID, ErrWatchExists)
 	}
-	res, err := s.DB.Exec(`INSERT INTO watches (provider, manga_id, title, library_manga, enabled, schedule, gaps, from_number, added, relink)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, w.Provider, w.MangaID, w.Title, nullID(w.LibraryManga), w.Enabled,
-		w.Schedule, w.Gaps, nullFloat(w.From), unix(w.Added), w.relinkColumn())
+	res, err := s.DB.Exec(`INSERT INTO watches (provider, manga_id, title, library_manga, enabled, schedule, gaps, from_number, added, relink, skip)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, w.Provider, w.MangaID, w.Title, nullID(w.LibraryManga), w.Enabled,
+		w.Schedule, w.Gaps, nullFloat(w.From), unix(w.Added), w.relinkColumn(), formatNumbers(w.Skip))
 	if err != nil {
 		return w, fmt.Errorf("add watch of %s %q: %w", w.Provider, w.MangaID, err)
 	}
@@ -375,10 +379,10 @@ func (s Watches) SetLibraryManga(id, manga int64) error {
 // Save writes every field of the watch but its provider, manga id and added time.
 func (s Watches) Save(w Watch) error {
 	res, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = ?, enabled = ?, schedule = ?, gaps = ?,
-	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?, retry = ?, resumed = ?
+	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?, retry = ?, resumed = ?, skip = ?
 WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, w.Schedule, w.Gaps,
 		nullFloat(w.From), unix(w.LastChecked), unix(w.LastGapCheck), nullFloat(w.LastNew), unix(w.LastNewAt), w.LastError, w.Failures,
-		w.relinkColumn(), formatNumbers(w.Retry), unix(w.Resumed), w.ID)
+		w.relinkColumn(), formatNumbers(w.Retry), unix(w.Resumed), formatNumbers(w.Skip), w.ID)
 	if err != nil {
 		return fmt.Errorf("save watch %d: %w", w.ID, err)
 	}
@@ -491,9 +495,9 @@ func (s Watches) FinishRun(run CheckRun) error {
 func (s Watches) RecordWatchRun(r WatchRun) (WatchRun, error) {
 	err := s.DB.InTx(func(tx *sql.Tx) error {
 		r.NewChapters = r.New()
-		res, err := tx.Exec(`INSERT INTO watch_runs (check_run, watch, provider, manga_id, title, from_number, status, error, started, finished, new_chapters)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.CheckRun, nullID(r.Watch), r.Provider, r.MangaID, r.Title, nullFloat(r.From), r.Status, r.Error,
-			unix(r.Started), unix(r.Finished), r.NewChapters)
+		res, err := tx.Exec(`INSERT INTO watch_runs (check_run, watch, provider, manga_id, title, from_number, status, error, started, finished, new_chapters, skipped)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.CheckRun, nullID(r.Watch), r.Provider, r.MangaID, r.Title, nullFloat(r.From), r.Status, r.Error,
+			unix(r.Started), unix(r.Finished), r.NewChapters, formatNumbers(r.Skipped))
 		if err != nil {
 			return err
 		}
@@ -575,10 +579,12 @@ func (s Watches) watchRuns(checkRun int64, f RunFilter) ([]WatchRun, error) {
 		var r WatchRun
 		var from sql.NullFloat64
 		var started, finished int64
-		err := rows.Scan(&r.ID, &r.CheckRun, &r.Watch, &r.Provider, &r.MangaID, &r.Title, &from, &r.Status, &r.Error, &started, &finished, &r.NewChapters)
+		var skipped string
+		err := rows.Scan(&r.ID, &r.CheckRun, &r.Watch, &r.Provider, &r.MangaID, &r.Title, &from, &r.Status, &r.Error, &started, &finished, &r.NewChapters, &skipped)
 		r.From, r.Started, r.Finished = floatPtr(from), fromUnix(started), fromUnix(finished)
+		r.Skipped = parseNumbers(skipped)
 		return r, err
-	}, `SELECT id, check_run, coalesce(watch, 0), provider, manga_id, title, from_number, status, error, started, finished, new_chapters
+	}, `SELECT id, check_run, coalesce(watch, 0), provider, manga_id, title, from_number, status, error, started, finished, new_chapters, skipped
 FROM watch_runs w WHERE check_run = ?1 AND `+runFilterWhere+` ORDER BY id`, checkRun, f.Watch, f.Provider, f.MangaID)
 	if err != nil {
 		return nil, fmt.Errorf("watch runs of check run %d: %w", checkRun, err)
@@ -775,6 +781,10 @@ const watchRetry = `ALTER TABLE watches ADD COLUMN retry TEXT NOT NULL DEFAULT '
 
 // watchResumed: when a watch was last resumed or re-linked.
 const watchResumed = `ALTER TABLE watches ADD COLUMN resumed INTEGER NOT NULL DEFAULT 0`
+
+// watchSkip: the chapters a watch never downloads, and the ones a check left out for it.
+const watchSkip = `ALTER TABLE watches ADD COLUMN skip TEXT NOT NULL DEFAULT '';
+ALTER TABLE watch_runs ADD COLUMN skipped TEXT NOT NULL DEFAULT ''`
 
 // formatNumbers stores chapter numbers as "1,2.5,3", parseNumbers reads them back.
 func formatNumbers(ns []float32) string {

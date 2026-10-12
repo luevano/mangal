@@ -43,16 +43,18 @@ type PatchRequest struct {
 	Gaps      *bool    `json:"gaps,omitempty"`
 	AnilistID *int     `json:"anilist_id,omitempty"`
 	From      *float32 `json:"from,omitempty"`
+	// Skip replaces the chapter numbers never to download, [] clears them.
+	Skip *[]float32 `json:"skip,omitempty"`
 }
 
 // Update are the UpdateOptions of the request, false when it changes none.
 func (r PatchRequest) Update() (UpdateOptions, bool) {
-	opts := UpdateOptions{Schedule: r.Schedule, Gaps: r.Gaps, AnilistID: r.AnilistID, From: r.From}
+	opts := UpdateOptions{Schedule: r.Schedule, Gaps: r.Gaps, AnilistID: r.AnilistID, From: r.From, Skip: r.Skip}
 	return opts, opts != UpdateOptions{}
 }
 
 func patchRequest(o UpdateOptions) PatchRequest {
-	return PatchRequest{Schedule: o.Schedule, Gaps: o.Gaps, AnilistID: o.AnilistID, From: o.From}
+	return PatchRequest{Schedule: o.Schedule, Gaps: o.Gaps, AnilistID: o.AnilistID, From: o.From, Skip: o.Skip}
 }
 
 // CheckRequest is POST /api/check: the watches with the IDs (every enabled one if none).

@@ -282,7 +282,7 @@ func TestPick(t *testing.T) {
 	all := []mangadata.Chapter{m.chapter(1), m.chapter(2), m.chapter(3), m.chapter(4), m.chapter(4.5), m.chapter(5), m.chapter(5), m.unavailable(6), m.chapter(7)}
 	have := map[float32]bool{1: true, 3: true, 4: true}
 	pick := func(have map[float32]bool, last, from *float32, gaps bool) ([]float32, int) {
-		picked, unavailable := Pick(all, have, last, from, gaps, nil)
+		picked, unavailable, _ := Pick(all, have, last, from, gaps, nil, nil)
 		var ns []float32
 		for _, c := range picked {
 			ns = append(ns, c.Info().Number)
@@ -308,6 +308,16 @@ func TestPick(t *testing.T) {
 		if !slices.Equal(got, tc.want) || unavailable != tc.unavailable {
 			t.Errorf("%s: got %v (%d unavailable), want %v (%d)", tc.name, got, unavailable, tc.want, tc.unavailable)
 		}
+	}
+
+	// the skip list wins over gaps and retry; only what would have been picked is skipped
+	picked, _, skipped := Pick(all, have, f32(4), nil, true, map[float32]bool{2: true}, map[float32]bool{2: true, 4.5: true, 3: true, 6: true})
+	var got []float32
+	for _, c := range picked {
+		got = append(got, c.Info().Number)
+	}
+	if !slices.Equal(got, []float32{5, 7}) || !slices.Equal(skipped, []float32{2, 4.5, 6}) {
+		t.Errorf("skip: got %v, skipped %v", got, skipped)
 	}
 }
 
@@ -406,6 +416,42 @@ func TestCheck(t *testing.T) {
 	}
 	if runs, _ := e.svc.Runs(ctx, RunFilter{}); len(runs) != 3 || runs[0].Kind != KindGaps {
 		t.Errorf("runs %+v", runs)
+	}
+}
+
+func TestCheckSkip(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "dandadan", Title: "Dandadan"}}
+	src := e.source("mango-mangaplus", m)
+	src.chs["dandadan"] = m.chapters(10, 64, 65, 65.5, 66)
+	e.own(t, "mango-mangaplus", m, 64, 65)
+	w, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", MangaID: "dandadan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	skip := []float32{65.5, 10, 65.5}
+	if w, err = e.svc.Update(ctx, w.ID, UpdateOptions{Skip: &skip}); err != nil || !slices.Equal(w.Skip, []float32{10, 65.5}) {
+		t.Fatalf("update %+v, %v", w.Skip, err)
+	}
+	report, err := e.svc.Check(ctx, nil, CheckOptions{Gaps: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := report.Results[0]
+	if !slices.Equal(src.downloaded, []float32{66}) || !slices.Equal(r.Skipped, []float32{10, 65.5}) {
+		t.Errorf("downloaded %v, skipped %v", src.downloaded, r.Skipped)
+	}
+	if d := Describe(r, false); !strings.Contains(d, "skipped 10, 65.5 (skip list)") {
+		t.Errorf("describe %q", d)
+	}
+	runs, _ := e.svc.Runs(ctx, RunFilter{Watch: w.ID})
+	if len(runs) != 1 || !slices.Equal(runs[0].Results[0].Skipped, []float32{10, 65.5}) {
+		t.Errorf("runs %+v", runs)
+	}
+	// the list survives the check's save
+	if w, _ = e.svc.Get(ctx, w.ID); !slices.Equal(w.Skip, []float32{10, 65.5}) {
+		t.Errorf("skip after the check %v", w.Skip)
 	}
 }
 

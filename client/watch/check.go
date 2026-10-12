@@ -531,10 +531,14 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 	for _, n := range w.Retry {
 		retry[n] = true
 	}
-	picked, unavailable := Pick(chapters, have, highest(have), w.From, gaps, retry)
-	r.Unavailable = unavailable
+	skip := map[float32]bool{}
+	for _, n := range w.Skip {
+		skip[n] = true
+	}
+	picked, unavailable, skipped := Pick(chapters, have, highest(have), w.From, gaps, retry, skip)
+	r.Unavailable, r.Skipped = unavailable, skipped
 	if onFound != nil {
-		found := Found{Chapters: len(chapters), From: r.From, Unavailable: unavailable}
+		found := Found{Chapters: len(chapters), From: r.From, Unavailable: unavailable, Skipped: skipped}
 		for _, ch := range picked {
 			found.Picked = append(found.Picked, ch.Info().Number)
 		}
@@ -618,8 +622,9 @@ func (s *Service) manga(ctx context.Context, src Source, w storage.Watch) (manga
 // from the last downloaded number up (a .5 published after it too) the library doesn't
 // have, with gaps also the missing ones below it, and the ones in retry (a check failed to
 // download them) wherever they are. Chapters up to from (if not nil) count as done. Without a last and from, every chapter. One chapter per number, the first;
-// unavailable ones aren't picked, only counted.
-func Pick(chapters []mangadata.Chapter, have map[float32]bool, last, from *float32, gaps bool, retry map[float32]bool) (picked []mangadata.Chapter, unavailable int) {
+// unavailable ones aren't picked, only counted. The numbers in skip are never picked
+// (retry or not): skipped are the ones that would have been.
+func Pick(chapters []mangadata.Chapter, have map[float32]bool, last, from *float32, gaps bool, retry, skip map[float32]bool) (picked []mangadata.Chapter, unavailable int, skipped []float32) {
 	seen := map[float32]bool{}
 	for _, ch := range chapters {
 		info := ch.Info()
@@ -634,13 +639,17 @@ func Pick(chapters []mangadata.Chapter, have map[float32]bool, last, from *float
 		if last != nil && n < *last && !gaps && !retry[n] {
 			continue
 		}
+		if skip[n] {
+			skipped = append(skipped, n)
+			continue
+		}
 		if info.Unavailable != "" {
 			unavailable++
 			continue
 		}
 		picked = append(picked, ch)
 	}
-	return picked, unavailable
+	return picked, unavailable, skipped
 }
 
 // finish saves the watch after its check and records the run, then notifies.

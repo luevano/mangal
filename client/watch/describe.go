@@ -50,6 +50,9 @@ func outcome(r Result, dryRun bool) string {
 	if r.Unavailable > 0 {
 		outcome += fmt.Sprintf(", %d unavailable", r.Unavailable)
 	}
+	if len(r.Skipped) > 0 {
+		outcome += ", skipped " + FormatNumbers(r.Skipped) + " (skip list)"
+	}
 	if r.Error != "" {
 		outcome += ", ERROR " + r.Error
 	}

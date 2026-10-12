@@ -297,6 +297,8 @@ type Found struct {
 	// From is the last downloaded chapter, nil when none.
 	From        *float32 `json:"from,omitempty"`
 	Unavailable int      `json:"unavailable,omitempty"`
+	// Skipped are the ones the watch's skip list left out.
+	Skipped []float32 `json:"skipped,omitempty"`
 }
 
 func describeFound(f Found) string {
@@ -319,6 +321,9 @@ func describeFound(f Found) string {
 	}
 	if f.Unavailable > 0 {
 		s += fmt.Sprintf(", %d unavailable", f.Unavailable)
+	}
+	if len(f.Skipped) > 0 {
+		s += ", skipped " + FormatNumbers(f.Skipped)
 	}
 	return s
 }

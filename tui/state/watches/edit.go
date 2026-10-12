@@ -3,6 +3,7 @@ package watches
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -37,6 +38,11 @@ func validateAnilistID(s string) error {
 	return err
 }
 
+func validateSkip(s string) error {
+	_, err := watch.ParseNumbers(s)
+	return err
+}
+
 func formatAnilistID(id int) string {
 	if id == 0 {
 		return ""
@@ -52,6 +58,7 @@ type editState struct {
 	w                              watch.Watch
 	form                           *form
 	manga, schedule, gaps, anilist *field
+	skip                           *field
 	relink                         key.Binding
 }
 
@@ -80,8 +87,9 @@ func newEditState(m watch.Manager, w watch.Watch) *editState {
 		schedule: textField("Schedule", w.Schedule, fmt.Sprintf(`cron, e.g. "0 */6 * * *" or @daily; empty for the default (%s)`, config.Watch.Schedule.Get()), validateSchedule),
 		gaps:     toggleField("Gaps", w.Gaps, "also download the missing chapters below the last one"),
 		anilist:  textField("AniList id", formatAnilistID(w.AnilistID), "the metadata of its downloads, empty for none", validateAnilistID),
+		skip:     textField("Skip", watch.FormatNumbers(w.Skip), "chapter numbers never to download (fake or broken ones), e.g. 189.5, 190; remove one to get it again", validateSkip),
 	}
-	s.form = newForm(s.manga, s.schedule, s.gaps, s.anilist)
+	s.form = newForm(s.manga, s.schedule, s.gaps, s.anilist, s.skip)
 	s.form.focus(1)
 	return s
 }
@@ -112,6 +120,13 @@ func (s *editState) options() watch.UpdateOptions {
 	}
 	if id, _ := parseAnilistID(s.anilist.value()); id != s.w.AnilistID {
 		opts.AnilistID = &id
+	}
+	if skip, _ := watch.ParseNumbers(s.skip.value()); !slices.Equal(watch.AddNumbers(nil, skip), s.w.Skip) {
+		skip = watch.AddNumbers(nil, skip)
+		if skip == nil {
+			skip = []float32{}
+		}
+		opts.Skip = &skip
 	}
 	return opts
 }

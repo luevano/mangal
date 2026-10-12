@@ -146,3 +146,44 @@ func TestPrintWatchesLibraryIssue(t *testing.T) {
 		t.Error("a linked watch marked")
 	}
 }
+
+func TestSkipFlags(t *testing.T) {
+	parse := func(args ...string) (func([]float32) []float32, error) {
+		f := pflag.NewFlagSet("set", pflag.ContinueOnError)
+		skip := f.String("skip", "", "")
+		unskip := f.String("unskip", "", "")
+		if err := f.Parse(args); err != nil {
+			t.Fatal(err)
+		}
+		return skipFlags(f, *skip, *unskip)
+	}
+	if change, err := parse(); change != nil || err != nil {
+		t.Errorf("no flags: %v", err)
+	}
+	list := []float32{10, 189.5}
+	for _, tc := range []struct {
+		args []string
+		want []float32
+	}{
+		{[]string{"--skip", "190,189.5"}, []float32{10, 189.5, 190}},
+		{[]string{"--unskip", "10"}, []float32{189.5}},
+		{[]string{"--unskip", "all", "--skip", "5"}, []float32{5}},
+		{[]string{"--unskip", "all"}, nil},
+	} {
+		change, err := parse(tc.args...)
+		if err != nil {
+			t.Fatalf("%v: %v", tc.args, err)
+		}
+		if got := change(list); !slices.Equal(got, tc.want) {
+			t.Errorf("%v: got %v, want %v", tc.args, got, tc.want)
+		}
+	}
+	for _, args := range [][]string{{"--skip", ""}, {"--skip", "x"}, {"--unskip", ""}} {
+		if _, err := parse(args...); err == nil {
+			t.Errorf("%v accepted", args)
+		}
+	}
+	if !slices.Equal(list, []float32{10, 189.5}) {
+		t.Errorf("list changed: %v", list)
+	}
+}

@@ -206,6 +206,7 @@ mangal watch add mango-mangaplus mid:100171 --anilist-id 132029
 mangal watch ls                  # last check, next check, errors
 mangal watch check [--dry-run]   # check now (--provider <id>, --due)
 mangal watch log --since 7d      # what each check got
+mangal watch set 12 --skip 189.5 # never download chapter 189.5 (a fake one); --unskip 189.5, --unskip all
 mangal watch move 12 mango-weebcentral   # another provider (or the same one's new id), keeping the watch
 mangal notify webhook            # save the Discord webhook: a message per manga with new chapters (watch.notify)
 ```

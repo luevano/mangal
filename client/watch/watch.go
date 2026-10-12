@@ -702,6 +702,8 @@ type UpdateOptions struct {
 	AnilistID *int
 	// From treats the chapters up to it as done.
 	From *float32
+	// Skip replaces the chapter numbers never to download (empty clears them).
+	Skip *[]float32
 }
 
 // Update changes the watch's settings.
@@ -733,6 +735,9 @@ func (s *Service) Update(ctx context.Context, id int64, opts UpdateOptions) (Wat
 		}
 		if opts.From != nil {
 			w.From = opts.From
+		}
+		if opts.Skip != nil {
+			w.Skip = AddNumbers(nil, *opts.Skip)
 		}
 	})
 }

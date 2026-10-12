@@ -308,6 +308,17 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 		}
 		fmt.Fprintf(out, "  %d  %s: %s\n", w.ID, firstLine(w.Title, 50), w.LibraryProblem())
 	}
+	first = true
+	for _, w := range watches {
+		if len(w.Skip) == 0 {
+			continue
+		}
+		if first {
+			fmt.Fprintln(out, "\nnever downloaded (skip list):")
+			first = false
+		}
+		fmt.Fprintf(out, "  %d  %s: %s\n", w.ID, firstLine(w.Title, 50), watch.FormatNumbers(w.Skip))
+	}
 }
 
 // firstLine is the first line of s, cut to max runes.
@@ -418,6 +429,8 @@ var watchSetArgs = struct {
 	Gaps      bool
 	AnilistID int
 	From      float32
+	Skip      string
+	Unskip    string
 }{}
 
 func init() {
@@ -429,6 +442,8 @@ func init() {
 	f.IntVarP(&watchSetArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind as the default, 0 unbinds it (see mangal bind)")
 	f.Float32Var(&watchSetArgs.From, "from", 0, "Treat the chapters up to this number as downloaded")
 	f.StringVar(&watchSetArgs.Manga, "manga", "", `Re-link it to this manga of its provider ("mid:<id>" or an exact title), see mangal watch move`)
+	f.StringVar(&watchSetArgs.Skip, "skip", "", `Never download these chapter numbers (e.g. a fake "189.5,190"), added to its skip list`)
+	f.StringVar(&watchSetArgs.Unskip, "unskip", "", `Remove these chapter numbers from its skip list, "all" clears it`)
 }
 
 var watchSetCmd = &cobra.Command{
@@ -458,13 +473,28 @@ var watchSetCmd = &cobra.Command{
 		if f.Changed("from") {
 			opts.From = &watchSetArgs.From
 		}
+		changeSkip, err := skipFlags(f, watchSetArgs.Skip, watchSetArgs.Unskip)
+		if err != nil {
+			return err
+		}
 		relink := strings.TrimSpace(watchSetArgs.Manga)
-		if opts == (watch.UpdateOptions{}) && relink == "" {
+		if opts == (watch.UpdateOptions{}) && relink == "" && changeSkip == nil {
 			return errors.New("nothing to change, see --help")
 		}
 		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
+		}
+		if changeSkip != nil {
+			w, err := svc.Get(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			list := changeSkip(w.Skip)
+			if list == nil {
+				list = []float32{}
+			}
+			opts.Skip = &list
 		}
 		var w watch.Watch
 		if relink != "" {
@@ -480,8 +510,51 @@ var watchSetCmd = &cobra.Command{
 			return err
 		}
 		successf(cmd, "updated %q from %s, next check %s", w.Title, w.Provider, watch.FormatNext(w.NextScheduled, time.Now()))
+		if opts.Skip != nil {
+			if len(w.Skip) == 0 {
+				cmd.Println("skip list: empty")
+			} else {
+				cmd.Println("skip list: " + watch.FormatNumbers(w.Skip))
+			}
+		}
 		return nil
 	},
+}
+
+// skipFlags change the skip list by --skip (adds) and --unskip (removes, "all" clears),
+// nil when neither is given.
+func skipFlags(f *pflag.FlagSet, skip, unskip string) (func([]float32) []float32, error) {
+	if !f.Changed("skip") && !f.Changed("unskip") {
+		return nil, nil
+	}
+	var add, remove []float32
+	clearAll := false
+	if f.Changed("skip") {
+		var err error
+		if add, err = watch.ParseNumbers(skip); err != nil {
+			return nil, fmt.Errorf("--skip: %w", err)
+		}
+		if len(add) == 0 {
+			return nil, errors.New(`--skip: no chapter numbers (--unskip all clears the list)`)
+		}
+	}
+	if f.Changed("unskip") {
+		if clearAll = strings.TrimSpace(unskip) == "all"; !clearAll {
+			var err error
+			if remove, err = watch.ParseNumbers(unskip); err != nil {
+				return nil, fmt.Errorf("--unskip: %w", err)
+			}
+			if len(remove) == 0 {
+				return nil, errors.New(`--unskip: no chapter numbers ("all" clears the list)`)
+			}
+		}
+	}
+	return func(list []float32) []float32 {
+		if clearAll {
+			list = nil
+		}
+		return watch.RemoveNumbers(watch.AddNumbers(list, add), remove)
+	}, nil
 }
 
 var watchMoveArgs = struct {
@@ -799,6 +872,9 @@ func printRun(cmd *cobra.Command, run watch.CheckRun) {
 		}
 		if r.Error != "" {
 			line += ": " + r.Error
+		}
+		if len(r.Skipped) > 0 {
+			line += ", skipped " + watch.FormatNumbers(r.Skipped) + " (skip list)"
 		}
 		cmd.Println(line)
 		for _, ch := range r.Chapters {
