@@ -614,6 +614,9 @@ func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) e
 				return err
 			}
 		}
+		if err := keepCurrent(tx, keep, other); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(`UPDATE library_sources SET manga = ? WHERE manga = ?`, keep, other); err != nil {
 			return err
 		}
@@ -641,6 +644,21 @@ func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) e
 		return fmt.Errorf("merge manga %d into %d: %w", other, keep, err)
 	}
 	return nil
+}
+
+// keepCurrent keeps keep's current source current once other's sources join it: its
+// moved time becomes now, so other's later downloads don't make one of its sources the
+// current one (the folder stays keep's, as its .libmangal.json).
+func keepCurrent(tx *sql.Tx, keep, other int64) error {
+	var n int
+	if err := tx.QueryRow(`SELECT count(*) FROM library_sources WHERE manga = ?`, other).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	_, err := tx.Exec(`UPDATE library_sources SET moved = ?1 WHERE (provider, manga_id) = (
+	SELECT s.provider, s.manga_id FROM library_sources s WHERE s.manga = ?2
+	ORDER BY max(s.moved, coalesce((SELECT max(d.downloaded) FROM downloads d WHERE d.provider = s.provider AND d.manga_id = s.manga_id), 0)) DESC, s.provider
+	LIMIT 1)`, unix(time.Now()), keep)
+	return err
 }
 
 // MangaMove is a library manga moving to another provider's manga (library.MovePlan).

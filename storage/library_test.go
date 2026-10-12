@@ -376,3 +376,25 @@ SELECT ?, c.id, ?, ?, 'Vagabond', 0, 1, '', '', 'PDF', 0, ? FROM library_chapter
 		t.Error("added a placeholder id")
 	}
 }
+
+func TestMergeKeepsCurrentSource(t *testing.T) {
+	library := Library{DB: openData(t)}
+	for i, dl := range []Download{
+		{Path: "/lib/Berserk/1.cbz", Provider: "mango-weebcentral", MangaID: "w", MangaTitle: "Berserk", Chapter: 1, Format: "CBZ", Downloaded: time.Unix(100, 0)},
+		// the merged-in manga downloaded later
+		{Path: "/lib/Berserk 2/2.cbz", Provider: "mango-asurascans", MangaID: "a", MangaTitle: "Berserk", Chapter: 2, Format: "CBZ", Downloaded: time.Unix(200, 0)},
+	} {
+		if err := library.RecordDownload("/lib", filepath.Base(filepath.Dir(dl.Path)), dl); err != nil {
+			t.Fatal(i, err)
+		}
+	}
+	keep, _, _ := library.MangaByFolder("/lib", "Berserk")
+	other, _, _ := library.MangaByFolder("/lib", "Berserk 2")
+	if err := library.Merge(keep.ID, other.ID, []MergeMove{{From: "/lib/Berserk 2/2.cbz", To: "/lib/Berserk/2.cbz"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ := library.MangaByID(keep.ID)
+	if len(m.Sources) != 2 || m.Sources[0].Provider != "mango-weebcentral" || !m.Sources[0].Current || m.Sources[0].Moved.IsZero() {
+		t.Errorf("sources %+v, want weebcentral still current", m.Sources)
+	}
+}
