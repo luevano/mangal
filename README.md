@@ -156,7 +156,7 @@ mangal keeps track of what's downloaded, whichever provider got it: a chapter al
 mangal library ls                          # the mangas
 mangal library scan                        # check against the files: moved, removed, added by hand, older downloads
 mangal library scan --check                # also check the guessed metadata ids of folders without a .libmangal.json
-mangal library scan --mark                 # also write a .libmangal.json into folders without one whose provider manga is known
+mangal library scan --mark                 # also write a .libmangal.json into folders without one (from the library source, else the provider directory and ids)
 mangal library downloads [provider]        # the downloaded chapters
 mangal library merge <keep> <other> --apply  # one manga in two directories, duplicates go to the trash
 mangal library move <id> <provider> [query|mid:id] --apply  # switch a manga to another provider (folder, watch and bindings follow; names stay)
