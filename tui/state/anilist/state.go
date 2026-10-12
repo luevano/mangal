@@ -76,8 +76,8 @@ func newSearch(c *libmangal.Client, src client.MetadataSource, provider *lmmeta.
 		src:      src,
 		provider: provider,
 		confirm:  util.Bind("bind", "enter"),
-		search:   util.Bind("search", "s"),
-		metadata: util.Bind("metadata", "m"),
+		search:   base.KeySearch,
+		metadata: base.KeyMetadata,
 	}
 	s.updateKeys()
 	return s

@@ -49,7 +49,7 @@ type reloadedMsg struct {
 func New(loaders []libmangal.ProviderLoader) base.State {
 	s := &state{
 		confirm:  util.Bind("confirm", "enter"),
-		info:     util.Bind("info", "i"),
+		info:     base.KeyInfo,
 		closeAll: util.Bind("close all", "backspace"),
 		mirrors:  util.Bind("mirrors", "m"),
 	}

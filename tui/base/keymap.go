@@ -94,7 +94,9 @@ func GlobalKeys() []key.Binding {
 }
 
 // KeyCollisions are the keys that would mean two things on a screen, between its own keys
-// (screen), the list's (extra, e.g. list.KeyMap.Browsing) and the global ones. For tests.
+// (screen), the list's (extra, e.g. list.KeyMap.Browsing) and the global ones, and the
+// screen's KeyInconsistencies. For tests.
 func KeyCollisions(screen help.KeyMap, extra ...key.Binding) []string {
-	return util.Collisions(append(append(GlobalKeys(), util.Bindings(screen)...), extra...)...)
+	collisions := util.Collisions(append(append(GlobalKeys(), util.Bindings(screen)...), extra...)...)
+	return append(collisions, KeyInconsistencies(screen)...)
 }

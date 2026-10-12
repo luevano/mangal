@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/util"
 )
 
@@ -15,10 +16,10 @@ var _ help.KeyMap = (*keyMap)(nil)
 
 func newKeyMap() keyMap {
 	return keyMap{
-		login:   util.Bind("log in", "i"),
-		logout:  util.Bind("log out", "o"),
-		new:     util.Bind("new login", "n"),
-		forget:  util.Bind("forget", "ctrl+d"),
+		login:   base.KeyLogIn,
+		logout:  base.KeyLogOut,
+		new:     base.KeyNewLogin,
+		forget:  base.KeyForget,
 		up:      util.BindNamedKey("↑/k", "up", "k", "up"),
 		down:    util.BindNamedKey("↓/j", "down", "j", "down"),
 		edit:    util.Bind("edit field", "enter"),

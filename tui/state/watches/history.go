@@ -42,9 +42,9 @@ func newHistoryState(m watch.Manager, provider string) *historyState {
 		manager:  m,
 		provider: provider,
 		open:     util.Bind("details", "enter"),
-		next:     util.Bind("next provider", "tab"),
-		refresh:  util.Bind("refresh", "r"),
-		library:  util.Bind("library manga", "L"),
+		next:     base.KeyNextProvider,
+		refresh:  base.KeyRefresh,
+		library:  base.KeyLibraryManga,
 		check:    util.Bind("check the provider", "c"),
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)

@@ -117,14 +117,14 @@ func newMangasState(files library.Files) *mangasState {
 		confirm: newDialog(),
 		keys: mangasKeyMap{
 			confirm: util.Bind("chapters", "enter"),
-			scan:    util.Bind("scan", "s"),
+			scan:    base.KeyScan,
 			check:   util.Bind("scan and check ids", "S"),
 			merge:   util.Bind("merge", "m"),
 			move:    util.Bind("move to a provider", "M"),
 			remove:  util.Bind("remove missing", "x"),
 			trash:   util.Bind("trash", "t"),
 			delete:  util.Bind("delete", "d"),
-			watch:   util.Bind("its watch", "W"),
+			watch:   base.KeyItsWatch,
 		},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "manga", "mangas", []*mangaItem{}, func(i *mangaItem) _list.DefaultItem { return i }), s.keyMap)

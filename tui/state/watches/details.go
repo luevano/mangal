@@ -49,13 +49,13 @@ func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState 
 		backoff: backoff,
 		now:     time.Now,
 		open:    util.Bind("details", "enter"),
-		edit:    util.Bind("edit", "e"),
-		pause:   util.Bind("pause/resume", "p"),
-		refresh: util.Bind("refresh", "r"),
-		library: util.Bind("library manga", "L"),
-		history: util.Bind("provider history", "v"),
-		live:    util.Bind("live log", "t"),
-		relink:  util.Bind("re-link manga", "m"),
+		edit:    base.KeyEdit,
+		pause:   base.KeyPause,
+		refresh: base.KeyRefresh,
+		library: base.KeyLibraryManga,
+		history: base.KeyProviderHistory,
+		live:    base.KeyLiveLog,
+		relink:  base.KeyRelink,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
 	return s

@@ -116,7 +116,7 @@ type runsState struct {
 type runsMsg []watch.CheckRun
 
 func newRunsState(m watch.Manager) *runsState {
-	s := &runsState{manager: m, open: util.Bind("results", "enter"), refresh: util.Bind("refresh", "r"), history: util.Bind("history", "v")}
+	s := &runsState{manager: m, open: util.Bind("results", "enter"), refresh: base.KeyRefresh, history: util.Bind("history", "v")}
 	s.Screen = list.NewScreen(list.New(2, 1, "check run", "check runs", []*checkRunItem{}, func(i *checkRunItem) _list.DefaultItem { return i }), s.keyMap)
 	return s
 }
@@ -184,8 +184,8 @@ func newRunState(m watch.Manager, id int64) *runState {
 		manager: m,
 		id:      id,
 		open:    util.Bind("details", "enter"),
-		history: util.Bind("provider history", "v"),
-		library: util.Bind("library manga", "L"),
+		history: base.KeyProviderHistory,
+		library: base.KeyLibraryManga,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "watch", "watches", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
 	return s

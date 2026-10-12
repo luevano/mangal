@@ -301,7 +301,7 @@ type keyMap struct {
 
 func newKeyMap() keyMap {
 	return keyMap{
-		refresh: util.Bind("refresh", "r"),
+		refresh: base.KeyRefresh,
 		login:   util.Bind("log in / set secret", "l"),
 		copy:    util.Bind("copy url", "c"),
 		save:    util.Bind("save", "enter"),

@@ -38,9 +38,9 @@ func New(client *libmangal.Client, manga mangadata.Manga, volumes []mangadata.Vo
 		manga:    manga,
 		client:   client,
 		confirm:  util.Bind("confirm", "enter"),
-		anilist:  util.Bind("bindings", "A"),
-		metadata: util.Bind("metadata", "m"),
-		info:     util.Bind("info", "i"),
+		anilist:  base.KeyBindings,
+		metadata: base.KeyMetadata,
+		info:     base.KeyInfo,
 	}
 	s.Screen = list.NewScreen(list.New(1, 1, "volume", "volumes", volumes, func(volume mangadata.Volume) _list.DefaultItem {
 		return &item{volume}
