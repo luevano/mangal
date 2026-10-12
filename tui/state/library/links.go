@@ -32,6 +32,8 @@ type linkItem struct {
 	// checked (MyAnimeList without an API client)
 	meta lmmeta.Metadata
 	err  error
+	// pick are the ids to pick from (the backups found two), nil if none
+	pick *storage.LinkPick
 }
 
 func (i *linkItem) FilterValue() string { return i.src.Name }
@@ -50,6 +52,13 @@ func (i *linkItem) Description() string {
 	var parts []string
 	if i.link.Linked() {
 		parts = append(parts, i.link.Where())
+	}
+	if i.pick != nil {
+		var ids []string
+		for _, c := range i.pick.Candidates {
+			ids = append(ids, fmt.Sprintf("%s (%s)", c.ID, c.FromName()))
+		}
+		parts = append(parts, "pick "+strings.Join(ids, " or ")+" (enter)")
 	}
 	if sug := i.link.Suggested(); sug != "" {
 		parts = append(parts, fmt.Sprintf("the folder says %s (enter searches it)", sug))
@@ -82,6 +91,12 @@ type linksLoadedMsg struct {
 type linkPickedMsg struct {
 	code lmmeta.IDCode
 	id   string
+}
+
+// pickLoadedMsg is a pick with the metadata of its candidates (nil when it didn't load).
+type pickLoadedMsg struct {
+	pick  storage.LinkPick
+	metas []lmmeta.Metadata
 }
 
 // linkPlannedMsg is a planned link change, to ask about.
@@ -169,6 +184,11 @@ func (s *linksState) load(ctx context.Context) tea.Cmd {
 			if link.Linked() {
 				i.meta, i.err = client.LinkMetadata(ctx, src.Code, link.Current())
 			}
+			if pick, ok, err := linker.Library.LinkPick(manga.ID, src.Code); err != nil {
+				return linksLoadedMsg{}, err
+			} else if ok && !pick.Dismissed {
+				i.pick = &pick
+			}
 			items = append(items, i)
 		}
 		return linksLoadedMsg{manga: manga, items: items}, nil
@@ -192,6 +212,9 @@ func (s *linksState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return cmd
 	case linkPickedMsg:
 		return planLinks(ctx, s.manga, library.Links{msg.code: msg.id})
+	case pickLoadedMsg:
+		s.askPick(msg)
+		return nil
 	case linkPlannedMsg:
 		return askLinks(s.confirm, s.View(), msg)
 	case backupsFoundMsg:
@@ -212,6 +235,8 @@ func (s *linksState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			break
 		}
 		switch {
+		case msg.String() == "enter" && i.pick != nil:
+			return loadPick(ctx, *i.pick)
 		case key.Matches(msg, s.search):
 			p, err := client.MetadataProvider(i.src.Source)
 			if err != nil {
@@ -244,6 +269,48 @@ func (s *linksState) View() string {
 		return s.confirm.View()
 	}
 	return s.List.View()
+}
+
+// loadPick looks the pick's candidates up (pickLoadedMsg), to ask which to link.
+func loadPick(ctx context.Context, pick storage.LinkPick) tea.Cmd {
+	if base.Busy(ctx) {
+		return nil
+	}
+	return base.Load(ctx, "Looking the ids up", func(ctx context.Context) (pickLoadedMsg, error) {
+		msg := pickLoadedMsg{pick: pick, metas: make([]lmmeta.Metadata, len(pick.Candidates))}
+		for i, c := range pick.Candidates {
+			// one that doesn't load is still a choice
+			msg.metas[i], _ = client.LinkMetadata(ctx, pick.Source, c.ID)
+		}
+		return msg, nil
+	}, func(msg pickLoadedMsg) tea.Msg { return msg })
+}
+
+// askPick asks which of the pick's ids to link (then the link's plan and confirm), or to
+// dismiss it.
+func (s *linksState) askPick(msg pickLoadedMsg) {
+	src, _ := client.MetadataSourceOf(msg.pick.Source)
+	lines := []string{fmt.Sprintf("Linked to AniList %s, its sources give two %s ids:", msg.pick.AniList, src.Name)}
+	var choices []confirm.Choice
+	for i, c := range msg.pick.Candidates {
+		line := fmt.Sprintf("%d. %s %s (%s)", i+1, src.Name, c.ID, c.FromName())
+		if meta := msg.metas[i]; meta != nil {
+			line += ": " + meta.String()
+		}
+		lines = append(lines, line)
+		code, id := msg.pick.Source, c.ID
+		choices = append(choices, confirm.Choice{Key: fmt.Sprint(i + 1), Label: "link " + c.ID, Cmd: func() tea.Msg { return linkPickedMsg{code: code, id: id} }})
+	}
+	lib, manga, source := client.LibraryFiles, s.manga, msg.pick.Source
+	choices = append(choices, confirm.Choice{Key: "d", Label: "neither (dismiss)", Cmd: action("Dismissing", func() (string, error) {
+		files, err := lib()
+		if err != nil {
+			return "", err
+		}
+		_, err = files.Library.DismissLinkPick(manga.ID, source)
+		return "dismissed, nothing linked", err
+	})})
+	s.confirm.Choose("Pick "+src.Name, strings.Join(lines, "\n"), s.View(), choices...)
 }
 
 // planLinks plans giving the manga the links, then asks (linkPlannedMsg).
