@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -157,8 +158,12 @@ func onOff(b bool) string {
 
 // settings are the watch's settings and state, for its details.
 func settings(w watch.Watch, backoff int, now time.Time) string {
+	first := fmt.Sprintf("%s · %s · manga id %s", w.Provider, enabled(w), w.MangaID)
+	if status := library.StatusLabel(w.Status); status != "" {
+		first += " · " + status
+	}
 	lines := []string{
-		fmt.Sprintf("%s · %s · manga id %s", w.Provider, enabled(w), w.MangaID),
+		first,
 		fmt.Sprintf("schedule %s · gaps %s · metadata %s · from %s", schedule(w), onOff(w.Gaps), bindings(w), formatNumber(w.From)),
 		fmt.Sprintf("last downloaded %s · last checked %s · next check %s", formatNumber(w.LastDownloaded), ago(w.LastChecked, now), nextCheck(w, backoff, now)),
 	}

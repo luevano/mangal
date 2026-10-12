@@ -132,7 +132,11 @@ func (s *mangaState) header() string {
 	for _, w := range s.watches {
 		lines = append(lines, watches.Describe(w))
 	}
-	if b := formatBindings(s.bindings); b != "" {
+	b := formatBindings(s.bindings)
+	if status := library.StatusLabel(s.manga.Status); status != "" {
+		b = strings.TrimPrefix(b+" · "+status, " · ")
+	}
+	if b != "" {
 		lines = append(lines, "metadata: "+b)
 	}
 	return strings.Join(lines, "\n")

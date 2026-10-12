@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -104,12 +105,15 @@ func (i *item) Description() string {
 	if w.NeedsRelink {
 		return w.Provider + " · " + w.MangaID + " · last " + formatNumber(w.LastDownloaded) + " · needs re-link: " + w.RelinkReason
 	}
-	parts := []string{
-		w.Provider,
-		"last " + formatNumber(w.LastDownloaded),
-		"checked " + ago(w.LastChecked, i.now),
-		"next " + nextCheck(w, i.backoff, i.now),
+	parts := []string{w.Provider}
+	if status := library.StatusLabel(w.Status); status != "" {
+		parts = append(parts, status)
 	}
+	parts = append(parts,
+		"last "+formatNumber(w.LastDownloaded),
+		"checked "+ago(w.LastChecked, i.now),
+		"next "+nextCheck(w, i.backoff, i.now),
+	)
 	switch {
 	case i.last != nil:
 		parts = append(parts, result(*i.last))

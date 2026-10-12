@@ -63,6 +63,9 @@ func (i *mangaItem) Title() string {
 
 func (i *mangaItem) Description() string {
 	parts := []string{fmt.Sprintf("%d chapters", i.manga.Chapters)}
+	if status := library.StatusLabel(i.manga.Status); status != "" {
+		parts = append(parts, status)
+	}
 	if sources := library.SourcesSummary(i.manga.Sources); sources != "" {
 		parts = append(parts, sources)
 	}
@@ -161,6 +164,10 @@ func (s *mangasState) reload(ctx context.Context) tea.Cmd {
 		mangas, err := files.Library.Mangas()
 		if err != nil {
 			return mangasLoadedMsg{}, err
+		}
+		// from the cached metadata, a mark isn't worth an error screen
+		if err := client.UpdateLibraryStatuses(ctx, files.Library, mangas, false, nil); err != nil {
+			log.Warn("publication statuses: %s", err)
 		}
 		watched, _ := watches.Watched(ctx)
 		dups := duplicates(files.Library, mangas, watched)
@@ -433,6 +440,9 @@ func (s *mangasState) scanCmd(ctx context.Context, check bool) tea.Cmd {
 		}
 		if check && msg.otherRoot == "" {
 			msg.checks, msg.checkErr = checkIDs(ctx, files, onProgress)
+			if mangas, err := files.Library.Mangas(); err == nil && msg.checkErr == nil {
+				msg.checkErr = client.UpdateLibraryStatuses(ctx, files.Library, mangas, true, onProgress)
+			}
 		}
 		return msg, nil
 	}, func(msg scannedMsg) tea.Msg { return msg })
