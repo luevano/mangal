@@ -94,6 +94,7 @@ type linkPlannedMsg struct {
 type backupsFoundMsg struct {
 	linker  library.Linker
 	backups []library.Backup
+	summary string
 }
 
 // linksCmd opens the links screen of the manga.
@@ -330,19 +331,18 @@ func findBackups(ctx context.Context, mangas []storage.Manga) tea.Cmd {
 			return backupsFoundMsg{}, err
 		}
 		linker, err := client.LibraryLinker()
-		return backupsFoundMsg{linker: linker, backups: backups}, err
+		return backupsFoundMsg{linker: linker, backups: backups, summary: finder.Summary(backups) + "."}, err
 	}, func(msg backupsFoundMsg) tea.Msg { return msg })
 }
 
 // askBackups asks to fill the missing links, and whether to replace the ones that differ.
 func askBackups(d *confirm.Dialog, behind string, msg backupsFoundMsg) tea.Cmd {
-	fill, conflicts, noKitsu, noMAL := library.BackupSummary(msg.backups)
+	fill, conflicts, _, _ := library.BackupSummary(msg.backups)
 	var lines []string
 	for _, b := range msg.backups {
 		lines = append(lines, b.Lines()...)
 	}
-	summary := fmt.Sprintf("%d mangas to fill, %d links differ; no Kitsu id for %d (no MangaDex source with a Kitsu link), no MyAnimeList id for %d.",
-		fill, conflicts, noKitsu, noMAL)
+	summary := msg.summary
 	if fill == 0 && conflicts == 0 {
 		return base.Viewport("Backup links", strings.Join(append(lines, "", summary), "\n"), color.Accent)
 	}

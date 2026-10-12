@@ -51,7 +51,8 @@ another id (--watches binds it), another library manga with the id (merge them).
 
 --backups fills the Kitsu and MyAnimeList links of the mangas linked to AniList (the given
 one, else all): MyAnimeList from AniList (batched), Kitsu from the links of a MangaDex
-source (libmangal can't look Kitsu up by AniList id, the others are listed). A link that
+source, else from Kitsu's own AniList mappings (batched; when both exist and disagree,
+neither is set and it's listed to check). A link that
 differs is only replaced when you say so. Every change can be undone ("mangal library
 undo").`,
 	Example: `  mangal library bind 12
@@ -249,7 +250,7 @@ func libraryBackups(cmd *cobra.Command, st *status, linker library.Linker, manga
 	if err != nil {
 		return err
 	}
-	fill, conflicts, noKitsu, noMAL := library.BackupSummary(backups)
+	_, conflicts, _, _ := library.BackupSummary(backups)
 	for _, b := range backups {
 		for _, line := range b.Lines() {
 			cmd.Println("  " + line)
@@ -302,7 +303,6 @@ func libraryBackups(cmd *cobra.Command, st *status, linker library.Linker, manga
 	default:
 		cmd.Println("nothing set")
 	}
-	cmd.Printf("%d mangas to fill, %d links differ; no Kitsu id for %d (no MangaDex source with a Kitsu link: libmangal can't look Kitsu up by AniList id), no MyAnimeList id for %d\n",
-		fill, conflicts, noKitsu, noMAL)
+	cmd.Println(finder.Summary(backups))
 	return nil
 }

@@ -76,13 +76,27 @@ func LinkMetadata(ctx context.Context, code metadata.IDCode, id string) (metadat
 }
 
 // LibraryBackups finds the Kitsu and MyAnimeList links of library mangas linked to AniList:
-// AniList's MyAnimeList ids (batched), the links of their MangaDex sources.
+// AniList's MyAnimeList ids (batched), the links of their MangaDex sources, Kitsu's
+// mappings of the AniList ids (batched, when Kitsu is enabled).
 func LibraryBackups() (library.BackupFinder, error) {
 	files, err := LibraryFiles()
 	if err != nil {
 		return library.BackupFinder{}, err
 	}
-	return library.BackupFinder{Files: files, AniList: anilist.MetadataByIDsBatch, ProviderIDs: providerLinks}, nil
+	finder := library.BackupFinder{Files: files, AniList: anilist.MetadataByIDsBatch, ProviderIDs: providerLinks}
+	if config.Metadata.Kitsu.Enabled.Get() {
+		finder.KitsuIDs = kitsuIDs
+	}
+	return finder, nil
+}
+
+// kitsuIDs maps AniList ids to Kitsu ids with Kitsu's mappings (cached).
+func kitsuIDs(ctx context.Context, anilist []int) (map[int]int, error) {
+	p, err := kitsu.Kitsu()
+	if err != nil {
+		return nil, err
+	}
+	return p.IDsFromContext(ctx, metadata.IDCodeAnilist, anilist)
 }
 
 // providerLinks are the metadata ids a MangaDex manga links to, none for other providers
