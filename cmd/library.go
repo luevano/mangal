@@ -71,7 +71,7 @@ is set.`,
 			Loaders:      loaders,
 			ProviderName: template.Provider,
 			MangaName:    template.Manga,
-			Metadata:     anilist.MetadataByIDs,
+			Metadata:     anilist.MetadataByIDsBatch,
 			Library:      index,
 		}
 

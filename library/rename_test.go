@@ -43,9 +43,6 @@ func TestPlanAndApply(t *testing.T) {
 			}
 			return m.Info().Title
 		},
-		Metadata: func(_ context.Context, ids []metadata.ID) (metadata.Metadata, error) {
-			return nil, nil
-		},
 	}
 
 	writeInfo(t, fsys, "/lib/MangaSee/Only I Level Up", libmangal.MangaDirInfo{Provider: "mango-mangasee", Manga: mangadata.MangaInfo{ID: "1", Title: "Solo Leveling"}})
@@ -122,7 +119,6 @@ func TestPlanOldProviderDirs(t *testing.T) {
 		Loaders:      []libmangal.ProviderLoader{loader{weebCentral}},
 		ProviderName: func(p libmangal.ProviderInfo) string { return p.ID },
 		MangaName:    func(_ libmangal.ProviderInfo, m mangadata.Manga) string { return m.Info().Title },
-		Metadata:     func(context.Context, []metadata.ID) (metadata.Metadata, error) { return nil, nil },
 	}
 	_ = fsys.MkdirAll("/lib/mango-mangasee/Berserk", 0o755)
 	_ = afero.WriteFile(fsys, "/lib/mango-mangasee/Berserk/1.cbz", []byte("x"), 0o644)
@@ -167,7 +163,6 @@ func TestPlanIntoExisting(t *testing.T) {
 		Loaders:      []libmangal.ProviderLoader{loader{weebCentral}},
 		ProviderName: func(p libmangal.ProviderInfo) string { return p.ID },
 		MangaName:    func(_ libmangal.ProviderInfo, m mangadata.Manga) string { return m.Info().Title },
-		Metadata:     func(context.Context, []metadata.ID) (metadata.Metadata, error) { return nil, nil },
 		Library:      lib,
 	}
 	see, weeb := filepath.Join(root, "mango-mangasee"), filepath.Join(root, "mango-weebcentral")
@@ -259,7 +254,6 @@ func TestPlanMixedProviderDir(t *testing.T) {
 		Loaders:      []libmangal.ProviderLoader{loader{weebCentral}, loader{mangadex}},
 		ProviderName: func(p libmangal.ProviderInfo) string { return p.ID },
 		MangaName:    func(_ libmangal.ProviderInfo, m mangadata.Manga) string { return m.Info().Title },
-		Metadata:     func(context.Context, []metadata.ID) (metadata.Metadata, error) { return nil, nil },
 	}
 	writeInfo(t, fsys, "/lib/MangaDex/A", libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "a", Title: "A"}})
 	writeInfo(t, fsys, "/lib/MangaDex/B", libmangal.MangaDirInfo{Provider: "mango-weebcentral", Manga: mangadata.MangaInfo{ID: "b", Title: "B"}})
@@ -271,5 +265,49 @@ func TestPlanMixedProviderDir(t *testing.T) {
 	writeInfo(t, fsys, "/lib/mango-mangadex/C", libmangal.MangaDirInfo{Provider: "mango-weebcentral", Manga: mangadata.MangaInfo{ID: "c", Title: "C"}})
 	if renames, err := n.Plan(context.Background(), "/lib", true); err != nil || len(renames) != 1 || renames[0].From != "/lib/MangaDex" {
 		t.Errorf("another provider's directory: %+v, %v", renames, err)
+	}
+}
+
+// TestPlanMetadataBatched: the metadata of every folder is looked up in one call, before
+// planning (AniList rate limits a lookup per folder).
+func TestPlanMetadataBatched(t *testing.T) {
+	fsys := afero.NewMemMapFs()
+	al := func(raw string) metadata.ID {
+		return metadata.ID{Raw: raw, Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}
+	}
+	var calls [][][]metadata.ID
+	n := Namer{
+		FS:           fsys,
+		ProviderName: func(p libmangal.ProviderInfo) string { return p.ID },
+		MangaName: func(_ libmangal.ProviderInfo, m mangadata.Manga) string {
+			if m.Metadata() != nil {
+				return m.Metadata().Title()
+			}
+			return m.Info().Title
+		},
+		Metadata: func(_ context.Context, ids [][]metadata.ID) ([]metadata.Metadata, error) {
+			calls = append(calls, ids)
+			metas := make([]metadata.Metadata, len(ids))
+			for i, mangaIDs := range ids {
+				if len(mangaIDs) != 0 && mangaIDs[0].Raw == "30002" {
+					metas[i] = fakeMeta{title: "Berserk", id: mangaIDs[0]}
+				}
+			}
+			return metas, nil
+		},
+	}
+	writeInfo(t, fsys, "/lib/Berserk (1989) [alid-30002]", libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "x"}, MetadataIDs: []metadata.ID{al("30002")}})
+	writeInfo(t, fsys, "/lib/One Piece", libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "One Piece"}, MetadataIDs: []metadata.ID{al("30013")}})
+	writeInfo(t, fsys, "/lib/No ids", libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "No ids"}})
+
+	renames, err := n.Plan(context.Background(), "/lib", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || len(calls[0]) != 3 {
+		t.Fatalf("metadata calls %v, want one with the 3 folders", calls)
+	}
+	if want := (Rename{From: "/lib/Berserk (1989) [alid-30002]", To: "/lib/Berserk"}); len(renames) != 1 || renames[0] != want {
+		t.Errorf("got %v, want %v", renames, want)
 	}
 }

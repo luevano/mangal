@@ -2,12 +2,15 @@ package anilist
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -70,14 +73,37 @@ func TestLogoutSticks(t *testing.T) {
 // fakeViewer answers every AniList API request with the user "me".
 type fakeViewer struct{}
 
+// A lookup by ids (MetadataByIDsBatch) gets the mangas of the ids below 100000, titled
+// "manga <id>", and is counted in idRequests.
 func (fakeViewer) RoundTrip(req *http.Request) (*http.Response, error) {
+	body := `{"data":{"Viewer":{"id":1,"name":"me"}}}`
+	var sent struct {
+		Variables struct {
+			IDs []int `json:"ids"`
+		} `json:"variables"`
+	}
+	if req.Body != nil {
+		_ = json.NewDecoder(req.Body).Decode(&sent)
+	}
+	if ids := sent.Variables.IDs; len(ids) != 0 {
+		idRequests.Add(1)
+		var media []string
+		for _, id := range ids {
+			if id < 100000 {
+				media = append(media, fmt.Sprintf(`{"id":%d,"title":{"romaji":"manga %d"}}`, id, id))
+			}
+		}
+		body = `{"data":{"Page":{"media":[` + strings.Join(media, ",") + `]}}}`
+	}
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"data":{"Viewer":{"id":1,"name":"me"}}}`)),
+		Body:       io.NopCloser(strings.NewReader(body)),
 		Request:    req,
 	}, nil
 }
+
+var idRequests atomic.Int32
 
 func TestLoginNewSavesClient(t *testing.T) {
 	pasted := make(chan string, 1)

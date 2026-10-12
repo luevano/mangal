@@ -48,3 +48,38 @@ func MetadataByIDs(ctx context.Context, ids []metadata.ID) (metadata.Metadata, e
 	}
 	return nil, nil
 }
+
+// MetadataByIDsBatch is MetadataByIDs for several mangas, with the AniList ids of all of
+// them looked up together (cache first, then batched requests).
+func MetadataByIDsBatch(ctx context.Context, ids [][]metadata.ID) ([]metadata.Metadata, error) {
+	var all []int
+	for _, mangaIDs := range ids {
+		for _, id := range mangaIDs {
+			if id.Source == metadata.IDSourceAnilist {
+				all = append(all, id.Value())
+			}
+		}
+	}
+	metas := make([]metadata.Metadata, len(ids))
+	if len(all) == 0 {
+		return metas, nil
+	}
+	ani, err := Anilist()
+	if err != nil {
+		return nil, err
+	}
+	_ = EnsureLogin(ctx)
+	found, err := ani.SearchByIDsContext(ctx, all)
+	if err != nil {
+		return nil, err
+	}
+	for i, mangaIDs := range ids {
+		for _, id := range mangaIDs {
+			if meta, ok := found[id.Value()]; ok && id.Source == metadata.IDSourceAnilist {
+				metas[i] = meta
+				break
+			}
+		}
+	}
+	return metas, nil
+}

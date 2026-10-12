@@ -40,8 +40,9 @@ type Namer struct {
 	ProviderName func(libmangal.ProviderInfo) string
 	MangaName    func(libmangal.ProviderInfo, mangadata.Manga) string
 
-	// Metadata looks up the manga's metadata by one of its ids, nil if there's none.
-	Metadata func(ctx context.Context, ids []metadata.ID) (metadata.Metadata, error)
+	// Metadata looks up the metadata of several mangas at once (batched), each by one of
+	// its ids: a result per manga, nil when it has none. Nil looks nothing up.
+	Metadata func(ctx context.Context, ids [][]metadata.ID) ([]metadata.Metadata, error)
 
 	// Library tells the mangas of the folders when a provider directory's mangas move into
 	// an existing one, may be zero (only the .libmangal.json files tell then).
@@ -56,13 +57,26 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 	if err != nil {
 		return nil, err
 	}
+	metas := make([]metadata.Metadata, len(folders))
+	if n.Metadata != nil && len(folders) != 0 {
+		ids := make([][]metadata.ID, len(folders))
+		for i, f := range folders {
+			ids[i] = f.info.MetadataIDs
+		}
+		if metas, err = n.Metadata(ctx, ids); err != nil {
+			return nil, fmt.Errorf("metadata: %w", err)
+		}
+		if len(metas) != len(folders) {
+			return nil, fmt.Errorf("metadata: %d results for %d folders", len(metas), len(folders))
+		}
+	}
 	var renames []Rename
 	// the provider of each provider directory: the one of its mangas with a known
 	// provider, none when they're of several (e.g. a manga moved there by hand)
 	var providerDirsSeen []string
 	providers := map[string]libmangal.ProviderInfo{}
 	mixed := map[string]bool{}
-	for _, f := range folders {
+	for i, f := range folders {
 		provider := libmangal.ProviderInfo{ID: f.info.Provider, Name: f.info.Provider}
 		if loader, _, ok := libmangal.FindLoader(n.Loaders, f.info.Provider); ok {
 			provider = loader.Info()
@@ -76,11 +90,7 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 				mixed[f.providerDir] = true
 			}
 		}
-		meta, err := n.Metadata(ctx, f.info.MetadataIDs)
-		if err != nil {
-			return nil, fmt.Errorf("metadata of %q: %w", f.path, err)
-		}
-		if name := n.MangaName(provider, &dirManga{info: f.info.Manga, meta: meta}); name != filepath.Base(f.path) {
+		if name := n.MangaName(provider, &dirManga{info: f.info.Manga, meta: metas[i]}); name != filepath.Base(f.path) {
 			renames = append(renames, Rename{From: f.path, To: filepath.Join(filepath.Dir(f.path), name)})
 		}
 	}
@@ -305,49 +315,55 @@ func mergeHint(keep, other folderID, dir string) string {
 // It returns an error per rename (nil when done).
 func Apply(fsys afero.Fs, renames []Rename) []error {
 	errs := make([]error, len(renames))
+	ApplyEach(fsys, renames, func(i int, err error) { errs[i] = err })
+	return errs
+}
+
+// ApplyEach is Apply telling each rename's error (nil when done) as soon as it's done.
+func ApplyEach(fsys afero.Fs, renames []Rename, done func(i int, err error)) {
 	for i, r := range renames {
-		if r.Skip != "" {
-			errs[i] = errors.New(r.Skip)
-			continue
-		}
-		if r.RemoveEmpty {
-			entries, err := afero.ReadDir(fsys, r.From)
-			switch {
-			case err != nil:
-				errs[i] = err
-			case len(entries) != 0:
-				errs[i] = fmt.Errorf("%s: %w", r.From, ErrNotEmpty)
-			default:
-				errs[i] = fsys.Remove(r.From)
-			}
-			continue
-		}
-		exists, err := afero.Exists(fsys, r.To)
-		if err == nil && exists && !sameFile(fsys, r.From, r.To) {
-			// an empty directory in the way (e.g. a provider's of its current name) goes
-			if entries, readErr := afero.ReadDir(fsys, r.To); readErr == nil && len(entries) == 0 {
-				if err = fsys.Remove(r.To); err == nil {
-					exists = false
-				}
-			}
-		}
+		done(i, applyRename(fsys, r))
+	}
+}
+
+func applyRename(fsys afero.Fs, r Rename) error {
+	if r.Skip != "" {
+		return errors.New(r.Skip)
+	}
+	if r.RemoveEmpty {
+		entries, err := afero.ReadDir(fsys, r.From)
 		switch {
 		case err != nil:
-			errs[i] = err
-		case exists && sameFile(fsys, r.From, r.To):
-			// only the case changes, on a case-insensitive filesystem
-			tmp := r.From + ".mangal-rename"
-			if errs[i] = fsys.Rename(r.From, tmp); errs[i] == nil {
-				errs[i] = fsys.Rename(tmp, r.To)
+			return err
+		case len(entries) != 0:
+			return fmt.Errorf("%s: %w", r.From, ErrNotEmpty)
+		}
+		return fsys.Remove(r.From)
+	}
+	exists, err := afero.Exists(fsys, r.To)
+	if err == nil && exists && !sameFile(fsys, r.From, r.To) {
+		// an empty directory in the way (e.g. a provider's of its current name) goes
+		if entries, readErr := afero.ReadDir(fsys, r.To); readErr == nil && len(entries) == 0 {
+			if err = fsys.Remove(r.To); err == nil {
+				exists = false
 			}
-		case exists:
-			errs[i] = fmt.Errorf("%s already exists", r.To)
-		default:
-			// copied when it's on another drive (the copy goes when that fails)
-			errs[i] = moveFile(fsys, r.From, r.To, DefaultModes)
 		}
 	}
-	return errs
+	switch {
+	case err != nil:
+		return err
+	case exists && sameFile(fsys, r.From, r.To):
+		// only the case changes, on a case-insensitive filesystem
+		tmp := r.From + ".mangal-rename"
+		if err := fsys.Rename(r.From, tmp); err != nil {
+			return err
+		}
+		return fsys.Rename(tmp, r.To)
+	case exists:
+		return fmt.Errorf("%s already exists", r.To)
+	}
+	// copied when it's on another drive (the copy goes when that fails)
+	return moveFile(fsys, r.From, r.To, DefaultModes)
 }
 
 func sameFile(fsys afero.Fs, a, b string) bool {
