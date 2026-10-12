@@ -11,6 +11,7 @@ import (
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
+	"github.com/luevano/mangal/v5/tui/base"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
@@ -171,7 +172,7 @@ func settings(w watch.Watch, backoff int, now time.Time) string {
 		lines = append(lines, "never downloaded (skip list): "+watch.FormatNumbers(w.Skip))
 	}
 	if w.NeedsRelink {
-		lines = append(lines, relinkStyle.Render("needs re-link: "+w.RelinkReason+" (m: search the manga)"))
+		lines = append(lines, relinkStyle.Render("needs re-link: "+w.RelinkReason+" ("+base.KeyRelink.Help().Key+": search the manga)"))
 	}
 	if p := w.LibraryProblem(); p != "" {
 		lines = append(lines, libraryStyle.Render("not in library: "+p))

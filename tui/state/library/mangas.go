@@ -522,7 +522,7 @@ func scanReport(res library.ScanResult) string {
 		report += fmt.Sprintf("\n%d sources found from watches/downloads.", n)
 	}
 	if len(res.Missing) != 0 {
-		report += fmt.Sprintf("\n\n%d mangas weren't found (marked missing in the list, x removes one):", len(res.Missing))
+		report += fmt.Sprintf("\n\n%d mangas weren't found (marked missing in the list, %s removes one):", len(res.Missing), base.KeyDelete.Help().Key)
 		for _, m := range res.Missing {
 			report += "\n  " + m.Title + "  " + m.Path()
 		}
