@@ -54,7 +54,7 @@ var Categories = []Category{Watches, Gaps, Metadata, Library, Global}
 
 // Subject is what a finding is about.
 type Subject struct {
-	// Kind is watch, manga (a library manga), provider or account.
+	// Kind is watch, manga (a library manga), provider, account or library (all of it).
 	Kind string `json:"kind"`
 	// ID is the watch's or library manga's id, 0 for the others.
 	ID   int64  `json:"id,omitempty"`
@@ -63,7 +63,7 @@ type Subject struct {
 
 func (s Subject) String() string {
 	switch {
-	case s.Kind == "account":
+	case s.Kind == "account" || s.Kind == "library":
 		return s.Name
 	case s.ID != 0:
 		return fmt.Sprintf("%s %d %s", s.Kind, s.ID, s.Name)
@@ -90,6 +90,8 @@ type Finding struct {
 	Message  string   `json:"message"`
 	Details  []string `json:"details,omitempty"`
 	Fix      Fix      `json:"fix"`
+	// Items are the subjects of a summary finding (W10's mangas), each with its fix.
+	Items []Finding `json:"items,omitempty"`
 }
 
 // Counts are how many findings there are by severity and by category.
@@ -167,6 +169,10 @@ type Checker struct {
 	StaleAfter time.Duration
 	// Backoff is watch.backoff.
 	Backoff int
+	// Statuses fills in the publication status of the mangas (in place) from the cached
+	// metadata, fetching from AniList with fetch (the network checks); nil leaves them as
+	// stored.
+	Statuses func(ctx context.Context, mangas []storage.Manga, bindings []storage.Binding, fetch bool) error
 	// Now is time.Now when nil.
 	Now func() time.Time
 	// OnProgress is told what's loading, may be nil.
@@ -245,10 +251,11 @@ func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 			needed[p] = true
 		}
 	}
-	s, failed := c.load(ctx, needed)
+	s, failed := c.load(ctx, needed, opts.Network)
 	if err := ctx.Err(); err != nil {
 		return report, err
 	}
+	report.Errors = append(report.Errors, s.errors...)
 	for p := partLibrary; p <= partAccounts; p++ {
 		if err := failed[p]; err != nil {
 			report.Errors = append(report.Errors, fmt.Sprintf("load %s: %s", partNames[p], err))
@@ -338,7 +345,7 @@ func (c Checker) now() time.Time {
 }
 
 // load reads the parts of the snapshot, the ones that failed with their errors.
-func (c Checker) load(ctx context.Context, needed map[part]bool) (*snapshot, map[part]error) {
+func (c Checker) load(ctx context.Context, needed map[part]bool, network bool) (*snapshot, map[part]error) {
 	staleAfter := c.StaleAfter
 	if staleAfter <= 0 {
 		staleAfter = DefaultStaleAfter
@@ -350,6 +357,10 @@ func (c Checker) load(ctx context.Context, needed map[part]bool) (*snapshot, map
 		c.progress("loading the library")
 		if err := s.loadLibrary(c.Library); err != nil {
 			failed[partLibrary] = err
+		} else if c.Statuses != nil {
+			if err := c.Statuses(ctx, s.mangas, s.allBindings, network); err != nil {
+				s.errors = append(s.errors, "publication statuses: "+err.Error())
+			}
 		}
 	}
 	if needed[partWatches] {

@@ -88,6 +88,9 @@ func newChecker(t *testing.T) Checker {
 	// 5: in another provider's directory than its watch's
 	adopt("/dl/AsuraScans", "Dungeon Odyssey [alid-555]", "Dungeon Odyssey", al("555"))
 
+	if err := lib.SetStatuses(map[int64]string{2: string(metadata.StatusFinished), 4: string(metadata.StatusHiatus)}, now); err != nil {
+		t.Fatal(err)
+	}
 	f32 := func(n float32) *float32 { return &n }
 	watches := []watch.Watch{
 		{Watch: storage.Watch{ID: 1, Provider: "mango-mangadex", MangaID: "opm", Title: "One-Punch Man", LibraryManga: 1, Enabled: true,
@@ -164,8 +167,7 @@ func TestRun(t *testing.T) {
 		{"W6", Error, "watch", 5, "mangal watch move 5 <provider>", "mango-gone"},
 		{"W8", Warning, "watch", 6, "mangal migrate", "now mango-weebcentral"},
 		{"W9", Warning, "watch", 6, "mangal watch set 6 --schedule ''", "bogus"},
-		{"W10", Info, "manga", 2, "mangal watch add <provider> Onepunch-Man", "not watched"},
-		{"W10", Info, "manga", 4, "mangal watch add <provider> Vagabond", "not watched"},
+		{"W10", Info, "library", 0, "mangal health --only W10", "3 mangas aren't watched: 1 ongoing/unknown, 1 on hiatus, 1 finished"},
 		{"W11", Warning, "manga", 3, "mangal watch pause 2", "2 providers"},
 		{"G1", Warning, "manga", 1, "mangal watch check 1 --gaps", "2 chapters missing: 3-4"},
 		{"G3", Warning, "watch", 2, "mangal watch check 2", "3"},
@@ -197,6 +199,18 @@ func TestRun(t *testing.T) {
 		if f, ok := find(report, w); ok {
 			t.Errorf("unexpected %+v", f)
 		}
+	}
+	w10, _ := find(report, want{check: "W10", kind: "library"})
+	var items []string
+	for _, i := range w10.Items {
+		items = append(items, fmt.Sprintf("%d %s %s", i.Subject.ID, i.Message, i.Fix.Commands))
+	}
+	if want := []string{
+		"5 status unknown, not watched [mangal watch add <provider> 'Dungeon Odyssey']",
+		"4 on hiatus, not watched [mangal watch add <provider> Vagabond]",
+		"2 finished, not watched (fine) [mangal watch add <provider> Onepunch-Man]",
+	}; !slices.Equal(items, want) {
+		t.Errorf("W10 items %q, want %q", items, want)
 	}
 	var a1 []string
 	for _, f := range report.Findings {

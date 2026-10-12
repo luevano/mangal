@@ -161,13 +161,20 @@ func checkStale(s *snapshot) []Finding {
 			continue
 		}
 		days := int(s.now.Sub(last) / (24 * time.Hour))
-		out = append(out, Finding{Severity: Info, Subject: watchSubject(w),
+		f := Finding{Severity: Info, Subject: watchSubject(w),
 			Message: fmt.Sprintf("%s %s (%d days)", what, last.Format(time.DateOnly), days),
 			Fix: Fix{
 				Commands: []string{fmt.Sprintf("mangal watch pause %d", w.ID), fmt.Sprintf("mangal watch move %d", w.ID)},
 				Note:     "finished or on hiatus: pause it; still published elsewhere: move it",
 				TUI:      tuiWatches + ": pause/resume, re-link manga",
-			}})
+			}}
+		if status := library.StatusLabel(w.Status); status != "" {
+			f.Message += ", " + status + " on AniList"
+			if library.StatusDone(w.Status) {
+				f.Fix.Commands, f.Fix.Note = f.Fix.Commands[:1], status+": pause it"
+			}
+		}
+		out = append(out, f)
 	}
 	return out
 }
@@ -233,21 +240,31 @@ func checkSchedule(s *snapshot) []Finding {
 	return out
 }
 
-// W10: library mangas no watch keeps up to date.
+// W10: library mangas no watch keeps up to date, as one summary by publication status;
+// the mangas are its items (ongoing or unknown first, the ones to watch). Finished and
+// cancelled ones are fine unwatched.
 func checkNotWatched(s *snapshot) []Finding {
-	var out []Finding
-	watched := map[int64]bool{}
-	for _, w := range s.watches {
-		if id := s.watchedManga(w); id != 0 {
-			watched[id] = true
+	var items []Finding
+	var done, hiatus, open int
+	for _, m := range s.unwatched() {
+		status := library.StatusLabel(m.Status)
+		f := Finding{Check: "W10", Category: Watches, Severity: Info, Subject: mangaSubject(m),
+			Message: fmt.Sprintf("not watched, %s", plural(m.Chapters, "chapter")),
+			Fix:     Fix{TUI: "mangas (a provider's search): watch"}}
+		switch {
+		case library.StatusDone(m.Status):
+			done++
+			f.Message = fmt.Sprintf("%s, not watched (fine)", status)
+		case m.Status == string(metadata.StatusHiatus):
+			hiatus++
+			f.Message = "on hiatus, not watched"
+		default:
+			open++
+			if status == "" {
+				status = "status unknown"
+			}
+			f.Message = status + ", not watched"
 		}
-	}
-	for _, m := range s.mangas {
-		if watched[m.ID] || m.Chapters == 0 {
-			continue
-		}
-		f := Finding{Severity: Info, Subject: mangaSubject(m), Message: "not watched",
-			Fix: Fix{TUI: "mangas (a provider's search): watch"}}
 		if src, ok := installedSource(s, m); ok {
 			f.Fix.Commands = []string{fmt.Sprintf("mangal watch add %s mid:%s", src.Provider, quote(src.MangaID))}
 		} else {
@@ -257,7 +274,59 @@ func checkNotWatched(s *snapshot) []Finding {
 				f.Fix.Note = "its providers aren't installed: search it on another one"
 			}
 		}
-		out = append(out, f)
+		items = append(items, f)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	rank := func(f Finding) int {
+		switch {
+		case strings.Contains(f.Message, "(fine)"):
+			return 2
+		case strings.HasPrefix(f.Message, "on hiatus"):
+			return 1
+		}
+		return 0
+	}
+	slices.SortStableFunc(items, func(a, b Finding) int { return rank(a) - rank(b) })
+	var parts []string
+	if open != 0 {
+		parts = append(parts, fmt.Sprintf("%d ongoing/unknown", open))
+	}
+	if hiatus != 0 {
+		parts = append(parts, fmt.Sprintf("%d on hiatus", hiatus))
+	}
+	if done != 0 {
+		parts = append(parts, fmt.Sprintf("%d finished", done))
+	}
+	what := "mangas aren't watched"
+	if len(items) == 1 {
+		what = "manga isn't watched"
+	}
+	f := Finding{Severity: Info, Subject: Subject{Kind: "library", Name: "library"},
+		Message: fmt.Sprintf("%d %s: %s", len(items), what, strings.Join(parts, ", ")),
+		Items:   items,
+		Fix: Fix{
+			Commands: []string{"mangal health --only W10"},
+			Note:     "lists them with the command that watches each; mangal health --network looks for new chapters of the ongoing ones",
+			TUI:      "health: open the finding",
+		}}
+	return []Finding{f}
+}
+
+// unwatched are the library mangas with chapters no watch keeps up to date.
+func (s *snapshot) unwatched() []storage.Manga {
+	watched := map[int64]bool{}
+	for _, w := range s.watches {
+		if id := s.watchedManga(w); id != 0 {
+			watched[id] = true
+		}
+	}
+	var out []storage.Manga
+	for _, m := range s.mangas {
+		if !watched[m.ID] && m.Chapters != 0 {
+			out = append(out, m)
+		}
 	}
 	return out
 }

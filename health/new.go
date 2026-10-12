@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/client/myanimelist"
@@ -49,6 +50,9 @@ func New(ctx context.Context) (Checker, error) {
 				Webhook: notify.WebhookURL() != "",
 				Notify:  config.Watch.Notify.Get(),
 			}, nil
+		},
+		Statuses: func(ctx context.Context, mangas []storage.Manga, bindings []storage.Binding, fetch bool) error {
+			return client.LibraryStatuses(st.Library()).Update(ctx, mangas, bindings, fetch)
 		},
 		Root:         path.Downloads(),
 		ProviderDirs: config.Download.Provider.CreateDir.Get(),

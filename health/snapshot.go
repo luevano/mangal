@@ -34,6 +34,9 @@ type snapshot struct {
 
 	oldIDs   []storage.OldID
 	accounts Accounts
+
+	// errors are what didn't load without skipping a check
+	errors []string
 }
 
 func (s *snapshot) loadLibrary(lib storage.Library) error {
