@@ -173,12 +173,19 @@ func (s *moveState) askTitle(msg movePlannedMsg) {
 		fmt.Sprintf("%q is %q on %s.", plan.Manga.Title, plan.To.Title, plan.Provider.ID),
 		"",
 		"k keeps the title:",
-		"  folder " + plan.FolderChange(),
 	}
+	indent := func(lines []string) []string {
+		for i := range lines {
+			lines[i] = "  " + lines[i]
+		}
+		return lines
+	}
+	lines = append(lines, indent(plan.FolderLines())...)
 	choices := []confirm.Choice{{Key: "k", Label: "keep the title", Cmd: func() tea.Msg { return moveChosenMsg{mover: msg.mover, plan: plan} }}}
 	if msg.full != nil {
 		full := *msg.full
-		lines = append(lines, "a adopts the new title:", "  title "+full.TitleChange(), "  folder "+full.FolderChange())
+		lines = append(lines, "a adopts the new title:", "  title: "+full.TitleChange())
+		lines = append(lines, indent(full.FolderLines())...)
 		choices = append(choices, confirm.Choice{Key: "a", Label: "adopt the new title", Cmd: func() tea.Msg { return moveChosenMsg{mover: msg.mover, plan: full} }})
 	} else {
 		lines = append(lines, "can't adopt it: "+msg.fullErr.Error())

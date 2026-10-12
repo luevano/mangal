@@ -66,7 +66,7 @@ func TestMove(t *testing.T) {
 		t.Fatalf("plan %+v", plan)
 	}
 	lines := strings.Join(plan.Lines(), "\n")
-	for _, want := range []string{"source: add pill 1/berserk (keeps asura berserk)", "folder: Asura/Berserk -> Mangapill/Berserk\n", ".libmangal.json: asura berserk -> pill 1/berserk", "(re-linked)", "copied: al 30002"} {
+	for _, want := range []string{"source: add pill 1/berserk (keeps asura berserk)", "folder:\n    from Asura/Berserk\n    to   Mangapill/Berserk\n", ".libmangal.json: asura berserk -> pill 1/berserk", "(re-linked)", "copied: al 30002"} {
 		if !strings.Contains(lines, want) {
 			t.Errorf("lines miss %q:\n%s", want, lines)
 		}
@@ -132,19 +132,44 @@ func TestMoveUndo(t *testing.T) {
 	}
 }
 
-func TestMoveFolderChange(t *testing.T) {
+func TestMoveFolderLines(t *testing.T) {
 	marker := &libmangal.MangaDirInfo{}
 	plan := MovePlan{Root: "/dl", From: "/dl/Asura/Berserk", Dir: "/dl/Pill/Berserk", Marker: marker, Full: true, NameFromMetadata: true}
-	if got := plan.FolderChange(); got != "Asura/Berserk -> Pill/Berserk (name unchanged: it uses the AniList title)" {
+	if got := strings.Join(plan.FolderLines(), "\n"); got != "folder:\n  from Asura/Berserk\n  to   Pill/Berserk\n  name unchanged: it uses the AniList title" {
 		t.Errorf("metadata name: %q", got)
 	}
 	plan.NameFromMetadata = false
 	plan.Dir = plan.From
-	if got := plan.FolderChange(); got != "stays Asura/Berserk (name unchanged)" {
+	if got := strings.Join(plan.FolderLines(), "\n"); got != "folder: stays Asura/Berserk (name unchanged)" {
 		t.Errorf("same name: %q", got)
 	}
 	plan.Full = false
-	if got := plan.FolderChange(); got != "stays Asura/Berserk" {
+	if got := strings.Join(plan.FolderLines(), "\n"); got != "folder: stays Asura/Berserk" {
 		t.Errorf("default: %q", got)
+	}
+}
+
+// TestMoveOldProviderDir: only the provider's old directory exists, the folder goes there
+// (as downloads do) and the plan says so.
+func TestMoveOldProviderDir(t *testing.T) {
+	root := t.TempDir()
+	m := newMover(t, root)
+	m.ProviderName = func(p libmangal.ProviderInfo) string { return p.ID }
+	dir := filepath.Join(root, "mango-mangadex", "Clones")
+	touch(t, filepath.Join(dir, "1.cbz"))
+	touch(t, filepath.Join(root, "mango-mangasee", "Other", "1.cbz"))
+	record(t, m.Library, filepath.Dir(dir), "Clones", "1.cbz", 1, "mango-mangadex")
+	manga, _, _ := m.Library.MangaBySource("mango-mangadex", "berserk")
+	weeb := libmangal.ProviderInfo{ID: "mango-weebcentral", Name: "Weeb Central", History: []libmangal.ProviderAlias{{ID: "mango-mangasee", Name: "MangaSee"}}}
+	plan, err := m.PlanMove(context.Background(), manga, weeb, &dirManga{info: mangadata.MangaInfo{ID: "01J", Title: "Clones"}}, MoveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Dir != filepath.Join(root, "mango-mangasee", "Clones") || plan.ProviderDirName != "mango-weebcentral" {
+		t.Fatalf("plan %s, %q", plan.Dir, plan.ProviderDirName)
+	}
+	want := `  mango-mangasee is Weeb Central's old directory name, downloads use it too; "mangal library rename" renames it to mango-weebcentral`
+	if lines := strings.Join(plan.Lines(), "\n"); !strings.Contains(lines, want) {
+		t.Errorf("lines miss the old directory:\n%s", lines)
 	}
 }

@@ -57,6 +57,9 @@ type MovePlan struct {
 	From, Dir string
 	// Root is the download directory, Lines shows the folders relative to it.
 	Root string
+	// ProviderDirName is the provider's directory name when the folder goes to the one of
+	// its old name instead (only that one exists, downloads use it too).
+	ProviderDirName string
 	// Marker is the folder's new .libmangal.json, Old the one it had (nil if none);
 	// nil for a manga without a folder of its own.
 	Marker, Old *libmangal.MangaDirInfo
@@ -127,6 +130,9 @@ func (m Mover) planFolder(ctx context.Context, plan *MovePlan) error {
 	if m.ProviderDirs {
 		if parent, err = m.providerDir(plan.Provider); err != nil {
 			return err
+		}
+		if name := m.ProviderName(plan.Provider); filepath.Base(parent) != name {
+			plan.ProviderDirName = name
 		}
 	}
 	name := filepath.Base(plan.From)
@@ -279,7 +285,9 @@ func (p MovePlan) Lines() []string {
 	if p.Full {
 		lines = append(lines, "  title: "+p.TitleChange())
 	}
-	lines = append(lines, "  folder: "+p.FolderChange())
+	for _, line := range p.FolderLines() {
+		lines = append(lines, "  "+line)
+	}
 	if p.Marker != nil {
 		was := "none"
 		if p.Old != nil {
@@ -311,9 +319,10 @@ func (p MovePlan) TitleChange() string {
 	return fmt.Sprintf("%q -> %q", p.Manga.Title, p.Title)
 }
 
-// FolderChange is what happens to the folder (relative to the root): "old -> new", it
-// stays, and in a full move why its name doesn't change.
-func (p MovePlan) FolderChange() string {
+// FolderLines say what happens to the folder (paths relative to the root): "folder:"
+// with "from" and "to" lines when it moves, else that it stays; in a full move why its
+// name doesn't change, and when it goes to the provider's old directory.
+func (p MovePlan) FolderLines() []string {
 	rel := func(path string) string {
 		if r, err := filepath.Rel(p.Root, path); err == nil && p.Root != "" && isInside(p.Root, path) {
 			return r
@@ -321,20 +330,32 @@ func (p MovePlan) FolderChange() string {
 		return path
 	}
 	if p.Marker == nil {
-		return "none of its own, the files stay in " + rel(p.From)
+		return []string{"folder: none of its own, the files stay in " + rel(p.From)}
 	}
-	change := "stays " + rel(p.From)
-	if p.Dir != p.From {
-		change = rel(p.From) + " -> " + rel(p.Dir)
-	}
+	var note string
 	switch {
 	case !p.Full || filepath.Base(p.Dir) != filepath.Base(p.From):
 	case p.NameFromMetadata:
-		change += " (name unchanged: it uses the AniList title)"
+		note = "name unchanged: it uses the AniList title"
 	default:
-		change += " (name unchanged)"
+		note = "name unchanged"
 	}
-	return change
+	if p.Dir == p.From {
+		line := "folder: stays " + rel(p.From)
+		if note != "" {
+			line += " (" + note + ")"
+		}
+		return []string{line}
+	}
+	lines := []string{"folder:", "  from " + rel(p.From), "  to   " + rel(p.Dir)}
+	if note != "" {
+		lines = append(lines, "  "+note)
+	}
+	if p.ProviderDirName != "" {
+		lines = append(lines, fmt.Sprintf("  %s is %s's old directory name, downloads use it too; \"mangal library rename\" renames it to %s",
+			filepath.Base(filepath.Dir(p.Dir)), p.Provider.Name, p.ProviderDirName))
+	}
+	return lines
 }
 
 // ApplyMove does the plan: the folder moves and gets its new .libmangal.json, then the
