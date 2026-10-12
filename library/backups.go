@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/storage"
@@ -24,6 +25,9 @@ type Backup struct {
 	// Disagree are sources linking another AniList id (their links aren't used), as
 	// "mango-mangadex links AniList 1".
 	Disagree []string
+	// Pick is the Kitsu link to pick when a MangaDex source and Kitsu's mapping disagree
+	// (saved, see storage.LinkPick), nil if there's none.
+	Pick *storage.LinkPick
 }
 
 // BackupFinder finds the backups of library mangas.
@@ -120,16 +124,39 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 			}
 		}
 		mapped := kitsuIDs[t.al]
+		var pick *storage.LinkPick
 		switch {
 		case kitsuProvider != "" && mapped != "" && kitsuProvider != mapped:
-			// neither is used, the user checks which is right
-			disagree = append(disagree, fmt.Sprintf("%s links Kitsu %s and Kitsu maps it to %s", kitsuFrom, kitsuProvider, mapped))
+			// neither is used, the user picks one; one of them linked already settles it
+			kt := t.info.Source(metadata.IDCodeKitsu)
+			if kt.Linked() && (kt.Current() == kitsuProvider || kt.Current() == mapped) {
+				break
+			}
+			if !kt.Linked() {
+				pick = &storage.LinkPick{Manga: t.info.Manga.ID, Source: metadata.IDCodeKitsu, AniList: t.al,
+					Candidates: []storage.LinkCandidate{{ID: kitsuProvider, From: kitsuFrom}, {ID: mapped, From: storage.FromKitsu}}}
+			}
+			if pick, err = b.savePick(t.info.Manga.ID, pick); err != nil {
+				return nil, err
+			}
+			if pick == nil || !pick.Dismissed {
+				disagree = append(disagree, fmt.Sprintf("%s links Kitsu %s and Kitsu maps it to %s", kitsuFrom, kitsuProvider, mapped))
+			}
 		case kitsuProvider != "":
 			found[metadata.IDCodeKitsu] = kitsuProvider
 		case mapped != "":
 			found[metadata.IDCodeKitsu] = mapped
 		}
-		backup := Backup{Manga: t.info.Manga, AniList: t.al, Fill: Links{}, Disagree: disagree}
+		if pick == nil && b.ProviderIDs != nil && b.KitsuIDs != nil {
+			// both asked and they agree (or it's linked): nothing left to pick
+			if _, err := b.savePick(t.info.Manga.ID, nil); err != nil {
+				return nil, err
+			}
+		}
+		if pick != nil && pick.Dismissed {
+			pick = nil
+		}
+		backup := Backup{Manga: t.info.Manga, AniList: t.al, Fill: Links{}, Disagree: disagree, Pick: pick}
 		for _, code := range []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList} {
 			s := t.info.Source(code)
 			id := found[code]
@@ -153,6 +180,19 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 		}
 	}
 	return backups, nil
+}
+
+// savePick saves the manga's Kitsu pick, or clears it when nil; it returns the pick as
+// saved (dismissed or not).
+func (b BackupFinder) savePick(manga int64, pick *storage.LinkPick) (*storage.LinkPick, error) {
+	if b.Library.DB == nil {
+		return pick, nil
+	}
+	if pick == nil {
+		return nil, b.Library.ClearLinkPick(manga, metadata.IDCodeKitsu)
+	}
+	saved, err := b.Library.SetLinkPick(*pick)
+	return &saved, err
 }
 
 // kitsuIDs looks the AniList ids up on Kitsu (KitsuIDs), in batches for the progress.
@@ -223,7 +263,11 @@ func (b Backup) Lines() []string {
 		lines = append(lines, fmt.Sprintf("%d %q: %s is %s, AniList %s says %s (not replaced unless asked)", b.Manga.ID, b.Manga.Title, sourceName(c.Code), c.Old[0], b.AniList, c.New))
 	}
 	for _, d := range b.Disagree {
-		lines = append(lines, fmt.Sprintf("%d %q: linked to AniList %s, but %s (check it: mangal library bind %d)", b.Manga.ID, b.Manga.Title, b.AniList, d, b.Manga.ID))
+		hint := "check it"
+		if b.Pick != nil && strings.Contains(d, " Kitsu ") {
+			hint = "saved, pick one"
+		}
+		lines = append(lines, fmt.Sprintf("%d %q: linked to AniList %s, but %s (%s: mangal library bind %d)", b.Manga.ID, b.Manga.Title, b.AniList, d, hint, b.Manga.ID))
 	}
 	return lines
 }

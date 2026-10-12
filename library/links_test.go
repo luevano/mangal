@@ -265,8 +265,37 @@ func TestBackupsKitsu(t *testing.T) {
 	}
 	if b := byTitle["Disagree"]; b.Fill[metadata.IDCodeKitsu] != "" || b.NoKitsu || len(b.Disagree) != 1 {
 		t.Errorf("Disagree %+v", b)
-	} else if got := b.Lines()[len(b.Lines())-1]; !strings.Contains(got, "linked to AniList 3, but mango-mangadex links Kitsu 30 and Kitsu maps it to 31 (check it") {
+	} else if got := b.Lines()[len(b.Lines())-1]; !strings.Contains(got, "linked to AniList 3, but mango-mangadex links Kitsu 30 and Kitsu maps it to 31 (saved, pick one") {
 		t.Errorf("Disagree line %q", got)
+	}
+	// saved for later, nothing linked
+	picks, err := lib.LinkPicks()
+	if err != nil || len(picks) != 1 || picks[0].Manga != byTitle["Disagree"].Manga.ID || picks[0].AniList != "3" ||
+		len(picks[0].Candidates) != 2 || picks[0].Candidates[0] != (storage.LinkCandidate{ID: "30", From: "mango-mangadex"}) ||
+		picks[0].Candidates[1] != (storage.LinkCandidate{ID: "31", From: storage.FromKitsu}) {
+		t.Errorf("picks %+v, %v", picks, err)
+	}
+	// dismissed: found again, not asked again
+	if _, err := lib.DismissLinkPick(picks[0].Manga, metadata.IDCodeKitsu); err != nil {
+		t.Fatal(err)
+	}
+	backups, _ = finder.Find(context.Background(), mangas)
+	for _, b := range backups {
+		if b.Manga.Title == "Disagree" && (b.Pick != nil || len(b.Disagree) != 0) {
+			t.Errorf("dismissed pick asked again: %+v", b)
+		}
+	}
+	// one of them linked settles it
+	_ = bindings.Set(storage.Binding{Provider: "mango-mangadex", MangaID: "Disagree", Source: "kt", ID: "31"})
+	mangas, _ = lib.Mangas()
+	backups, _ = finder.Find(context.Background(), mangas)
+	for _, b := range backups {
+		if b.Manga.Title == "Disagree" && (b.Pick != nil || len(b.Disagree) != 0) {
+			t.Errorf("linked to a candidate, still a disagreement: %+v", b)
+		}
+	}
+	if p, ok, _ := lib.LinkPick(picks[0].Manga, metadata.IDCodeKitsu); ok {
+		t.Errorf("pick kept: %+v", p)
 	}
 	if b := byTitle["Unmapped"]; !b.NoKitsu || b.Fill[metadata.IDCodeKitsu] != "" {
 		t.Errorf("Unmapped %+v", b)
