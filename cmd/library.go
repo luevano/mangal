@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
@@ -37,12 +38,14 @@ var libraryCmd = &cobra.Command{
 }
 
 var libraryRenameArgs = struct {
-	Apply bool
+	Apply, Refresh, Chapters bool
 }{}
 
 func init() {
 	libraryCmd.AddCommand(libraryRenameCmd)
 	libraryRenameCmd.Flags().BoolVar(&libraryRenameArgs.Apply, "apply", false, "Rename, instead of only listing the renames")
+	libraryRenameCmd.Flags().BoolVar(&libraryRenameArgs.Refresh, "refresh", false, "Get the AniList metadata again instead of the cached one")
+	libraryRenameCmd.Flags().BoolVar(&libraryRenameArgs.Chapters, "chapters", false, "Also rename the chapter files to the chapter name template")
 }
 
 var libraryRenameCmd = &cobra.Command{
@@ -55,7 +58,15 @@ of the current name exists already (not empty), the old one's manga folders move
 one by one: a manga it has already (same provider manga or metadata id) is left for
 "mangal library merge", a folder name taken by another manga too, folders of no known
 manga stay, and the old directory goes once empty. Only lists the renames unless --apply
-is set.`,
+is set.
+
+A manga folder's name comes from its library manga's links (the bindings of its sources,
+its own ids: what "mangal library bind" sets), which win over the ids of its
+.libmangal.json and its name; where they disagree it's listed. --refresh gets the AniList
+metadata again (batched) instead of the cached one, e.g. after a title changed there.
+--chapters also renames the chapter files to the chapter name template (in their folder;
+a name already taken is skipped, as chapters without a recorded title). Folders without a
+.libmangal.json aren't renamed ("mangal library scan --mark" marks them).`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
@@ -68,36 +79,79 @@ is set.`,
 		if err != nil {
 			return err
 		}
-		namer := library.Namer{
-			FS:           afs.Afero,
-			Loaders:      loaders,
-			ProviderName: template.Provider,
-			MangaName:    template.Manga,
-			Metadata:     anilist.MetadataByIDsBatch,
-			Library:      index,
-			OnProgress:   st.Progress,
-		}
-
 		dir, err := path.Ensure(path.Downloads())
 		if err != nil {
 			return err
 		}
-		renames, err := namer.Plan(st.Context(cmd.Context()), dir, config.Download.Provider.CreateDir.Get())
-		st.Clear()
-		if err != nil {
-			return err
-		}
-		if len(renames) == 0 {
-			cmd.Println("nothing to rename")
-			return nil
-		}
-
 		rel := func(p string) string {
 			if r, err := filepath.Rel(dir, p); err == nil {
 				return r
 			}
 			return p
 		}
+		var disagree []string
+		namer := library.Namer{
+			FS:           afs.Afero,
+			Loaders:      loaders,
+			ProviderName: template.Provider,
+			MangaName:    template.Manga,
+			ChapterName:  template.Chapter,
+			Metadata:     anilist.MetadataByIDsBatch,
+			Library:      index,
+			OnProgress:   st.Progress,
+			OnDisagree: func(folder string, d []string) {
+				for _, line := range d {
+					disagree = append(disagree, fmt.Sprintf("  %s: %s", rel(folder), line))
+				}
+			},
+		}
+		if libraryRenameArgs.Refresh {
+			namer.Metadata = anilist.MetadataByIDsFresh
+		}
+		providerDirs := config.Download.Provider.CreateDir.Get()
+		renames, err := namer.Plan(st.Context(cmd.Context()), dir, providerDirs)
+		if err != nil {
+			return err
+		}
+		untitled := 0
+		if libraryRenameArgs.Chapters {
+			mangas, err := index.Mangas()
+			if err != nil {
+				return err
+			}
+			chapters, err := namer.PlanChapters(mangas)
+			if err != nil {
+				return err
+			}
+			var kept []library.Rename
+			for _, r := range chapters {
+				if r.Skip == "no chapter title recorded" {
+					untitled++
+					continue
+				}
+				kept = append(kept, r)
+			}
+			// before the folders: they use the paths of now
+			renames = append(kept, renames...)
+		}
+		st.Clear()
+		if len(disagree) != 0 {
+			cmd.Println("ids that disagree with the links (the links are used, \"mangal library bind <id>\" shows and fixes them):")
+			for _, line := range disagree {
+				cmd.Println(line)
+			}
+		}
+		if unmarked, err := library.Unmarked(afs.Afero, dir, providerDirs); err == nil && len(unmarked) != 0 {
+			cmd.Printf("%d folders without a %s aren't renamed (\"mangal library scan --mark\" marks them)\n", len(unmarked), libmangal.FilenameMangaDirInfo)
+		}
+		if untitled != 0 {
+			cmd.Printf("%d chapter files kept: no chapter title recorded\n", untitled)
+		}
+		if len(renames) == 0 {
+			cmd.Println("nothing to rename")
+			return nil
+		}
+
 		if !libraryRenameArgs.Apply {
 			for _, r := range renames {
 				switch {
@@ -105,6 +159,8 @@ is set.`,
 					cmd.Printf("skip %s: %s\n", rel(r.From), r.Skip)
 				case r.RemoveEmpty:
 					cmd.Printf("remove %s once empty\n", rel(r.From))
+				case r.Chapter:
+					cmd.Printf("%s -> %s\n", rel(r.From), filepath.Base(r.To))
 				default:
 					cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To))
 				}
@@ -112,13 +168,25 @@ is set.`,
 			cmd.Println("run with --apply to rename")
 			return nil
 		}
-		n := 0
+		folders, files := 0, 0
 		for _, r := range renames {
-			if r.Skip == "" && !r.RemoveEmpty {
-				n++
+			switch {
+			case r.Skip != "" || r.RemoveEmpty:
+			case r.Chapter:
+				files++
+			default:
+				folders++
 			}
 		}
-		snapshot, err := client.Operation("rename", fmt.Sprintf("rename %d folders", n), func(j library.Journal) error {
+		var what []string
+		if folders != 0 || files == 0 {
+			what = append(what, fmt.Sprintf("%d folders", folders))
+		}
+		if files != 0 {
+			what = append(what, fmt.Sprintf("%d chapter files", files))
+		}
+		summary := "rename " + strings.Join(what, ", ")
+		snapshot, err := client.Operation("rename", summary, func(j library.Journal) error {
 			return library.ApplyEach(afs.Afero, j, renames, st.Progress, func(i int, err error) error {
 				r := renames[i]
 				switch {
@@ -130,6 +198,13 @@ is set.`,
 					return nil
 				case r.RemoveEmpty:
 					st.Print(func() { cmd.Printf("removed %s\n", rel(r.From)) })
+					return nil
+				}
+				if r.Chapter {
+					if err := index.SetDownloadPath(r.From, r.To); err != nil {
+						return err
+					}
+					st.Print(func() { cmd.Printf("%s -> %s\n", rel(r.From), filepath.Base(r.To)) })
 					return nil
 				}
 				if err := index.Moved(r.From, r.To); err != nil {

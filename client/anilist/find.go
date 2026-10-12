@@ -52,6 +52,16 @@ func MetadataByIDs(ctx context.Context, ids []metadata.ID) (metadata.Metadata, e
 // MetadataByIDsBatch is MetadataByIDs for several mangas, with the AniList ids of all of
 // them looked up together (cache first, then batched requests).
 func MetadataByIDsBatch(ctx context.Context, ids [][]metadata.ID) ([]metadata.Metadata, error) {
+	return metadataByIDsBatch(ctx, ids, (*metadata.ProviderWithCache).SearchByIDsContext)
+}
+
+// MetadataByIDsFresh is MetadataByIDsBatch past the cache: every id is asked again
+// (batched), the cache gets the answers.
+func MetadataByIDsFresh(ctx context.Context, ids [][]metadata.ID) ([]metadata.Metadata, error) {
+	return metadataByIDsBatch(ctx, ids, (*metadata.ProviderWithCache).RefreshByIDsContext)
+}
+
+func metadataByIDsBatch(ctx context.Context, ids [][]metadata.ID, get func(*metadata.ProviderWithCache, context.Context, []int) (map[int]metadata.Metadata, error)) ([]metadata.Metadata, error) {
 	var all []int
 	for _, mangaIDs := range ids {
 		for _, id := range mangaIDs {
@@ -69,7 +79,7 @@ func MetadataByIDsBatch(ctx context.Context, ids [][]metadata.ID) ([]metadata.Me
 		return nil, err
 	}
 	_ = EnsureLogin(ctx)
-	found, err := ani.SearchByIDsContext(ctx, all)
+	found, err := get(ani, ctx, all)
 	if err != nil {
 		return nil, err
 	}
