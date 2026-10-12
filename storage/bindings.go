@@ -175,6 +175,9 @@ ON CONFLICT (provider, manga_id, source) DO UPDATE SET metadata_id = excluded.me
 	if err != nil {
 		return fmt.Errorf("bind %s %q to %s %s: %w", b.Provider, b.MangaID, b.Source, b.ID, err)
 	}
+	if err := clearSourcePicks(s.DB, b.Provider, b.MangaID, b.Source); err != nil {
+		return fmt.Errorf("bind %s %q to %s %s: %w", b.Provider, b.MangaID, b.Source, b.ID, err)
+	}
 	return nil
 }
 

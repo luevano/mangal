@@ -272,6 +272,9 @@ func (l Library) SetLinks(c LinkChange) error {
 		if _, err := tx.Exec(`UPDATE library_mangas SET metadata_ids = ? WHERE id = ?`, string(data), c.Manga); err != nil {
 			return err
 		}
+		if err := clearPicks(tx, c.Manga, c.Links); err != nil {
+			return err
+		}
 		for _, b := range c.Bindings {
 			for code, id := range c.Links {
 				if id == "" {
@@ -739,6 +742,9 @@ func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) e
 			return err
 		}
 		if _, err := tx.Exec(`UPDATE watches SET library_manga = ? WHERE library_manga = ?`, keep, other); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE OR IGNORE link_picks SET manga = ? WHERE manga = ?`, keep, other); err != nil {
 			return err
 		}
 		var raw string
