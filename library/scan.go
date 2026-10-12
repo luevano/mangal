@@ -27,6 +27,8 @@ type ScanResult struct {
 	Missing []storage.Manga
 	// Unrecognized are files that look like chapters but have no chapter number.
 	Unrecognized []string
+	// Sources are the sources found for mangas without any (Library.BackfillSources).
+	Sources storage.Backfill
 }
 
 func (r *ScanResult) add(o ScanResult) {
@@ -211,6 +213,11 @@ func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
 		res.add(r)
 		res.New++
 	}
+	sources, err := s.Library.BackfillSources()
+	if err != nil {
+		return res, err
+	}
+	res.Sources = sources
 	return res, nil
 }
 

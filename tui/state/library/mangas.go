@@ -377,6 +377,9 @@ func checkReport(checks []library.IDCheck, err error) string {
 func scanReport(res library.ScanResult) string {
 	report := fmt.Sprintf("Added %d, moved %d, removed %d chapters.\nFound %d moved manga folders, %d new.",
 		res.Added, res.Moved, res.Removed, res.Relocated, res.New)
+	if n := res.Sources.FromWatches + res.Sources.FromDownloads; n > 0 {
+		report += fmt.Sprintf("\n%d sources found from watches/downloads.", n)
+	}
 	if len(res.Missing) != 0 {
 		report += fmt.Sprintf("\n\n%d mangas weren't found (marked missing in the list, x removes one):", len(res.Missing))
 		for _, m := range res.Missing {

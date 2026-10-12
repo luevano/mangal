@@ -301,6 +301,9 @@ left as they are, an existing .libmangal.json is never replaced.`,
 
 		cmd.Printf("added %d, moved %d, removed %d chapters; found %d moved manga folders, %d new\n",
 			res.Added, res.Moved, res.Removed, res.Relocated, res.New)
+		if n := res.Sources.FromWatches + res.Sources.FromDownloads; n > 0 {
+			cmd.Printf("%d sources found from watches/downloads (%d, %d)\n", n, res.Sources.FromWatches, res.Sources.FromDownloads)
+		}
 		if len(res.Unrecognized) != 0 {
 			cmd.Printf("%d files without a chapter number:\n", len(res.Unrecognized))
 			for _, f := range res.Unrecognized {
