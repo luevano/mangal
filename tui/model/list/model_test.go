@@ -39,3 +39,15 @@ func TestSelectFiltered(t *testing.T) {
 	m.Select(42)
 	_ = m.View()
 }
+
+// TestPageKeys: h/l (arrows, pgup/pgdn) page, b u f d are free for the screens.
+func TestPageKeys(t *testing.T) {
+	m := New(1, 0, "manga", "mangas", []string{"a"}, func(s string) list.DefaultItem { return testItem(s) })
+	prev, next := m.KeyMap.List.PrevPage, m.KeyMap.List.NextPage
+	if got := fmt.Sprint(prev.Keys(), next.Keys()); got != "[left h pgup] [right l pgdown]" {
+		t.Errorf("pages: %s", got)
+	}
+	if got := prev.Help().Key + " " + next.Help().Key; got != "←/h/pgup →/l/pgdn" {
+		t.Errorf("help: %s", got)
+	}
+}

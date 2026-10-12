@@ -65,9 +65,8 @@ func (k KeyMap) Browsing() []key.Binding {
 // keyNames are the help names of the special keys.
 var keyNames = map[string]string{"up": "↑", "down": "↓", "left": "←", "right": "→", "pgdown": "pgdn"}
 
-// Reserve takes the keys from the list's own bindings, for a screen key that had them
-// first (e.g. d for delete, which also pages down by default): the help shows the keys
-// left.
+// Reserve takes the keys from the list's own bindings, for screen keys: the help shows the
+// keys left.
 func (m *Model) Reserve(keys ...string) {
 	l := &m.Model.KeyMap
 	for _, b := range []*key.Binding{&l.CursorUp, &l.CursorDown, &l.PrevPage, &l.NextPage, &l.GoToStart, &l.GoToEnd, &l.Filter} {

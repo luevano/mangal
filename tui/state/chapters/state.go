@@ -140,8 +140,6 @@ func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volum
 			styles:                _styles,
 		}
 	}), s.keyMap)
-	// download and change format had them before the list's next page
-	s.List.Reserve("d", "f")
 	s.updateItemHeight()
 	s.updateKeys()
 	return s

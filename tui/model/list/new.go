@@ -72,6 +72,8 @@ func New[T any](
 	}
 	// the help shows the keys the list has (and enables), not a copy's
 	s.KeyMap = newKeyMap(&s.Model.KeyMap)
+	// pages are h/l (and the arrows, pgup/pgdn) only: b u f d are screen keys
+	s.Reserve("b", "u", "f", "d")
 	s.updateKeybinds()
 	return s
 }
