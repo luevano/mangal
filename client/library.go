@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"slices"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -10,6 +11,7 @@ import (
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/template"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -48,6 +50,30 @@ func LibraryMover() (library.Mover, error) {
 		MangaName:    template.Manga,
 		Metadata:     anilist.MetadataByIDs,
 	}, nil
+}
+
+// LibraryDuplicates are the library mangas sharing a metadata id (library.Duplicates),
+// watched ones by the watches of the data database.
+func LibraryDuplicates(lib storage.Library) ([]library.Duplicate, error) {
+	mangas, err := lib.Mangas()
+	if err != nil {
+		return nil, err
+	}
+	bindings, err := storage.Bindings{DB: lib.DB}.List("", "")
+	if err != nil {
+		return nil, err
+	}
+	watches, err := storage.Watches{DB: lib.DB}.List()
+	if err != nil {
+		return nil, err
+	}
+	return library.Duplicates(mangas, bindings, func(m storage.Manga) bool {
+		return slices.ContainsFunc(watches, func(w storage.Watch) bool {
+			return w.LibraryManga == m.ID || slices.ContainsFunc(m.Sources, func(src storage.Source) bool {
+				return src.Provider == w.Provider && src.MangaID == w.MangaID
+			})
+		})
+	}), nil
 }
 
 // Searcher is the client as a selector.Searcher.

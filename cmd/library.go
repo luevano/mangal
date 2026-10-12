@@ -278,7 +278,9 @@ var libraryScanCmd = &cobra.Command{
 are found again, deleted ones forgotten, files nobody recorded (e.g. copied by hand) added,
 and manga folders that aren't in the library yet are added: with a .libmangal.json, or
 else guessed from their series.json, chapters and name (with the metadata id of an
-"[alid-N]" tag).
+"[alid-N]" tag). It ends with the library mangas that share a metadata id (AniList,
+Kitsu, MyAnimeList): the same manga in two folders, with the one to keep suggested
+(watched or linked to a provider first, then more chapters) and the merge command.
 
 --check looks the guessed ids up on AniList and Kitsu and lists those not found or
 whose manga doesn't look like the folder's, and suggests an AniList id for the folders
@@ -353,6 +355,9 @@ existing .libmangal.json is never replaced.`,
 				cmd.Println("removed")
 			}
 		}
+		if err := printDuplicates(cmd, lib, root); err != nil {
+			return err
+		}
 		if libraryScanArgs.Mark {
 			if err := markFolders(cmd, st, lib, root, libraryScanArgs.Apply); err != nil {
 				return err
@@ -367,6 +372,18 @@ existing .libmangal.json is never replaced.`,
 		printTrash(cmd)
 		return nil
 	},
+}
+
+// printDuplicates lists the library mangas that share a metadata id.
+func printDuplicates(cmd *cobra.Command, lib storage.Library, root string) error {
+	dups, err := client.LibraryDuplicates(lib)
+	if err != nil {
+		return err
+	}
+	for _, line := range library.DuplicateLines(dups, root) {
+		cmd.Println(line)
+	}
+	return nil
 }
 
 // markFolders writes (apply) or lists the missing .libmangal.json of the folders, from
