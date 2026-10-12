@@ -188,11 +188,11 @@ var libraryLsCmd = &cobra.Command{
 	Short: "List the mangas in the library",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		library, err := libraryOf()
+		lib, err := libraryOf()
 		if err != nil {
 			return err
 		}
-		mangas, err := library.Mangas()
+		mangas, err := lib.Mangas()
 		if err != nil {
 			return err
 		}
@@ -200,13 +200,9 @@ var libraryLsCmd = &cobra.Command{
 			cmd.Println(`the library is empty, "mangal library scan" adds the mangas already downloaded`)
 		}
 		for _, m := range mangas {
-			var sources []string
-			for _, src := range m.Sources {
-				sources = append(sources, src.Provider)
-			}
 			line := fmt.Sprintf("%d  %s  %d chapters  %s", m.ID, m.Title, m.Chapters, m.Path())
-			if len(sources) != 0 {
-				line += "  [" + strings.Join(sources, ", ") + "]"
+			if sources := library.SourcesSummary(m.Sources); sources != "" {
+				line += "  [" + sources + "]"
 			}
 			cmd.Println(line)
 		}

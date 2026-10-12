@@ -124,3 +124,17 @@ func TestKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestSourcesShown(t *testing.T) {
+	m := storage.Manga{ID: 2, Title: "Dungeon Odyssey", Parent: "/dl", Dir: "DO", Sources: []storage.Source{
+		{Provider: "mango-weebcentral", MangaID: "01J", Moved: time.Date(2026, 10, 12, 4, 0, 0, 0, time.Local), Current: true},
+		{Provider: "mango-asurascans", MangaID: "dungeon-odyssey"},
+	}}
+	if d := (&mangaItem{manga: m}).Description(); !strings.Contains(d, "mango-weebcentral (was mango-asurascans)") {
+		t.Errorf("row %q", d)
+	}
+	h := newMangaState(library.Files{}, m).header()
+	if !strings.Contains(h, "source: mango-weebcentral 01J · moved 2026-10-12\nprevious: mango-asurascans dungeon-odyssey") {
+		t.Errorf("header %q", h)
+	}
+}

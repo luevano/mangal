@@ -106,9 +106,10 @@ func (s *mangaState) bindingsCmd(ctx context.Context) tea.Cmd {
 	}, func(b mangaBindingsMsg) tea.Msg { return b })
 }
 
-// header is the manga's watch state and metadata bindings, empty when it has neither.
+// header is the manga's sources, watch state and metadata bindings, empty when it has
+// none.
 func (s *mangaState) header() string {
-	var lines []string
+	lines := library.SourceLines(s.manga.Sources)
 	for _, w := range s.watches {
 		lines = append(lines, watches.Describe(w))
 	}

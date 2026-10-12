@@ -55,12 +55,8 @@ func (i *mangaItem) Title() string {
 
 func (i *mangaItem) Description() string {
 	parts := []string{fmt.Sprintf("%d chapters", i.manga.Chapters)}
-	var sources []string
-	for _, src := range i.manga.Sources {
-		sources = append(sources, src.Provider)
-	}
-	if len(sources) != 0 {
-		parts = append(parts, strings.Join(sources, ", "))
+	if sources := library.SourcesSummary(i.manga.Sources); sources != "" {
+		parts = append(parts, sources)
 	}
 	return strings.Join(append(parts, i.manga.Path()), " · ")
 }
