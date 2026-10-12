@@ -2,6 +2,7 @@ package confirm
 
 import (
 	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -21,9 +22,11 @@ type Dialog struct {
 	model  *Model
 	active bool
 	onYes  tea.Cmd
-	behind string
-	size   base.Size
-	box    lipgloss.Style
+	// choices replace yes and no, see Choose
+	choices []Choice
+	behind  string
+	size    base.Size
+	box     lipgloss.Style
 }
 
 // NewDialog makes a dialog with a message width wide, in color.
@@ -46,9 +49,28 @@ func (d *Dialog) AskDelete(title, message, behind string, onYes tea.Cmd) {
 
 // AskWith confirms with the yes keys.
 func (d *Dialog) AskWith(yes []string, title, message, behind string, onYes tea.Cmd) {
+	d.model.setChoices(nil)
 	d.model.SetYesKeys(yes...)
 	d.model.SetData(title, message)
-	d.active, d.onYes, d.behind = true, onYes, behind
+	d.active, d.onYes, d.choices, d.behind = true, onYes, nil, behind
+}
+
+// Choice is an answer of Choose: its key runs its Cmd.
+type Choice struct {
+	Key   string
+	Label string
+	Cmd   tea.Cmd
+}
+
+// Choose asks to pick one of the choices, esc cancels.
+func (d *Dialog) Choose(title, message, behind string, choices ...Choice) {
+	bindings := make([]key.Binding, len(choices))
+	for i, c := range choices {
+		bindings[i] = util.Bind(c.Label, c.Key)
+	}
+	d.model.setChoices(bindings)
+	d.model.SetData(title, message)
+	d.active, d.onYes, d.choices, d.behind = true, nil, choices, behind
 }
 
 // Active is true while the dialog is shown.
@@ -65,6 +87,22 @@ func (d *Dialog) Resize(size base.Size) tea.Cmd {
 // Update handles the keys while active: yes closes it and runs onYes, no closes it.
 func (d *Dialog) Update(msg tea.Msg) tea.Cmd {
 	if !d.active {
+		return nil
+	}
+	if len(d.choices) != 0 {
+		msg, ok := msg.(tea.KeyMsg)
+		if !ok {
+			return nil
+		}
+		for i, b := range d.model.keyMap.choices {
+			if key.Matches(msg, b) {
+				d.active = false
+				return d.choices[i].Cmd
+			}
+		}
+		if key.Matches(msg, d.model.keyMap.no) {
+			d.active = false
+		}
 		return nil
 	}
 	switch d.model.answer(msg) {

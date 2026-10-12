@@ -39,6 +39,17 @@ func (m *Model) SetYesKeys(keys ...string) {
 	m.preRender()
 }
 
+// setChoices makes the dialog a choice between the bindings (esc cancels), none goes back
+// to yes and no.
+func (m *Model) setChoices(choices []key.Binding) {
+	m.keyMap.choices = choices
+	m.keyMap.no = newKeyMap().no
+	if len(choices) != 0 {
+		m.keyMap.no = util.Bind("cancel", "esc")
+	}
+	m.preRender()
+}
+
 func (m *Model) preRender() {
 	title := m.styles.title.Render(m.title)
 	message := m.styles.message.Render(m.message)
