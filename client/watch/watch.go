@@ -620,7 +620,7 @@ func libraryIssue(match storage.LibraryMatch, downloaded bool) string {
 	case match.Linked:
 		return ""
 	case match.Elsewhere:
-		return fmt.Sprintf("in the library under %s (%s): move it there (M in the library)", filepath.Base(match.Manga.Parent), match.Manga.Title)
+		return fmt.Sprintf("in the library under %s (%s): move it there (X in the library)", filepath.Base(match.Manga.Parent), match.Manga.Title)
 	case downloaded:
 		return "its downloads aren't in the library (library scan?)"
 	}
@@ -642,7 +642,7 @@ func libraryNote(ids []metadata.ID) string {
 // ElsewhereReason is why a watch whose library manga is in another provider's directory
 // isn't checked, with what moves it.
 func ElsewhereReason(m storage.Manga, provider string) string {
-	return fmt.Sprintf("not checked: its library manga %q is under %s, move it first (M in the library, or mangal library move %d %s)",
+	return fmt.Sprintf("not checked: its library manga %q is under %s, move it first (X in the library, or mangal library move %d %s)",
 		m.Title, filepath.Base(m.Parent), m.ID, provider)
 }
 
