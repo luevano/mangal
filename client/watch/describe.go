@@ -12,6 +12,9 @@ import (
 // Describe is the line of a watch's check, like the old batch script's: "Checking for new
 // chapters [65-] for X from mango-mangaplus... downloaded 5 (65 → 70)".
 func Describe(r Result, dryRun bool) string {
+	if r.Status == storage.StatusSkipped {
+		return fmt.Sprintf("%s from %s... %s", r.Title, r.Provider, outcome(r, dryRun))
+	}
 	what := "Downloading all chapters"
 	if r.From != nil {
 		what = fmt.Sprintf("Checking for new chapters [%s-]", stringutil.FormatFloa32(*r.From))

@@ -58,3 +58,10 @@ func TestFormatNext(t *testing.T) {
 		}
 	}
 }
+
+func TestDescribeSkipped(t *testing.T) {
+	r := Result{WatchRun: storage.WatchRun{Title: "M", Provider: "p", Status: storage.StatusSkipped, Error: "provider busy"}}
+	if got := Describe(r, false); got != "M from p... skipped (provider busy)" {
+		t.Errorf("got %q", got)
+	}
+}
