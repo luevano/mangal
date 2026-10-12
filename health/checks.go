@@ -37,9 +37,11 @@ var checks = []check{
 	{id: "A1", category: Global, needs: []part{partAccounts}, wants: []part{partWatches}, run: checkAccounts},
 }
 
+// TUI hints name the screen and the action, not the key: the keys are the TUI's
+// (tui/base keys), the health screen maps them.
 const (
-	tuiWatches = "Watches (W on the home screen)"
-	tuiLibrary = "Library (L on the home screen)"
+	tuiWatches = "watches"
+	tuiLibrary = "library"
 )
 
 // W1: watches whose manga id may be wrong, the scheduler skips them.
@@ -58,7 +60,7 @@ func checkRelink(s *snapshot) []Finding {
 			Fix: Fix{
 				Commands: []string{fmt.Sprintf("mangal watch move %d", w.ID)},
 				Note:     fmt.Sprintf("searches its title on %s; add a provider and a query or mid:<id> to pick another manga", w.Provider),
-				TUI:      tuiWatches + ": m re-links it",
+				TUI:      tuiWatches + ": re-link manga",
 			}})
 	}
 	return out
@@ -78,7 +80,7 @@ func checkLibraryIssue(s *snapshot) []Finding {
 				f.Fix.Commands = []string{fmt.Sprintf("mangal library move %d %s mid:%s", match.Manga.ID, w.Provider, quote(w.MangaID))}
 				f.Fix.Note = "moves the library manga to the watch's manga (its folder into the provider's directory), the watch is linked then"
 			}
-			f.Fix.TUI = tuiLibrary + ": X on the manga moves it"
+			f.Fix.TUI = tuiLibrary + ": move to a provider"
 			out = append(out, f)
 		case w.LibraryIssue != "":
 			out = append(out, Finding{Severity: Error, Subject: watchSubject(w),
@@ -86,13 +88,13 @@ func checkLibraryIssue(s *snapshot) []Finding {
 				Fix: Fix{
 					Commands: []string{"mangal library scan"},
 					Note:     fmt.Sprintf("finds moved folders and files; if the downloads were deleted on purpose, check it anyway: mangal watch check %d", w.ID),
-					TUI:      tuiLibrary + ": s scans",
+					TUI:      tuiLibrary + ": scan",
 				}})
 		case w.LibraryNote != "" && w.LibraryManga == 0 && !w.NeedsRelink && !w.ProviderMissing:
 			f := Finding{Severity: Info, Subject: watchSubject(w), Message: w.LibraryNote}
 			if len(w.Bindings) == 0 {
 				f.Fix = Fix{Commands: []string{fmt.Sprintf("mangal watch set %d --anilist-id <id>", w.ID)},
-					Note: "with an AniList id it finds its library manga by it", TUI: tuiWatches + ": e edits its AniList id"}
+					Note: "with an AniList id it finds its library manga by it", TUI: tuiWatches + ": edit (AniList id)"}
 			} else {
 				f.Fix.Note = "its first check downloads into a new folder; a folder of it elsewhere needs a move (mangal library move)"
 			}
@@ -110,7 +112,7 @@ func checkPaused(s *snapshot) []Finding {
 			continue
 		}
 		out = append(out, Finding{Severity: Info, Subject: watchSubject(w), Message: "paused",
-			Fix: Fix{Commands: []string{fmt.Sprintf("mangal watch resume %d", w.ID)}, TUI: tuiWatches + ": p resumes it"}})
+			Fix: Fix{Commands: []string{fmt.Sprintf("mangal watch resume %d", w.ID)}, TUI: tuiWatches + ": pause/resume"}})
 	}
 	return out
 }
@@ -126,7 +128,7 @@ func checkFailing(s *snapshot) []Finding {
 			Fix: Fix{
 				Commands: []string{fmt.Sprintf("mangal watch check %d", w.ID), fmt.Sprintf("mangal watch log --watch %d", w.ID)},
 				Note:     fmt.Sprintf("check it now, or see its checks; if the manga moved: mangal watch move %d", w.ID),
-				TUI:      tuiWatches + ": c checks it, enter shows its checks",
+				TUI:      tuiWatches + ": check now, details",
 			}}
 		if w.Failures == 1 {
 			f.Message = "the last check failed"
@@ -164,7 +166,7 @@ func checkStale(s *snapshot) []Finding {
 			Fix: Fix{
 				Commands: []string{fmt.Sprintf("mangal watch pause %d", w.ID), fmt.Sprintf("mangal watch move %d", w.ID)},
 				Note:     "finished or on hiatus: pause it; still published elsewhere: move it",
-				TUI:      tuiWatches + ": p pauses it, m re-links it",
+				TUI:      tuiWatches + ": pause/resume, re-link manga",
 			}})
 	}
 	return out
@@ -186,7 +188,7 @@ func checkProviderMissing(s *snapshot) []Finding {
 			Fix: Fix{
 				Commands: []string{fmt.Sprintf("mangal watch move %d <provider>", w.ID)},
 				Note:     "install the provider again, or move the watch to another one",
-				TUI:      tuiWatches + ": m re-links it (p picks the provider)",
+				TUI:      tuiWatches + ": re-link manga (another provider)",
 			}})
 	}
 	return out
@@ -205,7 +207,7 @@ func checkWatchOldID(s *snapshot) []Finding {
 			Fix: Fix{
 				Commands: []string{"mangal migrate"},
 				Note:     fmt.Sprintf("lists what moves to the new id, --apply moves it; the watch needs a re-link after (mangal watch move %d)", w.ID),
-				TUI:      "Home: M migrates",
+				TUI:      "home: migrate",
 			}})
 	}
 	return out
@@ -224,7 +226,7 @@ func checkSchedule(s *snapshot) []Finding {
 				Fix: Fix{
 					Commands: []string{fmt.Sprintf("mangal watch set %d --schedule ''", w.ID)},
 					Note:     "goes back to watch.schedule, or give a valid cron schedule",
-					TUI:      tuiWatches + ": e edits its schedule",
+					TUI:      tuiWatches + ": edit (schedule)",
 				}})
 		}
 	}
@@ -245,7 +247,7 @@ func checkNotWatched(s *snapshot) []Finding {
 			continue
 		}
 		f := Finding{Severity: Info, Subject: mangaSubject(m), Message: "not watched",
-			Fix: Fix{TUI: "search it on its provider, w on the manga watches it"}}
+			Fix: Fix{TUI: "mangas (a provider's search): watch"}}
 		if src, ok := installedSource(s, m); ok {
 			f.Fix.Commands = []string{fmt.Sprintf("mangal watch add %s mid:%s", src.Provider, quote(src.MangaID))}
 		} else {
@@ -299,7 +301,7 @@ func checkWatchedTwice(s *snapshot) []Finding {
 			}
 		}
 		f := Finding{Severity: Warning, Subject: mangaSubject(m), Message: fmt.Sprintf("watched on %d providers", len(ws)),
-			Fix: Fix{Note: fmt.Sprintf("keep watch %d, pause or stop the others", ws[keep].ID), TUI: tuiWatches + ": p pauses, x stops watching"}}
+			Fix: Fix{Note: fmt.Sprintf("keep watch %d, pause or stop the others", ws[keep].ID), TUI: tuiWatches + ": pause/resume, stop watching"}}
 		for i, w := range ws {
 			mark := "     "
 			if i == keep {
@@ -364,7 +366,7 @@ func checkGaps(s *snapshot) []Finding {
 			if len(missing) <= 20 {
 				f.Fix.Note += fmt.Sprintf("; chapters that don't exist: mangal watch set %d --skip %s", w.ID, joinInts(missing, ","))
 			}
-			f.Fix.TUI = tuiWatches + ": F fills its gaps"
+			f.Fix.TUI = tuiWatches + ": fill gaps"
 		}
 		out = append(out, f)
 	}
@@ -430,7 +432,7 @@ func checkRetry(s *snapshot) []Finding {
 		}
 		out = append(out, Finding{Severity: Warning, Subject: watchSubject(w),
 			Message: fmt.Sprintf("%s failed to download, retried by the next check: %s", plural(len(w.Retry), "chapter"), watch.FormatNumbers(w.Retry)),
-			Fix:     Fix{Commands: []string{fmt.Sprintf("mangal watch check %d", w.ID)}, TUI: tuiWatches + ": c checks it"}})
+			Fix:     Fix{Commands: []string{fmt.Sprintf("mangal watch check %d", w.ID)}, TUI: tuiWatches + ": check now"}})
 	}
 	return out
 }
@@ -457,7 +459,7 @@ func checkNoAnilist(s *snapshot) []Finding {
 			continue
 		}
 		f := Finding{Severity: Warning, Subject: mangaSubject(m), Message: "no AniList link",
-			Fix: Fix{TUI: tuiLibrary + ": A on the manga searches AniList"}}
+			Fix: Fix{TUI: tuiLibrary + ": links (AniList search)"}}
 		var others []string
 		for _, code := range []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList} {
 			if src := info.Source(code); src.Linked() {
@@ -503,7 +505,7 @@ func checkDisagreements(s *snapshot) []Finding {
 			cur, flag, name := src.Current(), linkFlags[src.Code], linkNames[src.Code]
 			f := Finding{Severity: Warning, Subject: mangaSubject(m),
 				Message: fmt.Sprintf("%s links disagree: %s (%s)", name, cur, src.Where()),
-				Fix:     Fix{TUI: tuiLibrary + ": A on the manga shows its links"}}
+				Fix:     Fix{TUI: tuiLibrary + ": links"}}
 			tagOnly := len(dis) == 1 && src.Tag != "" && src.Tag != cur
 			switch {
 			case tagOnly && src.Code == metadata.IDCodeAnilist:
@@ -513,7 +515,12 @@ func checkDisagreements(s *snapshot) []Finding {
 				f.Fix.Commands = []string{fmt.Sprintf("mangal library bind %d %s %s", m.ID, flag, src.Tag)}
 				f.Fix.Note = fmt.Sprintf("the folder name says %s: link it, or rename the folder if %s is right", src.Tag, cur)
 			default:
-				f.Fix.Commands = []string{fmt.Sprintf("mangal library bind %d %s %s", m.ID, flag, cur)}
+				keep := fmt.Sprintf("mangal library bind %d %s %s", m.ID, flag, cur)
+				if src.Code == metadata.IDCodeAnilist && src.Tag != "" && src.Tag != cur {
+					// the folder tag only changes with the folder's name
+					keep += " --rename"
+				}
+				f.Fix.Commands = []string{keep}
 				f.Fix.Note = fmt.Sprintf("linking replaces the other ids: keep %s", cur)
 				if sug := src.Suggested(); sug != "" && sug != cur {
 					f.Fix.Commands = append(f.Fix.Commands, fmt.Sprintf("mangal library bind %d %s %s", m.ID, flag, sug))
@@ -536,7 +543,7 @@ func checkDuplicates(s *snapshot) []Finding {
 			Message: fmt.Sprintf("%s %s is in %d folders, keep %d", d.Source(), d.Raw, len(d.Mangas), keep.ID),
 			Fix: Fix{
 				Note: "the keep is watched, then linked, then has more chapters; swap the ids to keep the other",
-				TUI:  tuiLibrary + ": 2 shows the duplicates, m merges into the keep",
+				TUI:  tuiLibrary + ": duplicates only, merge (into the keep)",
 			}}
 		for i, dm := range d.Mangas {
 			mark := "     "
@@ -564,7 +571,7 @@ func checkOldIDs(s *snapshot) []Finding {
 			Fix: Fix{
 				Commands: []string{"mangal migrate"},
 				Note:     "lists what moves to the new id, --apply moves it (moved watches need a re-link)",
-				TUI:      "Home: M migrates",
+				TUI:      "home: migrate",
 			}})
 	}
 	return out
@@ -593,7 +600,7 @@ func checkUninstalled(s *snapshot) []Finding {
 			Fix: Fix{
 				Commands: []string{fmt.Sprintf("mangal library move %d <provider>", m.ID)},
 				Note:     "install one again, or move it to another provider",
-				TUI:      tuiLibrary + ": X on the manga moves it",
+				TUI:      tuiLibrary + ": move to a provider",
 			}})
 	}
 	return out
@@ -610,7 +617,7 @@ func checkAccounts(s *snapshot) []Finding {
 			sev = Info
 		}
 		out = append(out, Finding{Severity: sev, Subject: Subject{Kind: "account", Name: l.Service}, Message: l.Message,
-			Fix: Fix{Commands: []string{l.Command}, TUI: "Accounts (K on the home screen): i logs in"}})
+			Fix: Fix{Commands: []string{l.Command}, TUI: "accounts: log in"}})
 	}
 	for _, err := range a.Skipped {
 		out = append(out, Finding{Severity: Warning, Subject: Subject{Kind: "account", Name: "Lua providers"},
@@ -623,7 +630,7 @@ func checkAccounts(s *snapshot) []Finding {
 			Fix: Fix{
 				Commands: []string{"mangal notify webhook", "mangal config set watch.notify none"},
 				Note:     "set the webhook, or turn the notifications off",
-				TUI:      "Accounts (K on the home screen): i on Discord",
+				TUI:      "accounts: set the Discord webhook",
 			}})
 	}
 	for _, n := range a.Notices {
