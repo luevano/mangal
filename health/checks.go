@@ -27,6 +27,7 @@ var checks = []check{
 	{id: "W9", category: Watches, needs: []part{partWatches}, run: checkSchedule},
 	{id: "W10", category: Watches, needs: []part{partWatches, partLibrary}, run: checkNotWatched},
 	{id: "W11", category: Watches, needs: []part{partWatches, partLibrary}, run: checkWatchedTwice},
+	{id: "W12", category: Watches, needs: []part{partWatches, partLibrary, partNetwork}, run: checkNewChapters, network: true},
 	{id: "G1", category: Gaps, needs: []part{partLibrary, partWatches}, run: checkGaps},
 	{id: "G3", category: Gaps, needs: []part{partWatches}, run: checkRetry},
 	{id: "M1", category: Metadata, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkNoAnilist},

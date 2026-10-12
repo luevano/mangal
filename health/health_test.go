@@ -230,6 +230,69 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestRunNetwork(t *testing.T) {
+	c := newChecker(t)
+	lib := c.Library
+	for _, dl := range []storage.Download{
+		{Path: "/dl/mango-mangadex/Kagurabachi/1.cbz", Provider: "mango-mangadex", MangaID: "kagura", MangaTitle: "Kagurabachi", Chapter: 1, Format: "CBZ"},
+		{Path: "/dl/mango-mangadex/Kagurabachi/2.cbz", Provider: "mango-mangadex", MangaID: "kagura", MangaTitle: "Kagurabachi", Chapter: 2, Format: "CBZ"},
+		{Path: "/dl/mango-mangadex/Gone/1.cbz", Provider: "mango-mangadex", MangaID: "gone", MangaTitle: "Gone", Chapter: 1, Format: "CBZ"},
+		{Path: "/dl/mango-mangadex/Done/1.cbz", Provider: "mango-mangadex", MangaID: "done", MangaTitle: "Done", Chapter: 1, Format: "CBZ"},
+	} {
+		if err := lib.RecordDownload("/dl/mango-mangadex", filepath.Base(filepath.Dir(dl.Path)), dl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	kagura, _, _ := lib.MangaBySource("mango-mangadex", "kagura")
+	done, _, _ := lib.MangaBySource("mango-mangadex", "done")
+	_ = lib.SetStatuses(map[int64]string{kagura.ID: string(metadata.StatusReleasing), done.ID: string(metadata.StatusFinished)}, now)
+	var asked []string
+	var fetched bool
+	c.Statuses = func(_ context.Context, _ []storage.Manga, _ []storage.Binding, fetch bool) error {
+		fetched = fetch
+		return nil
+	}
+	c.NewChapters = func(_ context.Context, provider string, mangas []ProviderManga, _ func(string), done func(int, []float32, error)) error {
+		for i, m := range mangas {
+			asked = append(asked, fmt.Sprintf("%s %s %v", provider, m.MangaID, m.Have))
+			switch m.MangaID {
+			case "kagura":
+				done(i, []float32{3, 4, 5}, nil)
+			case "gone":
+				done(i, nil, fmt.Errorf("manga %q: %w", m.MangaID, watch.ErrMangaNotFound))
+			default:
+				done(i, nil, nil)
+			}
+		}
+		return nil
+	}
+	if _, err := c.Run(context.Background(), Options{Only: []string{"W12"}}); err == nil || !strings.Contains(err.Error(), "--network") {
+		t.Errorf("W12 without --network: %v", err)
+	}
+	report, err := c.Run(context.Background(), Options{Network: true, Only: []string{"watches"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(asked)
+	// not the finished or hiatus ones, nor those without an installed source
+	if want := []string{"mango-mangadex gone [1]", "mango-mangadex kagura [1 2]"}; !slices.Equal(asked, want) || !fetched || !report.Network {
+		t.Errorf("asked %q, want %q (statuses fetched %v)", asked, want, fetched)
+	}
+	if _, ok := find(report, want{check: "W12", kind: "manga", id: kagura.ID, message: "3 new chapters on mango-mangadex (up to 5): watch it?"}); !ok {
+		t.Errorf("no W12 for Kagurabachi: %+v", report.Findings)
+	}
+	gone, _, _ := lib.MangaBySource("mango-mangadex", "gone")
+	if f, ok := find(report, want{check: "W12", kind: "manga", id: gone.ID, message: "not found on mango-mangadex"}); !ok || f.Fix.Commands[0] != fmt.Sprintf("mangal library move %d mango-mangadex", gone.ID) {
+		t.Errorf("no W12 for Gone: %+v", f)
+	}
+	// offline: no W12, nothing asked
+	asked = nil
+	report, _ = newChecker(t).Run(context.Background(), Options{})
+	if slices.ContainsFunc(report.Findings, func(f Finding) bool { return f.Check == "W12" }) || len(asked) != 0 {
+		t.Errorf("offline run asked %v", asked)
+	}
+}
+
 func TestRunOnly(t *testing.T) {
 	c := newChecker(t)
 	report, err := c.Run(context.Background(), Options{Only: []string{"gaps", "m6"}})

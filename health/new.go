@@ -54,10 +54,38 @@ func New(ctx context.Context) (Checker, error) {
 		Statuses: func(ctx context.Context, mangas []storage.Manga, bindings []storage.Binding, fetch bool) error {
 			return client.LibraryStatuses(st.Library()).Update(ctx, mangas, bindings, fetch)
 		},
+		NewChapters:  listNewChapters,
+		Parallel:     config.Watch.ParallelProviders.Get(),
 		Root:         path.Downloads(),
 		ProviderDirs: config.Download.Provider.CreateDir.Get(),
 		Backoff:      config.Watch.Backoff.Get(),
 	}, nil
+}
+
+// listNewChapters lists the new chapters of the provider's mangas as a watch check would,
+// holding the provider's lock (a download or a check of it elsewhere is waited for).
+func listNewChapters(ctx context.Context, provider string, mangas []ProviderManga, wait func(string), done func(int, []float32, error)) error {
+	src, err := watch.ClientSource(ctx, provider)
+	if err != nil {
+		return err
+	}
+	store, err := cache.Watches()
+	if err != nil {
+		return err
+	}
+	ctx, unlock, err := client.LockProvider(ctx, store, src.Info().ID, client.LockForWatch, func(b client.ProviderBusy) { wait(b.Message()) })
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	for i, m := range mangas {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		numbers, err := watch.NewChapters(ctx, src, m.MangaID, m.Title, m.Have)
+		done(i, numbers, err)
+	}
+	return nil
 }
 
 // expiresSoon is when a login that expires counts, as anilist.LoginNotice.

@@ -110,7 +110,7 @@ type Report struct {
 	// Findings are by category (Categories), severity, check and subject.
 	Findings []Finding `json:"findings"`
 	Counts   Counts    `json:"counts"`
-	// Network is true when the network checks ran (none exist yet).
+	// Network is true when the network checks ran.
 	Network bool `json:"network"`
 	// Errors are the checks that couldn't run (their data didn't load, they failed).
 	Errors []string `json:"errors,omitempty"`
@@ -118,7 +118,8 @@ type Report struct {
 
 // Options of a run.
 type Options struct {
-	// Network also runs the checks that make requests (none exist yet).
+	// Network also runs the checks that make requests (W12) and fetches the publication
+	// statuses.
 	Network bool
 	// Only runs these categories or checks (ids), all when empty.
 	Only []string
@@ -173,6 +174,12 @@ type Checker struct {
 	// metadata, fetching from AniList with fetch (the network checks); nil leaves them as
 	// stored.
 	Statuses func(ctx context.Context, mangas []storage.Manga, bindings []storage.Binding, fetch bool) error
+	// NewChapters lists the chapters newer than Have of each of the provider's mangas
+	// (watch.NewChapters), holding the provider's lock (wait is told when it waits for
+	// it); done is told each one. Nil skips W12.
+	NewChapters func(ctx context.Context, provider string, mangas []ProviderManga, wait func(string), done func(i int, numbers []float32, err error)) error
+	// Parallel is how many providers the network checks ask at once, 1 when 0.
+	Parallel int
 	// Now is time.Now when nil.
 	Now func() time.Time
 	// OnProgress is told what's loading, may be nil.
@@ -187,9 +194,12 @@ const (
 	partWatches
 	partOldIDs
 	partAccounts
+	// partNetwork is the providers' chapters (network checks only)
+	partNetwork
 )
 
-var partNames = map[part]string{partLibrary: "the library", partWatches: "the watches", partOldIDs: "the old provider ids", partAccounts: "the accounts"}
+var partNames = map[part]string{partLibrary: "the library", partWatches: "the watches", partOldIDs: "the old provider ids",
+	partAccounts: "the accounts", partNetwork: "the providers' chapters"}
 
 // check is one check over the snapshot.
 type check struct {
@@ -199,13 +209,16 @@ type check struct {
 	// wants are loaded too, the check runs without them
 	wants []part
 	run   func(s *snapshot) []Finding
+	// network checks make requests, they run only with Options.Network
+	network bool
 }
 
-// selected are the checks opts.Only picks, an error for a name that's neither a category
-// nor a check.
-func selected(only []string) ([]check, error) {
+// selected are the checks opts.Only picks (the network ones only with network), an error
+// for a name that's neither a category nor a check, or a network check named without
+// network.
+func selected(only []string, network bool) ([]check, error) {
 	if len(only) == 0 {
-		return checks, nil
+		return slices.DeleteFunc(slices.Clone(checks), func(c check) bool { return c.network && !network }), nil
 	}
 	pick := map[string]bool{}
 	for _, name := range only {
@@ -221,7 +234,14 @@ func selected(only []string) ([]check, error) {
 	}
 	var out []check
 	for _, c := range checks {
-		if pick[string(c.category)] || pick[strings.ToLower(c.id)] {
+		named := pick[strings.ToLower(c.id)]
+		if c.network && !network {
+			if named {
+				return nil, fmt.Errorf("%s makes requests: add --network", c.id)
+			}
+			continue
+		}
+		if named || pick[string(c.category)] {
 			out = append(out, c)
 		}
 	}
@@ -241,7 +261,7 @@ func categoryList() string {
 // an unknown name in opts.Only is an error.
 func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 	report := Report{Network: opts.Network, Counts: Counts{ByCategory: map[Category]int{}}}
-	run, err := selected(opts.Only)
+	run, err := selected(opts.Only, opts.Network)
 	if err != nil {
 		return report, err
 	}
@@ -256,7 +276,8 @@ func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 		return report, err
 	}
 	report.Errors = append(report.Errors, s.errors...)
-	for p := partLibrary; p <= partAccounts; p++ {
+	loadErrors := len(s.errors)
+	for p := partLibrary; p <= partNetwork; p++ {
 		if err := failed[p]; err != nil {
 			report.Errors = append(report.Errors, fmt.Sprintf("load %s: %s", partNames[p], err))
 		}
@@ -285,6 +306,7 @@ func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 			report.Findings = append(report.Findings, f)
 		}
 	}
+	report.Errors = append(report.Errors, s.errors[loadErrors:]...)
 	sortFindings(report.Findings)
 	for _, f := range report.Findings {
 		switch f.Severity {
@@ -351,7 +373,7 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool) (
 		staleAfter = DefaultStaleAfter
 	}
 	s := &snapshot{now: c.now(), root: c.Root, providerDirs: c.ProviderDirs, staleAfter: staleAfter, backoff: c.Backoff,
-		loaders: c.Loaders, bindings: map[[2]string][]storage.Binding{}}
+		loaders: c.Loaders, bindings: map[[2]string][]storage.Binding{}, newChapters: map[int64]newChapters{}}
 	failed := map[part]error{}
 	if needed[partLibrary] {
 		c.progress("loading the library")
@@ -397,6 +419,16 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool) (
 		}
 		if err != nil {
 			failed[partAccounts] = err
+		}
+	}
+	if needed[partNetwork] {
+		switch {
+		case failed[partLibrary] != nil || failed[partWatches] != nil:
+			failed[partNetwork] = errors.New("needs the library and the watches")
+		default:
+			if err := c.loadNetwork(ctx, s); err != nil {
+				failed[partNetwork] = err
+			}
 		}
 	}
 	return s, failed
