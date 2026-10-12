@@ -337,19 +337,27 @@ func TestWatchRelink(t *testing.T) {
 	_ = bindings.Set(Binding{Provider: "mango-mangapill", MangaID: "1/berserk", Source: "al", ID: "1"})
 	_ = bindings.Set(Binding{Provider: "mango-mangapill", MangaID: "1/berserk", Source: "kt", ID: "2"})
 
-	if err := watches.Relink(w.ID, other.Provider, other.MangaID, "x", 0); !errors.Is(err, ErrWatchExists) {
+	if err := watches.Relink(w.ID, other.Provider, other.MangaID, "x", 0, time.Now()); !errors.Is(err, ErrWatchExists) {
 		t.Errorf("re-linked to another watch's manga: %v", err)
 	}
 	got, _ := watches.Get(w.ID)
 	got.Failures, got.LastError, got.From = 3, "manga not found", f32(10)
 	_ = watches.Save(got)
-	if err := watches.Relink(w.ID, "mango-mangapill", "1/berserk", "Berserk (pill)", 0); err != nil {
+	at := time.Unix(1_000_000, 0)
+	if err := watches.Relink(w.ID, "mango-mangapill", "1/berserk", "Berserk (pill)", 0, at); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = watches.Get(w.ID)
 	if got.Provider != "mango-mangapill" || got.MangaID != "1/berserk" || got.Title != "Berserk (pill)" || got.NeedsRelink ||
-		got.Failures != 0 || got.LastError != "" || got.From == nil || *got.From != 10 {
+		got.Failures != 0 || got.LastError != "" || got.From == nil || *got.From != 10 || !got.Resumed.Equal(at) {
 		t.Errorf("re-linked: %+v", got)
+	}
+	// a re-link of a watch that didn't need one keeps when it was resumed
+	if err := watches.Relink(w.ID, "mango-mangapill", "1/berserk", "Berserk (pill)", 0, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = watches.Get(w.ID); !got.Resumed.Equal(at) {
+		t.Errorf("resumed %s", got.Resumed)
 	}
 	list, _ := bindings.Get("mango-mangapill", "1/berserk")
 	if len(list) != 2 || list[0].ID != "30002" || list[1].ID != "2" {
@@ -358,7 +366,7 @@ func TestWatchRelink(t *testing.T) {
 	if old, _ := bindings.Get("mango-weebcentral", "title:Berserk"); len(old) != 0 {
 		t.Errorf("old bindings left %+v", old)
 	}
-	if err := watches.Relink(99, "p", "m", "t", 0); !errors.Is(err, ErrWatchNotFound) {
+	if err := watches.Relink(99, "p", "m", "t", 0, time.Now()); !errors.Is(err, ErrWatchNotFound) {
 		t.Errorf("missing watch: %v", err)
 	}
 }

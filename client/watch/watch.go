@@ -553,7 +553,12 @@ func (s *Service) Remove(ctx context.Context, id int64) error {
 
 // SetEnabled pauses (false) or resumes the watch.
 func (s *Service) SetEnabled(ctx context.Context, id int64, enabled bool) (Watch, error) {
-	return s.update(id, func(w *storage.Watch) { w.Enabled = enabled })
+	return s.update(id, func(w *storage.Watch) {
+		if enabled && !w.Enabled {
+			w.Resumed = s.now()
+		}
+		w.Enabled = enabled
+	})
 }
 
 // UpdateOptions are the settings of a watch to change, nil keeps them.
@@ -650,7 +655,7 @@ func (s *Service) Relink(ctx context.Context, id int64, opts RelinkOptions) (Wat
 		libraryManga = m.ID
 	}
 	title := cmp.Or(manga.Info().Title, w.Title)
-	if err := s.Watches.Relink(id, info.ID, manga.Info().ID, title, libraryManga); err != nil {
+	if err := s.Watches.Relink(id, info.ID, manga.Info().ID, title, libraryManga, s.now()); err != nil {
 		return Watch{}, err
 	}
 	if w, err = s.Watches.Get(id); err != nil {
@@ -692,12 +697,17 @@ func (s *Service) Schedule(w storage.Watch) cron.Schedule {
 	return s.Options.Schedule
 }
 
-// NextCheck is when the watch is due: right away if never checked, else the first tick
-// of its schedule (watch.schedule if it has none) after the last check, plus the jitter
+// NextCheck is when the watch is due: the first tick of its schedule (watch.schedule if it
+// has none) after the last check, or after it was resumed or re-linked when that's later
+// (after it was added if neither happened), plus the jitter
 // of its provider for that tick (watch.jitter). After watch.backoff failures in a row it
 // skips ticks: it waits 2, 4, then 8 ticks.
 func (s *Service) NextCheck(w storage.Watch) time.Time {
-	if w.LastChecked.IsZero() {
+	since := w.LastChecked
+	if w.Resumed.After(since) {
+		since = w.Resumed
+	}
+	if since.IsZero() {
 		// a new watch waits for its first tick too
 		next := s.Schedule(w).Next(w.Added)
 		if next.IsZero() {
@@ -710,7 +720,7 @@ func (s *Service) NextCheck(w storage.Watch) time.Time {
 		ticks <<= min(w.Failures-b+1, maxBackoff)
 	}
 	sched := s.Schedule(w)
-	next := w.LastChecked
+	next := since
 	for range ticks {
 		next = sched.Next(next)
 	}

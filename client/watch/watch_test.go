@@ -1083,3 +1083,35 @@ func TestCheckRetriesFailed(t *testing.T) {
 		t.Errorf("retry %v after all downloaded", w.Retry)
 	}
 }
+
+func TestResumeWaitsForItsTick(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "dandadan", Title: "Dandadan"}}
+	e.source("mango-mangaplus", m)
+	added := e.now
+	w, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", MangaID: "dandadan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.SetEnabled(ctx, w.ID, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// paused through 3 ticks: resumed, it waits for the next one
+	e.now = e.tick(added, 3).Add(time.Minute)
+	if w, err = e.svc.SetEnabled(ctx, w.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if !w.Resumed.Equal(e.now) || !w.NextCheck.Equal(e.tick(added, 4)) {
+		t.Errorf("resumed %s: next check %s, want %s", w.Resumed, w.NextCheck, e.tick(added, 4))
+	}
+	if due, _ := e.svc.Due(ctx, e.now); len(due) != 0 {
+		t.Errorf("due right after resuming: %v", due)
+	}
+	// resuming a watch that runs doesn't move it
+	e.now = e.now.Add(time.Minute)
+	if w, _ = e.svc.SetEnabled(ctx, w.ID, true); !w.Resumed.Equal(e.now.Add(-time.Minute)) {
+		t.Errorf("resumed again: %s", w.Resumed)
+	}
+}
