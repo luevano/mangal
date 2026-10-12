@@ -187,7 +187,7 @@ differs is only replaced when you say so (with --apply). Every change can be und
 			cmd.Println(line)
 		}
 		if todo && !libraryBindArgs.Apply {
-			cmd.Println("run with --apply to link")
+			cmd.Println("run with --apply to do it")
 		}
 		if libraryBindArgs.Backups {
 			if manga, ok, err = linker.Library.MangaByID(manga.ID); err != nil || !ok {
