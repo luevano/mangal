@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -317,5 +318,61 @@ func TestLibraryMove(t *testing.T) {
 	}
 	if list, _ := bindings.Get("asura", "b"); len(list) != 2 {
 		t.Errorf("old bindings %+v", list)
+	}
+}
+
+func TestBackfillSources(t *testing.T) {
+	data := openData(t)
+	library, watches := Library{DB: data}, Watches{DB: data}
+	// adopted by a scan: no source
+	for _, dir := range []string{"Berserk", "Vagabond", "Monster", "Pluto"} {
+		if err := library.RecordDownload("/lib/p", dir, Download{Path: "/lib/p/" + dir + "/1.cbz", MangaTitle: dir, Chapter: 1, Format: "CBZ"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	berserk, _, _ := library.MangaByFolder("/lib/p", "Berserk")
+	vagabond, _, _ := library.MangaByFolder("/lib/p", "Vagabond")
+	monster, _, _ := library.MangaByFolder("/lib/p", "Monster")
+	pluto, _, _ := library.MangaByFolder("/lib/p", "Pluto")
+	// Berserk: a linked watch
+	_, _ = watches.Add(Watch{Provider: "dex", MangaID: "b", Title: "Berserk", LibraryManga: berserk.ID})
+	// Vagabond: downloads of two provider mangas, the latest wins
+	for i, src := range []Source{{Provider: "old", MangaID: "v1"}, {Provider: "new", MangaID: "v2"}} {
+		if _, err := data.Exec(`INSERT INTO downloads (path, chapter_id, provider, manga_id, manga_title, volume, chapter, chapter_title, chapter_url, format, pages, downloaded)
+SELECT ?, c.id, ?, ?, 'Vagabond', 0, 1, '', '', 'PDF', 0, ? FROM library_chapters c WHERE c.manga = ?`, fmt.Sprintf("/lib/p/Vagabond/%d.pdf", i), src.Provider, src.MangaID, 100+i, vagabond.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Monster: its watch's manga is another library manga's source already
+	if err := library.RecordDownload("/lib/q", "Monster", Download{Path: "/lib/q/Monster/1.cbz", Provider: "dex", MangaID: "m", MangaTitle: "Monster", Chapter: 1, Format: "CBZ"}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = watches.Add(Watch{Provider: "dex", MangaID: "m", Title: "Monster", LibraryManga: monster.ID})
+
+	found, err := library.BackfillSources()
+	if err != nil || found != (Backfill{FromWatches: 1, FromDownloads: 1}) {
+		t.Fatalf("found %+v, %v", found, err)
+	}
+	if m, _, _ := library.MangaByID(berserk.ID); len(m.Sources) != 1 || m.Sources[0] != (Source{Provider: "dex", MangaID: "b", Title: "Berserk", Current: true}) {
+		t.Errorf("berserk %+v", m.Sources)
+	}
+	if m, _, _ := library.MangaByID(vagabond.ID); len(m.Sources) != 1 || m.Sources[0].Provider != "new" || !m.Sources[0].Current {
+		t.Errorf("vagabond %+v", m.Sources)
+	}
+	if m, _, _ := library.MangaByID(monster.ID); len(m.Sources) != 0 {
+		t.Errorf("monster stole a source %+v", m.Sources)
+	}
+	if m, _, _ := library.MangaByID(pluto.ID); len(m.Sources) != 0 {
+		t.Errorf("pluto %+v", m.Sources)
+	}
+	if found, _ := library.BackfillSources(); found != (Backfill{}) {
+		t.Errorf("twice: %+v", found)
+	}
+	// a provider the manga has already isn't added again
+	if ok, err := library.AddSource(berserk.ID, Source{Provider: "dex", MangaID: "b2"}); ok || err != nil {
+		t.Errorf("second source of a provider: %t, %v", ok, err)
+	}
+	if ok, _ := library.AddSource(berserk.ID, Source{Provider: "pill", MangaID: "title:Berserk"}); ok {
+		t.Error("added a placeholder id")
 	}
 }

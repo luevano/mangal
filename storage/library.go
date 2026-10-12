@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/luevano/libmangal"
@@ -701,4 +702,101 @@ ON CONFLICT (provider, manga_id, source) DO NOTHING`, m.Source.Provider, m.Sourc
 		return fmt.Errorf("move library manga %d to %s %q: %w", m.Manga, m.Source.Provider, m.Source.MangaID, err)
 	}
 	return nil
+}
+
+// AddSource links the provider's manga to the library manga when no library manga has it
+// and the manga has none of that provider yet; false when it didn't.
+func (l Library) AddSource(manga int64, src Source) (bool, error) {
+	var added bool
+	err := l.DB.InTx(func(tx *sql.Tx) (err error) {
+		added, err = addSource(tx, manga, src)
+		return err
+	})
+	if err != nil {
+		return false, fmt.Errorf("add source %s %q to library manga %d: %w", src.Provider, src.MangaID, manga, err)
+	}
+	return added, nil
+}
+
+func addSource(tx *sql.Tx, manga int64, src Source) (bool, error) {
+	if src.Provider == "" || src.MangaID == "" || strings.HasPrefix(src.MangaID, PlaceholderPrefix) {
+		return false, nil
+	}
+	res, err := tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title)
+SELECT ?1, ?2, ?3, ?4 WHERE NOT EXISTS (SELECT 1 FROM library_sources WHERE manga = ?3 AND provider = ?1)
+ON CONFLICT (provider, manga_id) DO NOTHING`, src.Provider, src.MangaID, manga, src.Title)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n != 0, nil
+}
+
+// Backfill is what BackfillSources found.
+type Backfill struct {
+	FromWatches, FromDownloads int
+}
+
+// BackfillSources gives the library mangas without a source (adopted by a scan) the ones
+// known elsewhere: their linked watches' mangas, else the provider manga of their recorded
+// downloads (the latest downloaded one when they disagree). A source another library
+// manga has stays its.
+func (l Library) BackfillSources() (Backfill, error) {
+	var found Backfill
+	err := l.DB.InTx(func(tx *sql.Tx) error {
+		mangas, err := queryAll(tx, func(rows *sql.Rows) (int64, error) {
+			var id int64
+			err := rows.Scan(&id)
+			return id, err
+		}, `SELECT id FROM library_mangas m WHERE NOT EXISTS (SELECT 1 FROM library_sources s WHERE s.manga = m.id)`)
+		if err != nil {
+			return err
+		}
+		scanSource := func(rows *sql.Rows) (Source, error) {
+			var src Source
+			err := rows.Scan(&src.Provider, &src.MangaID, &src.Title)
+			return src, err
+		}
+		for _, id := range mangas {
+			watched, err := queryAll(tx, scanSource, `SELECT provider, manga_id, title FROM watches WHERE library_manga = ? ORDER BY id`, id)
+			if err != nil {
+				return err
+			}
+			added := false
+			for _, src := range watched {
+				ok, err := addSource(tx, id, src)
+				if err != nil {
+					return err
+				}
+				if ok {
+					found.FromWatches++
+					added = true
+				}
+			}
+			if added {
+				continue
+			}
+			downloaded, err := queryAll(tx, scanSource, `SELECT d.provider, d.manga_id, max(d.manga_title) FROM downloads d
+JOIN library_chapters c ON c.id = d.chapter_id
+WHERE c.manga = ? AND d.provider != '' AND d.manga_id != ''
+GROUP BY d.provider, d.manga_id ORDER BY max(d.downloaded) DESC LIMIT 1`, id)
+			if err != nil {
+				return err
+			}
+			for _, src := range downloaded {
+				ok, err := addSource(tx, id, src)
+				if err != nil {
+					return err
+				}
+				if ok {
+					found.FromDownloads++
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return found, fmt.Errorf("find the sources of the library: %w", err)
+	}
+	return found, nil
 }
