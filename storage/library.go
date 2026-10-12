@@ -418,7 +418,7 @@ func (l Library) MangaBySource(provider, mangaID string) (Manga, bool, error) {
 // id, matched like FindMangaDir does on download. With providerDirs that folder must be in
 // a directory named after the provider (its id or name, current or old).
 func (l Library) MangaFor(provider libmangal.ProviderInfo, manga mangadata.Manga, providerDirs bool) (Manga, bool, error) {
-	match, err := l.Match(provider, manga.Info().ID, metadataIDs(manga), providerDirs)
+	match, err := l.Match(provider, manga.Info().ID, MangaMetadataIDs(manga), providerDirs)
 	return match.Manga, match.Linked, err
 }
 
@@ -506,9 +506,9 @@ func matchByIDs(mangas []Manga, provider libmangal.ProviderInfo, mangaID string,
 	return LibraryMatch{}
 }
 
-// metadataIDs are the manga's metadata ids other than the provider's own, like libmangal
-// writes them in the MangaDirInfo.
-func metadataIDs(manga mangadata.Manga) []metadata.ID {
+// MangaMetadataIDs are the manga's metadata ids other than the provider's own, like
+// libmangal writes them in the MangaDirInfo.
+func MangaMetadataIDs(manga mangadata.Manga) []metadata.ID {
 	meta := manga.Metadata()
 	if meta == nil {
 		return nil

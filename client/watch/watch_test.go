@@ -1115,3 +1115,79 @@ func TestResumeWaitsForItsTick(t *testing.T) {
 		t.Errorf("resumed again: %s", w.Resumed)
 	}
 }
+
+// TestLibraryLink: a watch finds its library manga by its bindings; one in another
+// provider's directory is an issue until it's moved there.
+func TestLibraryLink(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.svc.Options.ProviderDirs = true
+	al := metadata.ID{Raw: "98522", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}
+	if err := e.svc.Library.RememberMangaDir("/lib/Weeb Central", "Teisou Gyakuten Sekai", libmangal.MangaDirInfo{Provider: "mango-weebcentral",
+		Manga: mangadata.MangaInfo{ID: "01J", Title: "Teisou Gyakuten Sekai"}, MetadataIDs: []metadata.ID{al}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.Library.RecordDownload("/lib/Weeb Central", "Teisou Gyakuten Sekai", storage.Download{Path: "/lib/Weeb Central/Teisou Gyakuten Sekai/5.cbz",
+		Provider: "mango-weebcentral", MangaID: "01J", MangaTitle: "Teisou Gyakuten Sekai", Chapter: 5, Format: "CBZ"}); err != nil {
+		t.Fatal(err)
+	}
+	lib, _, _ := e.svc.Library.MangaBySource("mango-weebcentral", "01J")
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "f6", Title: "Chastity Reverse World"}}
+	// nothing new: the fake download would make a folder of its own
+	e.source("mango-mangadex", m).chs["f6"] = m.chapters(5)
+
+	w, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangadex", MangaID: "f6", AnilistID: 98522})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.LibraryManga != 0 || !strings.Contains(w.LibraryIssue, "in the library under Weeb Central (Teisou Gyakuten Sekai): move it there") {
+		t.Fatalf("added %d, issue %q", w.LibraryManga, w.LibraryIssue)
+	}
+	list, _ := e.svc.List(ctx)
+	if len(list) != 1 || list[0].LibraryIssue != w.LibraryIssue {
+		t.Errorf("list issue %+v", list)
+	}
+
+	// moved: its source now, no issue, linked by the next check
+	if err := e.svc.Library.Move(storage.MangaMove{Manga: lib.ID, Source: storage.Source{Provider: "mango-mangadex", MangaID: "f6", Title: m.info.Title},
+		From: lib.Path(), To: "/lib/mango-mangadex/Teisou Gyakuten Sekai", At: e.now}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.svc.Get(ctx, w.ID)
+	if got.LibraryIssue != "" || got.LastDownloaded == nil || *got.LastDownloaded != 5 {
+		t.Errorf("after the move: issue %q, last %v", got.LibraryIssue, got.LastDownloaded)
+	}
+	if _, err := e.svc.Check(ctx, []int64{w.ID}, CheckOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := e.svc.Watches.Get(w.ID); got.LibraryManga != lib.ID {
+		t.Errorf("not linked by the check: %d", got.LibraryManga)
+	}
+
+	// without provider directories the binding links it right away
+	e2 := newEnv(t)
+	_ = e2.svc.Library.RememberMangaDir("/lib/Weeb Central", "Teisou Gyakuten Sekai", libmangal.MangaDirInfo{Provider: "mango-weebcentral",
+		Manga: mangadata.MangaInfo{ID: "01J"}, MetadataIDs: []metadata.ID{al}})
+	e2.source("mango-mangadex", m)
+	if w, err := e2.svc.Add(ctx, AddOptions{Provider: "mango-mangadex", MangaID: "f6", AnilistID: 98522}); err != nil || w.LibraryManga == 0 || w.LibraryIssue != "" {
+		t.Errorf("no provider dirs: %d %q, %v", w.LibraryManga, w.LibraryIssue, err)
+	}
+}
+
+func TestLibraryIssue(t *testing.T) {
+	elsewhere := storage.LibraryMatch{Manga: storage.Manga{Title: "Berserk", Parent: "/dl/Weeb Central", Dir: "Berserk"}, Elsewhere: true}
+	for _, c := range []struct {
+		match      storage.LibraryMatch
+		downloaded bool
+		want       string
+	}{
+		{storage.LibraryMatch{Linked: true}, true, ""},
+		{elsewhere, false, "in the library under Weeb Central (Berserk): move it there (M in the library)"},
+		{storage.LibraryMatch{}, true, "its downloads aren't in the library (library scan?)"},
+		{storage.LibraryMatch{}, false, ""},
+	} {
+		if got := libraryIssue(c.match, c.downloaded); got != c.want {
+			t.Errorf("%+v, %t: %q, want %q", c.match, c.downloaded, got, c.want)
+		}
+	}
+}

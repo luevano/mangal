@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -85,6 +86,9 @@ type Watch struct {
 	ProviderMissing bool `json:"provider_missing,omitempty"`
 	// Bindings are the manga's metadata bindings (source, id, default), the default first.
 	Bindings []storage.Binding `json:"bindings,omitempty"`
+	// LibraryIssue is why it isn't linked to its library manga, with what to do; empty
+	// when it is, or when nothing was downloaded yet (see Service.libraryIssue).
+	LibraryIssue string `json:"library_issue,omitempty"`
 }
 
 // Scheduled is true when the scheduler checks it: enabled, its provider installed, no
@@ -208,6 +212,8 @@ type Service struct {
 	Source func(ctx context.Context, provider string) (Source, error)
 	// Installed tells which providers are installed (old ids too); nil = every one is.
 	Installed func() (func(provider string) bool, error)
+	// Providers are the installed providers' infos (to tell their directories); nil = none.
+	Providers func() ([]libmangal.ProviderInfo, error)
 	// Notifier may be nil.
 	Notifier Notifier
 	// Now is time.Now, swapped in tests.
@@ -232,6 +238,7 @@ func New(notifier Notifier) (*Service, error) {
 		Options:   ConfigOptions(),
 		Source:    ClientSource,
 		Installed: installedProviders,
+		Providers: providerInfos,
 		Notifier:  notifier,
 		Now:       time.Now,
 		Events:    NewHub(),
@@ -311,10 +318,14 @@ func (s *Service) Add(ctx context.Context, opts AddOptions) (Watch, error) {
 	if opts.Gaps != nil {
 		w.Gaps = *opts.Gaps
 	}
-	if m, found, err := s.Library.MangaFor(info, manga, s.Options.ProviderDirs); err != nil {
+	ids := storage.MangaMetadataIDs(manga)
+	if opts.AnilistID != 0 {
+		ids = append(ids, metadata.ID{Raw: strconv.Itoa(opts.AnilistID), Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist})
+	}
+	if match, err := s.Library.Match(info, w.MangaID, ids, s.Options.ProviderDirs); err != nil {
 		return Watch{}, err
-	} else if found {
-		w.LibraryManga = m.ID
+	} else if match.Linked {
+		w.LibraryManga = match.Manga.ID
 	}
 	if w, err = s.Watches.Add(w); err != nil {
 		return Watch{}, err
@@ -385,6 +396,39 @@ func installedProviders() (func(string) bool, error) {
 	}, nil
 }
 
+// providerInfos are the installed providers' infos, for Service.Providers.
+func providerInfos() ([]libmangal.ProviderInfo, error) {
+	loaders, err := manager.Loaders()
+	if err != nil {
+		return nil, err
+	}
+	infos := make([]libmangal.ProviderInfo, len(loaders))
+	for i, l := range loaders {
+		infos[i] = l.Info()
+	}
+	return infos, nil
+}
+
+// providerInfo looks up a provider's info by id (an old id too), just its id as its name
+// when it isn't installed.
+func (s *Service) providerInfo() func(string) libmangal.ProviderInfo {
+	var infos []libmangal.ProviderInfo
+	if s.Providers != nil {
+		var err error
+		if infos, err = s.Providers(); err != nil {
+			s.warn(fmt.Errorf("installed providers: %w", err))
+		}
+	}
+	return func(id string) libmangal.ProviderInfo {
+		for _, info := range infos {
+			if info.Matches(id) {
+				return info
+			}
+		}
+		return libmangal.ProviderInfo{ID: id, Name: id}
+	}
+}
+
 // installed is Installed, or every provider when there's none.
 func (s *Service) installed() func(string) bool {
 	if s.Installed != nil {
@@ -410,9 +454,13 @@ func (s *Service) List(ctx context.Context) ([]Watch, error) {
 	}
 	installed := s.installed()
 	since := s.scheduledSince()
+	view, err := s.libraryView()
+	if err != nil {
+		return nil, err
+	}
 	watches := make([]Watch, len(list))
 	for i, w := range list {
-		if watches[i], err = s.completeSince(w, since); err != nil {
+		if watches[i], err = s.completeWith(w, since, view); err != nil {
 			return nil, err
 		}
 		watches[i].ProviderMissing = !installed(w.Provider)
@@ -448,23 +496,82 @@ func (s *Service) bindAnilist(w storage.Watch, anilistID int) error {
 }
 
 func (s *Service) complete(w storage.Watch) (Watch, error) {
-	return s.completeSince(w, s.scheduledSince())
+	view, err := s.libraryView()
+	if err != nil {
+		return Watch{}, err
+	}
+	return s.completeWith(w, s.scheduledSince(), view)
 }
 
-// completeSince is complete for a scheduler started at since (see scheduledSince).
-func (s *Service) completeSince(w storage.Watch, since time.Time) (Watch, error) {
+// libraryView is the library as the watches' links are worked out from, loaded once for
+// a list of watches.
+type libraryView struct {
+	mangas    []storage.Manga
+	downloads map[int64]bool
+	provider  func(string) libmangal.ProviderInfo
+}
+
+func (s *Service) libraryView() (libraryView, error) {
+	mangas, err := s.Library.Mangas()
+	if err != nil {
+		return libraryView{}, err
+	}
+	downloads, err := s.Watches.WithDownloads()
+	if err != nil {
+		return libraryView{}, err
+	}
+	return libraryView{mangas: mangas, downloads: downloads, provider: s.providerInfo()}, nil
+}
+
+// completeWith is complete for a scheduler started at since (see scheduledSince).
+func (s *Service) completeWith(w storage.Watch, since time.Time, view libraryView) (Watch, error) {
 	full := Watch{Watch: w, NextCheck: s.NextCheck(w), NextScheduled: s.NextCheckSince(w, since), NextGapCheck: s.NextGapCheck(w)}
 	bindings, err := s.bindings().Get(w.Provider, w.MangaID)
 	if err != nil {
 		return Watch{}, err
 	}
+	libraryManga := w.LibraryManga
+	if libraryManga == 0 {
+		match := storage.MatchLibrary(view.mangas, view.provider(w.Provider), w.MangaID, storage.BindingIDs(bindings), s.Options.ProviderDirs)
+		if match.Linked {
+			// linked by its next check
+			libraryManga = match.Manga.ID
+		}
+		full.LibraryIssue = libraryIssue(match, view.downloads[w.ID])
+	}
 	full.fillBindings(bindings)
-	last, err := s.lastDownloaded(w, w.LibraryManga)
+	last, err := s.lastDownloaded(w, libraryManga)
 	if err != nil {
 		return Watch{}, err
 	}
 	full.LastDownloaded = last
 	return full, nil
+}
+
+// libraryIssue is why a watch without a library manga isn't linked: its manga is in the
+// library where its downloads don't go (another provider's directory), or chapters it
+// downloaded aren't in the library. Nothing when it matches (it's linked on its next
+// check) or never downloaded anything.
+func libraryIssue(match storage.LibraryMatch, downloaded bool) string {
+	switch {
+	case match.Linked:
+		return ""
+	case match.Elsewhere:
+		return fmt.Sprintf("in the library under %s (%s): move it there (M in the library)", filepath.Base(match.Manga.Parent), match.Manga.Title)
+	case downloaded:
+		return "its downloads aren't in the library (library scan?)"
+	}
+	return ""
+}
+
+// matchLibrary is the library manga of the watch (its source, else a folder sharing a
+// metadata id of the manga or of the watch's bindings), see storage.Library.Match.
+func (s *Service) matchLibrary(provider libmangal.ProviderInfo, w storage.Watch, ids []metadata.ID) (storage.LibraryMatch, error) {
+	bindings, err := s.bindings().Get(w.Provider, w.MangaID)
+	if err != nil {
+		return storage.LibraryMatch{}, err
+	}
+	return s.Library.Match(provider, w.MangaID, append(slices.Clone(ids), storage.BindingIDs(bindings)...), s.Options.ProviderDirs)
 }
 
 // lastDownloaded is the highest chapter number the library manga has, or the watch's From
@@ -598,11 +705,23 @@ func (s *Service) Relink(ctx context.Context, id int64, opts RelinkOptions) (Wat
 			return Watch{}, err
 		}
 	}
+	// by the manga's ids, and the bindings of the watch (they move with it) and of the new manga
+	ids := storage.MangaMetadataIDs(manga)
+	if opts.AnilistID != 0 {
+		ids = append(ids, metadata.ID{Raw: strconv.Itoa(opts.AnilistID), Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist})
+	}
+	for _, key := range [][2]string{{w.Provider, w.MangaID}, {info.ID, manga.Info().ID}} {
+		bindings, err := s.bindings().Get(key[0], key[1])
+		if err != nil {
+			return Watch{}, err
+		}
+		ids = append(ids, storage.BindingIDs(bindings)...)
+	}
 	var libraryManga int64
-	if m, found, err := s.Library.MangaFor(info, manga, s.Options.ProviderDirs); err != nil {
+	if match, err := s.Library.Match(info, manga.Info().ID, ids, s.Options.ProviderDirs); err != nil {
 		return Watch{}, err
-	} else if found {
-		libraryManga = m.ID
+	} else if match.Linked {
+		libraryManga = match.Manga.ID
 	}
 	title := cmp.Or(manga.Info().Title, w.Title)
 	if err := s.Watches.Relink(id, info.ID, manga.Info().ID, title, libraryManga, s.now()); err != nil {

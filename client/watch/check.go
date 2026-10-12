@@ -12,6 +12,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/storage"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -77,6 +78,8 @@ type Result struct {
 	Retry  []float32 `json:"retry,omitempty"`
 	// downloaded is true when the check got to download: the watch's Retry is replaced.
 	downloaded bool
+	// ids are the manga's metadata ids, to find its library manga after the check.
+	ids []metadata.ID
 	// Relink is set when the provider doesn't have the manga (ErrMangaNotFound): the
 	// watch needs a re-link (not counted as a failure, not notified).
 	Relink string `json:"relink,omitempty"`
@@ -486,13 +489,14 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 	}
 
 	libraryManga := w.LibraryManga
+	ids := storage.MangaMetadataIDs(manga)
 	if libraryManga == 0 {
-		m, found, err := s.Library.MangaFor(src.Info(), manga, s.Options.ProviderDirs)
+		match, err := s.matchLibrary(src.Info(), w, ids)
 		if err != nil {
 			return s.failed(w, started, err)
 		}
-		if found {
-			libraryManga = m.ID
+		if match.Linked {
+			libraryManga = match.Manga.ID
 		}
 	}
 	have := map[float32]bool{}
@@ -502,7 +506,7 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 		}
 	}
 
-	r := Result{Gaps: gaps, WatchRun: storage.WatchRun{Watch: w.ID, Provider: w.Provider, MangaID: w.MangaID, Title: w.Title, Started: started}}
+	r := Result{Gaps: gaps, WatchRun: storage.WatchRun{Watch: w.ID, Provider: w.Provider, MangaID: w.MangaID, Title: w.Title, Started: started}, ids: ids}
 	r.From, _ = s.lastDownloaded(w, 0)
 	if last := highest(have); last != nil && (r.From == nil || *last > *r.From) {
 		r.From = last
@@ -654,10 +658,11 @@ func (s *Service) finish(ctx context.Context, w storage.Watch, r *Result) {
 		w.Retry = r.Retry
 	}
 	if w.LibraryManga == 0 {
-		if m, found, err := s.Library.MangaBySource(w.Provider, w.MangaID); err != nil {
+		// after the downloads, which made the manga its source
+		if match, err := s.matchLibrary(s.providerInfo()(w.Provider), w, r.ids); err != nil {
 			s.warn(err)
-		} else if found {
-			w.LibraryManga = m.ID
+		} else if match.Linked {
+			w.LibraryManga = match.Manga.ID
 		}
 	}
 	if err := s.Watches.Save(w); err != nil {
