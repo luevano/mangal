@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/luevano/libmangal/metadata/anilist"
-	"github.com/luevano/libmangal/metadata/kitsu"
-	"github.com/luevano/libmangal/metadata/myanimelist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/philippgille/gokv"
@@ -16,21 +13,9 @@ import (
 
 func init() {
 	// CacheStore uses gob; types stored as interfaces must be registered first.
-	// mangoprovider registers its own (mango-*, provider-metadata).
-
-	// metadatas
-	gob.RegisterName("anilist-manga", &anilist.Manga{})
-	gob.RegisterName("myanimelist-manga", &myanimelist.Manga{})
-	gob.RegisterName("kitsu-manga", &kitsu.Manga{})
-
-	// metadata users
-	gob.RegisterName("anilist-user", &anilist.User{})
-	gob.RegisterName("myanimelist-user", &myanimelist.User{})
-	gob.RegisterName("kitsu-user", &kitsu.User{})
-
-	// oauth tokens
+	// libmangal registers its metadata providers' own, mangoprovider its own
+	// (mango-*, provider-metadata).
 	gob.RegisterName("oauth-token", &oauth2.Token{})
-	gob.RegisterName("kitsu-token", &kitsu.Token{})
 }
 
 // CacheStore is the store of a db name (a provider id, a metadata provider id, or mangal's
