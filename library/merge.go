@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/luevano/mangal/v5/storage"
@@ -62,22 +63,38 @@ func (f Files) PlanMerge(keep, other storage.Manga) (MergePlan, error) {
 		if err != nil || !isInside(other.Path(), dl.Path) {
 			rel = filepath.Base(dl.Path)
 		}
-		to := filepath.Join(keep.Path(), rel)
-		for i := 2; ; i++ {
-			exists, err := afero.Exists(f.FS, to)
-			if err != nil {
-				return plan, err
-			}
-			if !exists && !taken[to] {
-				break
-			}
-			ext := filepath.Ext(rel)
-			to = filepath.Join(keep.Path(), fmt.Sprintf("%s (%d)%s", strings.TrimSuffix(rel, ext), i, ext))
+		// a folder chapter ("[0001.0] Chapter 1") has no extension
+		isDir, err := afero.DirExists(f.FS, dl.Path)
+		if err != nil {
+			return plan, err
+		}
+		to, err := freeName(f.FS, filepath.Join(keep.Path(), rel), isDir, taken)
+		if err != nil {
+			return plan, err
 		}
 		taken[to] = true
 		plan.Moves = append(plan.Moves, storage.MergeMove{From: dl.Path, To: to})
 	}
 	return plan, nil
+}
+
+// unplanned refuses other's downloads the plan doesn't have (downloaded since it was
+// made): merging the library mangas would forget them.
+func (f Files) unplanned(plan MergePlan) error {
+	downloads, err := f.Library.Downloads(plan.Other.ID)
+	if err != nil {
+		return err
+	}
+	var paths []string
+	for _, dl := range downloads {
+		if !slices.Contains(plan.Trashed, dl.Path) && !slices.ContainsFunc(plan.Moves, func(m storage.MergeMove) bool { return m.From == dl.Path }) {
+			paths = append(paths, filepath.Base(dl.Path))
+		}
+	}
+	if len(paths) != 0 {
+		return fmt.Errorf("%q got downloads since the plan (%s): plan the merge again", plan.Other.Title, strings.Join(paths, ", "))
+	}
+	return nil
 }
 
 // isInside is true if path is dir or in it.
@@ -100,6 +117,10 @@ func (f Files) ApplyMerge(plan MergePlan) error {
 		return fmt.Errorf("merge %q into %q: %w (it's partly done, \"mangal library scan\" fixes the rest)", plan.Other.Title, plan.Keep.Title, err)
 	}
 
+	// a download of other's since the plan would go with its rows
+	if err := f.unplanned(plan); err != nil {
+		return fail(err)
+	}
 	batch := newTrashBatch()
 	total, done := len(plan.Trashed)+len(plan.Moves), 0
 	step := func(path string) {
@@ -125,6 +146,9 @@ func (f Files) ApplyMerge(plan MergePlan) error {
 		if err := f.Library.MergeDownload(plan.Keep.ID, m); err != nil {
 			return fail(err)
 		}
+	}
+	if err := f.unplanned(plan); err != nil {
+		return fail(err)
 	}
 	if err := f.Library.Merge(plan.Keep.ID, plan.Other.ID, nil, nil); err != nil {
 		return fail(err)

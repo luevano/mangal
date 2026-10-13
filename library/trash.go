@@ -55,15 +55,16 @@ func moveToTrash(fsys afero.Fs, j Journal, root, batch, path string, modes Modes
 		}
 		return removeDir(fsys, j, path)
 	}
-	to, err = freeName(fsys, to, isDir)
+	to, err = freeName(fsys, to, isDir, nil)
 	if err != nil {
 		return err
 	}
 	return moveFile(fsys, j, path, to, modes)
 }
 
-// freeName is path, or path with a number (before a file's extension) if it's taken.
-func freeName(fsys afero.Fs, path string, isDir bool) (string, error) {
+// freeName is path, or path with a number (before a file's extension) if it's taken: it
+// exists, or taken has it (may be nil).
+func freeName(fsys afero.Fs, path string, isDir bool, taken map[string]bool) (string, error) {
 	ext := ""
 	if !isDir {
 		ext = filepath.Ext(path)
@@ -71,7 +72,7 @@ func freeName(fsys afero.Fs, path string, isDir bool) (string, error) {
 	base := strings.TrimSuffix(path, ext)
 	for i := 2; ; i++ {
 		exists, err := afero.Exists(fsys, path)
-		if err != nil || !exists {
+		if err != nil || !exists && !taken[path] {
 			return path, err
 		}
 		path = fmt.Sprintf("%s (%d)%s", base, i, ext)

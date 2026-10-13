@@ -104,6 +104,8 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 		}
 	}
 	var renames []Rename
+	// manga folders that would get the same name: the first one does
+	planned := map[string]string{}
 	// the provider of each provider directory: the one of its mangas with a known
 	// provider, none when they're of several (e.g. a manga moved there by hand)
 	var providerDirsSeen []string
@@ -135,10 +137,15 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 			switch {
 			case r.NoMetadata && !n.Fallback:
 				r.Skip = "no metadata found for " + formatIDs(ids[i])
+			case planned[r.To] != "":
+				r.Skip = fmt.Sprintf("%s would get that name too (%s), the same manga? mangal library merge", filepath.Base(planned[r.To]), filepath.Base(r.To))
 			default:
 				if r.Skip, err = n.taken(r); err != nil {
 					return nil, err
 				}
+			}
+			if r.Skip == "" {
+				planned[r.To] = r.From
 			}
 			renames = append(renames, r)
 		}
@@ -179,10 +186,10 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 		return renames, nil
 	}
 	// a provider directory onto an existing one (not empty): its mangas move one by one
-	var planned []Rename
+	var out []Rename
 	for _, r := range renames {
 		if filepath.Dir(r.From) != dir || r.To == "" {
-			planned = append(planned, r)
+			out = append(out, r)
 			continue
 		}
 		into, err := n.intoExisting(r, renames)
@@ -190,12 +197,12 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 			return nil, err
 		}
 		if into == nil {
-			planned = append(planned, r)
+			out = append(out, r)
 			continue
 		}
-		planned = append(planned, into...)
+		out = append(out, into...)
 	}
-	return planned, nil
+	return out, nil
 }
 
 // taken is why a manga folder can't get its name: another folder has it (another library
@@ -489,14 +496,7 @@ func applyRename(fsys afero.Fs, j Journal, r Rename) error {
 		return err
 	case exists && sameFile(fsys, r.From, r.To):
 		// only the case changes, on a case-insensitive filesystem
-		if err := logStep(j, storage.Step{Kind: storage.StepMove, Path: r.From, Dest: r.To}); err != nil {
-			return err
-		}
-		tmp := r.From + ".mangal-rename"
-		if err := fsys.Rename(r.From, tmp); err != nil {
-			return err
-		}
-		return fsys.Rename(tmp, r.To)
+		return renameCase(fsys, j, r.From, r.To)
 	case exists:
 		return fmt.Errorf("%s already exists", r.To)
 	}

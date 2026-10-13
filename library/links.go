@@ -613,10 +613,31 @@ func (p LinkPlan) ImpliedLines(how map[string]string) []string {
 func (f Files) ApplyLinks(plan LinkPlan, opts LinkOptions) error {
 	m := plan.Manga()
 	fail := func(err error) error { return fmt.Errorf("link %q: %w", m.Title, err) }
+	// what was done goes back when a later step fails
+	var undo []func() error
+	rollback := func(err error) error {
+		for i := len(undo) - 1; i >= 0; i-- {
+			if undoErr := undo[i](); undoErr != nil {
+				return fail(fmt.Errorf("%w (and undoing it: %w)", err, undoErr))
+			}
+		}
+		return fail(err)
+	}
 	if plan.Marker != nil {
+		marker := filepath.Join(m.Path(), libmangal.FilenameMangaDirInfo)
+		old, err := readIfExists(f.FS, marker)
+		if err != nil {
+			return fail(err)
+		}
 		if err := writeDirInfo(f.FS, f.Journal, m.Path(), *plan.Marker, f.Modes.File); err != nil {
 			return fail(fmt.Errorf("write %s: %w", libmangal.FilenameMangaDirInfo, err))
 		}
+		undo = append(undo, func() error {
+			if old == nil {
+				return f.FS.Remove(marker)
+			}
+			return afero.WriteFile(f.FS, marker, old, f.Modes.File)
+		})
 	}
 	change := storage.LinkChange{Manga: m.ID, Links: map[metadata.IDCode]string{}, Bindings: slices.Clone(plan.Bindings), At: time.Now()}
 	for code, id := range plan.Links {
@@ -631,12 +652,13 @@ func (f Files) ApplyLinks(plan LinkPlan, opts LinkOptions) error {
 	}
 	if opts.Rename && plan.Rename != nil && plan.Rename.Skip == "" {
 		if err := applyRename(f.FS, f.Journal, *plan.Rename); err != nil {
-			return fail(err)
+			return rollback(err)
 		}
 		change.From, change.To = plan.Rename.From, plan.Rename.To
+		undo = append(undo, func() error { return moveDir(f.FS, nil, change.To, change.From, f.Modes) })
 	}
 	if err := f.Library.SetLinks(change); err != nil {
-		return fail(err)
+		return rollback(err)
 	}
 	return nil
 }

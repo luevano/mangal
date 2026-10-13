@@ -373,9 +373,16 @@ func (f Files) ApplyMove(plan MovePlan) error {
 		}
 	}
 	undo := func(err error) error {
-		if plan.Old != nil {
+		switch {
+		case plan.Old != nil:
 			if undoErr := libmangal.WriteMangaDirInfo(f.FS, plan.Dir, *plan.Old, f.Modes.File); undoErr != nil {
 				return fail(fmt.Errorf("%w (and restoring %s: %w)", err, libmangal.FilenameMangaDirInfo, undoErr))
+			}
+		case plan.Marker != nil:
+			// it had none: the one written goes
+			marker := filepath.Join(plan.Dir, libmangal.FilenameMangaDirInfo)
+			if undoErr := f.FS.Remove(marker); undoErr != nil && !errors.Is(undoErr, fs.ErrNotExist) {
+				return fail(fmt.Errorf("%w (and removing %s: %w)", err, libmangal.FilenameMangaDirInfo, undoErr))
 			}
 		}
 		if moved {
@@ -416,14 +423,7 @@ func moveDir(fsys afero.Fs, j Journal, from, to string, modes Modes) error {
 	case err != nil:
 		return err
 	case exists && sameFile(fsys, from, to):
-		if err := logStep(j, storage.Step{Kind: storage.StepMove, Path: from, Dest: to}); err != nil {
-			return err
-		}
-		tmp := from + ".mangal-rename"
-		if err := fsys.Rename(from, tmp); err != nil {
-			return err
-		}
-		return fsys.Rename(tmp, to)
+		return renameCase(fsys, j, from, to)
 	case exists:
 		return fmt.Errorf("%s already exists", to)
 	}
