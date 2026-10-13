@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/luevano/mangal/v5/log"
-	"github.com/luevano/mangal/v5/provider/loader"
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/skratchdot/open-golang/open"
 )
@@ -83,7 +82,7 @@ func Handler(out io.Writer) (http.Handler, error) {
 	return newHandler(&Server{
 		loaders:    loaders,
 		images:     newImageCache(imageCacheSize),
-		httpClient: loader.HTTPClient(),
+		httpClient: imageClient(),
 	})
 }
 

@@ -439,5 +439,5 @@ var Serve = configServe{
 		Secret:      true,
 	}),
 	TokenOnLoopback: boolEntry("serve.token_on_loopback", false, "Also require serve.token when `mangal serve` listens on loopback, where any local program (or user) can reach the API otherwise. Needs a token."),
-	Web:             boolEntry("serve.web", false, "Also serve the web UI (as `mangal web`) on the `mangal serve` port (`mangal serve --web`)."),
+	Web:             boolEntry("serve.web", false, "Also serve the web UI (as `mangal web`) on the `mangal serve` port (`mangal serve --web`), behind the token when one is required (the browser asks for it: any user name, the token as the password)."),
 }

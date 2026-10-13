@@ -377,6 +377,37 @@ func TestAPIToken(t *testing.T) {
 	}
 }
 
+// TestAuthWeb: with a token the web UI asks for it (basic auth), the API takes it both ways.
+func TestAuthWeb(t *testing.T) {
+	s := newTestServer(t, "s3cret")
+	mux := http.NewServeMux()
+	s.api.Register(mux)
+	mux.Handle("/", s.api.AuthWeb(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})))
+	for _, tc := range []struct {
+		path, user, password string
+		want                 int
+	}{
+		{"/", "", "", http.StatusUnauthorized},
+		{"/api/image?url=http://10.0.0.1/", "", "", http.StatusUnauthorized},
+		{"/", "x", "nope", http.StatusUnauthorized},
+		{"/", "x", "s3cret", http.StatusOK},
+		{"/api/watches", "", "s3cret", http.StatusOK},
+	} {
+		req := httptest.NewRequest("GET", tc.path, nil)
+		if tc.password != "" {
+			req.SetBasicAuth(tc.user, tc.password)
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != tc.want {
+			t.Errorf("%s %q: %d, want %d", tc.path, tc.password, rec.Code, tc.want)
+		}
+		if rec.Code == http.StatusUnauthorized && tc.path == "/" && !strings.HasPrefix(rec.Header().Get("WWW-Authenticate"), "Basic") {
+			t.Errorf("%s: challenge %q", tc.path, rec.Header().Get("WWW-Authenticate"))
+		}
+	}
+}
+
 func TestHostCheck(t *testing.T) {
 	s := newTestServer(t, "")
 	mux := http.NewServeMux()

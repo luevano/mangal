@@ -122,15 +122,39 @@ func (a *API) auth(next http.Handler) http.Handler {
 	if a.Token == "" {
 		return next
 	}
-	want := []byte("Bearer " + a.Token)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), want) != 1 {
+		if !a.authorized(r) {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			writeJSON(w, http.StatusUnauthorized, watch.ErrorResponse{Error: "missing or wrong token (serve.token)"})
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// AuthWeb puts the web UI behind the token: browsers ask for it (any user name, the token
+// as the password) and send it with the UI's requests.
+func (a *API) AuthWeb(next http.Handler) http.Handler {
+	if a.Token == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !a.authorized(r) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="mangal serve", charset="UTF-8"`)
+			http.Error(w, "missing or wrong token (serve.token)", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// authorized: the token as a bearer token or as the password of basic auth (the web UI).
+func (a *API) authorized(r *http.Request) bool {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+a.Token)) == 1 {
+		return true
+	}
+	_, password, ok := r.BasicAuth()
+	return ok && subtle.ConstantTimeCompare([]byte(password), []byte(a.Token)) == 1
 }
 
 // httpError is an error with its status code.

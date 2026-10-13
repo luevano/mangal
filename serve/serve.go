@@ -144,7 +144,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		mux.Handle("/", ui)
+		mux.Handle("/", api.AuthWeb(ui))
 	} else {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusNotFound, watch.ErrorResponse{Error: "not found (the web UI is off, see serve.web)", Code: watch.CodeNotFound})

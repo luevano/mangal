@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -386,6 +387,52 @@ func TestCheckOrigin(t *testing.T) {
 		h.ServeHTTP(w, r)
 		if w.Code != want {
 			t.Errorf("%q: %d, want %d", origin, w.Code, want)
+		}
+	}
+}
+
+func TestImagePublicOnly(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"93.184.215.14":   true,
+		"2606:4700::1111": true,
+		"127.0.0.1":       false,
+		"10.0.0.1":        false,
+		"192.168.1.100":   false,
+		"172.16.0.1":      false,
+		"169.254.169.254": false,
+		"100.100.1.1":     false,
+		"0.0.0.0":         false,
+		"::1":             false,
+		"fe80::1":         false,
+		"fd00::1":         false,
+		"::ffff:10.0.0.1": false,
+		"224.0.0.1":       false,
+	} {
+		if got := isPublic(netip.MustParseAddr(addr)); got != want {
+			t.Errorf("%s: %t", addr, got)
+		}
+	}
+
+	// the upstream is on loopback, directly or through a redirect
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(pngImage(t))
+	}))
+	defer upstream.Close()
+	handler, err := newHandler(&Server{images: newImageCache(1 << 20), httpClient: imageClient()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	for _, target := range []string{upstream.URL + "/x.png", "http://localhost:" + upstream.URL[strings.LastIndex(upstream.URL, ":")+1:] + "/x.png"} {
+		resp, err := http.Get(server.URL + "/api/image?" + url.Values{"url": {target}}.Encode())
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status %d", target, resp.StatusCode)
 		}
 	}
 }
