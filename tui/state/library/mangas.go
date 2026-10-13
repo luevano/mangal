@@ -435,20 +435,29 @@ func (s *mangasState) scanCmd(ctx context.Context, check bool) tea.Cmd {
 	}, func(msg scannedMsg) tea.Msg { return msg })
 }
 
-// scan scans download.path (an error when it doesn't exist, e.g. a drive not mounted)
-// into the library, check checks the ids too.
-func scan(ctx context.Context, files library.Files, providerDirs, check bool, status func(string)) (scannedMsg, error) {
+// Scan scans download.path (an error when it doesn't exist, e.g. a drive not mounted)
+// into the library; otherRoot is a directory that has the missing mangas, if any.
+func Scan(ctx context.Context, files library.Files, providerDirs bool, status func(string)) (res library.ScanResult, otherRoot string, err error) {
 	root, err := path.ExistingDownloads()
+	if err != nil {
+		return res, "", err
+	}
+	scanner := library.Scanner{FS: files.FS, Library: files.Library, OnProgress: func(p library.Progress) { status(p.String()) }}
+	res, err = scanner.ScanContext(ctx, root, providerDirs)
+	if err != nil {
+		return res, "", err
+	}
+	return res, library.OtherRoot(files.FS, res.Missing, root, providerDirs), nil
+}
+
+// scan scans the library (Scan), check checks the ids too.
+func scan(ctx context.Context, files library.Files, providerDirs, check bool, status func(string)) (scannedMsg, error) {
+	res, otherRoot, err := Scan(ctx, files, providerDirs, status)
 	if err != nil {
 		return scannedMsg{}, err
 	}
 	onProgress := func(p library.Progress) { status(p.String()) }
-	scanner := library.Scanner{FS: files.FS, Library: files.Library, OnProgress: onProgress}
-	res, err := scanner.ScanContext(ctx, root, providerDirs)
-	if err != nil {
-		return scannedMsg{}, err
-	}
-	msg := scannedMsg{result: res, otherRoot: library.OtherRoot(files.FS, res.Missing, root, providerDirs), checked: check}
+	msg := scannedMsg{result: res, otherRoot: otherRoot, checked: check}
 	if mangas, err := files.Library.Mangas(); err == nil {
 		watched, _ := watches.Watched(ctx)
 		msg.dups = duplicates(files.Library, mangas, watched)

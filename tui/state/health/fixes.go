@@ -18,6 +18,7 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
+	tuilibrary "github.com/luevano/mangal/v5/tui/state/library"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -87,10 +88,7 @@ func (s *state) applyLibrary(ctx context.Context, f health.Finding) (tea.Cmd, bo
 				if err != nil {
 					return "", err
 				}
-				if _, err := client.Snapshot("empty-trash"); err != nil {
-					return "", err
-				}
-				return "trash emptied", library.EmptyTrash(files.FS, files.Root)
+				return tuilibrary.EmptyTrash(files)
 			}))
 	default:
 		return nil, false
@@ -172,10 +170,7 @@ func forget(id int64) (string, error) {
 	if err != nil || !ok {
 		return "it's gone already", err
 	}
-	_, err = client.Operation("remove", fmt.Sprintf("remove %d %q", m.ID, m.Title), func(library.Journal) error {
-		return lib.RemoveManga(m.ID)
-	})
-	if err != nil {
+	if _, err := client.RemoveMissing(lib, []storage.Manga{m}); err != nil {
 		return "", err
 	}
 	return "forgot " + m.Title + undoable, nil
@@ -187,21 +182,16 @@ func scanLibrary(ctx context.Context, status func(string)) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	root, err := path.ExistingDownloads()
-	if err != nil {
-		return "", err
-	}
 	providerDirs := config.Download.Provider.CreateDir.Get()
-	scanner := library.Scanner{FS: files.FS, Library: files.Library, OnProgress: func(p library.Progress) { status(p.String()) }}
-	res, err := scanner.ScanContext(ctx, root, providerDirs)
+	res, otherRoot, err := tuilibrary.Scan(ctx, files, providerDirs, status)
 	if err != nil {
 		return "", err
 	}
 	notify := fmt.Sprintf("scanned: %d chapters added, %d removed, %d folders new, %d moved", res.Added, res.Removed, res.New, res.Relocated)
 	if n := len(res.Missing); n != 0 {
 		notify += fmt.Sprintf(", %d still missing", n)
-		if dir := library.OtherRoot(files.FS, res.Missing, root, providerDirs); dir != "" {
-			notify += fmt.Sprintf(" (they're in %s: the library's scan offers to use it as download.path)", dir)
+		if otherRoot != "" {
+			notify += fmt.Sprintf(" (they're in %s: the library's scan offers to use it as download.path)", otherRoot)
 		}
 	}
 	return notify, nil

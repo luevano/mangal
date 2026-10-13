@@ -93,12 +93,17 @@ func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		files := s.files
 		s.Confirm.AskDelete("Empty the trash", "Delete everything in the trash? It can't be undone.", s.View(), action("Emptying the trash", func() (string, error) {
-			if _, err := client.Snapshot("empty-trash"); err != nil {
-				return "", err
-			}
-			return "trash emptied", library.EmptyTrash(files.FS, files.Root)
+			return EmptyTrash(files)
 		}))
 		return nil
 	}
 	return s.List.Update(msg)
+}
+
+// EmptyTrash deletes what's in the trash for good, after a snapshot of the database.
+func EmptyTrash(files library.Files) (string, error) {
+	if _, err := client.Snapshot("empty-trash"); err != nil {
+		return "", err
+	}
+	return "trash emptied", library.EmptyTrash(files.FS, files.Root)
 }
