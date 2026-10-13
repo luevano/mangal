@@ -363,17 +363,22 @@ func checkFolderNames(s *snapshot) []Finding {
 	}
 	var notChecked string
 	if n := s.renames.noMetadata; n != 0 {
-		notChecked = fmt.Sprintf("%s without cached AniList metadata weren't checked", plural(n, "folder"))
-		if !s.network {
-			notChecked += " (mangal health --network looks them up)"
+		notChecked = fmt.Sprintf("%s without cached AniList metadata weren't checked (mangal health --network looks them up)", plural(n, "folder"))
+		if s.network {
+			notChecked = fmt.Sprintf("%s without AniList metadata (no AniList id, or not found) weren't checked", plural(n, "folder"))
 		}
 	}
 	if len(items) == 0 {
 		if notChecked == "" {
 			return nil
 		}
-		return []Finding{{Severity: Info, Subject: Subject{Kind: "library", Name: "library"}, Message: notChecked,
-			Fix: Fix{Commands: []string{"mangal health --network --only L5"}}}}
+		f := Finding{Severity: Info, Subject: Subject{Kind: "library", Name: "library"}, Message: notChecked}
+		if !s.network {
+			f.Fix.Commands = []string{"mangal health --network --only L5"}
+		} else {
+			f.Fix = Fix{Commands: []string{"mangal health --only M1"}, Note: "the ones without an AniList link"}
+		}
+		return []Finding{f}
 	}
 	f := Finding{Severity: Warning, Subject: Subject{Kind: "library", Name: "library"},
 		Message: fmt.Sprintf("%s aren't named by the manga template", plural(len(items), "folder")), Items: items,
