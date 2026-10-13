@@ -38,6 +38,10 @@ func TestSnapshotRestore(t *testing.T) {
 	if info, err := os.Stat(snap); err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("snapshot %v, %v", info, err)
 	}
+	stamp, err := time.Parse("20060102-150405", strings.TrimPrefix(filepath.Base(snap), SnapshotPrefix)[:15])
+	if err != nil || time.Since(stamp).Abs() > time.Minute {
+		t.Errorf("snapshot name %s isn't UTC: %v", filepath.Base(snap), err)
+	}
 	check, err := sql.Open("sqlite", snap)
 	if err != nil {
 		t.Fatal(err)

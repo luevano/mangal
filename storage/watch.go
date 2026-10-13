@@ -310,21 +310,28 @@ func (s Watches) Add(w Watch) (Watch, error) {
 	if w.Added.IsZero() {
 		w.Added = time.Now()
 	}
-	var exists int
-	if err := s.DB.QueryRow(`SELECT count(*) FROM watches WHERE provider = ? AND manga_id = ?`, w.Provider, w.MangaID).Scan(&exists); err != nil {
-		return w, fmt.Errorf("add watch: %w", err)
-	}
-	if exists != 0 {
-		return w, fmt.Errorf("add watch of %s %q: %w", w.Provider, w.MangaID, ErrWatchExists)
-	}
-	res, err := s.DB.Exec(`INSERT INTO watches (provider, manga_id, title, library_manga, enabled, schedule, gaps, from_number, added, relink, skip)
+	// one transaction: two processes adding the same manga can't both see it missing
+	err := s.DB.InTx(func(tx *sql.Tx) error {
+		var exists int
+		if err := tx.QueryRow(`SELECT count(*) FROM watches WHERE provider = ? AND manga_id = ?`, w.Provider, w.MangaID).Scan(&exists); err != nil {
+			return err
+		}
+		if exists != 0 {
+			return ErrWatchExists
+		}
+		res, err := tx.Exec(`INSERT INTO watches (provider, manga_id, title, library_manga, enabled, schedule, gaps, from_number, added, relink, skip)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, w.Provider, w.MangaID, w.Title, nullID(w.LibraryManga), w.Enabled,
-		w.Schedule, w.Gaps, nullFloat(w.From), unix(w.Added), w.relinkColumn(), formatNumbers(w.Skip))
+			w.Schedule, w.Gaps, nullFloat(w.From), unix(w.Added), w.relinkColumn(), formatNumbers(w.Skip))
+		if err != nil {
+			return err
+		}
+		w.ID, err = res.LastInsertId()
+		return err
+	})
 	if err != nil {
 		return w, fmt.Errorf("add watch of %s %q: %w", w.Provider, w.MangaID, err)
 	}
-	w.ID, err = res.LastInsertId()
-	return w, err
+	return w, nil
 }
 
 // List lists every watch, by id.

@@ -522,14 +522,15 @@ func fingerprintOf(q querier, v2 bool) (string, error) {
 // SnapshotPrefix starts the names of the snapshots: mangal-<time>-<operation>.sqlite.
 const SnapshotPrefix = "mangal-"
 
-// Snapshot copies the database into dir as mangal-<YYYYMMDD-HHMMSS>-<name>.sqlite
+// Snapshot copies the database into dir as mangal-<YYYYMMDD-HHMMSS>-<name>.sqlite (UTC)
 // (VACUUM INTO: a consistent copy, with what's still in the WAL, while other processes
 // use it), only readable by the user.
 func (db *DB) Snapshot(dir, name string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("snapshot: %w", err)
 	}
-	base := filepath.Join(dir, SnapshotPrefix+time.Now().Format("20060102-150405")+"-"+name)
+	// UTC: local names would sort wrong over a DST change
+	base := filepath.Join(dir, SnapshotPrefix+time.Now().UTC().Format("20060102-150405")+"-"+name)
 	path := base + ".sqlite"
 	// VACUUM INTO needs a missing or empty file: created empty first, with the mode
 	var f *os.File
