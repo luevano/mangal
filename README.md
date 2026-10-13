@@ -161,6 +161,7 @@ mangal library ls [--refresh]              # the mangas, with their publication 
 mangal library scan                        # check against the files: moved, removed, added by hand, older downloads; lists mangas sharing a metadata id
 mangal library scan --check                # also check the guessed metadata ids of folders without a .libmangal.json
 mangal library scan --mark [--apply]       # also list (--apply: write) a .libmangal.json for folders without one (from the library source, else the provider directory and ids)
+mangal library mark <id>... [--apply]      # (re)write the .libmangal.json of these mangas: also replaces a broken one or one of another provider manga
 mangal library downloads [provider]        # the downloaded chapters
 mangal library merge <keep> <other> --apply  # one manga in two directories, duplicates go to the trash
 mangal library move <id> <provider> [query|mid:id] --apply  # switch a manga to another provider (folder, watch and bindings follow; names stay)
@@ -179,7 +180,7 @@ The publication status comes from the AniList metadata mangal already has; `libr
 
 A library manga's links replace the old ids everywhere: its sources' bindings, its own ids and its `.libmangal.json`, so a wrong id stops matching. What a link implies (the folder's new name, a watch bound to another id, another library manga with the id) is shown and only done when asked (`--rename`, `--watches`, merge).
 
-Every operation that changes files (rename, merge, move, link, `scan --mark --apply`, `migrate`, a TUI delete) first snapshots the data database into `<data dir>/backups/` (the last `data.backups`, 10 by default, are kept) and journals its file changes, so `mangal library undo` can revert it. Nothing is overwritten, and an undo that would lose later changes is refused unless `--force`.
+Every operation that changes files (rename, merge, move, link, `scan --mark --apply`, `mark --apply`, `migrate`, a TUI delete) first snapshots the data database into `<data dir>/backups/` (the last `data.backups`, 10 by default, are kept) and journals its file changes, so `mangal library undo` can revert it. Nothing is overwritten, and an undo that would lose later changes is refused unless `--force`.
 
 The TUI has the same under `L` on the home screen (`u` scan, `S` scan and check ids, `J` merge, `D` duplicates only, `X` move to another provider, `A` links, `B` fill backup links, `t` trash, `U` undo the last operation), where `d` deletes a manga or a chapter (to the trash; a manga whose folder is gone is forgotten).
 
@@ -189,9 +190,11 @@ The TUI has the same under `L` on the home screen (`u` scan, `S` scan and check 
 mangal health [--only watches,W10,...] [--json]  # problems of the library and the watches, with the command that fixes each
 mangal health --only W10                         # the library mangas no watch keeps up to date, one by one
 mangal health --network                          # also look for new chapters of the unwatched ongoing mangas on their providers
+mangal health --dismiss L6/library/trash         # hide a finding that's fine as it is (its key starts its line); --undismiss brings it back
+mangal health --all                              # also the dismissed findings
 ```
 
-Only reads; it makes no requests unless `--network` (the publication statuses from AniList, and the chapter lists of the unwatched mangas that may still get chapters, one provider at a time like a watch check). In the TUI, `!` on the home screen (which shows "health: N problems"): enter opens what a finding is about (the watch, the library manga, its links, migrate), `x` applies its fix after asking (link the id the folder name says, pick a Kitsu id, resume a watch, watch a manga with new chapters), `J` merges duplicates, `tab` shows one category, alt+n runs the network checks, `i` shows the whole finding, ctrl+r checks again.
+Only reads (the library, its folders and their `.libmangal.json`); it makes no requests unless `--network` (the publication statuses and the folder names' metadata from AniList, and the chapter lists of the unwatched mangas that may still get chapters, one provider at a time like a watch check). Besides the watches and links it finds folders that are gone, folders without a `.libmangal.json` or with a broken one, provider directories under an old name, folder names off the template, what's in the trash, and mangas without chapters. In the TUI, `!` on the home screen (which shows "health: N problems"): enter opens what a finding is about (the watch, the library manga, its links, migrate, the trash), `x` applies its fix after asking (link the id the folder name says, pick a Kitsu id, resume a watch, watch a manga with new chapters, mark a folder, scan or forget a missing manga, rename, empty the trash), `J` merges duplicates, `z` dismisses a finding (`Z` shows the dismissed), `tab` shows one category, alt+n runs the network checks, `i` shows the whole finding, ctrl+r checks again.
 
 ### Accounts
 
