@@ -6,6 +6,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/util"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -352,5 +353,22 @@ func TestSecretReadableWarns(t *testing.T) {
 	msg, ok := cmd().(base.NotificationWithDurationMsg)
 	if !ok || !strings.Contains(msg.Message, "chmod 600") {
 		t.Errorf("no warning: %#v", cmd())
+	}
+}
+
+func TestEverySectionListed(t *testing.T) {
+	mconfig.Reset()
+	for _, s := range sectionItems(mconfig.Keys()) {
+		if !slices.Contains(sections, s.name) {
+			t.Errorf("section %q missing from sections", s.name)
+		}
+		if summaries[s.name] == "" {
+			t.Errorf("section %q has no summary", s.name)
+		}
+	}
+	for _, name := range sections {
+		if summaries[name] == "" {
+			t.Errorf("section %q has no summary", name)
+		}
 	}
 }

@@ -15,7 +15,7 @@ import (
 var _ list.DefaultItem = item{}
 
 // sections in the order shown, the others after them by name.
-var sections = []string{"download", "read", "providers", "metadata", "notification", "watch", "serve", "tui", "cache", "data", "auth", "icons", "cli"}
+var sections = []string{"download", "read", "providers", "metadata", "notification", "watch", "serve", "web", "tui", "cache", "data", "log", "auth", "icons", "cli"}
 
 // summaries say what each section holds, on the section list.
 var summaries = map[string]string{
@@ -26,9 +26,11 @@ var summaries = map[string]string{
 	"notification": "Discord notifications after downloads",
 	"watch":        "watched mangas: check schedules, gap filling, notifications",
 	"serve":        "where mangal serve listens",
+	"web":          "where mangal web listens",
 	"tui":          "how the TUI looks and behaves",
 	"cache":        "how long searches, lists and mirrors are kept",
 	"data":         "where the data database is",
+	"log":          "how long log files are kept",
 	"auth":         "where logins and secrets are kept",
 	"icons":        "the icon set",
 	"cli":          "command line output",
