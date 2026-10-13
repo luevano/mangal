@@ -14,5 +14,33 @@ ExecStart=/usr/local/bin/mangal serve
 Restart=on-failure
 RestartSec=10s
 
+# Hardening: providers are code (Lua scripts, scrapers driving a browser), keep what they
+# can reach small. Drop a line if something of yours needs it (systemctl edit mangal).
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+# AF_NETLINK: Chrome (sites that need a browser) reads the network state through it
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# No MemoryDenyWriteExecute or RestrictNamespaces: Chrome's JIT and sandbox need them.
+
+# Read-only system and home, writable only where mangal writes: uncomment and list the
+# user's config, data, state and cache dirs and the download path (download.path).
+#ProtectSystem=strict
+#ProtectHome=read-only
+#ReadWritePaths=/home/mangal/.config/mangal /home/mangal/.local/share/mangal /home/mangal/.local/state/mangal /home/mangal/.cache/mangal /srv/manga
+
+# New files (downloads included) only readable by this user; leave it out if another user
+# (a reader like Kavita or Komga) reads the library.
+#UMask=0077
+
 [Install]
 WantedBy=multi-user.target
