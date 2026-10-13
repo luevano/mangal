@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
@@ -714,10 +713,14 @@ exit code 1.`,
 			kind = watch.KindGaps
 		}
 		opts := watch.CheckOptions{Kind: kind, DryRun: watchCheckArgs.DryRun, Gaps: watchCheckArgs.Gaps}
+		st := newStatus(cmd)
+		defer st.Done()
+		opts.OnLive = func(e watch.LiveEvent) { printLiveEvent(cmd, st, e, watchCheckArgs.JSON) }
 		if !watchCheckArgs.JSON {
-			opts.OnEvent = func(e watch.Event) { printCheckEvent(cmd, e, watchCheckArgs.DryRun) }
+			opts.OnEvent = func(e watch.Event) { st.Print(func() { printCheckEvent(cmd, e, watchCheckArgs.DryRun) }) }
 		}
 		report, err := svc.Check(cmd.Context(), ids, opts)
+		st.Done()
 		if err != nil {
 			return err
 		}
@@ -730,7 +733,7 @@ exit code 1.`,
 		case len(report.Results) == 0:
 			cmd.Println("no watches to check")
 		case remote:
-			// the server doesn't tell the progress, only what it recorded
+			// the progress streamed, the results are what the server recorded
 			for _, r := range report.Results {
 				printResult(cmd, r, watchCheckArgs.DryRun)
 			}
@@ -777,16 +780,26 @@ func printResult(cmd *cobra.Command, r watch.Result, dryRun bool) {
 // printCheckEvent prints each watch once checked (providers run in parallel, the lines
 // would mix otherwise).
 func printCheckEvent(cmd *cobra.Command, e watch.Event, dryRun bool) {
+	if e.Kind == watch.EventDone {
+		printResult(cmd, *e.Result, dryRun)
+	}
+}
+
+// printLiveEvent prints the progress of a check on stderr, each line with its manga: the
+// chapters found and downloaded, the waits and what the providers say; the routine steps
+// (pages) are only the status line. With --json only the status line.
+func printLiveEvent(cmd *cobra.Command, st *status, e watch.LiveEvent, quiet bool) {
 	switch e.Kind {
-	case watch.EventChapter:
-		if c := e.Chapter; c.Kind == client.EventWait {
-			cmd.PrintErrf("%s: chapter %s rate limited (retry #%d), retrying in %s\n", e.Watch.Title, c.Result.Chapter, c.Attempt, c.Wait)
+	case watch.LiveStart:
+		st.Transient(e.Message)
+	case watch.LiveChapter, watch.LiveProgress:
+		st.Transient(e.Line())
+	case watch.LiveFound, watch.LiveWait, watch.LiveStatus, watch.LiveChapterDone:
+		if quiet {
+			st.Transient(e.Line())
+			return
 		}
-	case watch.EventBusy:
-		cmd.PrintErrf("%s: %s\n", e.Watch.Title, e.Busy.Message())
-	case watch.EventDone:
-		r := e.Result
-		printResult(cmd, *r, dryRun)
+		st.Print(func() { cmd.PrintErrln(e.Line()) })
 	}
 }
 
