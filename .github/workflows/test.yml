@@ -17,6 +17,8 @@ jobs:
 
     env:
       GOFLAGS: -mod=readonly
+      # the released modules, as go install builds it
+      GOWORK: "off"
 
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +38,19 @@ jobs:
       # the web UI is only embedded with the webui tag, it isn't committed
       - name: Build with the web UI
         run: cd web/ui && npm ci && npm run build-only && cd ../.. && go build -tags webui ./...
+
+      # go generate (enumer) and web/generate.sh (oapi-codegen, openapi-typescript) are
+      # pinned: what they write has to be committed
+      - name: Generated files are up to date
+        if: runner.os == 'Linux'
+        run: |
+          go generate ./...
+          ./web/generate.sh
+          git status --porcelain
+          test -z "$(git status --porcelain)"
+
+      - name: Vet
+        run: go vet ./...
 
       - name: Test
         run: go test -race -v ./...
