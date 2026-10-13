@@ -110,7 +110,7 @@ func Execute() {
 	}()
 	// close the providers (browsers, flaresolverr sessions) and databases however mangal exits
 	util.OnExit(func() {
-		if err := errors.Join(client.CloseAll(), cache.Close()); err != nil {
+		if err := errors.Join(client.Shutdown(), cache.Close()); err != nil {
 			log.Error("close on exit: %s", err)
 		}
 		_ = log.Close()

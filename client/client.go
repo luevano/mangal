@@ -28,22 +28,32 @@ type entry struct {
 	err    error
 	// auth is the logins/secrets fingerprint the client was made with
 	auth string
+
+	// the fields below are guarded by clientsMu
+
+	// refs are the holders (Hold) using it
+	refs int
+	// retired is out of the registry (CloseAll, ReleaseIfAuthChanged): closed once the
+	// last holder releases it
+	retired bool
+	closed  bool
 }
 
 var (
 	clients   = map[string]*entry{}
 	clientsMu sync.Mutex
+	// lingering are the retired entries still held
+	lingering = map[*entry]struct{}{}
 
 	// create and authFingerprint are swapped in tests
 	create          = newClient
 	authFingerprint = cache.AuthFingerprint
 )
 
-// Get returns the provider's client if it's already created, nil otherwise.
-
 // ErrProviderNotFound is a provider id that isn't installed (nor an old id of one).
 var ErrProviderNotFound = errors.New("provider not installed")
 
+// Get returns the provider's client if it's already created, nil otherwise.
 func Get(loader libmangal.ProviderLoader) *libmangal.Client {
 	clientsMu.Lock()
 	e, ok := clients[loader.Info().ID]
@@ -60,8 +70,57 @@ func Get(loader libmangal.ProviderLoader) *libmangal.Client {
 }
 
 // Acquire returns the provider's client, creating it if there's none yet. There's one
-// client per provider: callers share it and don't close it (see Release and CloseAll).
+// client per provider: callers share it and don't close it. It isn't held: CloseAll and
+// ReleaseIfAuthChanged may close it while it's used, work that can overlap them (a
+// check, a request) uses Hold.
 func Acquire(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal.Client, error) {
+	e, err := acquire(ctx, loader)
+	if err != nil {
+		return nil, err
+	}
+	return e.client, nil
+}
+
+// Hold is Acquire keeping the client open until release is called (once the work with
+// it is done): CloseAll and ReleaseIfAuthChanged drop it from the registry meanwhile and
+// close it on the last release.
+func Hold(ctx context.Context, loader libmangal.ProviderLoader) (_ *libmangal.Client, release func(), _ error) {
+	for {
+		e, err := acquire(ctx, loader)
+		if err != nil {
+			return nil, nil, err
+		}
+		clientsMu.Lock()
+		if e.retired {
+			// closed (or closing) since: take the next one
+			clientsMu.Unlock()
+			continue
+		}
+		e.refs++
+		clientsMu.Unlock()
+		return e.client, sync.OnceFunc(func() { unref(e) }), nil
+	}
+}
+
+func unref(e *entry) {
+	clientsMu.Lock()
+	e.refs--
+	closeNow := e.retired && e.refs == 0 && !e.closed
+	if e.refs == 0 {
+		delete(lingering, e)
+	}
+	if closeNow {
+		e.closed = true
+	}
+	clientsMu.Unlock()
+	if closeNow {
+		if err := e.client.Close(); err != nil {
+			log.Warn("close %s: %s", e.client, err)
+		}
+	}
+}
+
+func acquire(ctx context.Context, loader libmangal.ProviderLoader) (*entry, error) {
 	id := loader.Info().ID
 	for {
 		clientsMu.Lock()
@@ -84,7 +143,10 @@ func Acquire(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal.C
 				clientsMu.Unlock()
 			}
 			close(e.done)
-			return e.client, e.err
+			if e.err != nil {
+				return nil, e.err
+			}
+			return e, nil
 		}
 
 		select {
@@ -93,7 +155,7 @@ func Acquire(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal.C
 			return nil, ctx.Err()
 		}
 		if e.err == nil {
-			return e.client, nil
+			return e, nil
 		}
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -108,6 +170,31 @@ func Acquire(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal.C
 // AcquireByID is Acquire for the provider with the id, which may be an alias (old id) of
 // it. The warnings tell about the alias and data still under old ids.
 func AcquireByID(ctx context.Context, id string) (*libmangal.Client, []string, error) {
+	loader, warnings, err := loaderByID(id)
+	if err != nil {
+		return nil, warnings, err
+	}
+	client, err := Acquire(ctx, loader)
+	if err != nil {
+		return nil, warnings, err
+	}
+	return client, warnings, nil
+}
+
+// HoldByID is Hold for the provider with the id, as AcquireByID.
+func HoldByID(ctx context.Context, id string) (_ *libmangal.Client, warnings []string, release func(), _ error) {
+	loader, warnings, err := loaderByID(id)
+	if err != nil {
+		return nil, warnings, nil, err
+	}
+	client, release, err := Hold(ctx, loader)
+	if err != nil {
+		return nil, warnings, nil, err
+	}
+	return client, warnings, release, nil
+}
+
+func loaderByID(id string) (libmangal.ProviderLoader, []string, error) {
 	loaders, problems, err := manager.Load()
 	if err != nil {
 		return nil, nil, err
@@ -131,37 +218,55 @@ func AcquireByID(ctx context.Context, id string) (*libmangal.Client, []string, e
 	for _, w := range warnings {
 		log.Warn("%s", w)
 	}
-
-	client, err := Acquire(ctx, loader)
-	if err != nil {
-		return nil, warnings, err
-	}
-	return client, warnings, nil
+	return loader, warnings, nil
 }
 
-// Release closes the client and removes it from the registry.
+// retire takes the ready entry out of the registry (clientsMu held): true when it's
+// idle and the caller closes it now, else its last holder does.
+func retire(id string, e *entry) bool {
+	if clients[id] == e {
+		delete(clients, id)
+	}
+	e.retired = true
+	if e.closed {
+		return false
+	}
+	if e.refs > 0 {
+		lingering[e] = struct{}{}
+		return false
+	}
+	e.closed = true
+	return true
+}
+
+// Release removes the client from the registry and closes it, once its holders are done.
 func Release(client *libmangal.Client) error {
 	clientsMu.Lock()
+	closeNow := false
 	for id, e := range clients {
 		select {
 		case <-e.done:
 			if e.client == client {
-				delete(clients, id)
+				closeNow = retire(id, e)
 			}
 		default:
 		}
 	}
 	clientsMu.Unlock()
+	if !closeNow {
+		return nil
+	}
 	if err := client.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", client, err)
 	}
 	return nil
 }
 
-// ReleaseIfAuthChanged closes the provider's client when the logins or secrets changed
+// ReleaseIfAuthChanged drops the provider's client when the logins or secrets changed
 // since it was made (e.g. the MangaPlus secret set from a TUI while `mangal serve` runs),
-// so the next Acquire makes it with the new ones. It's left alone while anything holds the
-// provider's download lock. True when it was released.
+// so the next Acquire makes it with the new ones; it's closed once its holders are done.
+// It's left alone while anything holds the provider's download lock. True when it was
+// dropped.
 func ReleaseIfAuthChanged(provider string) (bool, error) {
 	current, err := authFingerprint()
 	if err != nil {
@@ -184,10 +289,12 @@ func ReleaseIfAuthChanged(provider string) (bool, error) {
 		clientsMu.Unlock()
 		return false, err
 	}
-	delete(clients, provider)
+	closeNow := retire(provider, e)
 	clientsMu.Unlock()
-	if err := e.client.Close(); err != nil {
-		return true, fmt.Errorf("close %s: %w", e.client, err)
+	if closeNow {
+		if err := e.client.Close(); err != nil {
+			return true, fmt.Errorf("close %s: %w", e.client, err)
+		}
 	}
 	return true, nil
 }
@@ -203,23 +310,43 @@ var providerLocked = func(provider string) (bool, error) {
 	return held, err
 }
 
-// CloseAll closes every client, even if some fail. Clients still being created are left
-// to their creators.
+// CloseAll empties the registry, so the next Acquire makes new clients (e.g. after a
+// config change): the idle clients are closed now, the held ones (Hold) when their last
+// holder is done. Clients still being created are left to their creators.
 func CloseAll() error {
+	return closeAll(false)
+}
+
+// Shutdown closes every client, held ones too: for mangal's exit.
+func Shutdown() error {
+	return closeAll(true)
+}
+
+func closeAll(force bool) error {
 	clientsMu.Lock()
-	var ready []*libmangal.Client
+	var toClose []*libmangal.Client
 	for id, e := range clients {
 		select {
 		case <-e.done:
-			ready = append(ready, e.client)
-			delete(clients, id)
+			if retire(id, e) {
+				toClose = append(toClose, e.client)
+			}
 		default:
+		}
+	}
+	if force {
+		for e := range lingering {
+			delete(lingering, e)
+			if !e.closed {
+				e.closed = true
+				toClose = append(toClose, e.client)
+			}
 		}
 	}
 	clientsMu.Unlock()
 
 	var errs []error
-	for _, client := range ready {
+	for _, client := range toClose {
 		if err := client.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("close %s: %w", client, err))
 		}

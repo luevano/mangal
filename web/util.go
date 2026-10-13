@@ -31,10 +31,11 @@ func withClient[T any](ctx context.Context, s *Server, id string, fn func(*libma
 	if err != nil {
 		return zero, err
 	}
-	c, err := client.Acquire(ctx, loader)
+	c, release, err := client.Hold(ctx, loader)
 	if err != nil {
 		return zero, err
 	}
+	defer release()
 	return fn(c)
 }
 

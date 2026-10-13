@@ -35,13 +35,14 @@ func addVarsTable(state *lua.LState, variables Variables) {
 
 // Run runs the script with the provider's client and the mangal library.
 func Run(ctx context.Context, args Args, script io.Reader) error {
-	c, warnings, err := client.AcquireByID(ctx, args.Provider)
+	c, warnings, release, err := client.HoldByID(ctx, args.Provider)
 	for _, w := range warnings {
 		fmt.Fprintln(os.Stderr, "warning: "+w)
 	}
 	if err != nil {
 		return err
 	}
+	defer release()
 	_ = anilist.EnsureLogin(ctx)
 
 	sdkOptions, resources, err := loader.SDKOptions("script")
