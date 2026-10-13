@@ -12,9 +12,6 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 )
 
-// duplicateSources are the metadata sources duplicates are found by, AniList first.
-var duplicateSources = []metadata.IDCode{metadata.IDCodeAnilist, metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList}
-
 var duplicateNames = map[metadata.IDCode]string{
 	metadata.IDCodeAnilist:     "AniList",
 	metadata.IDCodeKitsu:       "Kitsu",
@@ -61,7 +58,7 @@ func Duplicates(mangas []storage.Manga, bindings []storage.Binding, watched func
 	have := map[key][]int{}
 	var keys []key
 	add := func(i int, code metadata.IDCode, raw string) {
-		if !slices.Contains(duplicateSources, code) || raw == "" {
+		if !slices.Contains(LinkSources, code) || raw == "" {
 			return
 		}
 		k := key{code, raw}
@@ -84,7 +81,7 @@ func Duplicates(mangas []storage.Manga, bindings []storage.Binding, watched func
 		}
 	}
 	slices.SortFunc(keys, func(a, b key) int {
-		if c := cmp.Compare(slices.Index(duplicateSources, a.code), slices.Index(duplicateSources, b.code)); c != 0 {
+		if c := cmp.Compare(slices.Index(LinkSources, a.code), slices.Index(LinkSources, b.code)); c != 0 {
 			return c
 		}
 		an, aErr := strconv.Atoi(a.raw)
@@ -185,7 +182,7 @@ func DuplicateIDs(dups []Duplicate) map[int64]int64 {
 // command. Empty when there are none.
 func DuplicateLines(dups []Duplicate, root string) []string {
 	var lines []string
-	for _, code := range duplicateSources {
+	for _, code := range LinkSources {
 		var of []Duplicate
 		for _, d := range dups {
 			if d.ID == code {

@@ -1,6 +1,7 @@
 package library
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -414,19 +415,12 @@ func (l Linker) folderManga(info LinkInfo) (libmangal.ProviderInfo, mangadata.Ma
 		manga = info.Marker.Manga
 	case len(m.Sources) != 0:
 		provider = libmangal.ProviderInfo{ID: m.Sources[0].Provider, Name: m.Sources[0].Provider}
-		manga = mangadata.MangaInfo{ID: m.Sources[0].MangaID, Title: cmpOr(m.Sources[0].Title, m.Title)}
+		manga = mangadata.MangaInfo{ID: m.Sources[0].MangaID, Title: cmp.Or(m.Sources[0].Title, m.Title)}
 	}
 	if loader, _, ok := libmangal.FindLoader(l.Loaders, provider.ID); ok {
 		provider = loader.Info()
 	}
 	return provider, manga
-}
-
-func cmpOr(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 // planWatches lists the manga's watches (not of its sources, those follow) bound to other

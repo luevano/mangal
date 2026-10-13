@@ -311,11 +311,6 @@ func libraryFiles() (library.Files, error) {
 	return client.LibraryFiles()
 }
 
-// libraryOf opens the library of the data database.
-func libraryOf() (storage.Library, error) {
-	return cache.Library()
-}
-
 var libraryLsArgs = struct {
 	Refresh bool
 }{}
@@ -332,7 +327,7 @@ ongoing, hiatus, cancelled, upcoming; from the AniList metadata already cached, 
 asks AniList), folder and sources.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		lib, err := libraryOf()
+		lib, err := cache.Library()
 		if err != nil {
 			return err
 		}
@@ -418,7 +413,7 @@ existing .libmangal.json is never replaced.`,
 		}
 		st := newStatus(cmd)
 		defer st.Done()
-		lib, err := libraryOf()
+		lib, err := cache.Library()
 		if err != nil {
 			return err
 		}
@@ -717,7 +712,7 @@ other's copy goes to the trash, as does what's left of other's folder.
 Only lists what would happen unless --apply is set.`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		lib, err := libraryOf()
+		lib, err := cache.Library()
 		if err != nil {
 			return err
 		}
