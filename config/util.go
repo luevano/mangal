@@ -7,7 +7,6 @@ import (
 	"github.com/adrg/xdg"
 )
 
-// TODO: use this for all paths.
 // expandPath expands the path to include the home directory if the path
 // is prefixed with `~`. If it isn't prefixed with `~`, the path is
 // returned as-is.

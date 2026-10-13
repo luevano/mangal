@@ -53,7 +53,6 @@ var templatesExecCmd = &cobra.Command{
 	Use:   "exec template...",
 	Short: "Execute template",
 	Args:  cobra.MinimumNArgs(1),
-	// TODO: fix issue when using spaces in -v
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var value map[string]any
 		if err := json.Unmarshal([]byte(templatesExecArgs.Value), &value); err != nil {

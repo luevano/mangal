@@ -44,6 +44,29 @@ func stringEntry(key, def, description string) *entry[string, string] {
 	return reg(entry[string, string]{Key: key, Default: def, Description: description})
 }
 
+// formatEntry is a fmt format of one value, checked with sample.
+func formatEntry(key, def, description string, sample any) *entry[string, string] {
+	return reg(entry[string, string]{
+		Key:         key,
+		Default:     def,
+		Description: description,
+		Validate: func(s string) error {
+			if out := fmt.Sprintf(s, sample); strings.Contains(out, "%!") {
+				return fmt.Errorf("%q isn't a format of one value (it gives %q)", s, out)
+			}
+			return nil
+		},
+	})
+}
+
+// sampleVolume is a volume for formatEntry, formatted as its String.
+type sampleVolume struct{}
+
+func (sampleVolume) String() string { return "1" }
+
+// languageCode is a language code as the providers take it: "en", "es-la", "pt-br".
+var languageCode = regexp.MustCompile(`^[a-z]{2,3}(-[a-z]{2,4})?$`)
+
 // pathEntry expands a leading ~ to the home dir.
 func pathEntry(key, def, description string, required bool) *entry[string, string] {
 	return reg(entry[string, string]{
@@ -279,14 +302,12 @@ var TUI = configTUI{
 	ExpandAllVolumes:   boolEntry("tui.expand_all_volumes", false, "Skip selecting volumes. Supersedes `tui.expand_single_volume`."),
 	ExpandSingleVolume: boolEntry("tui.expand_single_volume", true, "Skip selecting volume if there's only one."),
 	Chapter: configTUIChapter{
-		// TODO: add validation to the format
-		VolumeNumberFormat: stringEntry("tui.chapter.volume_number_format", "[V.%s]",
-			"Format that the chapter's volume number (string) should take, for example '[V.%s]'."),
+		VolumeNumberFormat: formatEntry("tui.chapter.volume_number_format", "[V.%s]",
+			"Format that the chapter's volume number (string) should take, for example '[V.%s]'.", sampleVolume{}),
 		ShowVolumeNumber: boolEntry("tui.chapter.show_volume_number", true,
 			"If the chapter's volume number should be shown prepended to the chapter title."),
-		// TODO: add validation to the format
-		NumberFormat: stringEntry("tui.chapter.number_format", "[%06.1f]",
-			"Format that the chapter number (float 32) should take, for example '[%06.1f]'."),
+		NumberFormat: formatEntry("tui.chapter.number_format", "[%06.1f]",
+			"Format that the chapter number (float 32) should take, for example '[%06.1f]'.", float32(1)),
 		ShowNumber: boolEntry("tui.chapter.show_number", true, "If the chapter number should be shown prepended to the chapter title."),
 		ShowDate:   boolEntry("tui.chapter.show_date", true, "If the chapter date should be shown in the description."),
 		ShowGroup:  boolEntry("tui.chapter.show_group", true, "If the chapter scanlation group should be shown in the description."),
@@ -346,8 +367,17 @@ var Providers = configProviders{
 	}),
 	Filter: configProvidersFilter{
 		NSFW: boolEntry("providers.filter.nsfw", true, "If NSFW content should be included, usually used for MangaDex."),
-		// TODO: add validation to language filter
-		Language: stringEntry("providers.filter.language", "en", "The language the manga should be on."),
+		Language: reg(entry[string, string]{
+			Key:         "providers.filter.language",
+			Default:     "en",
+			Description: `The language the manga should be on, a code like "en", "es-la" or "pt-br" (MangaDex's).`,
+			Validate: func(s string) error {
+				if !languageCode.MatchString(s) {
+					return fmt.Errorf("%q isn't a language code like \"en\" or \"pt-br\"", s)
+				}
+				return nil
+			},
+		}),
 		AvoidDuplicateChapters: boolEntry("providers.filter.avoid_duplicate_chapters", true,
 			"Only select one chapter when multiple of the same number are present."),
 		ShowUnavailableChapters: boolEntry("providers.filter.show_unavailable_chapters", false,
@@ -373,7 +403,7 @@ var Providers = configProviders{
 			false),
 		FreeSecret: reg(entry[string, string]{
 			Key:         "providers.mangaplus.free_secret",
-			Description: "Device secret of a free MangaPlus device, saved automatically the first time one is registered so it's reused. Only used when there's no secret_file.",
+			Description: "Device secret of a free MangaPlus device. mangal saves the one it registers with the logins (auth.keyring) and uses that one; this key is only read when none is saved yet (it's then saved there). Only used when there's no secret_file.",
 			Secret:      true,
 		}),
 		SecretFile: pathEntry("providers.mangaplus.secret_file", "",

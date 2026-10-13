@@ -510,3 +510,18 @@ func TestConcurrentGetSet(t *testing.T) {
 	}
 	<-done
 }
+
+func TestFormatAndLanguageValidation(t *testing.T) {
+	reset(t)
+	for key, values := range map[string]map[string]bool{
+		TUI.Chapter.NumberFormat.Key:       {"[%06.1f]": true, "[%07.2f]": true, "%g": true, "[%d]": false, "[%s %s]": false, "[ch]": false},
+		TUI.Chapter.VolumeNumberFormat.Key: {"[V.%s]": true, "%v": true, "[V]": false, "[V.%s %s]": false},
+		Providers.Filter.Language.Key:      {"en": true, "es-la": true, "pt-br": true, "zh-hk": true, "fil": true, "": false, "EN": false, "english": false, "en_US": false},
+	} {
+		for value, ok := range values {
+			if _, err := Parse(key, value); (err == nil) != ok {
+				t.Errorf("%s = %q: %v", key, value, err)
+			}
+		}
+	}
+}
