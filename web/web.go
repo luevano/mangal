@@ -35,16 +35,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		return fmt.Errorf("listen: %w", err)
 	}
 
-	server := &http.Server{
-		Handler:           Guard(listener.Addr(), handler),
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       2 * time.Minute,
-		BaseContext:       func(net.Listener) context.Context { return ctx },
-	}
-
-	errs := make(chan error, 1)
-	go func() { errs <- server.Serve(listener) }()
-
+	server := NewServer(ctx, listener.Addr(), handler)
 	address := "http://" + listener.Addr().String()
 	fmt.Fprintf(out, "Serving on %s\n", address)
 	if args.Open {
@@ -52,21 +43,47 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 			log.Warn("open %s: %s", address, err)
 		}
 	}
+	return Serve(ctx, server, listener, nil)
+}
 
+// NewServer is the server of the handler on addr, guarded (Guard); its requests get ctx.
+func NewServer(ctx context.Context, addr net.Addr, handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           Guard(addr, handler),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		BaseContext:       func(net.Listener) context.Context { return ctx },
+	}
+}
+
+// Serve serves on the listener until ctx is cancelled or the server fails. Then stopping
+// (if not nil) runs, while the server still answers, and the server is shut down, giving
+// the requests in flight a few seconds. The error is the server's, if it failed.
+func Serve(ctx context.Context, server *http.Server, listener net.Listener, stopping func()) error {
+	errs := make(chan error, 1)
+	go func() { errs <- server.Serve(listener) }()
+
+	var serveErr error
 	select {
-	case err := <-errs:
-		return err
+	case serveErr = <-errs:
 	case <-ctx.Done():
+	}
+	if stopping != nil {
+		stopping()
 	}
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := server.Shutdown(shutdown); err != nil {
-		return fmt.Errorf("stop the server: %w", err)
+	shutdownErr := server.Shutdown(shutdown)
+	if serveErr == nil {
+		serveErr = <-errs
 	}
-	if err := <-errs; err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+	if errors.Is(serveErr, http.ErrServerClosed) {
+		serveErr = nil
 	}
-	return nil
+	if serveErr == nil && shutdownErr != nil {
+		return fmt.Errorf("stop the server: %w", shutdownErr)
+	}
+	return serveErr
 }
 
 // Handler is the web UI with its API under /api, as Run serves it (`mangal serve --web`

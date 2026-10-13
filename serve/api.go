@@ -88,10 +88,29 @@ type API struct {
 	// ctx is the server's, the checks asked through the API run until it's cancelled
 	ctx    context.Context
 	checks sync.WaitGroup
+	// stopping refuses new checks once Wait is called
+	mu       sync.Mutex
+	stopping bool
 }
 
-// Wait waits for the checks asked through the API to finish.
-func (a *API) Wait() { a.checks.Wait() }
+// Wait refuses new checks and waits for the ones asked through the API to finish.
+func (a *API) Wait() {
+	a.mu.Lock()
+	a.stopping = true
+	a.mu.Unlock()
+	a.checks.Wait()
+}
+
+// startCheck counts a check in, false once the server is stopping.
+func (a *API) startCheck() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.stopping || a.ctx.Err() != nil {
+		return false
+	}
+	a.checks.Add(1)
+	return true
+}
 
 // Register adds the API's routes (all under /api/) to the mux.
 func (a *API) Register(mux *http.ServeMux) {
@@ -416,7 +435,10 @@ func (a *API) check(w http.ResponseWriter, r *http.Request) error {
 	started := make(chan watch.CheckResponse, 1)
 	failed := make(chan error, 1)
 	ended := make(chan struct{})
-	a.checks.Add(1)
+	if !a.startCheck() {
+		cancel()
+		return &httpError{http.StatusServiceUnavailable, errors.New("the server is stopping")}
+	}
 	go func() {
 		defer a.checks.Done()
 		defer close(ended)

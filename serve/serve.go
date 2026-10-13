@@ -80,6 +80,9 @@ func (l logger) Errorf(format string, a ...any) {
 // (the chapter being downloaded finished or dropped) and recorded, then the server stops.
 // It logs to out and the log file.
 func Run(ctx context.Context, args Args, out io.Writer) error {
+	// stopped by the caller, a lost lock or a failed server
+	ctx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
 	lg := newLogger(out)
 	svc, err := watch.New(notify.Watches())
 	if err != nil {
@@ -101,10 +104,10 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 			lg.Warnf("%s", err)
 		}
 	}()
-	stopBeat := heartbeat(lock, lg)
+	stopBeat := heartbeat(lock, lg, func(err error) { stop(err) })
 	defer stopBeat()
 
-	listener, err := net.Listen("tcp", net.JoinHostPort(args.Host, fmt.Sprint(args.Port)))
+	listener, err := listen("tcp", net.JoinHostPort(args.Host, fmt.Sprint(args.Port)))
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -150,14 +153,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 			writeJSON(w, http.StatusNotFound, watch.ErrorResponse{Error: "not found (the web UI is off, see serve.web)", Code: watch.CodeNotFound})
 		})
 	}
-	server := &http.Server{
-		Handler:           web.Guard(listener.Addr(), mux),
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       2 * time.Minute,
-		BaseContext:       func(net.Listener) context.Context { return ctx },
-	}
-	errs := make(chan error, 1)
-	go func() { errs <- server.Serve(listener) }()
+	server := web.NewServer(ctx, listener.Addr(), mux)
 
 	dataDB := watch.DataDB()
 	discovery := watch.DiscoveryPath(dataDB)
@@ -185,43 +181,54 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		sched.Run(ctx)
 	}()
 
-	var serveErr error
-	select {
-	case serveErr = <-errs:
-	case <-ctx.Done():
-		lg.Infof("stopping")
+	err = web.Serve(ctx, server, listener, func() {
+		if context.Cause(ctx) == context.Canceled {
+			lg.Infof("stopping")
+		}
+		// a failed server stops the scheduler too: systemd restarts the whole thing
+		stop(nil)
+		<-schedDone
+		api.Wait()
+	})
+	if cause := context.Cause(ctx); err == nil && cause != context.Canceled {
+		err = cause
 	}
-	<-schedDone
-	api.Wait()
-	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := server.Shutdown(shutdown); err != nil {
-		lg.Warnf("stop the server: %s", err)
-	}
-	if serveErr == nil {
-		serveErr = <-errs
-	}
-	if errors.Is(serveErr, http.ErrServerClosed) {
-		serveErr = nil
+	if err != nil {
+		lg.Errorf("%s", err)
 	}
 	lg.Infof("stopped")
-	return serveErr
+	return err
 }
 
-// heartbeat keeps the lock alive until stopped.
-func heartbeat(lock *storage.Lock, lg logger) (stop func()) {
+// listen is net.Listen, swapped in tests.
+var listen = net.Listen
+
+// heartbeatEvery is how often the lock's heartbeat is written.
+var heartbeatEvery = lockStale / 4
+
+// heartbeat keeps the lock alive until stopped. A lost lock (another server took it
+// over) calls lost: two servers can't share a data db.
+func heartbeat(lock *storage.Lock, lg logger, lost func(error)) (stop func()) {
 	done := make(chan struct{})
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
-		ticker := time.NewTicker(lockStale / 4)
+		ticker := time.NewTicker(heartbeatEvery)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-done:
 				return
 			case <-ticker.C:
-				if err := lock.Heartbeat(); err != nil {
+				err := lock.Heartbeat()
+				switch {
+				case err == nil:
+				// TODO: match a storage.ErrLockLost once there's one; the db errors are
+				// wrapped, the lost lock isn't
+				case errors.Unwrap(err) == nil:
+					lost(fmt.Errorf("%w: another mangal serve took over %s", err, watch.DataDB()))
+					return
+				default:
 					lg.Warnf("%s", err)
 				}
 			}

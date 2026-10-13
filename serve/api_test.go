@@ -408,6 +408,15 @@ func TestAuthWeb(t *testing.T) {
 	}
 }
 
+// TestCheckWhileStopping: a check asked once the server waits for the checks is refused.
+func TestCheckWhileStopping(t *testing.T) {
+	s := newTestServer(t, "")
+	s.api.Wait()
+	if code := s.call(t, "POST", "/api/check", `{}`, nil); code != http.StatusServiceUnavailable {
+		t.Errorf("check while stopping: %d", code)
+	}
+}
+
 func TestHostCheck(t *testing.T) {
 	s := newTestServer(t, "")
 	mux := http.NewServeMux()
