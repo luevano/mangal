@@ -279,7 +279,7 @@ func TestRun(t *testing.T) {
 		{"A1", Info, "account", 0, "mangal kitsu", "expired"},
 		{"L1", Warning, "manga", 4, "mangal library scan", "mango-old/Vagabond"},
 		{"L2", Warning, "library", 0, "mangal library scan --mark", "5 folders without a .libmangal.json"},
-		{"L4", Warning, "provider directory", 0, "mangal library rename", "MangaSee is Weeb Central's old directory name"},
+		{"L4", Warning, "directory", 0, "mangal library rename", "MangaSee is Weeb Central's old directory name"},
 		{"L5", Warning, "library", 0, "mangal library rename", "Berserk (1989) [alid-30002] -> Berserk"},
 		{"L6", Info, "library", 0, "mangal library trash empty", "1 file (5 B) in the trash"},
 		{"L8", Info, "manga", 9, "mangal library scan", "no chapters recorded"},

@@ -58,7 +58,8 @@ var Categories = []Category{Watches, Gaps, Metadata, Library, Global}
 
 // Subject is what a finding is about.
 type Subject struct {
-	// Kind is watch, manga (a library manga), provider, account or library (all of it).
+	// Kind is watch, manga (a library manga), provider, account, library (all of it),
+	// folder (a manga folder not in the library) or directory (a provider directory).
 	Kind string `json:"kind"`
 	// ID is the watch's or library manga's id, 0 for the others.
 	ID   int64  `json:"id,omitempty"`

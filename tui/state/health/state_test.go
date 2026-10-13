@@ -42,7 +42,7 @@ func TestHints(t *testing.T) {
 		{health.Finding{Check: "L2", Subject: health.Subject{Kind: "library", Name: "library"}, Items: make([]health.Finding, 2),
 			Fix: health.Fix{Action: &health.Action{Kind: health.ActionMark, Mangas: []int64{1, 2}}}},
 			"enter list them (2) · x mark 2 folders"},
-		{health.Finding{Check: "L4", Subject: health.Subject{Kind: "provider directory", Name: "mango-mangasee"},
+		{health.Finding{Check: "L4", Subject: health.Subject{Kind: "directory", Name: "mango-mangasee"},
 			Fix: health.Fix{Action: &health.Action{Kind: health.ActionRename, Paths: []string{"/dl/mango-mangasee"}}}},
 			"x rename"},
 	} {

@@ -271,7 +271,7 @@ func checkProviderDirs(s *snapshot) []Finding {
 	for _, dir := range dirs {
 		renames := byDir[dir]
 		name := filepath.Base(dir)
-		f := Finding{Severity: Warning, Subject: Subject{Kind: "provider directory", Name: name},
+		f := Finding{Severity: Warning, Subject: Subject{Kind: "directory", Name: name},
 			Fix: Fix{
 				Commands: []string{"mangal library rename"},
 				Note:     "lists every rename, --apply renames (undo: mangal library undo)",
