@@ -91,6 +91,8 @@ func jumpLabel(f health.Finding) string {
 		return "links"
 	case f.Check == "L3" || f.Check == "W8":
 		return "migrate"
+	case f.Check == "L6":
+		return "trash"
 	case f.Check == "A1" && f.Subject.Name != "Lua providers" && f.Subject.Name != "storage":
 		return "accounts"
 	case f.Subject.Kind == "watch":
@@ -122,6 +124,22 @@ func applyLabel(f health.Finding) string {
 		return "pick " + strings.Join(a.IDs, " or ")
 	case health.ActionMerge:
 		return "merge"
+	case health.ActionMark:
+		if len(a.Mangas) > 1 {
+			return fmt.Sprintf("mark %d folders", len(a.Mangas))
+		}
+		return "mark"
+	case health.ActionForget:
+		return "scan or forget"
+	case health.ActionScan:
+		return "scan"
+	case health.ActionRename:
+		if len(a.Paths) > 1 {
+			return fmt.Sprintf("rename %d", len(a.Paths))
+		}
+		return "rename"
+	case health.ActionEmptyTrash:
+		return "empty"
 	}
 	return ""
 }
@@ -146,7 +164,9 @@ type state struct {
 	summary  *health.Finding
 	// applied are the library mangas whose watch was added here
 	applied map[int64]bool
-	keys    keyMap
+	// fixing is the finding whose library fix was asked last
+	fixing *health.Finding
+	keys   keyMap
 }
 
 type keyMap struct {
@@ -164,6 +184,8 @@ type loadedMsg struct {
 type changedMsg struct {
 	notify  string
 	applied int64
+	// lib is a library fix: a summary drops the finding it was applied to
+	lib bool
 }
 
 // runMsg is a confirmed change to the watches, run with Load by the State (a msg and not
@@ -321,6 +343,10 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return s.load(ctx, false)
 	case runMsg:
 		return s.run(ctx, msg)
+	case libMsg:
+		return s.runLib(ctx, msg)
+	case renamePlannedMsg:
+		return s.askRename(msg)
 	case linkMsg:
 		return loadManga(ctx, msg.manga, func(m storage.Manga) (tea.Msg, error) {
 			return pushMsg{state: tuilibrary.NewLinks(m, library.Links{msg.code: msg.id})}, nil
@@ -331,6 +357,12 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		if s.summary != nil {
 			s.dropApplied()
+			if msg.lib && s.fixing != nil {
+				fixed := *s.fixing
+				s.report.Findings = slices.DeleteFunc(s.report.Findings, func(f health.Finding) bool {
+					return f.Check == fixed.Check && f.Subject == fixed.Subject && f.Message == fixed.Message
+				})
+			}
 			return tea.Batch(s.setItems(), base.Notify(msg.notify))
 		}
 		return tea.Batch(s.load(ctx, false), base.Notify(msg.notify))
@@ -504,6 +536,14 @@ func (s *state) jump(ctx context.Context, f health.Finding) tea.Cmd {
 		return func() tea.Msg { return migrate.New() }
 	case what == "accounts":
 		return func() tea.Msg { return accounts.New(false) }
+	case what == "trash":
+		return func() tea.Msg {
+			state, err := tuilibrary.NewTrash()
+			if err != nil {
+				return err
+			}
+			return state
+		}
 	case what == "links":
 		return loadManga(ctx, f.Subject.ID, func(m storage.Manga) (tea.Msg, error) {
 			return pushMsg{state: tuilibrary.NewLinks(m, nil)}, nil
@@ -593,6 +633,10 @@ func (s *state) apply(ctx context.Context, f health.Finding) tea.Cmd {
 		})
 	case health.ActionMerge:
 		return s.merge(ctx, a)
+	default:
+		s.fixing = &f
+		cmd, _ := s.applyLibrary(ctx, f)
+		return cmd
 	}
 	return nil
 }

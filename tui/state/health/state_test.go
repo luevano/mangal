@@ -35,6 +35,16 @@ func TestHints(t *testing.T) {
 		{health.Finding{Check: "L3", Subject: health.Subject{Kind: "provider", Name: "mango-mangasee"}, Fix: health.Fix{Commands: []string{"mangal migrate"}}},
 			"enter migrate"},
 		{health.Finding{Check: "A1", Subject: health.Subject{Kind: "account", Name: "storage"}, Fix: health.Fix{}}, ""},
+		{health.Finding{Check: "L6", Subject: health.Subject{Kind: "library", Name: "trash"}, Fix: health.Fix{Action: &health.Action{Kind: health.ActionEmptyTrash}}},
+			"enter trash · x empty"},
+		{health.Finding{Check: "L1", Subject: health.Subject{Kind: "manga", ID: 3}, Fix: health.Fix{Action: &health.Action{Kind: health.ActionForget, Manga: 3}}},
+			"enter library manga · x scan or forget"},
+		{health.Finding{Check: "L2", Subject: health.Subject{Kind: "library", Name: "library"}, Items: make([]health.Finding, 2),
+			Fix: health.Fix{Action: &health.Action{Kind: health.ActionMark, Mangas: []int64{1, 2}}}},
+			"enter list them (2) · x mark 2 folders"},
+		{health.Finding{Check: "L4", Subject: health.Subject{Kind: "provider directory", Name: "mango-mangasee"},
+			Fix: health.Fix{Action: &health.Action{Kind: health.ActionRename, Paths: []string{"/dl/mango-mangasee"}}}},
+			"x rename"},
 	} {
 		if got := s.hint(c.f); got != c.want {
 			t.Errorf("%s: %q, want %q", c.f.Check, got, c.want)

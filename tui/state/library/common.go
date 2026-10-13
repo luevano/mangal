@@ -95,3 +95,12 @@ func NewMerge(keep, other int64) base.State {
 	s.keep, s.duplicates, s.pendingMerge = keep, true, other
 	return s
 }
+
+// NewTrash is the trash screen.
+func NewTrash() (base.State, error) {
+	files, err := client.LibraryFiles()
+	if err != nil {
+		return nil, err
+	}
+	return newTrashState(files), nil
+}
