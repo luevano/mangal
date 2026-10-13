@@ -253,8 +253,8 @@ func (s *liveState) add(line string) {
 		}
 	}
 	if s.offset > 0 {
-		// keep the lines being read in place
-		s.offset++
+		// keep the lines being read in place, up to the oldest kept
+		s.offset = min(s.offset+1, max(0, len(s.lines)-s.height()))
 	}
 }
 
@@ -272,7 +272,7 @@ func (s *liveState) View() string {
 		}
 		return style.Italic.Secondary.Render(what)
 	}
-	end := len(s.lines) - s.offset
+	end := min(max(0, len(s.lines)-s.offset), len(s.lines))
 	start := max(0, end-s.height())
 	lines := s.lines[start:end]
 	if s.size.Width > 0 {

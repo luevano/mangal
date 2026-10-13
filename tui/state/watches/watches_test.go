@@ -3,6 +3,7 @@ package watches
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"slices"
@@ -947,5 +948,37 @@ func TestHistoryRequest(t *testing.T) {
 	}
 	if h.Key() != newHistoryState(m, "x").Key() {
 		t.Error("histories of two providers are two windows")
+	}
+}
+
+// scrolled up to the oldest line kept while lines keep coming past the cap (MT-A1)
+func TestLiveLogCapScrolled(t *testing.T) {
+	m := testManager()
+	s := newLiveState(m, nil)
+	s.Resize(base.Size{Width: 80, Height: 10})
+	ctx := context.Background()
+	f := &feed{ch: make(chan watch.LiveEvent)}
+	s.Update(ctx, feedMsg{feed: f})
+	event := func(i int) {
+		s.Update(ctx, liveMsg{feed: f, e: watch.LiveEvent{Kind: watch.LiveFound, Watch: 1, Message: fmt.Sprintf("line %d", i), Time: now}})
+	}
+	for i := range maxLiveLines {
+		event(i)
+	}
+	s.Update(ctx, press("g"))
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyPgUp})
+	for range maxLiveLines {
+		s.Update(ctx, tea.KeyMsg{Type: tea.KeyPgUp})
+	}
+	top := s.View()
+	for i := range 50 {
+		event(maxLiveLines + i)
+		_ = s.View()
+	}
+	if s.offset > len(s.lines)-s.height() {
+		t.Errorf("offset %d past the oldest line (%d lines)", s.offset, len(s.lines))
+	}
+	if got := s.View(); got == "" || got == top && !strings.Contains(got, "line 50") {
+		t.Errorf("view at the top:\n%s", got)
 	}
 }
