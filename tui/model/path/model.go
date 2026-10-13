@@ -48,6 +48,7 @@ func New() base.State {
 			Selected: _styles.selected,
 		}),
 	)
+	util.TableKeys(&t.KeyMap)
 	return &state{
 		table: t,
 		copy:  util.Bind("copy", "c", "enter"),

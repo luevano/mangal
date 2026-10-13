@@ -67,6 +67,7 @@ func New(refresh bool) base.State {
 			Selected: style.Normal.Background.Background(color.Accent),
 		}),
 	)
+	util.TableKeys(&t.KeyMap)
 	secret := textinput.New()
 	secret.Prompt = "MangaPlus secret: "
 	secret.EchoMode = textinput.EchoPassword
