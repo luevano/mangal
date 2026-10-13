@@ -1475,11 +1475,20 @@ func TestRemoveRun(t *testing.T) {
 		t.Errorf("runs left %+v", runs)
 	}
 
-	// a check still running
+	// a check still running (it holds a provider lock)
+	lock, err := e.svc.Watches.LockAs(lockName("mango-mangaplus"), client.LockForWatch, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
 	started, _ := e.svc.Watches.StartRun(storage.CheckRun{Kind: KindManual, Started: e.now})
 	r, _ := e.svc.Watches.RecordWatchRun(storage.WatchRun{CheckRun: started.ID, Watch: wa.ID, Provider: "mango-mangaplus", MangaID: "a", Title: "A", Status: storage.StatusNone})
 	if _, err := e.svc.RemoveRun(ctx, r.ID); !errors.Is(err, storage.ErrRunUnfinished) || ErrorCode(err) != CodeBusy {
 		t.Errorf("running: %v", err)
+	}
+	// it crashed: nothing holds a lock, it never finishes
+	_ = lock.Unlock()
+	if removed, err := e.svc.RemoveRun(ctx, r.ID); err != nil || !removed.CheckRunRemoved {
+		t.Errorf("crashed: %+v, %v", removed, err)
 	}
 }
 

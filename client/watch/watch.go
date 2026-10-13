@@ -1084,11 +1084,20 @@ func (s *Service) RemoveRun(ctx context.Context, id int64) (RemovedRun, error) {
 // Snapshot is its snapshot). Nothing is removed when one is unknown or unfinished.
 func (s *Service) RemoveRuns(ctx context.Context, ids []int64) ([]RemovedRun, error) {
 	// no snapshot for nothing
+	crashed := map[int64]bool{}
 	for _, id := range ids {
 		if _, finished, err := s.Watches.WatchRun(id); err != nil {
 			return nil, fmt.Errorf("remove %w", err)
 		} else if !finished {
-			return nil, fmt.Errorf("remove watch run %d: %w", id, storage.ErrRunUnfinished)
+			// a check that crashed never finishes: running, it holds provider locks
+			checking, err := s.checking()
+			if err != nil {
+				return nil, err
+			}
+			if checking {
+				return nil, fmt.Errorf("remove watch run %d: %w", id, storage.ErrRunUnfinished)
+			}
+			crashed[id] = true
 		}
 	}
 	var removed []RemovedRun
@@ -1096,7 +1105,11 @@ func (s *Service) RemoveRuns(ctx context.Context, ids []int64) ([]RemovedRun, er
 		for _, id := range ids {
 			var r RemovedRun
 			var err error
-			if r.Run, r.CheckRunRemoved, err = s.Watches.RemoveWatchRun(id); err != nil {
+			remove := s.Watches.RemoveWatchRun
+			if crashed[id] {
+				remove = s.Watches.RemoveCrashedWatchRun
+			}
+			if r.Run, r.CheckRunRemoved, err = remove(id); err != nil {
 				return err
 			}
 			removed = append(removed, r)
@@ -1119,6 +1132,16 @@ func (s *Service) RemoveRuns(ctx context.Context, ids []int64) ([]RemovedRun, er
 		removed[i].Snapshot = snapshot
 	}
 	return removed, err
+}
+
+// checking is true when a watch check runs, here or in another process (it holds
+// provider locks).
+func (s *Service) checking() (bool, error) {
+	holders, err := s.Watches.Holders(lockPrefix, s.lockStale())
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(holders, func(h storage.LockHolder) bool { return h.Purpose == client.LockForWatch }), nil
 }
 
 // RunDetails is the check run with the id, ErrNotFound if none.

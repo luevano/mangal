@@ -581,13 +581,23 @@ FROM watch_runs w JOIN check_runs c ON c.id = w.check_run WHERE w.id = ?`, id).S
 // removed run (without chapters). Unknown = ErrRunNotFound, a check run that hasn't
 // finished = ErrRunUnfinished.
 func (s Watches) RemoveWatchRun(id int64) (removed WatchRun, checkRunGone bool, err error) {
+	return s.removeWatchRun(id, false)
+}
+
+// RemoveCrashedWatchRun is RemoveWatchRun of a run whose check never finished and never
+// will (it crashed: nothing holds a provider lock for a watch check).
+func (s Watches) RemoveCrashedWatchRun(id int64) (removed WatchRun, checkRunGone bool, err error) {
+	return s.removeWatchRun(id, true)
+}
+
+func (s Watches) removeWatchRun(id int64, crashed bool) (removed WatchRun, checkRunGone bool, err error) {
 	err = s.DB.InTx(func(tx *sql.Tx) error {
 		var finished bool
 		var err error
 		if removed, finished, err = watchRun(tx, id); err != nil {
 			return err
 		}
-		if !finished {
+		if !finished && !crashed {
 			return ErrRunUnfinished
 		}
 		if _, err := tx.Exec(`DELETE FROM watch_runs WHERE id = ?`, id); err != nil {
