@@ -19,14 +19,14 @@ import (
 // made, the dialog's cmd may never run.
 type actionMsg struct {
 	label string
-	// do may tell its status, the label follows it
-	do func(status func(string)) (reloadMsg, error)
+	// do may tell its status, the label follows it; ctx is done when the screen is left
+	do func(ctx context.Context, status func(string)) (reloadMsg, error)
 }
 
 // action is a confirmed change, do returns the notification.
 func action(label string, do func() (string, error)) tea.Cmd {
 	return func() tea.Msg {
-		return actionMsg{label: label, do: func(func(string)) (reloadMsg, error) {
+		return actionMsg{label: label, do: func(context.Context, func(string)) (reloadMsg, error) {
 			notify, err := do()
 			return reloadMsg{notify: notify}, err
 		}}
@@ -48,8 +48,8 @@ func (msg actionMsg) run(ctx context.Context) tea.Cmd {
 	if base.Busy(ctx) {
 		return base.Notify(busyNotice)
 	}
-	return base.LoadWithStatus(ctx, msg.label, func(_ context.Context, status func(string)) (reloadMsg, error) {
-		return msg.do(status)
+	return base.LoadWithStatus(ctx, msg.label, func(ctx context.Context, status func(string)) (reloadMsg, error) {
+		return msg.do(ctx, status)
 	}, func(msg reloadMsg) tea.Msg { return msg })
 }
 

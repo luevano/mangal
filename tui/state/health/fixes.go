@@ -62,8 +62,8 @@ func (s *state) applyLibrary(ctx context.Context, f health.Finding) (tea.Cmd, bo
 		if len(ids) != 1 {
 			message = fmt.Sprintf("Write the .libmangal.json of the %d folders from the library (what \"mangal library scan --mark --apply\" writes)?", len(ids))
 		}
-		s.confirm.Ask("Mark", message, s.View(), libChange("Marking", func(_ context.Context, status func(string)) (string, error) {
-			return markMangas(ids, status)
+		s.confirm.Ask("Mark", message, s.View(), libChange("Marking", func(ctx context.Context, status func(string)) (string, error) {
+			return markMangas(ctx, ids, status)
 		}))
 	case health.ActionForget:
 		id, name := a.Manga, f.Subject.Name
@@ -104,14 +104,14 @@ func (s *state) askRename(msg renamePlannedMsg) tea.Cmd {
 		return base.Notify("Nothing to rename any more")
 	}
 	renames := msg.renames
-	s.confirm.Ask("Rename", strings.Join(append(msg.lines, "", "Rename?"), "\n"), s.View(), libChange("Renaming", func(_ context.Context, status func(string)) (string, error) {
-		return applyRenames(renames, status)
+	s.confirm.Ask("Rename", strings.Join(append(msg.lines, "", "Rename?"), "\n"), s.View(), libChange("Renaming", func(ctx context.Context, status func(string)) (string, error) {
+		return applyRenames(ctx, renames, status)
 	}))
 	return nil
 }
 
 // markMangas writes the .libmangal.json of the library mangas, as one operation.
-func markMangas(ids []int64, status func(string)) (string, error) {
+func markMangas(ctx context.Context, ids []int64, status func(string)) (string, error) {
 	files, err := client.LibraryFiles()
 	if err != nil {
 		return "", err
@@ -143,6 +143,9 @@ func markMangas(ids []int64, status func(string)) (string, error) {
 	_, err = client.Operation("mark", fmt.Sprintf("mark %d folders", len(mangas)), func(j library.Journal) error {
 		files.Journal = j
 		for i, m := range mangas {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			status(fmt.Sprintf("marking: %d/%d (%s)", i+1, len(mangas), m.Title))
 			if _, _, err := files.MarkManga(m, opts); err != nil {
 				return err
@@ -179,18 +182,18 @@ func forget(id int64) (string, error) {
 }
 
 // scanLibrary scans the library, the notification says what it found.
-func scanLibrary(_ context.Context, status func(string)) (string, error) {
+func scanLibrary(ctx context.Context, status func(string)) (string, error) {
 	files, err := client.LibraryFiles()
 	if err != nil {
 		return "", err
 	}
-	root, err := path.Ensure(files.Root)
+	root, err := path.ExistingDownloads()
 	if err != nil {
 		return "", err
 	}
 	providerDirs := config.Download.Provider.CreateDir.Get()
 	scanner := library.Scanner{FS: files.FS, Library: files.Library, OnProgress: func(p library.Progress) { status(p.String()) }}
-	res, err := scanner.Scan(root, providerDirs)
+	res, err := scanner.ScanContext(ctx, root, providerDirs)
 	if err != nil {
 		return "", err
 	}
@@ -249,7 +252,7 @@ func planRenames(ctx context.Context, paths []string) (tea.Msg, error) {
 }
 
 // applyRenames does the renames as one operation.
-func applyRenames(renames []library.Rename, status func(string)) (string, error) {
+func applyRenames(ctx context.Context, renames []library.Rename, status func(string)) (string, error) {
 	lib, err := cache.Library()
 	if err != nil {
 		return "", err
@@ -259,7 +262,7 @@ func applyRenames(renames []library.Rename, status func(string)) (string, error)
 		if op, ok := j.(interface{ SetSummary(string) }); ok {
 			defer func() { op.SetSummary(fmt.Sprintf("rename %d folders", done)) }()
 		}
-		return library.ApplyRenames(afs.Afero, lib, j, renames, func(p library.Progress) { status(p.String()) }, func(i int, err error) {
+		return library.ApplyRenamesContext(ctx, afs.Afero, client.LibraryModes(), lib, j, renames, func(p library.Progress) { status(p.String()) }, func(i int, err error) {
 			switch {
 			case errors.Is(err, library.ErrNotEmpty):
 			case err != nil:

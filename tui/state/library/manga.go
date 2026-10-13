@@ -200,7 +200,7 @@ func (s *mangaState) scanCmd(ctx context.Context) tea.Cmd {
 	files, manga := s.files, s.manga
 	providerDirs := config.Download.Provider.CreateDir.Get()
 	return base.Load(ctx, "", func(context.Context) (mangaScannedMsg, error) {
-		root, err := path.Ensure(files.Root)
+		root, err := path.ExistingDownloads()
 		if err != nil {
 			return mangaScannedMsg{}, err
 		}

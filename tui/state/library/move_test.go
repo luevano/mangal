@@ -111,7 +111,7 @@ func TestMove(t *testing.T) {
 	if !ok {
 		t.Fatal("yes isn't the move")
 	}
-	reload, err := act.do(func(string) {})
+	reload, err := act.do(ctx, func(string) {})
 	if err != nil {
 		t.Fatal(err)
 	}

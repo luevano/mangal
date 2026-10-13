@@ -21,7 +21,12 @@ func journaled(kind, summary, notify string, do func(library.Journal) error) (st
 	if err != nil {
 		return "", err
 	}
-	return notify + " (" + base.KeyUndo.Help().Key + " undoes it)", nil
+	return undoNotice(notify), nil
+}
+
+// undoNotice ends the notification of an undoable change.
+func undoNotice(notify string) string {
+	return notify + " (" + base.KeyUndo.Help().Key + " undoes it)"
 }
 
 type undoPlannedMsg struct {
@@ -63,9 +68,9 @@ func (s *mangasState) askUndo(msg undoPlannedMsg) tea.Cmd {
 	}
 	undoer, plan := msg.undoer, msg.plan
 	s.confirm.Ask("Undo", strings.Join(lines, "\n"), s.View(), func() tea.Msg {
-		return actionMsg{label: "Undoing " + plan.Op.Kind, do: func(status func(string)) (reloadMsg, error) {
+		return actionMsg{label: "Undoing " + plan.Op.Kind, do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
 			undoer.OnProgress = func(p library.Progress) { status(p.String()) }
-			res, _, err := client.Undo(undoer, plan, false)
+			res, _, err := client.UndoContext(ctx, undoer, plan, false)
 			if err != nil {
 				return reloadMsg{}, err
 			}

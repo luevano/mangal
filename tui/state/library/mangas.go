@@ -383,9 +383,10 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 		// its folder is gone: delete forgets it
 		m := item.manga
 		s.confirm.AskDelete("Remove", fmt.Sprintf("Forget %q? Its folder is gone.", m.Title), s.View(), action("Removing "+m.Title, func() (string, error) {
-			return journaled("remove", fmt.Sprintf("remove missing %d %q", m.ID, m.Title), "removed "+m.Title, func(library.Journal) error {
-				return files.Library.RemoveManga(m.ID)
-			})
+			if _, err := client.RemoveMissing(files.Library, []storage.Manga{m}); err != nil {
+				return "", err
+			}
+			return undoNotice("removed " + m.Title), nil
 		}))
 		return nil, true
 	}
@@ -439,29 +440,35 @@ func (s *mangasState) scanCmd(ctx context.Context, check bool) tea.Cmd {
 	files := s.files
 	providerDirs := config.Download.Provider.CreateDir.Get()
 	return base.LoadWithStatus(ctx, "Scanning the library", func(ctx context.Context, status func(string)) (scannedMsg, error) {
-		root, err := path.Ensure(files.Root)
-		if err != nil {
-			return scannedMsg{}, err
-		}
-		onProgress := func(p library.Progress) { status(p.String()) }
-		scanner := library.Scanner{FS: files.FS, Library: files.Library, OnProgress: onProgress}
-		res, err := scanner.Scan(root, providerDirs)
-		if err != nil {
-			return scannedMsg{}, err
-		}
-		msg := scannedMsg{result: res, otherRoot: library.OtherRoot(files.FS, res.Missing, root, providerDirs), checked: check}
-		if mangas, err := files.Library.Mangas(); err == nil {
-			watched, _ := watches.Watched(ctx)
-			msg.dups = duplicates(files.Library, mangas, watched)
-		}
-		if check && msg.otherRoot == "" {
-			msg.checks, msg.checkErr = checkIDs(ctx, files, onProgress)
-			if mangas, err := files.Library.Mangas(); err == nil && msg.checkErr == nil {
-				msg.checkErr = client.UpdateLibraryStatuses(ctx, files.Library, mangas, true, onProgress)
-			}
-		}
-		return msg, nil
+		return scan(ctx, files, providerDirs, check, status)
 	}, func(msg scannedMsg) tea.Msg { return msg })
+}
+
+// scan scans download.path (an error when it doesn't exist, e.g. a drive not mounted)
+// into the library, check checks the ids too.
+func scan(ctx context.Context, files library.Files, providerDirs, check bool, status func(string)) (scannedMsg, error) {
+	root, err := path.ExistingDownloads()
+	if err != nil {
+		return scannedMsg{}, err
+	}
+	onProgress := func(p library.Progress) { status(p.String()) }
+	scanner := library.Scanner{FS: files.FS, Library: files.Library, OnProgress: onProgress}
+	res, err := scanner.ScanContext(ctx, root, providerDirs)
+	if err != nil {
+		return scannedMsg{}, err
+	}
+	msg := scannedMsg{result: res, otherRoot: library.OtherRoot(files.FS, res.Missing, root, providerDirs), checked: check}
+	if mangas, err := files.Library.Mangas(); err == nil {
+		watched, _ := watches.Watched(ctx)
+		msg.dups = duplicates(files.Library, mangas, watched)
+	}
+	if check && msg.otherRoot == "" {
+		msg.checks, msg.checkErr = checkIDs(ctx, files, onProgress)
+		if mangas, err := files.Library.Mangas(); err == nil && msg.checkErr == nil {
+			msg.checkErr = client.UpdateLibraryStatuses(ctx, files.Library, mangas, true, onProgress)
+		}
+	}
+	return msg, nil
 }
 
 // checkIDs checks the ids of the adopted folders on AniList and Kitsu.
@@ -576,12 +583,12 @@ func (s *mangasState) askMerge(msg mergePlannedMsg) {
 		msg.other.Title, msg.keep.Title, len(msg.plan.Moves), len(msg.plan.Trashed))
 	files := s.files
 	s.confirm.Ask("Merge", message, s.View(), func() tea.Msg {
-		return actionMsg{label: "Merging", do: func(status func(string)) (reloadMsg, error) {
+		return actionMsg{label: "Merging", do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
 			files.OnProgress = func(p library.Progress) { status(p.String()) }
 			summary := fmt.Sprintf("merge %d %q into %d %q", msg.other.ID, msg.other.Title, msg.keep.ID, msg.keep.Title)
 			notify, err := journaled("merge", summary, "merged into "+msg.keep.Title, func(j library.Journal) error {
 				files.Journal = j
-				return files.ApplyMerge(msg.plan)
+				return files.ApplyMergeContext(ctx, msg.plan)
 			})
 			return reloadMsg{notify: notify, merged: true}, err
 		}}

@@ -441,7 +441,7 @@ func askBackups(d *confirm.Dialog, behind string, msg backupsFoundMsg) tea.Cmd {
 	run := func(replace bool) tea.Cmd {
 		linker, backups := msg.linker, msg.backups
 		return func() tea.Msg {
-			return actionMsg{label: "Linking", do: func(status func(string)) (reloadMsg, error) {
+			return actionMsg{label: "Linking", do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
 				n := 0
 				notify, err := journaled("link", "backup links", "backup links set", func(j library.Journal) error {
 					linker.Journal = j
@@ -451,7 +451,7 @@ func askBackups(d *confirm.Dialog, behind string, msg backupsFoundMsg) tea.Cmd {
 							continue
 						}
 						status(library.Progress{Phase: "linking", Done: i + 1, Total: len(backups), Item: b.Manga.Title}.String())
-						plan, err := linker.PlanLinks(context.Background(), b.Manga, links, library.PlanOptions{NoImplied: true})
+						plan, err := linker.PlanLinks(ctx, b.Manga, links, library.PlanOptions{NoImplied: true})
 						if err != nil {
 							return err
 						}
