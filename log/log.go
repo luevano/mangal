@@ -3,6 +3,7 @@
 package log
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,6 +40,8 @@ type Options struct {
 	Dir string
 	// Level is the lowest level logged.
 	Level Level
+	// Keep is how many days of files are kept (today's included), 0 for all.
+	Keep int
 }
 
 // maxLines is how many recent lines are kept for Lines.
@@ -48,15 +51,21 @@ var (
 	mu      sync.Mutex
 	options = Options{Level: LevelInfo}
 	file    *os.File
+	// fileDay is the date of file, a line of another day opens that day's
+	fileDay string
 	// fileErr disables the file after it couldn't be opened
 	fileErr error
 	ring    [maxLines]string
 	next    int
 	full    bool
+
+	// now is swapped in tests
+	now = time.Now
 )
 
 // Init sets where and what to log. The file is created on the first line, in Dir
-// (0700) as <date>.log (0600).
+// (0700) as <date>.log (0600); a line of the next day goes to that day's file (a long
+// mangal serve), and the files older than Keep days are deleted then.
 func Init(opts Options) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -87,7 +96,7 @@ func Error(format string, a ...any) { logf(LevelError, format, a...) }
 
 func logf(level Level, format string, a ...any) {
 	msg := strings.TrimRight(fmt.Sprintf(format, a...), "\n")
-	now := time.Now()
+	now := now()
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -110,8 +119,14 @@ func logf(level Level, format string, a ...any) {
 	}
 }
 
-// openFile returns the log file, opening it on the first line. Called with mu held.
+// openFile returns the log file of now's day, opening it on its first line. Called with mu
+// held.
 func openFile(now time.Time) *os.File {
+	day := now.Format(time.DateOnly)
+	if file != nil && day != fileDay {
+		file.Close()
+		file = nil
+	}
 	if file != nil || fileErr != nil || options.Dir == "" {
 		return file
 	}
@@ -119,17 +134,57 @@ func openFile(now time.Time) *os.File {
 		fileErr = err
 		return nil
 	}
-	name := filepath.Join(options.Dir, now.Format(time.DateOnly)+".log")
+	name := filepath.Join(options.Dir, day+".log")
 	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		fileErr = err
-		// once, so it shows in the TUI logs
-		ring[next] = fmt.Sprintf("[%s] ERROR log file: %s", now.Format(time.TimeOnly), err)
-		next = (next + 1) % maxLines
+		ringLine(now, "ERROR log file: "+err.Error())
 		return nil
 	}
-	file = f
+	file, fileDay = f, day
+	if err := prune(options.Dir, now, options.Keep); err != nil {
+		ringLine(now, "ERROR delete old log files: "+err.Error())
+	}
 	return file
+}
+
+// ringLine adds a line about the log itself, so it shows in the TUI logs. Called with mu
+// held.
+func ringLine(now time.Time, line string) {
+	ring[next] = fmt.Sprintf("[%s] %s", now.Format(time.TimeOnly), line)
+	next = (next + 1) % maxLines
+	if next == 0 {
+		full = true
+	}
+}
+
+// prune deletes the <date>.log files of dir older than keep days before now's (0 keeps
+// them all).
+func prune(dir string, now time.Time, keep int) error {
+	if keep <= 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	y, m, d := now.Date()
+	oldest := time.Date(y, m, d-keep+1, 0, 0, 0, 0, time.UTC)
+	var errs []error
+	for _, e := range entries {
+		date, ok := strings.CutSuffix(e.Name(), ".log")
+		if !ok || e.IsDir() {
+			continue
+		}
+		t, err := time.Parse(time.DateOnly, date)
+		if err != nil || !t.Before(oldest) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Lines are the recent lines, oldest first.

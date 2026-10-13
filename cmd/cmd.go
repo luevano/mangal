@@ -180,7 +180,7 @@ func setup(cmd *cobra.Command, _ []string) error {
 	if rootArgs.Debug {
 		logLevel = log.LevelDebug
 	}
-	log.Init(log.Options{Dir: path.Logs(), Level: logLevel})
+	log.Init(log.Options{Dir: path.Logs(), Level: logLevel, Keep: config.Log.KeepDays.Get()})
 	icon.SetType(config.Icons.Get())
 
 	if level == startupConfig || level == startupNoStorage {

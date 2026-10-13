@@ -173,6 +173,10 @@ type configWatch struct {
 	Notify            *entry[string, string]
 }
 
+type configLog struct {
+	KeepDays *entry[int64, int]
+}
+
 type configWeb struct {
 	Host *entry[string, string]
 	Port *entry[int64, int]

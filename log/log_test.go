@@ -102,3 +102,42 @@ func TestProviderHook(t *testing.T) {
 		t.Errorf("lines:\n%s", lines)
 	}
 }
+
+// TestFilePerDay: a long-running process (mangal serve) logs each day to that day's file,
+// the files older than Keep days go.
+func TestFilePerDay(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "logs")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"2026-01-01.log", "2026-01-08.log", "notes.txt", "2026-01-02-x.log"} {
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	day := time.Date(2026, 1, 10, 23, 59, 0, 0, time.Local)
+	saved := now
+	now = func() time.Time { return day }
+	t.Cleanup(func() { now = saved })
+	reset(t, Options{Dir: dir, Level: LevelInfo, Keep: 3})
+
+	Info("late")
+	day = day.Add(2 * time.Minute)
+	Info("early")
+	Close()
+
+	for name, want := range map[string]string{"2026-01-10.log": "late", "2026-01-11.log": "early"} {
+		if data, err := os.ReadFile(filepath.Join(dir, name)); err != nil || !strings.Contains(string(data), want) || strings.Count(string(data), "\n") != 1 {
+			t.Errorf("%s: %q, %v", name, data, err)
+		}
+	}
+	entries, _ := os.ReadDir(dir)
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	// kept: the last 3 days of the 11th, and what isn't a dated log
+	if want := []string{"2026-01-02-x.log", "2026-01-10.log", "2026-01-11.log", "notes.txt"}; strings.Join(names, " ") != strings.Join(want, " ") {
+		t.Errorf("files %v, want %v", names, want)
+	}
+}

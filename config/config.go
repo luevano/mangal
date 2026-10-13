@@ -474,6 +474,11 @@ var Serve = configServe{
 	Web:             boolEntry("serve.web", false, "Also serve the web UI (as `mangal web`) on the `mangal serve` port (`mangal serve --web`), behind the token when one is required (the browser asks for it: any user name, the token as the password)."),
 }
 
+var Log = configLog{
+	KeepDays: intEntry("log.keep_days", 14, 0, 100000,
+		"How many days of log files are kept (a file per day in $XDG_STATE_HOME/mangal/logs, today's included; a long `mangal serve` starts a new one each day). Older ones are deleted when a file is opened. 0 keeps them all."),
+}
+
 var Web = configWeb{
 	Host: stringEntry("web.host", "127.0.0.1", "Address `mangal web` listens on, 127.0.0.1 only accepts local connections (`mangal web` has no authentication)."),
 	Port: intEntry("web.port", 6970, 1, 65535, "Port `mangal web` listens on (not 6969, the logins' callback port)."),
