@@ -176,3 +176,34 @@ func TestShortTokenWarns(t *testing.T) {
 		}
 	}
 }
+
+// TestLifecycle: a server writes its discovery file and holds the lock while it runs; once
+// stopped both are gone and another one starts.
+func TestLifecycle(t *testing.T) {
+	file := watch.DiscoveryPath(watch.DataDB())
+	for range 2 {
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- Run(ctx, Args{Host: "127.0.0.1"}, io.Discard) }()
+		address := runServerAddress(t)
+		status, err := watch.NewRemote(address, "").Status(context.Background())
+		if err != nil || !status.Server {
+			t.Fatalf("status %+v, %v", status, err)
+		}
+		if err := Run(context.Background(), Args{Host: "127.0.0.1"}, io.Discard); err == nil || !strings.Contains(err.Error(), "another mangal serve") {
+			t.Errorf("second server: %v", err)
+		}
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("didn't stop")
+		}
+		if _, found, err := watch.ReadDiscovery(file); err != nil || found {
+			t.Errorf("discovery file left: %v, %v", found, err)
+		}
+	}
+}
