@@ -27,6 +27,8 @@ type Dialog struct {
 	behind  string
 	size    base.Size
 	box     lipgloss.Style
+	// pending are the questions asked while one was shown, asked after it in order
+	pending []func()
 }
 
 // NewDialog makes a dialog with a message width wide, in color.
@@ -47,8 +49,13 @@ func (d *Dialog) AskDelete(title, message, behind string, onYes tea.Cmd) {
 	d.AskWith(append(base.KeyDelete.Keys(), "y"), title, message, behind, onYes)
 }
 
-// AskWith confirms with the yes keys.
+// AskWith confirms with the yes keys. Asked while another question is shown (e.g. a late
+// result), it's asked once that one is answered.
 func (d *Dialog) AskWith(yes []string, title, message, behind string, onYes tea.Cmd) {
+	if d.active {
+		d.pending = append(d.pending, func() { d.AskWith(yes, title, message, behind, onYes) })
+		return
+	}
 	d.model.setChoices(nil)
 	d.model.SetYesKeys(yes...)
 	d.model.keyMap.scroll, _, _, _ = scrollKeys(d.answers())
@@ -63,8 +70,13 @@ type Choice struct {
 	Cmd   tea.Cmd
 }
 
-// Choose asks to pick one of the choices, esc cancels.
+// Choose asks to pick one of the choices, esc cancels. Like AskWith, it waits for the
+// question shown.
 func (d *Dialog) Choose(title, message, behind string, choices ...Choice) {
+	if d.active {
+		d.pending = append(d.pending, func() { d.Choose(title, message, behind, choices...) })
+		return
+	}
 	bindings := make([]key.Binding, len(choices))
 	for i, c := range choices {
 		bindings[i] = util.Bind(c.Label, c.Key)
@@ -130,23 +142,35 @@ func (d *Dialog) Update(msg tea.Msg) tea.Cmd {
 		}
 		for i, b := range d.model.keyMap.choices {
 			if key.Matches(msg, b) {
-				d.active = false
-				return d.choices[i].Cmd
+				cmd := d.choices[i].Cmd
+				d.close()
+				return cmd
 			}
 		}
 		if key.Matches(msg, d.model.keyMap.no) {
-			d.active = false
+			d.close()
 		}
 		return nil
 	}
 	switch d.model.answer(msg) {
 	case answerYes:
-		d.active = false
-		return d.onYes
+		cmd := d.onYes
+		d.close()
+		return cmd
 	case answerNo:
-		d.active = false
+		d.close()
 	}
 	return nil
+}
+
+// close hides the dialog, the next pending question shows.
+func (d *Dialog) close() {
+	d.active = false
+	if len(d.pending) != 0 {
+		next := d.pending[0]
+		d.pending = d.pending[1:]
+		next()
+	}
 }
 
 // KeyMap is the dialog's keys.

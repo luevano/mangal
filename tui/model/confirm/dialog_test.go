@@ -103,6 +103,7 @@ func TestScroll(t *testing.T) {
 		t.Errorf("scrolled:\n%s", v)
 	}
 	// k is an answer here: it chooses, down scrolls
+	d.Update(keyPress("n"))
 	d.Choose("Long", strings.Join(lines, "\n"), "", Choice{Key: "k", Label: "keep", Cmd: func() tea.Msg { return keepMsg{} }})
 	if cmd := d.Update(tea.KeyMsg{Type: tea.KeyDown}); cmd != nil || !d.Active() || !strings.Contains(d.View(), "line 4") {
 		t.Errorf("down didn't scroll:\n%s", d.View())
@@ -125,5 +126,35 @@ func TestWrap(t *testing.T) {
 	}
 	if got := wrap("  to   mango-mangasee/AutoHuntingWithMyClonesTheLongName", 30); got[0] != "  to   mango-mangasee/" {
 		t.Errorf("separator: %q", got)
+	}
+}
+
+type secondMsg struct{}
+
+// a question asked while one is shown (a late result) waits for it (MT-A11)
+func TestLateQuestionWaits(t *testing.T) {
+	d := NewDialog(30, lipgloss.Color("1"))
+	d.Resize(base.Size{Width: 40, Height: 10})
+	d.AskDelete("Delete", "first?", "", func() tea.Msg { return yesMsg{} })
+	d.Ask("Download path", "second?", "", func() tea.Msg { return secondMsg{} })
+	if v := d.View(); !strings.Contains(v, "first?") {
+		t.Fatalf("the late question replaced the shown one:\n%s", v)
+	}
+	cmd := d.Update(keyPress("d"))
+	if cmd == nil {
+		t.Fatal("the first wasn't answered")
+	} else if _, ok := cmd().(yesMsg); !ok {
+		t.Error("the first's answer is the second's")
+	}
+	if !d.Active() || !strings.Contains(d.View(), "second?") {
+		t.Fatal("the second isn't asked next")
+	}
+	if cmd := d.Update(keyPress("y")); cmd == nil {
+		t.Error("the second wasn't answered")
+	} else if _, ok := cmd().(secondMsg); !ok {
+		t.Error("wrong answer")
+	}
+	if d.Active() {
+		t.Error("still active")
 	}
 }
