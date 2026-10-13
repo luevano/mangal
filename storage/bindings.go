@@ -169,13 +169,16 @@ func (s Bindings) Set(b Binding) error {
 	if b.Updated.IsZero() {
 		b.Updated = time.Now()
 	}
-	_, err := s.DB.Exec(`INSERT INTO metadata_bindings (provider, manga_id, source, metadata_id, updated) VALUES (?, ?, ?, ?, ?)
+	err := s.DB.InTx(func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO metadata_bindings (provider, manga_id, source, metadata_id, updated) VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (provider, manga_id, source) DO UPDATE SET metadata_id = excluded.metadata_id, updated = excluded.updated`,
-		b.Provider, b.MangaID, b.Source, b.ID, unix(b.Updated))
+			b.Provider, b.MangaID, b.Source, b.ID, unix(b.Updated))
+		if err != nil {
+			return err
+		}
+		return clearSourcePicks(tx, b.Provider, b.MangaID, b.Source)
+	})
 	if err != nil {
-		return fmt.Errorf("bind %s %q to %s %s: %w", b.Provider, b.MangaID, b.Source, b.ID, err)
-	}
-	if err := clearSourcePicks(s.DB, b.Provider, b.MangaID, b.Source); err != nil {
 		return fmt.Errorf("bind %s %q to %s %s: %w", b.Provider, b.MangaID, b.Source, b.ID, err)
 	}
 	return nil

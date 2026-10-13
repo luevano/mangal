@@ -93,21 +93,15 @@ ON CONFLICT (manga, source) DO UPDATE SET anilist = excluded.anilist, candidates
 // LinkPick is the library manga's pick of the source, false if it has none (a dismissed
 // one is returned too).
 func (l Library) LinkPick(manga int64, source metadata.IDCode) (LinkPick, bool, error) {
-	var p LinkPick
-	var found bool
-	err := l.DB.InTx(func(tx *sql.Tx) error {
-		var err error
-		p, found, err = linkPick(tx, manga, source)
-		return err
-	})
+	p, found, err := linkPick(l.DB, manga, source)
 	if err != nil {
 		return LinkPick{}, false, fmt.Errorf("the %s pick of library manga %d: %w", source, manga, err)
 	}
 	return p, found, nil
 }
 
-func linkPick(tx *sql.Tx, manga int64, source metadata.IDCode) (LinkPick, bool, error) {
-	picks, err := queryAll(tx, scanLinkPick, `SELECT `+linkPickColumns+` FROM link_picks WHERE manga = ? AND source = ?`, manga, source)
+func linkPick(q querier, manga int64, source metadata.IDCode) (LinkPick, bool, error) {
+	picks, err := queryAll(q, scanLinkPick, `SELECT `+linkPickColumns+` FROM link_picks WHERE manga = ? AND source = ?`, manga, source)
 	if err != nil || len(picks) == 0 {
 		return LinkPick{}, false, err
 	}
@@ -175,7 +169,7 @@ func clearPicks(tx *sql.Tx, manga int64, links map[metadata.IDCode]string) error
 
 // clearSourcePicks forgets the picks of the source of the library mangas the provider's
 // manga is a source of: bound on its own (mangal bind), it's linked.
-func clearSourcePicks(db *DB, provider, mangaID string, source metadata.IDCode) error {
-	_, err := db.Exec(`DELETE FROM link_picks WHERE source = ? AND manga IN (SELECT manga FROM library_sources WHERE provider = ? AND manga_id = ?)`, source, provider, mangaID)
+func clearSourcePicks(tx *sql.Tx, provider, mangaID string, source metadata.IDCode) error {
+	_, err := tx.Exec(`DELETE FROM link_picks WHERE source = ? AND manga IN (SELECT manga FROM library_sources WHERE provider = ? AND manga_id = ?)`, source, provider, mangaID)
 	return err
 }
