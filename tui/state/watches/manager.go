@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/luevano/mangal/v5/client/watch"
@@ -19,6 +20,10 @@ import (
 // connector gets the Manager, swapped in tests.
 type connector func(ctx context.Context) (watch.Manager, error)
 
+// hub is the live events of the checks this process runs, shared by its local services:
+// a check started from one screen shows on the others (the watches opened again too).
+var hub = sync.OnceValue(watch.NewHub)
+
 // connect is the running `mangal serve` of this config, else the local service.
 func connect(ctx context.Context) (watch.Manager, error) {
 	m, err := watch.Connect(ctx, notify.Watches())
@@ -27,6 +32,7 @@ func connect(ctx context.Context) (watch.Manager, error) {
 	}
 	if svc, ok := m.(*watch.Service); ok {
 		svc.OnError = func(err error) { log.Warn("watch: %s", err) }
+		svc.Events = hub()
 	}
 	return m, nil
 }
