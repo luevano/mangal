@@ -51,6 +51,9 @@ const (
 	// EventBusy is the provider locked by someone else (a watch check, another download):
 	// the download waits for it. Busy is set.
 	EventBusy
+	// EventProgress is where the chapter's download is (stage, pages done), Progress is set.
+	// Events never overlap, but this one may come from another goroutine.
+	EventProgress
 )
 
 // Event is the progress of Download.
@@ -63,6 +66,26 @@ type Event struct {
 	Attempt int
 	Wait    time.Duration
 	Busy    *ProviderBusy
+	// Progress is set for EventProgress.
+	Progress *libmangal.DownloadProgress
+}
+
+// String is the progress as a short line, e.g. "23/57 pages".
+func (e Event) String() string {
+	if e.Progress == nil {
+		return ""
+	}
+	switch p := e.Progress; p.Stage {
+	case libmangal.DownloadStageMetadata:
+		return "searching metadata"
+	case libmangal.DownloadStagePages:
+		return "getting the pages"
+	case libmangal.DownloadStageImages:
+		return fmt.Sprintf("%d/%d pages", p.Done, p.Total)
+	case libmangal.DownloadStageSaving:
+		return fmt.Sprintf("saving %d pages", p.Total)
+	}
+	return string(e.Progress.Stage)
 }
 
 // Download downloads the chapters one by one (see DownloadChapter), skipping the
@@ -72,7 +95,21 @@ type Event struct {
 // The provider's lock (ProviderLockName) is held for the whole download, waiting
 // (EventBusy) while a watch check or another download has it.
 func Download(ctx context.Context, client *libmangal.Client, chapters []mangadata.Chapter, options libmangal.DownloadOptions, onEvent func(Event)) Results {
-	return download(ctx, client.Info().ID, chapters, onEvent, lockStored, func(ctx context.Context, ch mangadata.Chapter) (*metadata.DownloadedChapter, error) {
+	if onEvent == nil {
+		onEvent = func(Event) {}
+	}
+	// the chapters go one at a time: the progress is the started one's
+	var started Event
+	track := func(e Event) {
+		if e.Kind == EventStart {
+			started = e
+		}
+		onEvent(e)
+	}
+	options.OnProgress = func(p libmangal.DownloadProgress) {
+		onEvent(Event{Kind: EventProgress, Index: started.Index, Result: started.Result, Progress: &p})
+	}
+	return download(ctx, client.Info().ID, chapters, track, lockStored, func(ctx context.Context, ch mangadata.Chapter) (*metadata.DownloadedChapter, error) {
 		return downloadChapter(ctx, client, ch, options)
 	})
 }
@@ -152,6 +189,9 @@ func DownloadChapter(ctx context.Context, client *libmangal.Client, chapter mang
 		return nil, fmt.Errorf("lock provider: %w", err)
 	}
 	defer unlock()
+	options.OnProgress = func(p libmangal.DownloadProgress) {
+		onEvent(Event{Kind: EventProgress, Result: r, Progress: &p})
+	}
 	return retry(ctx, chapter, func(ctx context.Context, ch mangadata.Chapter) (*metadata.DownloadedChapter, error) {
 		return downloadChapter(ctx, client, ch, options)
 	}, func(attempt int, wait time.Duration) {
