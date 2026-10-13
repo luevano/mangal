@@ -339,3 +339,18 @@ func TestKeys(t *testing.T) {
 		t.Errorf("entries editor: %v", keys)
 	}
 }
+
+// a secret saved to a config file others can read warns, as config set does
+func TestSecretReadableWarns(t *testing.T) {
+	s, _, _ := newTest(t, "notification.discord.webhook_url")
+	press(s, "enter")
+	s.input.SetValue("https://discord.com/api/webhooks/1/tok")
+	cmd := s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("not saved")
+	}
+	msg, ok := cmd().(base.NotificationWithDurationMsg)
+	if !ok || !strings.Contains(msg.Message, "chmod 600") {
+		t.Errorf("no warning: %#v", cmd())
+	}
+}

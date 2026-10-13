@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -366,16 +367,22 @@ func (s *state) set(key string, value any) (cmd tea.Cmd, ok bool) {
 		return nil, false
 	}
 	s.err = ""
-	notice := key + " saved"
+	notice, warn := key+" saved", false
 	if err := s.write(key, raw); err != nil {
 		s.err = "set for this run but not saved: " + err.Error()
 		notice = key + " set"
+	} else if mode, readable := mconfig.ReadableByOthers(); readable && mconfig.IsSecret(key) {
+		notice = fmt.Sprintf("%s saved, but others can read the config file (mode %o): chmod 600 it", key, mode)
+		warn = true
 	}
 	switch effectOf(key) {
 	case applyReload:
 		s.reload()
 	case applyIcons:
 		icon.SetType(mconfig.Icons.Get())
+	}
+	if warn {
+		return base.NotifyWithDuration(notice, 10*time.Second), true
 	}
 	return base.Notify(notice), true
 }
