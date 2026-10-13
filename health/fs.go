@@ -376,7 +376,7 @@ func checkFolderNames(s *snapshot) []Finding {
 		if notChecked == "" {
 			return nil
 		}
-		f := Finding{Severity: Info, Subject: Subject{Kind: "library", Name: "library"}, Message: notChecked}
+		f := Finding{Severity: Info, Subject: Subject{Kind: "library", Name: "library"}, Part: "unchecked", Message: notChecked}
 		if !s.network {
 			f.Fix.Commands = []string{"mangal health --network --only L5"}
 		} else {
