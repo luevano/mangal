@@ -320,8 +320,8 @@ var Providers = configProviders{
 	Path: pathEntry("providers.path", filepath.Join(dir, "providers"), "Path where providers will be placed/looked for.", true),
 	Parallelism: reg(entry[int64, uint8]{
 		Key:         "providers.parallelism",
-		Default:     15,
-		Description: "Parallelism to use for the scrapers that support it (1-255).",
+		Default:     4,
+		Description: "How many requests mangoprovider's HTML scrapers make at once (1-255, capped at 4).",
 		Unmarshal: func(i int64) (uint8, error) {
 			if i < 1 || i > 255 {
 				return 0, fmt.Errorf("%d isn't between 1 and 255", i)

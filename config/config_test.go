@@ -57,7 +57,7 @@ func TestDefaults(t *testing.T) {
 	if err := Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if got := Providers.Parallelism.Get(); got != 15 {
+	if got := Providers.Parallelism.Get(); got != 4 {
 		t.Errorf("parallelism %d", got)
 	}
 	if got := Icons.Get(); got != icon.TypeASCII {
@@ -136,7 +136,7 @@ func TestInvalidEnv(t *testing.T) {
 	// a bad value can't come out of Get, the default does
 	reset(t)
 	t.Setenv("MANGAL_PROVIDERS_PARALLELISM", "300")
-	if got := Providers.Parallelism.Get(); got != 15 {
+	if got := Providers.Parallelism.Get(); got != 4 {
 		t.Errorf("parallelism %d", got)
 	}
 }
@@ -156,7 +156,7 @@ func TestFlags(t *testing.T) {
 		t.Errorf("unknown key: %v", err)
 	}
 	// not given, the config applies
-	if got := Providers.Parallelism.Get(); got != 15 {
+	if got := Providers.Parallelism.Get(); got != 4 {
 		t.Errorf("parallelism %d", got)
 	}
 	if err := fs.Parse([]string{"--parallelism", "7", "--format", "bad"}); err != nil {
@@ -369,7 +369,7 @@ func TestWrite(t *testing.T) {
 	if strings.Contains(file, "/env/path") {
 		t.Errorf("env value written:\n%s", file)
 	}
-	if !strings.Contains(file, "parallelism = 15") {
+	if !strings.Contains(file, "parallelism = 4") {
 		t.Errorf("defaults not written:\n%s", file)
 	}
 }
