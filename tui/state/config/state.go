@@ -191,6 +191,7 @@ func (s *state) Filter(filter string) tea.Cmd {
 	return nil
 }
 
+func (s *state) Key() string       { return "config" }
 func (s *state) Title() base.Title { return base.Title{Text: "Config"} }
 
 func (s *state) Subtitle() string {

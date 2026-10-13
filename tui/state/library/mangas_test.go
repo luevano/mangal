@@ -214,3 +214,18 @@ func TestDeleteMissing(t *testing.T) {
 		t.Fatalf("d on a missing manga:\n%s", s.confirm.View())
 	}
 }
+
+// a merge asked for (health) while the library is in the history: that library does it
+func TestRestoredWithMerge(t *testing.T) {
+	s := newMangasState(library.Files{})
+	// NewMerge's, without opening the library
+	req := newMangasState(library.Files{})
+	req.keep, req.duplicates, req.pendingMerge = 2, true, 1
+	if req.Key() != s.Key() {
+		t.Fatal("the merge's library isn't the library window")
+	}
+	s.Update(context.Background(), base.RestoredMsg{Request: req})
+	if s.keep != 2 || !s.duplicates || s.pendingMerge != 1 {
+		t.Errorf("keep %d, duplicates %v, pending %d", s.keep, s.duplicates, s.pendingMerge)
+	}
+}

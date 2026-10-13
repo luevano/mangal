@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,6 +51,7 @@ type item struct {
 }
 
 func (i *item) FilterValue() string { return i.w.Title + " " + i.w.Provider }
+func (i *item) ItemKey() string     { return strconv.FormatInt(i.w.ID, 10) }
 
 func (i *item) Title() string {
 	// with a filter on, the list highlights the matches by rune position in the title: it
@@ -247,6 +249,8 @@ func (s *listState) keyMap() help.KeyMap {
 
 func (s *listState) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
 func (s *listState) Inputting() bool { return s.Screen.Inputting() || s.confirm.Active() }
+func (s *listState) Key() string     { return "watches" }
+
 func (s *listState) Title() base.Title {
 	return base.Title{Text: "Watches"}
 }
@@ -553,25 +557,16 @@ func (s *listState) shown() []watch.Watch {
 // setItems shows the loaded watches, the selected one stays selected.
 func (s *listState) setItems() tea.Cmd {
 	now := s.now()
-	selected := int64(0)
-	if i, ok := s.List.SelectedItem().(*item); ok {
-		selected = i.w.ID
-	}
 	shown := s.shown()
 	items := make([]_list.Item, len(shown))
-	index := 0
 	for i, w := range shown {
 		it := &item{s: s, w: w, backoff: s.backoff, now: now}
 		if r, ok := s.last[w.ID]; ok {
 			it.last = &r
 		}
-		if w.ID == selected {
-			index = i
-		}
 		items[i] = it
 	}
-	cmd := s.List.SetItems(items)
-	s.List.Select(index)
+	cmd := s.List.SetItemsKeep(items)
 	s.updateKeys()
 	return cmd
 }

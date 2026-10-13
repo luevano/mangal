@@ -51,6 +51,42 @@ type State interface {
 	View() string
 }
 
+// Keyed is a State with an identity: two States with the same Key are the same window,
+// and the history holds one of each. Pushing a State whose Key is in the history goes
+// back to that one instead (the States over it are popped), it gets a RestoredMsg with
+// the pushed State as the Request. States without it (forms, pickers, a download) are
+// always pushed.
+//
+// Singleton screens (home, library, watches...) have a fixed key; per-item screens (a
+// manga's chapters, a watch's details) add the item: "library/42", "watch/7".
+type Keyed interface {
+	Key() string
+}
+
+// Keeper is a State whose work stops when it's left (a running download): going back
+// over it (H, a push of a window under it) stops on it with the notice, nothing is
+// pushed over it (its msgs would go to that State), it asks itself before it goes (it
+// isn't Backable then).
+type Keeper interface {
+	// Keeping is why it can't be left now (e.g. "a download is running, esc stops it"),
+	// empty when it can.
+	Keeping() string
+}
+
+func keyOf(s State) string {
+	if k, ok := s.(Keyed); ok {
+		return k.Key()
+	}
+	return ""
+}
+
+func keeping(s State) string {
+	if k, ok := s.(Keeper); ok {
+		return k.Keeping()
+	}
+	return ""
+}
+
 // Destroyer is a State with something to tear down (a client to release, a watcher to
 // stop). Destroy is called when the State is popped, or the TUI quits with it in the
 // history.

@@ -53,6 +53,8 @@ func newRelinkState(m watch.Manager, w watch.Watch) *relinkState {
 	return s
 }
 
+func (s *relinkState) Key() string { return fmt.Sprintf("watch-relink/%d", s.w.ID) }
+
 func (s *relinkState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	if msg, ok := msg.(relinkedMsg); ok {
 		w := msg.w

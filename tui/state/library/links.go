@@ -138,6 +138,8 @@ func (s *linksState) keyMap() help.KeyMap {
 	return util.KeyMap{Short: []key.Binding{s.search, s.remove, s.backups, s.metadata}}
 }
 
+func (s *linksState) Key() string { return fmt.Sprintf("library-links/%d", s.manga.ID) }
+
 func (s *linksState) Title() base.Title {
 	return base.Title{Text: "Links", Background: color.Anilist, Foreground: color.Bright}
 }
@@ -210,24 +212,28 @@ func (s *linksState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		for i, it := range msg.items {
 			items[i] = it
 		}
-		selected := s.List.Index()
-		cmd := s.List.SetItems(items)
-		s.List.Select(selected)
+		cmd := s.List.SetItemsKeep(items)
 		if links := s.autoLinks; len(links) != 0 {
 			s.autoLinks = nil
 			return tea.Batch(cmd, planLinks(ctx, s.manga, links))
 		}
 		if source := s.autoPick; source != "" {
 			s.autoPick = ""
-			for i, it := range msg.items {
+			for _, it := range msg.items {
 				if it.src.Code == source && it.pick != nil {
-					s.List.Select(i)
+					s.List.SelectFunc(func(i _list.Item) bool { return i == _list.Item(it) })
 					return tea.Batch(cmd, loadPick(ctx, *it.pick))
 				}
 			}
 			return tea.Batch(cmd, base.Notify("Nothing to pick any more"))
 		}
 		return cmd
+	case base.RestoredMsg:
+		// links to plan or a pick to ask (health)
+		if r, ok := msg.Request.(*linksState); ok {
+			s.autoLinks, s.autoPick = r.autoLinks, r.autoPick
+		}
+		return s.load(ctx)
 	case linkPickedMsg:
 		return planLinks(ctx, s.manga, library.Links{msg.code: msg.id})
 	case pickLoadedMsg:

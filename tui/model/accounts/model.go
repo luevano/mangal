@@ -80,6 +80,7 @@ func New(refresh bool) base.State {
 	}
 }
 
+func (s *state) Key() string     { return "accounts" }
 func (s *state) Backable() bool  { return !s.inputting }
 func (s *state) Inputting() bool { return s.inputting }
 func (s *state) Title() base.Title {

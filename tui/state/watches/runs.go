@@ -3,6 +3,7 @@ package watches
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,8 @@ type runItem struct {
 	// started shows when, in the histories
 	started bool
 }
+
+func (i *runItem) ItemKey() string { return strconv.FormatInt(i.r.ID, 10) }
 
 func (i *runItem) FilterValue() string {
 	return strings.Join([]string{i.r.Title, i.r.Provider, result(i.r), i.kind, formatTime(i.r.Started), chapterNumbers(i.r)}, " ")
@@ -79,6 +82,8 @@ func showRun(r storage.WatchRun) tea.Cmd {
 // checkRunItem is a check run.
 type checkRunItem struct{ run watch.CheckRun }
 
+func (i *checkRunItem) ItemKey() string { return strconv.FormatInt(i.run.ID, 10) }
+
 func (i *checkRunItem) FilterValue() string { return i.run.Kind + " " + formatTime(i.run.Started) }
 
 func (i *checkRunItem) Title() string {
@@ -125,6 +130,7 @@ func (s *runsState) keyMap() help.KeyMap {
 	return util.KeyMap{Short: []key.Binding{s.open, s.history, s.refresh}}
 }
 
+func (s *runsState) Key() string       { return "watch-runs" }
 func (s *runsState) Title() base.Title { return base.Title{Text: "Check runs"} }
 
 func (s *runsState) Init(ctx context.Context) tea.Cmd { return s.reload(ctx, "Loading the check runs") }
@@ -143,7 +149,10 @@ func (s *runsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		for i, r := range msg {
 			items[i] = &checkRunItem{run: r}
 		}
-		return s.List.SetItems(items)
+		return s.List.SetItemsKeep(items)
+	case base.RestoredMsg:
+		// e.g. a check deleted in a run's results
+		return s.reload(ctx, "")
 	case tea.KeyMsg:
 		if s.List.Filtering() {
 			break
@@ -212,6 +221,8 @@ func (s *runState) View() string {
 	return s.List.View()
 }
 
+func (s *runState) Key() string { return fmt.Sprintf("watch-run/%d", s.id) }
+
 func (s *runState) Title() base.Title {
 	return base.Title{Text: fmt.Sprintf("Check run %d", s.id)}
 }
@@ -253,7 +264,10 @@ func (s *runState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		for i, r := range s.run.Results {
 			items[i] = &runItem{r: r, watchTitle: true}
 		}
-		return s.List.SetItems(items)
+		return s.List.SetItemsKeep(items)
+	case base.RestoredMsg:
+		// e.g. a check deleted on a watch's screen
+		return s.Init(ctx)
 	case tea.KeyMsg:
 		if s.List.Filtering() {
 			break

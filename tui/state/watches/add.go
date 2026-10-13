@@ -163,7 +163,10 @@ func (s *addState) Backable() bool      { return true }
 func (s *addState) Inputting() bool     { return true }
 func (s *addState) KeyMap() help.KeyMap { return util.KeyMap{Short: s.form.keys()} }
 func (s *addState) Title() base.Title   { return base.Title{Text: "Watch " + s.manga.String()} }
-func (s *addState) Status() string      { return "" }
+func (s *addState) Key() string {
+	return "watch-add/" + s.client.Info().ID + "/" + s.manga.Info().ID
+}
+func (s *addState) Status() string { return "" }
 
 func (s *addState) Subtitle() string {
 	sub := s.client.Info().Name

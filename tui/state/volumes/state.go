@@ -52,6 +52,10 @@ func (s *state) keyMap() help.KeyMap {
 	return util.KeyMap{Short: []key.Binding{s.confirm, s.anilist, s.metadata, s.info}}
 }
 
+func (s *state) Key() string {
+	return "volumes/" + s.client.Info().ID + "/" + s.manga.Info().ID
+}
+
 func (s *state) Title() base.Title {
 	return base.Title{Text: s.manga.String()}
 }

@@ -69,6 +69,7 @@ func New() base.State {
 	}
 }
 
+func (s *state) Key() string                   { return "home" }
 func (s *state) Backable() bool                { return false }
 func (s *state) Inputting() bool               { return false }
 func (s *state) Title() base.Title             { return base.Title{Text: "Home"} }

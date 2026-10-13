@@ -38,6 +38,8 @@ type state struct {
 	provider *lmmeta.ProviderWithCache
 	// pick, if set, gets the chosen manga instead of binding it (a library manga's link)
 	pick func(lmmeta.Metadata) tea.Cmd
+	// key is the window's, empty for a pick (it's for whoever opened it)
+	key string
 
 	confirm,
 	search,
@@ -67,6 +69,7 @@ func sourceColor(code lmmeta.IDCode) lipgloss.Color {
 func newSearch(c *libmangal.Client, src client.MetadataSource, provider *lmmeta.ProviderWithCache, manga mangadata.Manga) base.State {
 	s := newState(src, provider, manga.Info().Title)
 	s.client, s.manga = c, manga
+	s.key = "metadata-search/" + string(src.Code) + "/" + c.Info().ID + "/" + manga.Info().ID
 	return s
 }
 
@@ -100,6 +103,8 @@ func newState(src client.MetadataSource, provider *lmmeta.ProviderWithCache, que
 func (s *state) KeyMap() help.KeyMap {
 	return base.CombinedKeyMap(util.KeyMap{Short: []key.Binding{s.confirm, s.search, s.metadata}}, s.ListKeyMap())
 }
+
+func (s *state) Key() string { return s.key }
 
 func (s *state) Title() base.Title {
 	return base.Title{Text: s.src.Name + " Search", Background: sourceColor(s.src.Code), Foreground: color.Bright}

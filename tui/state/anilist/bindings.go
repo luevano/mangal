@@ -65,6 +65,10 @@ func (s *bindingsState) keyMap() help.KeyMap {
 	}
 }
 
+func (s *bindingsState) Key() string {
+	return "bindings/" + s.client.Info().ID + "/" + s.manga.Info().ID
+}
+
 func (s *bindingsState) Title() base.Title {
 	return base.Title{Text: "Metadata", Background: color.Anilist, Foreground: color.Bright}
 }
@@ -118,9 +122,7 @@ func (s *bindingsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		for i, it := range msg {
 			items[i] = it
 		}
-		selected := s.List.Index()
-		cmd := s.List.SetItems(items)
-		s.List.Select(selected)
+		cmd := s.List.SetItemsKeep(items)
 		s.applyDefault(msg)
 		return cmd
 	case changedMsg:

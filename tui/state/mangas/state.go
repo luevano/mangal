@@ -105,6 +105,8 @@ func (s *state) KeyMap() help.KeyMap {
 	}, s.ListKeyMap())
 }
 
+func (s *state) Key() string { return "mangas/" + s.client.Info().ID }
+
 func (s *state) Title() base.Title {
 	return base.Title{Text: s.client.Info().Name}
 }

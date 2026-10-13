@@ -103,6 +103,8 @@ func New() base.State {
 	return s
 }
 
+func (s *state) Key() string { return "login/anilist" }
+
 func (s *state) Backable() bool {
 	return !s.editing && !s.keys.back.Enabled()
 }

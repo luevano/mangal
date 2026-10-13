@@ -110,6 +110,8 @@ func New() base.State {
 	return s
 }
 
+func (s *state) Key() string { return "login/myanimelist" }
+
 func (s *state) Backable() bool  { return !s.keys.back.Enabled() && !s.keys.cancel.Enabled() }
 func (s *state) Inputting() bool { return s.phase == setup }
 

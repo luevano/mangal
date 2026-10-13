@@ -4,6 +4,7 @@ package library
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -43,6 +44,7 @@ type mangaItem struct {
 }
 
 func (i *mangaItem) FilterValue() string { return i.manga.Title }
+func (i *mangaItem) ItemKey() string     { return strconv.FormatInt(i.manga.ID, 10) }
 
 func (i *mangaItem) Title() string {
 	title := i.manga.Title
@@ -210,6 +212,8 @@ func trashSummary(files library.Files) string {
 
 func (s *mangasState) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
 func (s *mangasState) Inputting() bool { return s.Screen.Inputting() || s.confirm.Active() }
+func (s *mangasState) Key() string     { return "library" }
+
 func (s *mangasState) Title() base.Title {
 	return base.Title{Text: "Library"}
 }
@@ -264,9 +268,9 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		cmd := s.onLoaded(msg)
 		if other := s.pendingMerge; other != 0 {
 			s.pendingMerge = 0
-			for i, item := range s.List.Items() {
-				if item, ok := item.(*mangaItem); ok && item.manga.ID == other {
-					s.List.Select(i)
+			for _, item := range s.items {
+				if item.manga.ID == other {
+					s.List.SelectFunc(func(i _list.Item) bool { return i == _list.Item(item) })
 					return tea.Batch(cmd, s.merge(ctx, item))
 				}
 			}
@@ -274,6 +278,10 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		return cmd
 	case base.RestoredMsg:
+		// a merge asked for (health): its keep in the duplicates
+		if r, ok := msg.Request.(*mangasState); ok && r.pendingMerge != 0 {
+			s.keep, s.duplicates, s.pendingMerge = r.keep, true, r.pendingMerge
+		}
 		return s.reload(ctx)
 	case scannedMsg:
 		return tea.Batch(s.reload(ctx), s.onScanned(msg))
@@ -396,10 +404,6 @@ func (s *mangasState) onLoaded(msg mangasLoadedMsg) tea.Cmd {
 // setItems shows the mangas, or only the duplicates grouped (the suggested keep first),
 // the selected one stays selected.
 func (s *mangasState) setItems() tea.Cmd {
-	var selected int64
-	if i, ok := s.List.SelectedItem().(*mangaItem); ok {
-		selected = i.manga.ID
-	}
 	shown := s.items
 	if s.duplicates {
 		byID := map[int64]*mangaItem{}
@@ -418,18 +422,10 @@ func (s *mangasState) setItems() tea.Cmd {
 		}
 	}
 	items := make([]_list.Item, len(shown))
-	index := -1
 	for n, i := range shown {
 		items[n] = i
-		if i.manga.ID == selected {
-			index = n
-		}
 	}
-	cmd := s.List.SetItems(items)
-	if index >= 0 {
-		s.List.Select(index)
-	}
-	return cmd
+	return s.List.SetItemsKeep(items)
 }
 
 func (s *mangasState) scanCmd(ctx context.Context, check bool) tea.Cmd {

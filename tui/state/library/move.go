@@ -95,6 +95,8 @@ func newMoveState(m storage.Manga, provider string) *moveState {
 	return s
 }
 
+func (s *moveState) Key() string { return fmt.Sprintf("library-move/%d", s.manga.ID) }
+
 func (s *moveState) Backable() bool  { return s.Manga.Backable() && !s.confirm.Active() }
 func (s *moveState) Inputting() bool { return s.Manga.Inputting() || s.confirm.Active() }
 

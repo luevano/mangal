@@ -24,6 +24,8 @@ type item struct {
 	extraInfo *bool
 }
 
+func (i *item) ItemKey() string { return i.loader.Info().ID }
+
 func (i *item) FilterValue() string {
 	return i.loader.String()
 }

@@ -65,6 +65,7 @@ func (s *trashState) reload(ctx context.Context) tea.Cmd {
 
 func (s *trashState) Backable() bool    { return s.Screen.Backable() && !s.confirm.Active() }
 func (s *trashState) Inputting() bool   { return s.Screen.Inputting() || s.confirm.Active() }
+func (s *trashState) Key() string       { return "trash" }
 func (s *trashState) Title() base.Title { return base.Title{Text: "Trash"} }
 func (s *trashState) Subtitle() string {
 	return "deleted chapters and mangas, and the copies merges replaced; emptying deletes them for good"
@@ -84,7 +85,7 @@ func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	}
 	switch msg := msg.(type) {
 	case trashLoadedMsg:
-		return s.List.SetItems(msg)
+		return s.List.SetItemsKeep(msg)
 	case actionMsg:
 		return msg.run(ctx)
 	case reloadMsg:

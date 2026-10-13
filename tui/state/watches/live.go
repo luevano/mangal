@@ -143,6 +143,13 @@ func (s *liveState) KeyMap() help.KeyMap {
 	return util.KeyMap{Short: []key.Binding{s.up, s.down, s.pageUp, s.pageDown, s.follow}}
 }
 
+func (s *liveState) Key() string {
+	if s.watch != nil {
+		return fmt.Sprintf("watch-live/%d", s.watch.ID)
+	}
+	return "watch-live"
+}
+
 func (s *liveState) Title() base.Title {
 	if s.watch != nil {
 		return base.Title{Text: "Live: " + s.watch.Title}

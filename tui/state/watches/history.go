@@ -73,6 +73,7 @@ func (s *historyState) View() string {
 	return s.List.View()
 }
 
+func (s *historyState) Key() string       { return "watch-history" }
 func (s *historyState) Title() base.Title { return base.Title{Text: "History"} }
 
 func (s *historyState) Subtitle() string {
@@ -156,12 +157,21 @@ func (s *historyState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		s.providers = msg.providers
-		cmd := s.List.SetItems(msg.items)
+		var cmd tea.Cmd
 		if s.shown == nil || *s.shown != msg.provider {
-			s.List.Select(0)
+			cmd = s.List.SetItems(msg.items)
+		} else {
+			cmd = s.List.SetItemsKeep(msg.items)
 		}
 		s.shown = &msg.provider
 		return cmd
+	case base.RestoredMsg:
+		// another provider's history asked for: this one shows it
+		if r, ok := msg.Request.(*historyState); ok && r.provider != s.provider {
+			s.provider = r.provider
+			return s.reload(ctx, "Loading the history of "+providerName(s.provider))
+		}
+		return s.reload(ctx, "")
 	case tea.KeyMsg:
 		if s.List.Filtering() {
 			break

@@ -164,6 +164,15 @@ func (s *state) Inputting() bool {
 	return s.Screen.Inputting() || s.inFormats || s.confirm.Active()
 }
 
+// Key is the manga's chapters, or its volume's.
+func (s *state) Key() string {
+	key := "chapters/" + s.client.Info().ID + "/" + s.manga.Info().ID
+	if s.volume != nil {
+		key += fmt.Sprintf("/%g", s.volume.Info().Number)
+	}
+	return key
+}
+
 func (s *state) Title() base.Title {
 	if s.volume != nil {
 		return base.Title{Text: "Volume " + s.volume.String()}

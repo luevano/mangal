@@ -268,6 +268,13 @@ func (s *state) KeyMap() help.KeyMap {
 func (s *state) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
 func (s *state) Inputting() bool { return s.Screen.Inputting() || s.confirm.Active() }
 
+func (s *state) Key() string {
+	if s.summary != nil {
+		return "health/" + s.summary.Check + "/" + s.summary.Subject.String()
+	}
+	return "health"
+}
+
 func (s *state) Title() base.Title {
 	if s.summary != nil {
 		return base.Title{Text: "Health: " + s.summary.Check}
@@ -445,12 +452,7 @@ func (s *state) setItems() tea.Cmd {
 			items = append(items, &item{s: s, f: f})
 		}
 	}
-	selected := s.List.Index()
-	cmd := s.List.SetItems(items)
-	if selected < len(items) {
-		s.List.Select(selected)
-	}
-	return cmd
+	return s.List.SetItemsKeep(items)
 }
 
 // nextCategory is the category after the shown one that has findings, "" (all) after the

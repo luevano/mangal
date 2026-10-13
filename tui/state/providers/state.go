@@ -68,6 +68,8 @@ func (s *state) keyMap() help.KeyMap {
 	}
 }
 
+func (s *state) Key() string { return "providers" }
+
 func (s *state) Title() base.Title {
 	return base.Title{Text: "Providers"}
 }
@@ -117,10 +119,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		for n, loader := range msg.loaders {
 			items[n] = s.newItem(loader)
 		}
-		selected := s.List.Index()
-		cmd := s.List.SetItems(items)
-		s.List.Select(selected)
-		return tea.Sequence(cmd, base.Notify("Providers reloaded"))
+		return tea.Sequence(s.List.SetItemsKeep(items), base.Notify("Providers reloaded"))
 	case tea.KeyMsg:
 		if s.List.Filtering() {
 			break

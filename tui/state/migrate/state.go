@@ -41,6 +41,7 @@ func New() base.State {
 	return &state{keyMap: keyMap{apply: util.Bind("migrate", "enter")}}
 }
 
+func (s *state) Key() string                   { return "migrate" }
 func (s *state) Backable() bool                { return true }
 func (s *state) Inputting() bool               { return false }
 func (s *state) KeyMap() help.KeyMap           { return util.KeyMap{Short: []key.Binding{s.keyMap.apply}} }

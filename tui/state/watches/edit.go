@@ -100,6 +100,7 @@ func (s *editState) KeyMap() help.KeyMap {
 	s.relink.SetEnabled(s.form.focused() == s.manga)
 	return util.KeyMap{Short: append([]key.Binding{s.relink}, s.form.keys()...)}
 }
+func (s *editState) Key() string                   { return fmt.Sprintf("watch-edit/%d", s.w.ID) }
 func (s *editState) Title() base.Title             { return base.Title{Text: "Edit " + s.w.Title} }
 func (s *editState) Subtitle() string              { return s.w.Provider + " · manga id " + s.w.MangaID }
 func (s *editState) Status() string                { return "" }

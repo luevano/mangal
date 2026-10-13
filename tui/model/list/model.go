@@ -16,6 +16,21 @@ type Model struct {
 	delegate *list.DefaultDelegate
 	size     base.Size
 	KeyMap   KeyMap
+	// reversed is R's order, SetItemsKeep keeps it
+	reversed bool
+}
+
+// Keyed is an item with an identity across reloads (e.g. its id), for SetItemsKeep to
+// keep it selected. Items without it are told apart by their FilterValue.
+type Keyed interface {
+	ItemKey() string
+}
+
+func itemKey(i list.Item) string {
+	if k, ok := i.(Keyed); ok {
+		return k.ItemKey()
+	}
+	return i.FilterValue()
 }
 
 // Unfiltered is a convenience method to check if the list is currently unfiltered.
@@ -64,23 +79,63 @@ func (m *Model) Init() tea.Cmd {
 
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	if msg, ok := msg.(tea.KeyMsg); ok && m.FilterState() != list.Filtering && key.Matches(msg, m.KeyMap.Reverse) {
-		slices.Reverse(m.Items())
-		return tea.Sequence(
-			m.SetItems(m.Items()),
-			base.Notify("Reversed"),
-		)
+		m.reversed = !m.reversed
+		items := slices.Clone(m.Items())
+		slices.Reverse(items)
+		m.replace(items)
+		return base.Notify("Reversed")
 	}
 	list, cmd := m.Model.Update(msg)
 	m.Model = list
 	return cmd
 }
 
-// SetItems replaces the items and selects the first one.
+// SetItems replaces the items (new ones, e.g. a search's) and selects the first one.
 func (m *Model) SetItems(items []list.Item) tea.Cmd {
 	m.ResetSelected()
+	m.reversed = false
 	cmd := m.Model.SetItems(items)
 	m.updateKeybinds()
 	return cmd
+}
+
+// SetItemsKeep replaces the items with a reload of them (or another view of them): the
+// filter (typed or applied) stays and filters the new ones, the R order stays, and the
+// cursor stays on the same item (Keyed), else at the same place.
+func (m *Model) SetItemsKeep(items []list.Item) tea.Cmd {
+	if m.reversed {
+		items = slices.Clone(items)
+		slices.Reverse(items)
+	}
+	m.replace(items)
+	return nil
+}
+
+// replace sets the items, filtered right away, keeping the selected one.
+func (m *Model) replace(items []list.Item) {
+	selected, index := "", m.Index()
+	if i := m.SelectedItem(); i != nil {
+		selected = itemKey(i)
+	}
+	state, filter := m.FilterState(), m.FilterInput.Value()
+	m.Model.SetItems(items)
+	switch state {
+	case list.FilterApplied:
+		m.SetFilterText(filter)
+	case list.Filtering:
+		m.SetFilterText(filter)
+		m.SetFilterState(list.Filtering)
+	}
+	if selected != "" {
+		for i, it := range m.VisibleItems() {
+			if itemKey(it) == selected {
+				index = i
+				break
+			}
+		}
+	}
+	m.Select(index)
+	m.updateKeybinds()
 }
 
 // Select selects the item at index of the shown ones, clamped to them: with a filter on,
@@ -88,6 +143,17 @@ func (m *Model) SetItems(items []list.Item) tea.Cmd {
 // and a page past them panics on render.
 func (m *Model) Select(index int) {
 	m.Model.Select(min(max(index, 0), max(len(m.VisibleItems())-1, 0)))
+}
+
+// SelectFunc selects the first shown item that match is true for, false if none is.
+func (m *Model) SelectFunc(match func(list.Item) bool) bool {
+	for i, it := range m.VisibleItems() {
+		if match(it) {
+			m.Select(i)
+			return true
+		}
+	}
+	return false
 }
 
 // SetItemHeight sets the height of the delegate, which translates to the items' height.

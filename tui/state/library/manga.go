@@ -31,6 +31,7 @@ type downloadItem struct {
 }
 
 func (i *downloadItem) FilterValue() string { return i.download.ChapterTitle }
+func (i *downloadItem) ItemKey() string     { return i.download.Path }
 
 func (i *downloadItem) Title() string {
 	title := stringutil.FormatFloa32(i.download.Chapter)
@@ -229,6 +230,7 @@ func (s *mangaState) onScanned(ctx context.Context, msg mangaScannedMsg) tea.Cmd
 
 func (s *mangaState) Backable() bool    { return s.Screen.Backable() && !s.confirm.Active() }
 func (s *mangaState) Inputting() bool   { return s.Screen.Inputting() || s.confirm.Active() }
+func (s *mangaState) Key() string       { return fmt.Sprintf("library/%d", s.manga.ID) }
 func (s *mangaState) Title() base.Title { return base.Title{Text: s.manga.Title} }
 func (s *mangaState) Subtitle() string  { return s.manga.Path() }
 func (s *mangaState) Resize(size base.Size) tea.Cmd {
@@ -250,7 +252,7 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	}
 	switch msg := msg.(type) {
 	case downloadsMsg:
-		return s.List.SetItems(msg)
+		return s.List.SetItemsKeep(msg)
 	case mangaWatchesMsg:
 		s.watches = msg
 		return s.Resize(s.size)
@@ -258,8 +260,9 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		s.bindings = msg
 		return s.Resize(s.size)
 	case base.RestoredMsg:
-		// e.g. paused or bound on its watch's screen, linked (maybe renamed) on its links'
-		return tea.Batch(s.watchesCmd(ctx), s.bindingsCmd(ctx), s.mangaCmd(ctx))
+		// e.g. paused or bound on its watch's screen, linked (maybe renamed) on its links',
+		// chapters downloaded by a watch meanwhile
+		return tea.Batch(s.watchesCmd(ctx), s.bindingsCmd(ctx), s.mangaCmd(ctx), s.reload(ctx))
 	case mangaMsg:
 		s.manga = storage.Manga(msg)
 		return nil

@@ -2,6 +2,7 @@ package watches
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -72,6 +73,7 @@ func (s *detailsState) KeyMap() help.KeyMap { return s.remove.keyMap(s.Screen.Ke
 func (s *detailsState) Backable() bool      { return s.Screen.Backable() && !s.remove.confirm.Active() }
 func (s *detailsState) Inputting() bool     { return s.Screen.Inputting() || s.remove.confirm.Active() }
 
+func (s *detailsState) Key() string       { return fmt.Sprintf("watch/%d", s.w.ID) }
 func (s *detailsState) Title() base.Title { return base.Title{Text: s.w.Title} }
 
 func (s *detailsState) header() string {
@@ -141,7 +143,7 @@ func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case detailsMsg:
 		s.manager, s.w, s.status = msg.manager, msg.w, msg.status
-		return tea.Batch(s.List.SetItems(historyItems(s.w.ID, msg.runs)), s.Resize(s.size))
+		return tea.Batch(s.List.SetItemsKeep(historyItems(s.w.ID, msg.runs)), s.Resize(s.size))
 	case base.RestoredMsg:
 		return s.reload(ctx, "")
 	case actionMsg:

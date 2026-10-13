@@ -49,12 +49,12 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		if m.inViewport {
 			return m.hideViewport()
 		}
-		return m.back(msg.Steps)
+		return m.back(msg.Steps, nil)
 	case BackToHomeMsg:
 		if m.inViewport {
 			return m.hideViewport()
 		}
-		return m.back(m.history.Size())
+		return m.back(m.history.Size(), nil)
 	case State:
 		return m.pushState(msg)
 	case spinner.TickMsg:
@@ -168,28 +168,73 @@ func (m *model) resizeState() tea.Cmd {
 	return m.state.Resize(s)
 }
 
-// back to the previous State
-func (m *model) back(steps int) tea.Cmd {
+// back pops steps States and shows the one under them, with a RestoredMsg of request (a
+// push of that window, nil going back). A Keeper isn't popped: it's shown, with its notice.
+func (m *model) back(steps int, request State) tea.Cmd {
 	// do not pop the last state
 	if m.history.Size() == 0 || steps <= 0 {
 		return nil
 	}
 
-	for i := 0; i < steps && m.history.Size() > 0; i++ {
+	var notice string
+	popped := 0
+	for ; popped < steps && m.history.Size() > 0; popped++ {
+		if notice = keeping(m.state); notice != "" {
+			break
+		}
 		destroy(m.state)
 		m.state = m.history.Pop()
 	}
+	if notice != "" {
+		// not where the request was going
+		destroy(request)
+		request = nil
+		if popped == 0 {
+			return Notify(notice)
+		}
+	}
 	log.Debug("tui: back to %q", m.state.Title().Text)
-	m.newCtx()
-
-	return tea.Sequence(
-		m.resizeState(),
-		m.state.Update(m.ctx, RestoredMsg{}),
-	)
+	return tea.Sequence(m.restore(request), notifyCmd(notice))
 }
 
-// pushState initializes a new state and pushes previous one into history
+// restore shows the State again with a new ctx and a RestoredMsg of request.
+func (m *model) restore(request State) tea.Cmd {
+	if request == m.state {
+		request = nil
+	}
+	m.newCtx()
+	cmd := tea.Sequence(
+		m.resizeState(),
+		m.state.Update(m.ctx, RestoredMsg{Request: request}),
+	)
+	// it was never shown, only read
+	destroy(request)
+	return cmd
+}
+
+func notifyCmd(message string) tea.Cmd {
+	if message == "" {
+		return nil
+	}
+	return Notify(message)
+}
+
+// pushState shows state, the shown one goes to the history. The same window (Keyed) shown
+// or in the history is shown again instead, with state as the request: no window is
+// open twice. Nothing goes over a Keeper (its msgs would go to the State over it).
 func (m *model) pushState(state State) tea.Cmd {
+	if notice := keeping(m.state); notice != "" {
+		destroy(state)
+		return Notify(notice)
+	}
+	if key := keyOf(state); state == m.state || (key != "" && key == keyOf(m.state)) {
+		log.Debug("tui: show %q again", m.state.Title().Text)
+		return m.restore(state)
+	}
+	if i := m.history.Find(state); i >= 0 {
+		return m.back(m.history.Size()-i, state)
+	}
+
 	log.Debug("tui: show %q", state.Title().Text)
 	m.history.Push(m.state)
 	m.state = state

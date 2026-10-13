@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
@@ -49,5 +50,106 @@ func TestPageKeys(t *testing.T) {
 	}
 	if got := prev.Help().Key + " " + next.Help().Key; got != "←/h/pgup →/l/pgdn" {
 		t.Errorf("help: %s", got)
+	}
+}
+
+type keyedItem struct{ id, title string }
+
+func (i keyedItem) Title() string       { return i.title }
+func (i keyedItem) Description() string { return "" }
+func (i keyedItem) FilterValue() string { return i.title }
+func (i keyedItem) ItemKey() string     { return i.id }
+
+func keyedItems(titles ...string) []list.Item {
+	items := make([]list.Item, len(titles))
+	for n, t := range titles {
+		items[n] = keyedItem{id: t[:1], title: t}
+	}
+	return items
+}
+
+func newKeyed(t *testing.T, titles ...string) *Model {
+	t.Helper()
+	m := New(1, 0, "item", "items", []string{}, func(s string) list.DefaultItem { return testItem(s) })
+	m.Resize(base.Size{Width: 80, Height: 20})
+	m.SetItems(keyedItems(titles...))
+	return m
+}
+
+func selectedKey(m *Model) string {
+	if i, ok := m.SelectedItem().(keyedItem); ok {
+		return i.id
+	}
+	return ""
+}
+
+func TestSetItemsKeepSelection(t *testing.T) {
+	m := newKeyed(t, "a apple", "b banana", "c cherry")
+	m.Select(2)
+	// a reload: the order changed, an item came before it
+	m.SetItemsKeep(keyedItems("d date", "c cherry (new)", "a apple", "b banana"))
+	if got := selectedKey(m); got != "c" {
+		t.Errorf("selected %q, want c", got)
+	}
+	// gone: the same place
+	m.SetItemsKeep(keyedItems("d date", "a apple", "b banana"))
+	if got := m.Index(); got != 1 {
+		t.Errorf("index %d, want 1", got)
+	}
+	// fewer: clamped
+	m.SetItemsKeep(keyedItems("d date"))
+	if got := selectedKey(m); got != "d" {
+		t.Errorf("selected %q, want d", got)
+	}
+}
+
+func TestSetItemsKeepFilter(t *testing.T) {
+	m := newKeyed(t, "a apple", "b banana", "c blueberry", "d date")
+	m.SetFilterText("b")
+	if n := len(m.VisibleItems()); n != 2 {
+		t.Fatalf("%d shown with the filter", n)
+	}
+	m.Select(1)
+	want := selectedKey(m)
+
+	m.SetItemsKeep(keyedItems("e elderberry", "a apple", "b banana", "c blueberry", "d date"))
+	if m.FilterState() != list.FilterApplied || m.FilterValue() != "b" {
+		t.Fatalf("filter lost: %v %q", m.FilterState(), m.FilterValue())
+	}
+	if n := len(m.VisibleItems()); n != 3 {
+		t.Errorf("%d shown, the new item isn't filtered", n)
+	}
+	if got := selectedKey(m); got != want {
+		t.Errorf("selected %q, want %q", got, want)
+	}
+	_ = m.View()
+}
+
+func TestSetItemsKeepWhileTyping(t *testing.T) {
+	m := newKeyed(t, "a apple", "b banana")
+	m.SetFilterText("ban")
+	m.SetFilterState(list.Filtering)
+	m.SetItemsKeep(keyedItems("a apple", "b banana", "c bandana"))
+	if !m.Filtering() {
+		t.Error("stopped filtering")
+	}
+	if n := len(m.VisibleItems()); n != 2 {
+		t.Errorf("%d shown, want 2", n)
+	}
+}
+
+func TestSetItemsKeepReversed(t *testing.T) {
+	m := newKeyed(t, "a apple", "b banana", "c cherry")
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	if got := selectedKey(m); got != "a" {
+		t.Errorf("reverse moved the selection to %q", got)
+	}
+	m.SetItemsKeep(keyedItems("a apple", "b banana", "c cherry", "d date"))
+	if first := m.Items()[0].(keyedItem).id; first != "d" {
+		t.Errorf("reload lost the reversed order, first %q", first)
+	}
+	m.SetItems(keyedItems("a apple", "b banana"))
+	if first := m.Items()[0].(keyedItem).id; first != "a" {
+		t.Errorf("new items kept the reversed order")
 	}
 }

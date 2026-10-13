@@ -61,6 +61,8 @@ func (s *state) Status() string               { return "" }
 func (s *state) Init(context.Context) tea.Cmd { return nil }
 func (s *state) View() string                 { return s.table.View() }
 
+func (s *state) Key() string { return "path" }
+
 func (s *state) Title() base.Title {
 	return base.Title{Text: "Mangal Paths"}
 }

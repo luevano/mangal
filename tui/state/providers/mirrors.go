@@ -59,6 +59,8 @@ func newMirrors(info libmangal.ProviderInfo) *mirrorsState {
 	return s
 }
 
+func (s *mirrorsState) Key() string { return "mirrors/" + s.info.ID }
+
 func (s *mirrorsState) keyMap() help.KeyMap { return util.KeyMap{Short: []key.Binding{s.choose}} }
 func (s *mirrorsState) Title() base.Title   { return base.Title{Text: s.info.Name + " mirrors"} }
 func (s *mirrorsState) Subtitle() string    { return "tried in order when the preferred one is down" }

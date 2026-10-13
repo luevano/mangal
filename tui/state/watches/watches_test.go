@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/client/watch"
@@ -910,5 +911,41 @@ func TestDeleteRun(t *testing.T) {
 	run := newRunState(m, 1)
 	if cmd := run.afterRemove(ctx)(true); cmd == nil || cmd() != base.Back() {
 		t.Error("the run screen doesn't go back once its run is gone")
+	}
+}
+
+// a reload (the poll, back from another screen) keeps the filter and the watch selected
+func TestReloadKeepsSelectionAndFilter(t *testing.T) {
+	m := testManager()
+	s := loaded(t, m)
+	ctx := context.Background()
+	s.List.Resize(base.Size{Width: 80, Height: 20})
+	s.List.SetFilterText("mangaplus")
+	s.List.SelectFunc(func(i _list.Item) bool { return i.(*item).w.ID == 3 })
+
+	m.watches = append([]watch.Watch{{Watch: storage.Watch{ID: 4, Title: "Akira", Provider: "mango-mangaplus", Enabled: true}}}, m.watches...)
+	s.Update(ctx, loadedMsg{manager: m, status: m.status, watches: m.watches})
+	if s.List.FilterValue() != "mangaplus" || s.List.Unfiltered() {
+		t.Fatalf("filter lost: %q", s.List.FilterValue())
+	}
+	if n := len(s.List.VisibleItems()); n != 3 {
+		t.Errorf("%d shown, want the 3 of mangaplus", n)
+	}
+	if i, ok := s.List.SelectedItem().(*item); !ok || i.w.ID != 3 {
+		t.Errorf("selected %v, want Frieren", s.List.SelectedItem())
+	}
+}
+
+// the provider history asked for again (alt+h on another watch) shows that provider
+func TestHistoryRequest(t *testing.T) {
+	m := testManager()
+	ctx := context.Background()
+	h := newHistoryState(m, "mango-mangapill")
+	cmd := h.Update(ctx, base.RestoredMsg{Request: newHistoryState(m, "mango-mangaplus")})
+	if h.provider != "mango-mangaplus" || cmd == nil {
+		t.Errorf("provider %q after the request", h.provider)
+	}
+	if h.Key() != newHistoryState(m, "x").Key() {
+		t.Error("histories of two providers are two windows")
 	}
 }
