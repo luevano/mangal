@@ -1483,6 +1483,46 @@ func TestRemoveRun(t *testing.T) {
 	}
 }
 
+// removing several runs or watches is one operation
+func TestRemoveBatches(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	a := &fakeManga{info: mangadata.MangaInfo{ID: "a", Title: "A"}}
+	b := &fakeManga{info: mangadata.MangaInfo{ID: "b", Title: "B"}}
+	src := e.source("mango-mangaplus", a, b)
+	src.chs["a"], src.chs["b"] = a.chapters(1), b.chapters(1)
+	wa, _ := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", MangaID: "a"})
+	wb, _ := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", MangaID: "b"})
+	report, err := e.svc.Check(ctx, nil, CheckOptions{})
+	if err != nil || report.Watches != 2 {
+		t.Fatalf("check %+v, %v", report.CheckRun, err)
+	}
+	var ops []string
+	e.svc.Operation = func(kind, summary string, do func() error) (string, error) {
+		ops = append(ops, kind+": "+summary)
+		return "/backups/snap.sqlite", do()
+	}
+	ids := []int64{report.Results[0].ID, report.Results[1].ID}
+	// one unknown: nothing removed, no snapshot
+	if _, err := e.svc.RemoveRuns(ctx, append(slices.Clone(ids), 999)); !errors.Is(err, storage.ErrRunNotFound) || len(ops) != 0 {
+		t.Fatalf("unknown run: %v, ops %v", err, ops)
+	}
+	removed, err := e.svc.RemoveRuns(ctx, ids)
+	if err != nil || len(removed) != 2 || !removed[1].CheckRunRemoved || removed[0].Snapshot == "" || removed[0].Run.ID != ids[0] || len(ops) != 1 {
+		t.Fatalf("removed %+v, %v, ops %v", removed, err, ops)
+	}
+	if _, err := e.svc.RemoveWatches(ctx, []int64{wa.ID, 999}); !errors.Is(err, storage.ErrWatchNotFound) || len(ops) != 1 {
+		t.Fatalf("unknown watch: %v, ops %v", err, ops)
+	}
+	if snap, err := e.svc.RemoveWatches(ctx, []int64{wa.ID, wb.ID}); err != nil || snap == "" ||
+		ops[1] != `unwatch: stop watching 1 "A", 2 "B"` {
+		t.Fatalf("remove watches %q, %v, ops %v", snap, err, ops)
+	}
+	if all, _ := e.svc.List(ctx); len(all) != 0 {
+		t.Errorf("left %+v", all)
+	}
+}
+
 func TestNewChapters(t *testing.T) {
 	e := newEnv(t)
 	m := &fakeManga{info: mangadata.MangaInfo{ID: "dn", Title: "Death Note"}}

@@ -708,9 +708,39 @@ func highest(numbers map[float32]bool) *float32 {
 	return last
 }
 
-// Remove stops watching, the history of its checks stays.
+// Remove stops watching, the history of its checks stays. "mangal library undo" undoes it.
 func (s *Service) Remove(ctx context.Context, id int64) error {
-	return s.Watches.Remove(id)
+	_, err := s.RemoveWatches(ctx, []int64{id})
+	return err
+}
+
+// RemoveWatches stops watching the watches with the ids (ErrWatchNotFound when one isn't),
+// as one operation "mangal library undo" can undo; it returns its snapshot.
+func (s *Service) RemoveWatches(ctx context.Context, ids []int64) (string, error) {
+	var titles []string
+	for _, id := range ids {
+		w, err := s.Watches.Get(id)
+		if err != nil {
+			return "", err
+		}
+		titles = append(titles, fmt.Sprintf("%d %q", w.ID, w.Title))
+	}
+	do := func() error {
+		for _, id := range ids {
+			if err := s.Watches.Remove(id); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if s.Operation == nil || len(ids) == 0 {
+		return "", do()
+	}
+	summary := "stop watching " + strings.Join(titles, ", ")
+	if len(ids) > 3 {
+		summary = fmt.Sprintf("stop watching %d mangas", len(ids))
+	}
+	return s.Operation("unwatch", summary, do)
 }
 
 // SetEnabled pauses (false) or resumes the watch.
@@ -1043,23 +1073,51 @@ type RemovedRun struct {
 // from the history, as an operation "mangal library undo" can undo. A check run left
 // without watch runs goes too. Unknown = storage.ErrRunNotFound.
 func (s *Service) RemoveRun(ctx context.Context, id int64) (RemovedRun, error) {
-	var removed RemovedRun
+	removed, err := s.RemoveRuns(ctx, []int64{id})
+	if len(removed) == 0 {
+		return RemovedRun{}, err
+	}
+	return removed[0], err
+}
+
+// RemoveRuns removes the watch runs as RemoveRun does, as one operation (every one's
+// Snapshot is its snapshot). Nothing is removed when one is unknown or unfinished.
+func (s *Service) RemoveRuns(ctx context.Context, ids []int64) ([]RemovedRun, error) {
 	// no snapshot for nothing
-	if _, finished, err := s.Watches.WatchRun(id); err != nil {
-		return removed, fmt.Errorf("remove %w", err)
-	} else if !finished {
-		return removed, fmt.Errorf("remove watch run %d: %w", id, storage.ErrRunUnfinished)
+	for _, id := range ids {
+		if _, finished, err := s.Watches.WatchRun(id); err != nil {
+			return nil, fmt.Errorf("remove %w", err)
+		} else if !finished {
+			return nil, fmt.Errorf("remove watch run %d: %w", id, storage.ErrRunUnfinished)
+		}
 	}
+	var removed []RemovedRun
 	do := func() error {
-		var err error
-		removed.Run, removed.CheckRunRemoved, err = s.Watches.RemoveWatchRun(id)
-		return err
+		for _, id := range ids {
+			var r RemovedRun
+			var err error
+			if r.Run, r.CheckRunRemoved, err = s.Watches.RemoveWatchRun(id); err != nil {
+				return err
+			}
+			removed = append(removed, r)
+		}
+		return nil
 	}
-	if s.Operation == nil {
+	if s.Operation == nil || len(ids) == 0 {
 		return removed, do()
 	}
-	var err error
-	removed.Snapshot, err = s.Operation("history", fmt.Sprintf("remove watch run %d from the history", id), do)
+	strs := make([]string, len(ids))
+	for i, id := range ids {
+		strs[i] = strconv.FormatInt(id, 10)
+	}
+	summary := fmt.Sprintf("remove watch run %s from the history", strs[0])
+	if len(ids) > 1 {
+		summary = fmt.Sprintf("remove watch runs %s from the history", strings.Join(strs, ", "))
+	}
+	snapshot, err := s.Operation("history", summary, do)
+	for i := range removed {
+		removed[i].Snapshot = snapshot
+	}
 	return removed, err
 }
 

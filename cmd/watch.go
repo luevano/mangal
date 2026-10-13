@@ -334,16 +334,24 @@ func firstLine(s string, max int) string {
 	return s
 }
 
+var watchRmArgs = struct {
+	Apply bool
+}{}
+
 func init() {
 	watchCmd.AddCommand(watchRmCmd)
+	watchRmCmd.Flags().BoolVar(&watchRmArgs.Apply, "apply", false, "Stop watching them, instead of only listing them")
 }
 
 var watchRmCmd = &cobra.Command{
 	Use:     "rm <id>...",
 	Aliases: []string{"remove"},
 	Short:   "Stop watching mangas",
-	Long:    `Stop watching the mangas, the history of their checks stays (mangal watch log).`,
-	Args:    cobra.MinimumNArgs(1),
+	Long: `Stop watching the mangas, the history of their checks stays (mangal watch log). The data
+database is snapshotted first: "mangal library undo" brings them back.
+
+Only lists them unless --apply is set.`,
+	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ids, err := parseIDs(args)
 		if err != nil {
@@ -353,14 +361,36 @@ var watchRmCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		var watches []watch.Watch
 		for _, id := range ids {
 			w, err := svc.Get(cmd.Context(), id)
 			if err != nil {
 				return err
 			}
-			if err := svc.Remove(cmd.Context(), id); err != nil {
+			watches = append(watches, w)
+		}
+		if !watchRmArgs.Apply {
+			for _, w := range watches {
+				cmd.Printf("would stop watching %d %q from %s\n", w.ID, w.Title, w.Provider)
+			}
+			cmd.Println("run with --apply to stop watching them")
+			return nil
+		}
+		if local, ok := svc.(*watch.Service); ok {
+			snapshot, err := local.RemoveWatches(cmd.Context(), ids)
+			undoHint(cmd, snapshot, err)
+			if err != nil {
 				return err
 			}
+		} else {
+			// the server journals each one
+			for _, id := range ids {
+				if err := svc.Remove(cmd.Context(), id); err != nil {
+					return err
+				}
+			}
+		}
+		for _, w := range watches {
 			successf(cmd, "stopped watching %q from %s", w.Title, w.Provider)
 		}
 		return nil
@@ -881,19 +911,33 @@ func removeRuns(cmd *cobra.Command, ids []int64) error {
 	if err != nil {
 		return err
 	}
-	for _, id := range ids {
-		removed, err := svc.RemoveRun(cmd.Context(), id)
-		undoHint(cmd, removed.Snapshot, err)
-		if err != nil {
-			return err
+	var all []watch.RemovedRun
+	if local, ok := svc.(*watch.Service); ok {
+		// one operation, one snapshot
+		all, err = local.RemoveRuns(cmd.Context(), ids)
+		snapshot := ""
+		if len(all) != 0 {
+			snapshot = all[0].Snapshot
 		}
+		undoHint(cmd, snapshot, err)
+	} else {
+		for _, id := range ids {
+			removed, rmErr := svc.RemoveRun(cmd.Context(), id)
+			undoHint(cmd, removed.Snapshot, rmErr)
+			if err = rmErr; err != nil {
+				break
+			}
+			all = append(all, removed)
+		}
+	}
+	for _, removed := range all {
 		r := removed.Run
-		successf(cmd, "deleted run %d (%s from %s, %s check %d, %s) from the history", id, r.Title, r.Provider, r.Status, r.CheckRun, formatTime(r.Started))
+		successf(cmd, "deleted run %d (%s from %s, %s check %d, %s) from the history", r.ID, r.Title, r.Provider, r.Status, r.CheckRun, formatTime(r.Started))
 		if removed.CheckRunRemoved {
 			cmd.Printf("check %d had no other run, deleted too\n", r.CheckRun)
 		}
 	}
-	return nil
+	return err
 }
 
 func printRun(cmd *cobra.Command, run watch.CheckRun) {
