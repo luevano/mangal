@@ -35,6 +35,8 @@ var _ base.State = (*state)(nil)
 type state struct {
 	searchlist.Screen
 	client *libmangal.Client
+	// release lets go of the client, once the screen is left
+	release func()
 
 	// the items point to these
 	extraInfo     bool
@@ -76,9 +78,12 @@ type openedMsg struct {
 	volume mangadata.Volume
 }
 
-func New(client *libmangal.Client) base.State {
+// New is the search of the client's provider, release (may be nil) lets go of the client
+// when the screen is left.
+func New(client *libmangal.Client, release func()) base.State {
 	s := &state{
-		client: client,
+		client:  client,
+		release: release,
 		keys: keyMap{
 			confirm:        util.Bind("confirm", "enter"),
 			search:         base.KeySearch,
@@ -110,6 +115,14 @@ func (s *state) KeyMap() help.KeyMap {
 }
 
 func (s *state) Key() string { return "mangas/" + s.client.Info().ID }
+
+// Destroy releases the client: the screens over this one (volumes, chapters, a download)
+// are gone already.
+func (s *state) Destroy() {
+	if s.release != nil {
+		s.release()
+	}
+}
 
 func (s *state) Title() base.Title {
 	return base.Title{Text: s.client.Info().Name}

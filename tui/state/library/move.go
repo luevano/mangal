@@ -23,10 +23,11 @@ var newMover = client.LibraryMover
 
 // acquireInfo is the provider's info (its current id). Swapped in tests.
 var acquireInfo = func(ctx context.Context, provider string) (libmangal.ProviderInfo, error) {
-	c, _, err := client.AcquireByID(ctx, provider)
+	c, _, release, err := client.HoldByID(ctx, provider)
 	if err != nil {
 		return libmangal.ProviderInfo{}, err
 	}
+	defer release()
 	return c.Info(), nil
 }
 

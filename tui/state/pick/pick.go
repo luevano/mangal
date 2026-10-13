@@ -28,10 +28,11 @@ import (
 // SearchProvider searches the provider's mangas (a "mid:<id>" query gets that manga),
 // current is its current id. Swapped in tests.
 var SearchProvider = func(ctx context.Context, provider, query string) (mangas []mangadata.Manga, current string, err error) {
-	c, _, err := client.AcquireByID(ctx, provider)
+	c, _, release, err := client.HoldByID(ctx, provider)
 	if err != nil {
 		return nil, "", err
 	}
+	defer release()
 	current = c.Info().ID
 	if id, ok := selector.IDQuery(query); ok {
 		manga, found, err := c.MangaByIDContext(ctx, id)

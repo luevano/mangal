@@ -32,11 +32,12 @@ type state struct {
 	mirrors key.Binding
 }
 
-// loadedMsg is a provider's client, created now if isNew.
+// loadedMsg is a provider's client, created now if isNew, held until release.
 type loadedMsg struct {
-	item   *item
-	client *libmangal.Client
-	isNew  bool
+	item    *item
+	client  *libmangal.Client
+	release func()
+	isNew   bool
 }
 
 type closedMsg struct{}
@@ -104,7 +105,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if msg.isNew {
 			msg.item.loadTime = time.Now()
 		}
-		return func() tea.Msg { return mangas.New(msg.client) }
+		return func() tea.Msg { return mangas.New(msg.client, msg.release) }
 	case closedMsg:
 		return base.Notify("Closed all clients")
 	case base.RestoredMsg:
@@ -157,14 +158,23 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return s.List.Update(msg)
 }
 
+// loadCmd opens the provider: its client is held while its screens are shown (the mangas
+// screen releases it), a close all then leaves it to them.
 func (s *state) loadCmd(ctx context.Context, i *item) tea.Cmd {
 	return base.Load(ctx, fmt.Sprintf("Loading provider %q", i.loader), func(ctx context.Context) (loadedMsg, error) {
 		isNew := client.Get(i.loader) == nil
-		c, err := client.Acquire(ctx, i.loader)
+		c, release, err := client.Hold(ctx, i.loader)
 		if err != nil {
 			return loadedMsg{}, err
 		}
 		log.Debug("using the client of provider %q (new: %t)", i.loader, isNew)
-		return loadedMsg{item: i, client: c, isNew: isNew}, nil
-	}, func(msg loadedMsg) tea.Msg { return msg })
+		return loadedMsg{item: i, client: c, release: release, isNew: isNew}, nil
+	}, func(msg loadedMsg) tea.Msg {
+		// left meanwhile: nobody gets it
+		if ctx.Err() != nil {
+			msg.release()
+			return nil
+		}
+		return msg
+	})
 }
