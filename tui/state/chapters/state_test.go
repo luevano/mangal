@@ -187,3 +187,22 @@ func TestKeys(t *testing.T) {
 		t.Error(keys)
 	}
 }
+
+func TestWebURL(t *testing.T) {
+	for raw, want := range map[string]bool{
+		"https://mangadex.org/chapter/1": true,
+		"http://example.com":             true,
+		"HTTPS://EXAMPLE.COM/x":          true,
+		"":                               false,
+		"file:///etc/passwd":             false,
+		`\\server\share\x.exe`:           false,
+		"//server/share":                 false,
+		"javascript:alert(1)":            false,
+		"https:///nohost":                false,
+		"C:\\Windows\\notepad.exe":       false,
+	} {
+		if got := webURL(raw); got != want {
+			t.Errorf("webURL(%q) = %v, want %v", raw, got, want)
+		}
+	}
+}

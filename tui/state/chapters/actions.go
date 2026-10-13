@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"time"
 
@@ -222,12 +223,22 @@ func (s *state) readCmd(ctx context.Context, path string, chapter mangadata.Chap
 	}, func(msg readMsg) tea.Msg { return msg })
 }
 
+// openURLCmd opens the chapter's page in the browser. Only a web url: the provider says
+// what it is, a path or a UNC share would be opened as well.
 func openURLCmd(chapter mangadata.Chapter) tea.Cmd {
 	url := chapter.Info().URL
+	if !webURL(url) {
+		return base.Notify("Not a web page: " + url)
+	}
 	return func() tea.Msg {
 		if err := open.Start(url); err != nil {
 			return fmt.Errorf("open %s: %w", url, err)
 		}
 		return nil
 	}
+}
+
+func webURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
