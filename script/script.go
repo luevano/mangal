@@ -43,7 +43,9 @@ func Run(ctx context.Context, args Args, script io.Reader) error {
 		return err
 	}
 	defer release()
-	_ = anilist.EnsureLogin(ctx)
+	if err := anilist.EnsureLogin(ctx); err != nil {
+		log.Debug("script: anilist without the login: %s", err)
+	}
 
 	sdkOptions, resources, err := loader.SDKOptions("script")
 	if err != nil {

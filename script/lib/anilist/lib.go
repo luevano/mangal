@@ -6,6 +6,7 @@ import (
 	luadoc "github.com/luevano/gopher-luadoc"
 	lmanilist "github.com/luevano/libmangal/metadata/anilist"
 	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/script/lib/util"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -147,7 +148,9 @@ func searchMangas(state *lua.LState) int {
 
 	ani, err := anilist.Anilist()
 	util.Must(state, err)
-	_ = anilist.EnsureLogin(state.Context())
+	if err := anilist.EnsureLogin(state.Context()); err != nil {
+		log.Debug("script: anilist search without the login: %s", err)
+	}
 
 	metas, err := ani.SearchContext(state.Context(), query)
 	util.Must(state, err)
@@ -156,7 +159,7 @@ func searchMangas(state *lua.LState) int {
 	for _, m := range metas {
 		manga, ok := m.(*lmanilist.Manga)
 		if !ok {
-			util.Must(state, fmt.Errorf("unexpected anilist result %T", m))
+			util.Must(state, fmt.Errorf("search anilist: got a %T, not a manga", m))
 		}
 		table.Append(util.NewUserData(state, manga, mangaTypeName))
 	}
