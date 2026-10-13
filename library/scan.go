@@ -2,6 +2,7 @@ package library
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/xml"
 	"io"
 	"path/filepath"
@@ -161,6 +162,11 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 // folders that aren't in it yet: with a .libmangal.json, or else any folder with chapters
 // (under the provider directories when providerDirs), guessed by guessInfo.
 func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
+	return s.ScanContext(context.Background(), root, providerDirs)
+}
+
+// ScanContext is Scan, stopped when ctx is done.
+func (s Scanner) ScanContext(ctx context.Context, root string, providerDirs bool) (ScanResult, error) {
 	var res ScanResult
 	mangas, err := s.Library.Mangas()
 	if err != nil {
@@ -168,6 +174,9 @@ func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
 	}
 	marked := &markedCache{}
 	for i, m := range mangas {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
 		report(s.OnProgress, Progress{Phase: "scanning library", Done: i + 1, Total: len(mangas), Item: m.Title})
 		r, err := s.scanManga(m, root, providerDirs, marked)
 		if err != nil {
@@ -182,6 +191,9 @@ func (s Scanner) Scan(root string, providerDirs bool) (ScanResult, error) {
 		return res, err
 	}
 	for i, folder := range folders {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
 		parent, dir := filepath.Dir(folder.path), filepath.Base(folder.path)
 		report(s.OnProgress, Progress{Phase: "looking for new manga folders", Done: i + 1, Total: len(folders), Item: dir})
 		if _, ok, err := s.Library.MangaByFolder(parent, dir); err != nil || ok {

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
@@ -99,6 +100,11 @@ func LibraryUndoer() (library.Undoer, error) {
 // it is now, so an undo can be undone by hand. The old snapshots are deleted after: the
 // one restored may be the oldest.
 func Undo(u library.Undoer, plan library.UndoPlan, force bool) (library.UndoResult, string, error) {
+	return UndoContext(context.Background(), u, plan, force)
+}
+
+// UndoContext is Undo, stopped between steps when ctx is done.
+func UndoContext(ctx context.Context, u library.Undoer, plan library.UndoPlan, force bool) (library.UndoResult, string, error) {
 	if err := plan.Refusal(force); err != nil {
 		return library.UndoResult{}, "", err
 	}
@@ -107,6 +113,6 @@ func Undo(u library.Undoer, plan library.UndoPlan, force bool) (library.UndoResu
 		return library.UndoResult{}, "", err
 	}
 	defer pruneSnapshots()
-	res, err := u.Apply(plan, force)
+	res, err := u.ApplyContext(ctx, plan, force)
 	return res, snapshot, err
 }

@@ -2,6 +2,7 @@ package library
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -66,12 +67,20 @@ type MarkOptions struct {
 // provider (libmangal.MatchMangaDir needs the id), only by metadata id as the library does.
 // Folders with nothing to go by are left alone, an existing marker is never replaced.
 func (f Files) Mark(opts MarkOptions) (MarkResult, error) {
+	return f.MarkContext(context.Background(), opts)
+}
+
+// MarkContext is Mark, stopped when ctx is done.
+func (f Files) MarkContext(ctx context.Context, opts MarkOptions) (MarkResult, error) {
 	var res MarkResult
 	mangas, err := f.Library.Mangas()
 	if err != nil {
 		return res, err
 	}
 	for i, m := range mangas {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
 		report(f.OnProgress, Progress{Phase: "marking", Done: i + 1, Total: len(mangas), Item: m.Title})
 		if m.Dir == "" {
 			continue

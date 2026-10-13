@@ -1,6 +1,7 @@
 package library
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -109,6 +110,11 @@ func isInside(dir, path string) bool {
 // The library is updated as each file moves, so if it stops midway the library still
 // matches the files; "mangal library scan" then finishes the job.
 func (f Files) ApplyMerge(plan MergePlan) error {
+	return f.ApplyMergeContext(context.Background(), plan)
+}
+
+// ApplyMergeContext is ApplyMerge, stopped between files when ctx is done.
+func (f Files) ApplyMergeContext(ctx context.Context, plan MergePlan) error {
 	started := false
 	fail := func(err error) error {
 		if !started {
@@ -123,12 +129,15 @@ func (f Files) ApplyMerge(plan MergePlan) error {
 	}
 	batch := newTrashBatch()
 	total, done := len(plan.Trashed)+len(plan.Moves), 0
-	step := func(path string) {
+	step := func(path string) error {
 		done++
 		report(f.OnProgress, Progress{Phase: "merging", Done: done, Total: total, Item: filepath.Base(path)})
+		return ctx.Err()
 	}
 	for _, path := range plan.Trashed {
-		step(path)
+		if err := step(path); err != nil {
+			return fail(err)
+		}
 		if err := moveToTrash(f.FS, f.Journal, f.Root, batch, path, f.Modes); err != nil {
 			return fail(fmt.Errorf("trash %s: %w", path, err))
 		}
@@ -138,7 +147,9 @@ func (f Files) ApplyMerge(plan MergePlan) error {
 		}
 	}
 	for _, m := range plan.Moves {
-		step(m.From)
+		if err := step(m.From); err != nil {
+			return fail(err)
+		}
 		if err := moveFile(f.FS, f.Journal, m.From, m.To, f.Modes); err != nil {
 			return fail(fmt.Errorf("move %s: %w", m.From, err))
 		}

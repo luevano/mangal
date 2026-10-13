@@ -437,7 +437,15 @@ func Apply(fsys afero.Fs, renames []Rename) []error {
 // (onProgress, may be nil) and each rename's error (nil when done) as soon as it's done.
 // It stops at the first error done returns.
 func ApplyEach(fsys afero.Fs, j Journal, renames []Rename, onProgress func(Progress), done func(i int, err error) error) error {
+	return ApplyEachContext(context.Background(), fsys, j, renames, onProgress, done)
+}
+
+// ApplyEachContext is ApplyEach, stopped between renames when ctx is done.
+func ApplyEachContext(ctx context.Context, fsys afero.Fs, j Journal, renames []Rename, onProgress func(Progress), done func(i int, err error) error) error {
 	for i, r := range renames {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		report(onProgress, Progress{Phase: "renaming", Done: i + 1, Total: len(renames), Item: filepath.Base(r.From)})
 		if err := done(i, applyRename(fsys, j, r)); err != nil {
 			return err
@@ -450,7 +458,12 @@ func ApplyEach(fsys afero.Fs, j Journal, renames []Rename, onProgress func(Progr
 // mangas and downloads, a chapter file's download): done is told each rename's error
 // (nil when done), a library error stops it.
 func ApplyRenames(fsys afero.Fs, lib storage.Library, j Journal, renames []Rename, onProgress func(Progress), done func(i int, err error)) error {
-	return ApplyEach(fsys, j, renames, onProgress, func(i int, err error) error {
+	return ApplyRenamesContext(context.Background(), fsys, lib, j, renames, onProgress, done)
+}
+
+// ApplyRenamesContext is ApplyRenames, stopped between renames when ctx is done.
+func ApplyRenamesContext(ctx context.Context, fsys afero.Fs, lib storage.Library, j Journal, renames []Rename, onProgress func(Progress), done func(i int, err error)) error {
+	return ApplyEachContext(ctx, fsys, j, renames, onProgress, func(i int, err error) error {
 		r := renames[i]
 		if err == nil && r.Skip == "" && !r.RemoveEmpty {
 			move := lib.Moved

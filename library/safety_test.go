@@ -188,3 +188,27 @@ func TestApplyLinksRollsBack(t *testing.T) {
 		t.Errorf("marker %q, %v", got, err)
 	}
 }
+
+// a cancelled ctx stops the long library operations before they change anything
+func TestCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	root := t.TempDir()
+	library := newLibrary(t)
+	touch(t, filepath.Join(root, "Berserk", "1.cbz"))
+	record(t, library, root, "Berserk", "1.cbz", 1, "a")
+	if _, err := (Scanner{FS: afero.NewOsFs(), Library: library}).ScanContext(ctx, root, false); !errors.Is(err, context.Canceled) {
+		t.Errorf("scan: %v", err)
+	}
+	files := Files{FS: afero.NewOsFs(), Library: library, Root: root, Modes: DefaultModes}
+	if _, err := files.MarkContext(ctx, MarkOptions{}); !errors.Is(err, context.Canceled) {
+		t.Errorf("mark: %v", err)
+	}
+	renames := []Rename{{From: filepath.Join(root, "Berserk"), To: filepath.Join(root, "B")}}
+	if err := ApplyRenamesContext(ctx, afero.NewOsFs(), library, nil, renames, nil, nil); !errors.Is(err, context.Canceled) {
+		t.Errorf("rename: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Berserk")); err != nil {
+		t.Error("renamed")
+	}
+}

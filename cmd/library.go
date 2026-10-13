@@ -193,7 +193,7 @@ the year and the id tags) and is listed as a warning; --fallback renames it anyw
 			if op, ok := j.(interface{ SetSummary(string) }); ok {
 				defer func() { op.SetSummary(renameSummary(folders, files)) }()
 			}
-			return library.ApplyRenames(afs.Afero, index, j, renames, st.Progress, func(i int, err error) {
+			return library.ApplyRenamesContext(cmd.Context(), afs.Afero, index, j, renames, st.Progress, func(i int, err error) {
 				r := renames[i]
 				switch {
 				case errors.Is(err, library.ErrNotEmpty):
@@ -426,7 +426,7 @@ existing .libmangal.json is never replaced.`,
 		}
 		providerDirs := config.Download.Provider.CreateDir.Get()
 		scanner := library.Scanner{FS: afs.Afero, Library: lib, OnProgress: st.Progress}
-		res, err := scanner.Scan(root, providerDirs)
+		res, err := scanner.ScanContext(cmd.Context(), root, providerDirs)
 		st.Clear()
 		if err != nil {
 			return err
@@ -439,7 +439,7 @@ existing .libmangal.json is never replaced.`,
 				return err
 			}
 			root = dir
-			res, err = scanner.Scan(root, providerDirs)
+			res, err = scanner.ScanContext(cmd.Context(), root, providerDirs)
 			st.Clear()
 			if err != nil {
 				return err
@@ -517,7 +517,7 @@ func markFolders(cmd *cobra.Command, st *status, lib storage.Library, root strin
 	var res library.MarkResult
 	mark := func(j library.Journal, dryRun, tell bool) error {
 		files.Journal = j
-		res, err = files.Mark(library.MarkOptions{
+		res, err = files.MarkContext(cmd.Context(), library.MarkOptions{
 			Loaders: loaders, ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider,
 			DryRun: dryRun,
 			OnMarked: func(m library.Marked) {
@@ -758,7 +758,7 @@ Only lists what would happen unless --apply is set.`,
 		}
 		snapshot, err := client.Operation("merge", fmt.Sprintf("merge %d %q into %d %q", plan.Other.ID, plan.Other.Title, plan.Keep.ID, plan.Keep.Title), func(j library.Journal) error {
 			files.Journal = j
-			return files.ApplyMerge(plan)
+			return files.ApplyMergeContext(cmd.Context(), plan)
 		})
 		st.Done()
 		undoHint(cmd, snapshot, err)

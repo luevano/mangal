@@ -2,6 +2,7 @@ package library
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -373,6 +374,12 @@ type UndoResult struct {
 // they're undone (nothing is overwritten, a step that can't be undone is skipped), then
 // the database restore.
 func (u Undoer) Apply(plan UndoPlan, force bool) (UndoResult, error) {
+	return u.ApplyContext(context.Background(), plan, force)
+}
+
+// ApplyContext is Apply, stopped between steps when ctx is done (partly undone, the
+// database not restored).
+func (u Undoer) ApplyContext(ctx context.Context, plan UndoPlan, force bool) (UndoResult, error) {
 	var res UndoResult
 	if err := plan.Refusal(force); err != nil {
 		return res, err
@@ -380,6 +387,9 @@ func (u Undoer) Apply(plan UndoPlan, force bool) (UndoResult, error) {
 	fsys := realFS{fs: u.FS}
 	for i, planned := range plan.Steps {
 		s := planned.Step
+		if err := ctx.Err(); err != nil {
+			return res, fmt.Errorf("undo: %w (partly undone, \"mangal library scan\" fixes the library)", err)
+		}
 		report(u.OnProgress, Progress{Phase: "undoing", Done: i + 1, Total: len(plan.Steps), Item: filepath.Base(s.Path)})
 		action, reason := check(fsys, s)
 		var err error
