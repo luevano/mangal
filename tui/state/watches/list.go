@@ -683,7 +683,8 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		message := fmt.Sprintf("Stop watching %q? The history of its checks stays, the downloads too.", w.Title)
 		s.confirm.AskDelete("Stop watching", message, s.View(), func() tea.Msg {
 			return actionMsg{label: "Removing " + w.Title, do: func(ctx context.Context) (string, error) {
-				return "stopped watching " + w.Title, m.Remove(ctx, w.ID)
+				undo := fmt.Sprintf("stopped watching %s (%s in the library undoes it)", w.Title, base.KeyUndo.Help().Key)
+				return undo, m.Remove(ctx, w.ID)
 			}}
 		})
 		return nil, true

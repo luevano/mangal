@@ -1006,3 +1006,22 @@ func TestRelinkDropsLateResults(t *testing.T) {
 		t.Errorf("shown %q, the late results replaced the latest", got)
 	}
 }
+
+// removing a watch is undoable: the notification says the undo key
+func TestRemoveSaysUndo(t *testing.T) {
+	s := loaded(t, testManager())
+	ctx := context.Background()
+	s.List.Select(0)
+	s.Update(ctx, press(base.KeyDelete.Help().Key))
+	if !s.confirm.Active() {
+		t.Fatal("no confirmation")
+	}
+	action, ok := s.Update(ctx, press("y"))().(actionMsg)
+	if !ok {
+		t.Fatal("yes isn't the removal")
+	}
+	notify, err := action.do(ctx)
+	if err != nil || !strings.Contains(notify, base.KeyUndo.Help().Key+" in the library undoes it") {
+		t.Errorf("%q %v", notify, err)
+	}
+}
