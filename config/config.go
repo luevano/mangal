@@ -473,3 +473,8 @@ var Serve = configServe{
 	TokenOnLoopback: boolEntry("serve.token_on_loopback", false, "Also require serve.token when `mangal serve` listens on loopback, where any local program (or user) can reach the API otherwise. Needs a token."),
 	Web:             boolEntry("serve.web", false, "Also serve the web UI (as `mangal web`) on the `mangal serve` port (`mangal serve --web`), behind the token when one is required (the browser asks for it: any user name, the token as the password)."),
 }
+
+var Web = configWeb{
+	Host: stringEntry("web.host", "127.0.0.1", "Address `mangal web` listens on, 127.0.0.1 only accepts local connections (`mangal web` has no authentication)."),
+	Port: intEntry("web.port", 6970, 1, 65535, "Port `mangal web` listens on (not 6969, the logins' callback port)."),
+}

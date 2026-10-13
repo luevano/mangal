@@ -173,6 +173,11 @@ type configWatch struct {
 	Notify            *entry[string, string]
 }
 
+type configWeb struct {
+	Host *entry[string, string]
+	Port *entry[int64, int]
+}
+
 type configServe struct {
 	Host  *entry[string, string]
 	Port  *entry[int64, int]
