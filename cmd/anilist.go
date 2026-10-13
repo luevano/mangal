@@ -27,6 +27,7 @@ func init() {
 	anilistCmd.AddCommand(anilistLoginCmd)
 	anilistLoginCmd.Flags().StringVar(&anilistLoginArgs.ID, "id", "", "ID of the Anilist API client (asked when missing, the last one is kept)")
 	anilistLoginCmd.Flags().StringVar(&anilistLoginArgs.Secret, "secret", "", "Secret of the Anilist API client, without it the login is an implicit grant")
+	_ = anilistLoginCmd.Flags().MarkDeprecated("secret", "it ends up in the shell history and the process list; leave it out to be asked for it")
 	anilistLoginCmd.Flags().BoolVar(&anilistLoginArgs.Browser, "browser", false, "Also open the address in the browser")
 }
 

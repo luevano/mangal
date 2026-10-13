@@ -9,9 +9,15 @@ const resendFragmentAsParam = `
 <body onload="resend()">
 
 <script>
+  // the token stays out of the browser history: the fragment is dropped from this entry
+  // and sent with a request, not a navigation
   function resend(){
     var hash = window.location.hash.substring(1);
-    window.location.href = '?' + hash
+    history.replaceState(null, '', window.location.pathname);
+    fetch('?' + hash)
+      .then(function (r) { return r.text(); })
+      .then(function (t) { document.body.textContent = t; })
+      .catch(function () { window.location.replace('?' + hash); });
   }
 </script>
 
