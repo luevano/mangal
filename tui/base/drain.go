@@ -8,20 +8,36 @@ import (
 )
 
 // Drain runs cmd as the TUI would, for tests: the cmds of batches and sequences too, the
-// results of loads unwrapped; cmds still waiting after a moment (ticks, blinks) are skipped.
-// It returns the msgs that would reach the State.
+// results of loads unwrapped (their work waited for); other cmds still waiting after a
+// moment (ticks, blinks) are skipped. It returns the msgs that would reach the State.
 func Drain(cmd tea.Cmd) []tea.Msg {
-	if cmd == nil {
+	msg, ok := runCmd(cmd, false)
+	if !ok {
 		return nil
+	}
+	return expand(msg)
+}
+
+// runCmd runs cmd, waiting for it if wait, else for a moment: ok is false then.
+func runCmd(cmd tea.Cmd, wait bool) (tea.Msg, bool) {
+	if cmd == nil {
+		return nil, false
 	}
 	done := make(chan tea.Msg, 1)
 	go func() { done <- cmd() }()
-	var msg tea.Msg
-	select {
-	case msg = <-done:
-	case <-time.After(200 * time.Millisecond):
-		return nil
+	if wait {
+		return <-done, true
 	}
+	select {
+	case msg := <-done:
+		return msg, true
+	case <-time.After(200 * time.Millisecond):
+		return nil, false
+	}
+}
+
+// expand is what msg brings to the State.
+func expand(msg tea.Msg) []tea.Msg {
 	switch m := msg.(type) {
 	case nil, loadStartMsg:
 		return nil
@@ -39,12 +55,16 @@ func Drain(cmd tea.Cmd) []tea.Msg {
 	case loadLabelMsg:
 		return Drain(m.next)
 	}
-	// tea.Sequence's msg is an unexported []tea.Cmd
-	if v := reflect.ValueOf(msg); v.Kind() == reflect.Slice {
+	// tea.Sequence's msg is an unexported []tea.Cmd; a load is a sequence of its start
+	// and its work
+	if v := reflect.ValueOf(msg); v.Kind() == reflect.Slice && v.Type().Elem() == reflect.TypeFor[tea.Cmd]() {
 		var msgs []tea.Msg
+		started := false
 		for i := range v.Len() {
-			if c, ok := v.Index(i).Interface().(tea.Cmd); ok {
-				msgs = append(msgs, Drain(c)...)
+			m, ok := runCmd(v.Index(i).Interface().(tea.Cmd), started)
+			_, started = m.(loadStartMsg)
+			if ok {
+				msgs = append(msgs, expand(m)...)
 			}
 		}
 		return msgs

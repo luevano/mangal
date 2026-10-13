@@ -12,6 +12,8 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -20,6 +22,7 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/state/pick"
+	"github.com/luevano/mangal/v5/tui/util"
 )
 
 type fakeManager struct {
@@ -780,7 +783,19 @@ func TestKeys(t *testing.T) {
 	r := newRelinkState(m, w)
 	p := pick.NewProviders(w.Provider, nil)
 	live := newLiveState(m, &w)
+	add := newAddState(func(context.Context) (watch.Manager, error) { return m, nil }, nil, &testManga{mangadata.MangaInfo{ID: "1", Title: "Berserk"}}, nil)
+	edit := newEditState(m, w)
+	// enter changes the manga on its field, saves on the others
+	enabled := func(km help.KeyMap) help.KeyMap {
+		return util.KeyMap{Short: slices.DeleteFunc(util.Bindings(km), func(b key.Binding) bool { return !b.Enabled() })}
+	}
+	editSchedule := enabled(edit.KeyMap())
+	edit.form.Focus(0)
+	editManga := enabled(edit.KeyMap())
 	for name, keys := range map[string][]string{
+		"add":           base.KeyCollisions(add.KeyMap()),
+		"edit schedule": base.KeyCollisions(editSchedule),
+		"edit manga":    base.KeyCollisions(editManga),
 		"list":          base.KeyCollisions(l.keyMap(), l.List.KeyMap.Browsing()...),
 		"details":       base.KeyCollisions(d.keyMap(), d.List.KeyMap.Browsing()...),
 		"history":       base.KeyCollisions(h.keyMap(), h.List.KeyMap.Browsing()...),
