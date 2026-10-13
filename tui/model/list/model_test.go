@@ -2,10 +2,12 @@ package list
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
@@ -151,5 +153,16 @@ func TestSetItemsKeepReversed(t *testing.T) {
 	m.SetItems(keyedItems("a apple", "b banana"))
 	if first := m.Items()[0].(keyedItem).id; first != "a" {
 		t.Errorf("new items kept the reversed order")
+	}
+}
+
+// an applied filter leaves room in the header for the notifications
+func TestStatusFiltered(t *testing.T) {
+	m := New(2, 1, "manga", "mangas", []string{"berserk", "claymore"}, func(s string) list.DefaultItem { return testItem(s) })
+	m.Resize(base.Size{Width: 120, Height: 20})
+	m.SetFilterText("clay")
+	status := m.Status()
+	if !strings.Contains(status, "clay") || lipgloss.Width(status) > 40 {
+		t.Errorf("status %q, %d wide", status, lipgloss.Width(status))
 	}
 }

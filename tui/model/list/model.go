@@ -56,8 +56,13 @@ func (m *Model) Status() string {
 		p = m.Paginator.View()
 	}
 
-	if m.FilterState() == list.Filtering || m.FilterValue() != "" {
+	if m.FilterState() == list.Filtering {
 		return m.Paginator.View() + " " + m.FilterInput.View()
+	}
+	if v := m.FilterValue(); v != "" {
+		// not the input's view: it's as wide as the list, the notifications would be cut off
+		in := m.FilterInput
+		return m.Paginator.View() + " " + in.PromptStyle.Render(in.Prompt) + in.TextStyle.Render(v)
 	}
 
 	return p
