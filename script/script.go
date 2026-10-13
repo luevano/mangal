@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/luevano/luaprovider/util"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/log"
@@ -63,7 +64,11 @@ func Run(ctx context.Context, args Args, script io.Reader) error {
 
 	addVarsTable(state, args.Variables)
 	lib.Preload(state, c, sdkOptions)
+	return run(state, script)
+}
 
+// run runs the script on state, the errors the SDK raised as themselves.
+func run(state *lua.LState, script io.Reader) error {
 	lFunction, err := state.Load(script, "script")
 	if err != nil {
 		return fmt.Errorf("load script: %w", err)
@@ -75,7 +80,7 @@ func Run(ctx context.Context, args Args, script io.Reader) error {
 		Protect: true,
 	})
 	if err != nil {
-		return fmt.Errorf("run script: %w", err)
+		return fmt.Errorf("run script: %w", util.GoError(err))
 	}
 	return nil
 }
