@@ -18,11 +18,14 @@ import (
 	"github.com/luevano/mangal/v5/util/sanitize"
 )
 
+// acquire is the provider's client (client.AcquireByID). Swapped in tests.
+var acquire = client.AcquireByID
+
 // search gets the provider's client, searches the query and picks the mangas with the
 // manga selector.
 func search(ctx context.Context, args Args) (*libmangal.Client, []MangaResult, error) {
 	args.status("loading %s", args.Provider)
-	c, warnings, err := client.AcquireByID(ctx, args.Provider)
+	c, warnings, err := acquire(ctx, args.Provider)
 	args.print(func() {
 		for _, w := range warnings {
 			fmt.Fprintln(os.Stderr, "warning: "+sanitize.Text(w))
