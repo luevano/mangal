@@ -11,7 +11,6 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/tui/base"
-	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/util"
 )
@@ -30,20 +29,19 @@ func (i *batchItem) Description() string {
 
 type trashState struct {
 	list.Screen
-	files   library.Files
-	confirm *confirm.Dialog
-	empty   key.Binding
+	files library.Files
+	empty key.Binding
 }
 
 type trashLoadedMsg []_list.Item
 
 func newTrashState(files library.Files) *trashState {
 	s := &trashState{
-		files:   files,
-		confirm: newDialog(),
-		empty:   base.KeyEmptyTrash,
+		files: files,
+		empty: base.KeyEmptyTrash,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "trashed batch", "trashed batches", []*batchItem{}, func(i *batchItem) _list.DefaultItem { return i }), s.keyMap)
+	s.Confirm = newDialog()
 	return s
 }
 
@@ -63,25 +61,18 @@ func (s *trashState) reload(ctx context.Context) tea.Cmd {
 	}, func(items trashLoadedMsg) tea.Msg { return items })
 }
 
-func (s *trashState) Backable() bool    { return s.Screen.Backable() && !s.confirm.Active() }
-func (s *trashState) Inputting() bool   { return s.Screen.Inputting() || s.confirm.Active() }
 func (s *trashState) Key() string       { return "trash" }
 func (s *trashState) Title() base.Title { return base.Title{Text: "Trash"} }
 func (s *trashState) Subtitle() string {
 	return "deleted chapters and mangas, and the copies merges replaced; emptying deletes them for good"
 }
-func (s *trashState) Resize(size base.Size) tea.Cmd {
-	s.confirm.Resize(size)
-	return s.Screen.Resize(size)
-}
-
 func (s *trashState) Init(ctx context.Context) tea.Cmd {
 	return s.reload(ctx)
 }
 
 func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
-		return s.confirm.Update(msg)
+	if cmd, ok := s.Answer(msg); ok {
+		return cmd
 	}
 	switch msg := msg.(type) {
 	case trashLoadedMsg:
@@ -101,7 +92,7 @@ func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return base.Notify(busyNotice)
 		}
 		files := s.files
-		s.confirm.AskDelete("Empty the trash", "Delete everything in the trash? It can't be undone.", s.View(), action("Emptying the trash", func() (string, error) {
+		s.Confirm.AskDelete("Empty the trash", "Delete everything in the trash? It can't be undone.", s.View(), action("Emptying the trash", func() (string, error) {
 			if _, err := client.Snapshot("empty-trash"); err != nil {
 				return "", err
 			}
@@ -110,11 +101,4 @@ func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return nil
 	}
 	return s.List.Update(msg)
-}
-
-func (s *trashState) View() string {
-	if s.confirm.Active() {
-		return s.confirm.View()
-	}
-	return s.List.View()
 }

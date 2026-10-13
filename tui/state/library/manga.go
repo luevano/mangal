@@ -16,7 +16,6 @@ import (
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
-	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
@@ -51,9 +50,8 @@ func (i *downloadItem) Description() string {
 
 type mangaState struct {
 	list.Screen
-	files   library.Files
-	manga   storage.Manga
-	confirm *confirm.Dialog
+	files library.Files
+	manga storage.Manga
 	// watches and bindings are the manga's, for the header
 	watches  []watch.Watch
 	bindings []storage.Binding
@@ -76,16 +74,16 @@ type mangaScannedMsg struct {
 
 func newMangaState(files library.Files, manga storage.Manga) *mangaState {
 	s := &mangaState{
-		files:   files,
-		manga:   manga,
-		confirm: newDialog(),
-		open:    util.Bind("open", "enter"),
-		scan:    base.KeyScan,
-		delete:  base.KeyDelete,
-		watch:   base.KeyItsWatch,
-		links:   base.KeyBindings,
+		files:  files,
+		manga:  manga,
+		open:   util.Bind("open", "enter"),
+		scan:   base.KeyScan,
+		delete: base.KeyDelete,
+		watch:  base.KeyItsWatch,
+		links:  base.KeyBindings,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "chapter", "chapters", []*downloadItem{}, func(i *downloadItem) _list.DefaultItem { return i }), s.keyMap)
+	s.Confirm = newDialog()
 	return s
 }
 
@@ -229,18 +227,16 @@ func (s *mangaState) onScanned(ctx context.Context, msg mangaScannedMsg) tea.Cmd
 	return tea.Batch(resize, s.reload(ctx))
 }
 
-func (s *mangaState) Backable() bool    { return s.Screen.Backable() && !s.confirm.Active() }
-func (s *mangaState) Inputting() bool   { return s.Screen.Inputting() || s.confirm.Active() }
 func (s *mangaState) Key() string       { return fmt.Sprintf("library/%d", s.manga.ID) }
 func (s *mangaState) Title() base.Title { return base.Title{Text: s.manga.Title} }
 func (s *mangaState) Subtitle() string  { return s.manga.Path() }
 func (s *mangaState) Resize(size base.Size) tea.Cmd {
 	s.size = size
-	s.confirm.Resize(size)
+	s.Confirm.Resize(size)
 	if h := s.header(); h != "" {
 		size.Height = max(1, size.Height-lipgloss.Height(h)-1)
 	}
-	return s.Screen.Resize(size)
+	return s.List.Resize(size)
 }
 
 func (s *mangaState) Init(ctx context.Context) tea.Cmd {
@@ -248,8 +244,8 @@ func (s *mangaState) Init(ctx context.Context) tea.Cmd {
 }
 
 func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
-		return s.confirm.Update(msg)
+	if cmd, ok := s.Answer(msg); ok {
+		return cmd
 	}
 	switch msg := msg.(type) {
 	case downloadsMsg:
@@ -298,7 +294,7 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			}
 			files, manga, dl, title := s.files, s.manga, item.download, item.Title()
 			message := fmt.Sprintf("Delete chapter %s (%s)? The file goes to the trash.", title, dl.Format)
-			s.confirm.AskDelete("Delete", message, s.View(), action("Deleting chapter "+title, func() (string, error) {
+			s.Confirm.AskDelete("Delete", message, s.View(), action("Deleting chapter "+title, func() (string, error) {
 				summary := fmt.Sprintf("delete chapter %s of %d %q", title, manga.ID, manga.Title)
 				return journaled("delete", summary, fmt.Sprintf("deleted chapter %s (in the trash until emptied)", title), func(j library.Journal) error {
 					files.Journal = j
@@ -322,8 +318,8 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 }
 
 func (s *mangaState) View() string {
-	if s.confirm.Active() {
-		return s.confirm.View()
+	if s.Asking() {
+		return s.Confirm.View()
 	}
 	if h := s.header(); h != "" {
 		return h + "\n\n" + s.List.View()

@@ -77,10 +77,10 @@ func TestDownloadTheToggledChapter(t *testing.T) {
 		t.Fatalf("hovering chapter %v, want 3", i.chapter.Info().Number)
 	}
 	s.Update(ctx, press("d"))
-	if !s.confirm.Active() || !strings.Contains(s.confirm.View(), "Download chapter 1 ") {
-		t.Fatalf("confirm doesn't name chapter 1:\n%s", s.confirm.View())
+	if !s.Confirm.Active() || !strings.Contains(s.Confirm.View(), "Download chapter 1 ") {
+		t.Fatalf("confirm doesn't name chapter 1:\n%s", s.Confirm.View())
 	}
-	msg := s.confirm.Update(press("y"))()
+	msg := s.Confirm.Update(press("y"))()
 	got, ok := msg.(downloadMsg)
 	if !ok || got.item == nil || got.item.chapter.Info().Number != 1 {
 		t.Fatalf("yes: %#v, want a download of chapter 1", msg)

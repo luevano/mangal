@@ -134,7 +134,6 @@ type listState struct {
 	connect connector
 	manager watch.Manager
 	status  watch.Status
-	confirm *confirm.Dialog
 	backoff int
 	// started is when this screen started a check, it counts as running for a moment
 	started time.Time
@@ -196,7 +195,6 @@ func New() base.State {
 func newListState(connect connector) *listState {
 	s := &listState{
 		connect: connect,
-		confirm: confirm.NewDialog(40, color.Warning),
 		backoff: config.Watch.Backoff.Get(),
 		now:     time.Now,
 		keys: listKeyMap{
@@ -225,15 +223,9 @@ func newListState(connect connector) *listState {
 		liveProviders: map[string]bool{},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "watch", "watches", []*item{}, func(i *item) _list.DefaultItem { return i }), s.keyMap)
+	s.Confirm = confirm.NewDialog(40, color.Warning)
 	s.updateKeys()
 	return s
-}
-
-func (s *listState) KeyMap() help.KeyMap {
-	if s.confirm.Active() {
-		return s.confirm.KeyMap()
-	}
-	return s.Screen.KeyMap()
 }
 
 func (s *listState) keyMap() help.KeyMap {
@@ -247,9 +239,7 @@ func (s *listState) keyMap() help.KeyMap {
 	}}
 }
 
-func (s *listState) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
-func (s *listState) Inputting() bool { return s.Screen.Inputting() || s.confirm.Active() }
-func (s *listState) Key() string     { return "watches" }
+func (s *listState) Key() string { return "watches" }
 
 func (s *listState) Title() base.Title {
 	return base.Title{Text: "Watches"}
@@ -288,11 +278,6 @@ func (s *listState) Subtitle() string {
 		parts = append(parts, "next check "+watch.FormatNext(s.status.NextCheck, now))
 	}
 	return strings.Join(parts, " · ")
-}
-
-func (s *listState) Resize(size base.Size) tea.Cmd {
-	s.confirm.Resize(size)
-	return s.Screen.Resize(size)
 }
 
 // Destroy stops the poll loop.
@@ -439,8 +424,8 @@ func lastResults(runs []watch.CheckRun) map[int64]storage.WatchRun {
 }
 
 func (s *listState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
-		return s.confirm.Update(msg)
+	if cmd, ok := s.Answer(msg); ok {
+		return cmd
 	}
 	switch msg := msg.(type) {
 	case loadedMsg:
@@ -681,7 +666,7 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		return pauseProviderCmd(m, w), true
 	case key.Matches(msg, s.keys.delete):
 		message := fmt.Sprintf("Stop watching %q? The history of its checks stays, the downloads too.", w.Title)
-		s.confirm.AskDelete("Stop watching", message, s.View(), func() tea.Msg {
+		s.Confirm.AskDelete("Stop watching", message, s.View(), func() tea.Msg {
 			return actionMsg{label: "Removing " + w.Title, do: func(ctx context.Context) (string, error) {
 				undo := fmt.Sprintf("stopped watching %s (%s in the library undoes it)", w.Title, base.KeyUndo.Help().Key)
 				return undo, m.Remove(ctx, w.ID)
@@ -806,11 +791,4 @@ func summary(r watch.Report) string {
 		s += " (busy, skipped: " + strings.Join(r.Busy, ", ") + ")"
 	}
 	return s
-}
-
-func (s *listState) View() string {
-	if s.confirm.Active() {
-		return s.confirm.View()
-	}
-	return s.List.View()
 }

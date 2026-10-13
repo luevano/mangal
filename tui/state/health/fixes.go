@@ -62,18 +62,18 @@ func (s *state) applyLibrary(ctx context.Context, f health.Finding) (tea.Cmd, bo
 		if len(ids) != 1 {
 			message = fmt.Sprintf("Write the .libmangal.json of the %d folders from the library (what \"mangal library scan --mark --apply\" writes)?", len(ids))
 		}
-		s.confirm.Ask("Mark", message, s.View(), libChange("Marking", func(ctx context.Context, status func(string)) (string, error) {
+		s.Confirm.Ask("Mark", message, s.View(), libChange("Marking", func(ctx context.Context, status func(string)) (string, error) {
 			return markMangas(ctx, ids, status)
 		}))
 	case health.ActionForget:
 		id, name := a.Manga, f.Subject.Name
-		s.confirm.Choose("Library manga", fmt.Sprintf("%s: %s\n\nScan the library (it finds folders that moved), or forget the manga?", f.Subject, f.Message), s.View(),
+		s.Confirm.Choose("Library manga", fmt.Sprintf("%s: %s\n\nScan the library (it finds folders that moved), or forget the manga?", f.Subject, f.Message), s.View(),
 			confirm.Choice{Key: "u", Label: "scan the library", Cmd: libChange("Scanning the library", scanLibrary)},
 			confirm.Choice{Key: "d", Label: "forget it", Cmd: libChange("Forgetting "+name, func(context.Context, func(string)) (string, error) {
 				return forget(id)
 			})})
 	case health.ActionScan:
-		s.confirm.Ask("Scan", "Scan the library? It adds the folders it doesn't have and finds the ones that moved.", s.View(),
+		s.Confirm.Ask("Scan", "Scan the library? It adds the folders it doesn't have and finds the ones that moved.", s.View(),
 			libChange("Scanning the library", scanLibrary))
 	case health.ActionRename:
 		paths := a.Paths
@@ -81,7 +81,7 @@ func (s *state) applyLibrary(ctx context.Context, f health.Finding) (tea.Cmd, bo
 			return planRenames(ctx, paths)
 		}, func(msg tea.Msg) tea.Msg { return msg }), true
 	case health.ActionEmptyTrash:
-		s.confirm.AskDelete("Empty the trash", f.Message+"\n\nDelete them for good? It can't be undone.", s.View(),
+		s.Confirm.AskDelete("Empty the trash", f.Message+"\n\nDelete them for good? It can't be undone.", s.View(),
 			libChange("Emptying the trash", func(context.Context, func(string)) (string, error) {
 				files, err := client.LibraryFiles()
 				if err != nil {
@@ -104,7 +104,7 @@ func (s *state) askRename(msg renamePlannedMsg) tea.Cmd {
 		return base.Notify("Nothing to rename any more")
 	}
 	renames := msg.renames
-	s.confirm.Ask("Rename", strings.Join(append(msg.lines, "", "Rename?"), "\n"), s.View(), libChange("Renaming", func(ctx context.Context, status func(string)) (string, error) {
+	s.Confirm.Ask("Rename", strings.Join(append(msg.lines, "", "Rename?"), "\n"), s.View(), libChange("Renaming", func(ctx context.Context, status func(string)) (string, error) {
 		return applyRenames(ctx, renames, status)
 	}))
 	return nil

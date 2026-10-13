@@ -67,7 +67,7 @@ func (s *mangasState) askUndo(msg undoPlannedMsg) tea.Cmd {
 		return base.Viewport("Undo", report, color.Warning)
 	}
 	undoer, plan := msg.undoer, msg.plan
-	s.confirm.Ask("Undo", strings.Join(lines, "\n"), s.View(), func() tea.Msg {
+	s.Confirm.Ask("Undo", strings.Join(lines, "\n"), s.View(), func() tea.Msg {
 		return actionMsg{label: "Undoing " + plan.Op.Kind, do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
 			undoer.OnProgress = func(p library.Progress) { status(p.String()) }
 			res, _, err := client.UndoContext(ctx, undoer, plan, false)

@@ -157,8 +157,7 @@ func sourceName(code lmmeta.IDCode) string {
 // state is the findings, or a summary finding's items (summary set): those don't reload.
 type state struct {
 	list.Screen
-	confirm *confirm.Dialog
-	report  health.Report
+	report health.Report
 	// network is true when the last run did the network checks
 	network bool
 	loaded  bool
@@ -228,7 +227,6 @@ func New() base.State {
 
 func newState(summary *health.Finding) *state {
 	s := &state{
-		confirm: confirm.NewDialog(50, color.Warning),
 		summary: summary,
 		applied: map[int64]bool{},
 		keys: keyMap{
@@ -244,6 +242,7 @@ func newState(summary *health.Finding) *state {
 		},
 	}
 	s.Screen = list.NewScreen(list.New(3, 1, "finding", "findings", []*item{}, func(i *item) _list.DefaultItem { return i }), s.keyMap)
+	s.Confirm = confirm.NewDialog(50, color.Warning)
 	if summary != nil {
 		s.report = health.Report{Findings: summary.Items}
 		s.loaded = true
@@ -260,16 +259,6 @@ func (s *state) keyMap() help.KeyMap {
 	short := []key.Binding{k.jump, k.apply, k.merge, k.network, k.next, k.dismiss}
 	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.info, k.refresh, k.showAll)}}
 }
-
-func (s *state) KeyMap() help.KeyMap {
-	if s.confirm.Active() {
-		return s.confirm.KeyMap()
-	}
-	return s.Screen.KeyMap()
-}
-
-func (s *state) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
-func (s *state) Inputting() bool { return s.Screen.Inputting() || s.confirm.Active() }
 
 func (s *state) Key() string {
 	if s.summary != nil {
@@ -322,11 +311,6 @@ func (s *state) Status() string {
 	return status
 }
 
-func (s *state) Resize(size base.Size) tea.Cmd {
-	s.confirm.Resize(size)
-	return s.Screen.Resize(size)
-}
-
 func (s *state) Init(ctx context.Context) tea.Cmd {
 	if s.summary != nil {
 		return nil
@@ -353,8 +337,8 @@ func (s *state) load(ctx context.Context, network bool) tea.Cmd {
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
-		return s.confirm.Update(msg)
+	if cmd, ok := s.Answer(msg); ok {
+		return cmd
 	}
 	switch msg := msg.(type) {
 	case loadedMsg:
@@ -396,7 +380,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case pushMsg:
 		return func() tea.Msg { return msg.state }
 	case choiceMsg:
-		s.confirm.Choose(msg.title, msg.message, s.View(), msg.choices...)
+		s.Confirm.Choose(msg.title, msg.message, s.View(), msg.choices...)
 		return nil
 	case tea.KeyMsg:
 		if s.List.Filtering() {
@@ -633,14 +617,14 @@ func (s *state) apply(ctx context.Context, f health.Finding) tea.Cmd {
 	switch a.Kind {
 	case health.ActionResume:
 		id := a.Watch
-		s.confirm.Ask("Resume", fmt.Sprintf("Resume watch %d (%s)?", id, f.Subject.Name), s.View(), change("Resuming", 0, func(ctx context.Context, m watch.Manager) (string, error) {
+		s.Confirm.Ask("Resume", fmt.Sprintf("Resume watch %d (%s)?", id, f.Subject.Name), s.View(), change("Resuming", 0, func(ctx context.Context, m watch.Manager) (string, error) {
 			w, err := m.SetEnabled(ctx, id, true)
 			return "resumed " + w.Title, err
 		}))
 	case health.ActionWatch:
 		title, opts := f.Subject.Name, watch.AddOptions{Provider: a.Provider, MangaID: a.MangaID}
 		message := fmt.Sprintf("Watch %q on %s? Its first check downloads the chapters after the library's last.", title, a.Provider)
-		s.confirm.Ask("Watch", message, s.View(), change("Adding the watch", f.Subject.ID, func(ctx context.Context, m watch.Manager) (string, error) {
+		s.Confirm.Ask("Watch", message, s.View(), change("Adding the watch", f.Subject.ID, func(ctx context.Context, m watch.Manager) (string, error) {
 			w, err := m.Add(ctx, opts)
 			return fmt.Sprintf("watching %s on %s", w.Title, w.Provider), err
 		}))
@@ -660,7 +644,7 @@ func (s *state) apply(ctx context.Context, f health.Finding) tea.Cmd {
 		if n := len(a.IDs) - len(ids); n > 0 {
 			message += fmt.Sprintf("\n(%d more not shown, link one from the links screen: enter)", n)
 		}
-		s.confirm.Choose("Link", message, s.View(), choices...)
+		s.Confirm.Choose("Link", message, s.View(), choices...)
 	case health.ActionPick:
 		source := a.Source
 		return loadManga(ctx, a.Manga, func(m storage.Manga) (tea.Msg, error) {
@@ -738,8 +722,8 @@ func (s *state) merge(ctx context.Context, a *health.Action) tea.Cmd {
 }
 
 func (s *state) View() string {
-	if s.confirm.Active() {
-		return s.confirm.View()
+	if s.Asking() {
+		return s.Confirm.View()
 	}
 	if s.loaded && len(s.List.Items()) == 0 && s.List.Unfiltered() {
 		return "No problems found."

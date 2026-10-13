@@ -23,7 +23,6 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
-	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
@@ -78,8 +77,7 @@ type mangasState struct {
 	list.Screen
 	files library.Files
 	// err is opening the library, shown by Init
-	err     error
-	confirm *confirm.Dialog
+	err error
 	// keep is the manga a merge keeps, 0 if none
 	keep  int64
 	trash string
@@ -134,8 +132,7 @@ func New() base.State {
 
 func newMangasState(files library.Files) *mangasState {
 	s := &mangasState{
-		files:   files,
-		confirm: newDialog(),
+		files: files,
 		keys: mangasKeyMap{
 			confirm: util.Bind("chapters", "enter"),
 			scan:    base.KeyScan,
@@ -153,6 +150,7 @@ func newMangasState(files library.Files) *mangasState {
 		},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "manga", "mangas", []*mangaItem{}, func(i *mangaItem) _list.DefaultItem { return i }), s.keyMap)
+	s.Confirm = newDialog()
 	return s
 }
 
@@ -210,9 +208,7 @@ func trashSummary(files library.Files) string {
 	return fmt.Sprintf("%d files in the trash", n)
 }
 
-func (s *mangasState) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
-func (s *mangasState) Inputting() bool { return s.Screen.Inputting() || s.confirm.Active() }
-func (s *mangasState) Key() string     { return "library" }
+func (s *mangasState) Key() string { return "library" }
 
 func (s *mangasState) Title() base.Title {
 	return base.Title{Text: "Library"}
@@ -246,11 +242,6 @@ func (s *mangasState) Status() string {
 	return s.trash + " · " + status
 }
 
-func (s *mangasState) Resize(size base.Size) tea.Cmd {
-	s.confirm.Resize(size)
-	return s.Screen.Resize(size)
-}
-
 func (s *mangasState) Init(ctx context.Context) tea.Cmd {
 	if s.err != nil {
 		err := s.err
@@ -260,8 +251,8 @@ func (s *mangasState) Init(ctx context.Context) tea.Cmd {
 }
 
 func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
-		return s.confirm.Update(msg)
+	if cmd, ok := s.Answer(msg); ok {
+		return cmd
 	}
 	switch msg := msg.(type) {
 	case mangasLoadedMsg:
@@ -291,7 +282,7 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case undoPlannedMsg:
 		return s.askUndo(msg)
 	case backupsFoundMsg:
-		return askBackups(s.confirm, s.View(), msg)
+		return askBackups(s.Confirm, s.View(), msg)
 	case setRootMsg:
 		// in Update, the config isn't safe to write from the background; there may be no
 		// file yet
@@ -372,7 +363,7 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 		if m.Dir == "" {
 			message = fmt.Sprintf("Delete %q? Its %d chapters go to the trash and it leaves the library.", m.Title, m.Chapters)
 		}
-		s.confirm.AskDelete("Delete", message, s.View(), action("Deleting "+m.Title, func() (string, error) {
+		s.Confirm.AskDelete("Delete", message, s.View(), action("Deleting "+m.Title, func() (string, error) {
 			return journaled("delete", fmt.Sprintf("delete %d %q", m.ID, m.Title), fmt.Sprintf("deleted %s (in the trash until emptied)", m.Title), func(j library.Journal) error {
 				files.Journal = j
 				return files.DeleteManga(m)
@@ -382,7 +373,7 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 	case key.Matches(msg, s.keys.delete):
 		// its folder is gone: delete forgets it
 		m := item.manga
-		s.confirm.AskDelete("Remove", fmt.Sprintf("Forget %q? Its folder is gone.", m.Title), s.View(), action("Removing "+m.Title, func() (string, error) {
+		s.Confirm.AskDelete("Remove", fmt.Sprintf("Forget %q? Its folder is gone.", m.Title), s.View(), action("Removing "+m.Title, func() (string, error) {
 			if _, err := client.RemoveMissing(files.Library, []storage.Manga{m}); err != nil {
 				return "", err
 			}
@@ -498,7 +489,7 @@ func checkIDs(ctx context.Context, files library.Files, onProgress func(library.
 func (s *mangasState) onScanned(msg scannedMsg) tea.Cmd {
 	if dir := msg.otherRoot; dir != "" {
 		message := fmt.Sprintf("%d mangas are in %s, but download.path is %s. Use %s as download.path?", len(msg.result.Missing), dir, s.files.Root, dir)
-		s.confirm.Ask("Download path", message, s.View(), func() tea.Msg { return setRootMsg{dir: dir, check: msg.checked} })
+		s.Confirm.Ask("Download path", message, s.View(), func() tea.Msg { return setRootMsg{dir: dir, check: msg.checked} })
 		return nil
 	}
 	report := scanReport(msg.result)
@@ -582,7 +573,7 @@ func (s *mangasState) askMerge(msg mergePlannedMsg) {
 	message := fmt.Sprintf("Merge %q into %q? %d chapters move, %d already there go to the trash.",
 		msg.other.Title, msg.keep.Title, len(msg.plan.Moves), len(msg.plan.Trashed))
 	files := s.files
-	s.confirm.Ask("Merge", message, s.View(), func() tea.Msg {
+	s.Confirm.Ask("Merge", message, s.View(), func() tea.Msg {
 		return actionMsg{label: "Merging", do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
 			files.OnProgress = func(p library.Progress) { status(p.String()) }
 			summary := fmt.Sprintf("merge %d %q into %d %q", msg.other.ID, msg.other.Title, msg.keep.ID, msg.keep.Title)
@@ -593,11 +584,4 @@ func (s *mangasState) askMerge(msg mergePlannedMsg) {
 			return reloadMsg{notify: notify, merged: true}, err
 		}}
 	})
-}
-
-func (s *mangasState) View() string {
-	if s.confirm.Active() {
-		return s.confirm.View()
-	}
-	return s.List.View()
 }

@@ -28,9 +28,8 @@ var _ base.State = (*bindingsState)(nil)
 // bindingsState lists the metadata sources of the client with the manga's binding to each.
 type bindingsState struct {
 	list.Screen
-	client  *libmangal.Client
-	manga   mangadata.Manga
-	confirm *confirm.Dialog
+	client *libmangal.Client
+	manga  mangadata.Manga
 
 	search,
 	remove,
@@ -55,12 +54,12 @@ func newBindings(c *libmangal.Client, manga mangadata.Manga) base.State {
 	s := &bindingsState{
 		client:   c,
 		manga:    manga,
-		confirm:  confirm.NewDialog(40, color.Warning),
 		search:   util.Bind("search", "enter", "s"),
 		remove:   base.KeyRemove,
 		metadata: base.KeyMetadata,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "source", "sources", []*sourceItem{}, func(i *sourceItem) _list.DefaultItem { return i }), s.keyMap)
+	s.Confirm = confirm.NewDialog(40, color.Warning)
 	return s
 }
 
@@ -81,28 +80,6 @@ func (s *bindingsState) Title() base.Title {
 
 func (s *bindingsState) Subtitle() string {
 	return fmt.Sprintf("%s · %s", s.manga.Info().Title, s.client.Info().ID)
-}
-
-func (s *bindingsState) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
-func (s *bindingsState) Inputting() bool { return s.Screen.Inputting() || s.confirm.Active() }
-
-func (s *bindingsState) KeyMap() help.KeyMap {
-	if s.confirm.Active() {
-		return s.confirm.KeyMap()
-	}
-	return s.Screen.KeyMap()
-}
-
-func (s *bindingsState) Resize(size base.Size) tea.Cmd {
-	s.confirm.Resize(size)
-	return s.Screen.Resize(size)
-}
-
-func (s *bindingsState) View() string {
-	if s.confirm.Active() {
-		return s.confirm.View()
-	}
-	return s.List.View()
 }
 
 func (s *bindingsState) Init(ctx context.Context) tea.Cmd {
@@ -144,8 +121,8 @@ func (s *bindingsState) load(ctx context.Context) tea.Cmd {
 }
 
 func (s *bindingsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
-		return s.confirm.Update(msg)
+	if cmd, ok := s.Answer(msg); ok {
+		return cmd
 	}
 	switch msg := msg.(type) {
 	case removeMsg:
@@ -184,7 +161,7 @@ func (s *bindingsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		case key.Matches(msg, s.remove) && i.binding != nil:
 			src := i.src
 			message := fmt.Sprintf("Remove the %s binding of %q (%s)?", src.Name, s.manga.Info().Title, i.binding.ID)
-			s.confirm.AskDelete("Remove", message, s.View(), func() tea.Msg { return removeMsg{src: src} })
+			s.Confirm.AskDelete("Remove", message, s.View(), func() tea.Msg { return removeMsg{src: src} })
 			return nil
 		case key.Matches(msg, s.metadata):
 			switch {

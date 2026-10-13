@@ -75,7 +75,7 @@ func (s *state) askDownload(ctx context.Context, hovered *item) tea.Cmd {
 			chapters[i] = it.chapter
 		}
 		msg := "Download " + stringutil.Quantify(size, "chapter", "chapters") + "?"
-		s.confirm.Ask("Download", msg, s.View(), func() tea.Msg { return downloadMsg{chapters: chapters} })
+		s.Confirm.Ask("Download", msg, s.View(), func() tea.Msg { return downloadMsg{chapters: chapters} })
 		return nil
 	}
 
@@ -84,7 +84,7 @@ func (s *state) askDownload(ctx context.Context, hovered *item) tea.Cmd {
 		return base.Notify("Chapter unavailable: " + reason)
 	}
 	msg := "Download chapter " + stringutil.FormatFloa32(i.chapter.Info().Number) + ` ("` + i.chapter.Info().Title + `")?`
-	s.confirm.Ask("Download", msg, s.View(), func() tea.Msg { return downloadMsg{item: i} })
+	s.Confirm.Ask("Download", msg, s.View(), func() tea.Msg { return downloadMsg{item: i} })
 	return nil
 }
 
@@ -104,7 +104,7 @@ func (s *state) askRead(ctx context.Context, hovered *item) tea.Cmd {
 		return s.readCmd(ctx, i.readPath, i.chapter)
 	}
 	msg := "Download chapter " + stringutil.FormatFloa32(i.chapter.Info().Number) + ` ("` + i.chapter.Info().Title + `") for reading?`
-	s.confirm.Ask("Download", msg, s.View(), func() tea.Msg { return downloadMsg{item: i, read: true} })
+	s.Confirm.Ask("Download", msg, s.View(), func() tea.Msg { return downloadMsg{item: i, read: true} })
 	return nil
 }
 

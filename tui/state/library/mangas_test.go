@@ -25,10 +25,10 @@ func TestOnScanned(t *testing.T) {
 	if cmd := s.onScanned(scannedMsg{result: library.ScanResult{Missing: missing}, otherRoot: "/old"}); cmd != nil {
 		t.Error("the other root shows a report, want the dialog only")
 	}
-	if !s.confirm.Active() || !strings.Contains(s.confirm.View(), "/old") {
+	if !s.Confirm.Active() || !strings.Contains(s.Confirm.View(), "/old") {
 		t.Fatal("no dialog for the other download path")
 	}
-	msg := s.confirm.Update(press("y"))()
+	msg := s.Confirm.Update(press("y"))()
 	if got, ok := msg.(setRootMsg); !ok || got.dir != "/old" {
 		t.Errorf("yes: got %#v, want setRootMsg{/old}", msg)
 	}
@@ -52,14 +52,14 @@ func TestDeleteKeepsTheMergeMarkUntilDone(t *testing.T) {
 		t.Fatalf("keep = %d, want 1", s.keep)
 	}
 	s.Update(ctx, press("d"))
-	if !s.confirm.Active() {
+	if !s.Confirm.Active() {
 		t.Fatal("no delete dialog")
 	}
 	if s.keep != 1 {
 		t.Error("the dialog cleared the merge mark")
 	}
 	s.Update(ctx, press("n"))
-	if s.confirm.Active() || s.keep != 1 {
+	if s.Confirm.Active() || s.keep != 1 {
 		t.Error("no: the mark should stay")
 	}
 
@@ -210,8 +210,8 @@ func TestDeleteMissing(t *testing.T) {
 	s := newMangasState(library.Files{})
 	s.onLoaded(mangasLoadedMsg{items: []*mangaItem{{manga: storage.Manga{ID: 1, Title: "A"}, missing: true}}})
 	s.Update(context.Background(), press("d"))
-	if !s.confirm.Active() || !strings.Contains(s.confirm.View(), "Its folder is gone") {
-		t.Fatalf("d on a missing manga:\n%s", s.confirm.View())
+	if !s.Confirm.Active() || !strings.Contains(s.Confirm.View(), "Its folder is gone") {
+		t.Fatalf("d on a missing manga:\n%s", s.Confirm.View())
 	}
 }
 

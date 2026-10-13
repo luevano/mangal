@@ -76,8 +76,7 @@ func (i *linkItem) Description() string {
 // its sources' bindings, its own ids and its .libmangal.json.
 type linksState struct {
 	list.Screen
-	manga   storage.Manga
-	confirm *confirm.Dialog
+	manga storage.Manga
 	// autoLinks are planned, the pick of autoPick asked, once the links load (NewLinks,
 	// NewLinksPick)
 	autoLinks library.Links
@@ -124,13 +123,13 @@ func linksCmd(m storage.Manga) tea.Cmd {
 func newLinksState(m storage.Manga) *linksState {
 	s := &linksState{
 		manga:    m,
-		confirm:  newDialog(),
 		search:   util.Bind("search", "enter", "s"),
 		remove:   base.KeyRemove,
 		backups:  base.KeyBackups,
 		metadata: base.KeyMetadata,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "source", "sources", []*linkItem{}, func(i *linkItem) _list.DefaultItem { return i }), s.keyMap)
+	s.Confirm = newDialog()
 	return s
 }
 
@@ -146,14 +145,6 @@ func (s *linksState) Title() base.Title {
 
 func (s *linksState) Subtitle() string {
 	return fmt.Sprintf("%s · %s", s.manga.Title, s.manga.Path())
-}
-
-func (s *linksState) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
-func (s *linksState) Inputting() bool { return s.Screen.Inputting() || s.confirm.Active() }
-
-func (s *linksState) Resize(size base.Size) tea.Cmd {
-	s.confirm.Resize(size)
-	return s.Screen.Resize(size)
 }
 
 func (s *linksState) Init(ctx context.Context) tea.Cmd {
@@ -202,8 +193,8 @@ func (s *linksState) load(ctx context.Context) tea.Cmd {
 }
 
 func (s *linksState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
-		return s.confirm.Update(msg)
+	if cmd, ok := s.Answer(msg); ok {
+		return cmd
 	}
 	switch msg := msg.(type) {
 	case linksLoadedMsg:
@@ -240,9 +231,9 @@ func (s *linksState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		s.askPick(msg)
 		return nil
 	case linkPlannedMsg:
-		return askLinks(s.confirm, s.View(), msg)
+		return askLinks(s.Confirm, s.View(), msg)
 	case backupsFoundMsg:
-		return askBackups(s.confirm, s.View(), msg)
+		return askBackups(s.Confirm, s.View(), msg)
 	case actionMsg:
 		return msg.run(ctx)
 	case reloadMsg:
@@ -288,13 +279,6 @@ func (s *linksState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return s.List.Update(msg)
 }
 
-func (s *linksState) View() string {
-	if s.confirm.Active() {
-		return s.confirm.View()
-	}
-	return s.List.View()
-}
-
 // loadPick looks the pick's candidates up (pickLoadedMsg), to ask which to link.
 func loadPick(ctx context.Context, pick storage.LinkPick) tea.Cmd {
 	if base.Busy(ctx) {
@@ -334,7 +318,7 @@ func (s *linksState) askPick(msg pickLoadedMsg) {
 		_, err = files.Library.DismissLinkPick(manga.ID, source)
 		return "dismissed, nothing linked", err
 	})})
-	s.confirm.Choose("Pick "+src.Name, strings.Join(lines, "\n"), s.View(), choices...)
+	s.Confirm.Choose("Pick "+src.Name, strings.Join(lines, "\n"), s.View(), choices...)
 }
 
 // planLinks plans giving the manga the links, then asks (linkPlannedMsg).

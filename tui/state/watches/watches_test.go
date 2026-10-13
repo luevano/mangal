@@ -798,7 +798,7 @@ func TestKeys(t *testing.T) {
 func TestStopWatching(t *testing.T) {
 	s := loaded(t, testManager())
 	ctx := context.Background()
-	if cmd := s.Update(ctx, press("d")); cmd != nil || !s.confirm.Active() {
+	if cmd := s.Update(ctx, press("d")); cmd != nil || !s.Confirm.Active() {
 		t.Fatal("d doesn't ask")
 	}
 	cmd := s.Update(ctx, press("d"))
@@ -1013,7 +1013,7 @@ func TestRemoveSaysUndo(t *testing.T) {
 	ctx := context.Background()
 	s.List.Select(0)
 	s.Update(ctx, press(base.KeyDelete.Help().Key))
-	if !s.confirm.Active() {
+	if !s.Confirm.Active() {
 		t.Fatal("no confirmation")
 	}
 	action, ok := s.Update(ctx, press("y"))().(actionMsg)

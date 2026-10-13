@@ -37,7 +37,6 @@ var _ base.State = (*state)(nil)
 
 type state struct {
 	list.Screen
-	confirm *confirm.Dialog
 	formats *format.Model
 	// inFormats shows the format picker over formatsBehind
 	inFormats     bool
@@ -95,7 +94,6 @@ type filesMsg struct {
 func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volume, chapters []mangadata.Chapter) base.State {
 	_styles := defaultStyles()
 	s := &state{
-		confirm: confirm.NewDialog(30, color.Success),
 		formats: format.New(color.Viewport),
 		volume:  volume,
 		manga:   manga,
@@ -140,6 +138,7 @@ func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volum
 			styles:                _styles,
 		}
 	}), s.keyMap)
+	s.Confirm = confirm.NewDialog(30, color.Success)
 	s.updateItemHeight()
 	s.updateKeys()
 	return s
@@ -157,11 +156,11 @@ func (s *state) keyMap() help.KeyMap {
 }
 
 func (s *state) Backable() bool {
-	return s.Screen.Backable() && !s.inFormats && !s.confirm.Active()
+	return s.Screen.Backable() && !s.inFormats
 }
 
 func (s *state) Inputting() bool {
-	return s.Screen.Inputting() || s.inFormats || s.confirm.Active()
+	return s.Screen.Inputting() || s.inFormats
 }
 
 // Key is the manga's chapters, or its volume's.
@@ -202,7 +201,6 @@ func (s *state) Status() string {
 
 func (s *state) Resize(size base.Size) tea.Cmd {
 	s.size = size
-	s.confirm.Resize(size)
 	return s.Screen.Resize(size)
 }
 
@@ -274,8 +272,8 @@ func (s *state) updateChild(msg tea.Msg) tea.Cmd {
 
 func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 	switch {
-	case s.confirm.Active():
-		return s.confirm.Update(msg)
+	case s.Asking():
+		return s.Confirm.Update(msg)
 	case s.inFormats, s.List.Filtering():
 		return s.updateChild(msg)
 	}
@@ -458,8 +456,8 @@ func (s *state) updateKeys() {
 
 func (s *state) View() string {
 	switch {
-	case s.confirm.Active():
-		return s.confirm.View()
+	case s.Asking():
+		return s.Confirm.View()
 	case s.inFormats:
 		return util.PlaceCenter(s.size.Width, s.size.Height, s.styles.formatView.Render(s.formats.View()), s.formatsBehind)
 	default:
