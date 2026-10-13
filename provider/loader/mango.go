@@ -27,7 +27,7 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 	o.UserAgent = c.UserAgent
 	o.CacheStore = cache.CacheStore
 	o.Parallelism = config.Providers.Parallelism.Get()
-	o.Filter = mango.FilterOptions(c.Filter)
+	o.Filter = c.Filter
 	o.Headless.UseFlaresolverr = config.Providers.Headless.UseFlaresolverr.Get()
 	o.Headless.FlaresolverrURL = config.Providers.Headless.FlaresolverrURL.Get()
 	o.Mirrors = config.Providers.Mirrors.Get()
