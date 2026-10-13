@@ -78,7 +78,7 @@ the year and the id tags) and is listed as a warning; --fallback renames it anyw
 		if err != nil {
 			return err
 		}
-		dir, err := path.Ensure(path.Downloads())
+		dir, err := path.ExistingDownloads()
 		if err != nil {
 			return err
 		}
@@ -301,6 +301,14 @@ func init() {
 	libraryTrashCmd.AddCommand(libraryTrashEmptyCmd)
 }
 
+// libraryFiles is client.LibraryFiles, an error when download.path doesn't exist.
+func libraryFiles() (library.Files, error) {
+	if _, err := path.ExistingDownloads(); err != nil {
+		return library.Files{}, err
+	}
+	return client.LibraryFiles()
+}
+
 // libraryOf opens the library of the data database.
 func libraryOf() (storage.Library, error) {
 	return cache.Library()
@@ -412,7 +420,7 @@ existing .libmangal.json is never replaced.`,
 		if err != nil {
 			return err
 		}
-		root, err := path.Ensure(path.Downloads())
+		root, err := path.ExistingDownloads()
 		if err != nil {
 			return err
 		}
@@ -455,10 +463,10 @@ existing .libmangal.json is never replaced.`,
 				cmd.Printf("  %d  %s  %s\n", m.ID, m.Title, m.Path())
 			}
 			if confirm(cmd, "Remove them from the library?") {
-				for _, m := range res.Missing {
-					if err := lib.RemoveManga(m.ID); err != nil {
-						return err
-					}
+				snapshot, err := client.RemoveMissing(lib, res.Missing)
+				undoHint(cmd, snapshot, err)
+				if err != nil {
+					return err
 				}
 				cmd.Println("removed")
 			}
@@ -577,7 +585,7 @@ other sources; one that agrees is left. Only lists what it would write unless --
   mangal library mark 12 15 --apply`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		files, err := client.LibraryFiles()
+		files, err := libraryFiles()
 		if err != nil {
 			return err
 		}
@@ -726,7 +734,7 @@ Only lists what would happen unless --apply is set.`,
 			}
 			mangas[i] = m
 		}
-		files, err := client.LibraryFiles()
+		files, err := libraryFiles()
 		if err != nil {
 			return err
 		}
@@ -795,6 +803,9 @@ Only lists what would happen unless --apply is set.`,
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := st.Context(cmd.Context())
+		if _, err := path.ExistingDownloads(); err != nil {
+			return err
+		}
 		mover, err := client.LibraryMover()
 		if err != nil {
 			return err

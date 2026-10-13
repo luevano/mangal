@@ -719,17 +719,22 @@ func (l Library) RemoveDownload(path string) error {
 
 // RemoveManga forgets a library manga, with its sources, chapters and downloads.
 func (l Library) RemoveManga(id int64) error {
-	err := l.DB.InTx(func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`DELETE FROM downloads WHERE chapter_id IN (SELECT id FROM library_chapters WHERE manga = ?)`, id); err != nil {
-			return err
+	return l.RemoveMangas(id)
+}
+
+// RemoveMangas forgets the library mangas, as RemoveManga, all or none.
+func (l Library) RemoveMangas(ids ...int64) error {
+	return l.DB.InTx(func(tx *sql.Tx) error {
+		for _, id := range ids {
+			if _, err := tx.Exec(`DELETE FROM downloads WHERE chapter_id IN (SELECT id FROM library_chapters WHERE manga = ?)`, id); err != nil {
+				return fmt.Errorf("remove manga %d: %w", id, err)
+			}
+			if _, err := tx.Exec(`DELETE FROM library_mangas WHERE id = ?`, id); err != nil {
+				return fmt.Errorf("remove manga %d: %w", id, err)
+			}
 		}
-		_, err := tx.Exec(`DELETE FROM library_mangas WHERE id = ?`, id)
-		return err
+		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("remove manga %d: %w", id, err)
-	}
-	return nil
 }
 
 // MergeMove is a file of the merged manga moved into the kept one.

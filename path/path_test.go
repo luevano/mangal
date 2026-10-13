@@ -1,6 +1,7 @@
 package path
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -73,5 +74,31 @@ func TestDataPath(t *testing.T) {
 	defer func() { _ = config.Data.Path.Set("") }()
 	if got := Data(); got != dir {
 		t.Errorf("got %q, want data.path %q", got, dir)
+	}
+}
+
+func TestExistingDownloads(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "dl")
+	if err := config.Download.Path.Set(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExistingDownloads(); !errors.Is(err, ErrNoDownloads) {
+		t.Fatalf("missing: %v", err)
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Fatal("created the dir")
+	}
+	if err := os.WriteFile(dir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExistingDownloads(); err == nil {
+		t.Fatal("a file")
+	}
+	_ = os.Remove(dir)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ExistingDownloads(); err != nil || got != dir {
+		t.Fatalf("%q %v", got, err)
 	}
 }

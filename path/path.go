@@ -82,6 +82,26 @@ func Downloads() string {
 	return config.Download.Path.Get()
 }
 
+// ErrNoDownloads is a download.path that doesn't exist: the library commands refuse to
+// work on it (an unmounted drive would look like an empty library).
+var ErrNoDownloads = errors.New("download path doesn't exist")
+
+// ExistingDownloads is download.path, an error when it doesn't exist or isn't a directory.
+// The library works on it; downloads create it (Ensure).
+func ExistingDownloads() (string, error) {
+	dir := Downloads()
+	info, err := afs.Afero.Stat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return dir, fmt.Errorf("%w: %s (drive not mounted?)", ErrNoDownloads, dir)
+	case err != nil:
+		return dir, fmt.Errorf("download path: %w", err)
+	case !info.IsDir():
+		return dir, fmt.Errorf("download path %s isn't a directory", dir)
+	}
+	return dir, nil
+}
+
 // Providers is where the Lua providers are (providers.path).
 func Providers() string {
 	return config.Providers.Path.Get()
