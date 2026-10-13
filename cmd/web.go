@@ -13,7 +13,7 @@ func init() {
 	f := webCmd.Flags()
 	f.BoolVarP(&webArgs.Open, "open", "o", false, "Open served page in the default browser")
 	f.StringVar(&webArgs.Host, "host", "127.0.0.1", "Address to listen on, 0.0.0.0 for every interface (there's no authentication)")
-	f.StringVarP(&webArgs.Port, "port", "p", "6969", "HTTP port to use")
+	f.StringVarP(&webArgs.Port, "port", "p", "6970", "HTTP port to use (not 6969, the logins' callback port)")
 }
 
 var webCmd = &cobra.Command{
