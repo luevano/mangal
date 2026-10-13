@@ -62,7 +62,7 @@ won't load, paste its address (it has the code) here.
 		if err != nil {
 			return fmt.Errorf("myanimelist login: %w", err)
 		}
-		cmd.Printf("Logged in to MyAnimeList as %q\n", user.Name())
+		cmd.Printf("logged in to MyAnimeList as %q\n", user.Name())
 		return nil
 	},
 }
@@ -81,7 +81,7 @@ Both are asked, the secret without echo, or read from stdin a line each.
 			if err := myanimelist.SetClient("", ""); err != nil {
 				return err
 			}
-			cmd.Println("Removed the MyAnimeList API client")
+			successf(cmd, "removed the MyAnimeList API client")
 			return nil
 		}
 		in := bufio.NewReader(cmd.InOrStdin())
@@ -99,7 +99,7 @@ Both are asked, the secret without echo, or read from stdin a line each.
 		if err := myanimelist.SetClient(id, secret); err != nil {
 			return err
 		}
-		cmd.Println("Saved the MyAnimeList API client, log in with mangal myanimelist")
+		successf(cmd, "saved the MyAnimeList API client, log in with mangal myanimelist")
 		return nil
 	},
 }

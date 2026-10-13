@@ -86,7 +86,7 @@ won't load, paste its address (it has the token after #access_token=, or the cod
 		if err != nil {
 			return fmt.Errorf("anilist login: %w", err)
 		}
-		cmd.Printf("Logged in to Anilist as %q\n", user.Name())
+		cmd.Printf("logged in to Anilist as %q\n", user.Name())
 		return nil
 	},
 }
@@ -114,7 +114,7 @@ func manualLogin(cmd *cobra.Command, in *bufio.Reader, browser bool) oauth.Manua
 			fmt.Fprintf(out, "Open this address in a browser and allow mangal:\n\n  %s\n\n", authURL)
 			if browser {
 				if err := open.Start(authURL); err != nil {
-					fmt.Fprintf(out, "Couldn't open the browser: %s\n", err)
+					fmt.Fprintf(out, "warning: couldn't open the browser: %s\n", err)
 				}
 			}
 			fmt.Fprintln(out, "Waiting for the browser. If it runs on another machine, paste the address of the page")

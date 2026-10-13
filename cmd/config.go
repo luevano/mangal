@@ -114,7 +114,7 @@ edited in place: its comments and order stay, retired keys are dropped.`,
 		if err := config.Write(); err != nil {
 			return err
 		}
-		successf(cmd, "Wrote config to %s", config.Path)
+		successf(cmd, "wrote the config to %s", config.Path)
 		return nil
 	},
 }
@@ -161,7 +161,7 @@ key changes, the rest of the file (comments, order) stays as it is.`,
 		if err := config.WriteKey(key, raw); err != nil {
 			return err
 		}
-		successf(cmd, "Successfully set %q to %v", key, config.Masked(key, raw))
+		successf(cmd, "set %q to %v", key, config.Masked(key, raw))
 		if mode, readable := config.ReadableByOthers(); readable && config.IsSecret(key) {
 			cmd.PrintErrf("warning: %s holds secrets but others can read it (mode %o): chmod 600 it\n", config.Path, mode)
 		}

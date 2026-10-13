@@ -39,7 +39,7 @@ var providersAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		successf(cmd, "Installed %s (%s)", providerInfo.Name, providerInfo.ID)
+		successf(cmd, "installed %s (%s)", providerInfo.Name, providerInfo.ID)
 		return nil
 	},
 }
@@ -151,7 +151,7 @@ var providersNewCmd = &cobra.Command{
 		if err := install.New(dir, info.Info{ProviderInfo: providerInfo, Type: info.TypeLua}); err != nil {
 			return err
 		}
-		successf(cmd, "Created %s", filepath.Join(dir, providerInfo.ID))
+		successf(cmd, "created %s", filepath.Join(dir, providerInfo.ID))
 		return nil
 	},
 }
