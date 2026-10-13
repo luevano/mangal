@@ -12,7 +12,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-//go:generate enumer -type=Type -trimprefix=Type -json -text
+//go:generate go tool enumer -type=Type -trimprefix=Type -json -text
 type Type uint8
 
 const (

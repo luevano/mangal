@@ -1,6 +1,6 @@
 package icon
 
-//go:generate enumer -type=Type -trimprefix=Type -json -yaml -text
+//go:generate go tool enumer -type=Type -trimprefix=Type -json -yaml -text
 type Type uint8
 
 const (

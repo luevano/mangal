@@ -18,15 +18,15 @@ export interface paths {
     get: operations["getProviders"];
   };
   "/searchMangas": {
-    /** @description search for mangas */
+    /** @description Search for mangas */
     get: operations["searchMangas"];
   };
   "/mangaVolumes": {
-    /** @description get manga volumes */
+    /** @description Get manga volumes */
     get: operations["getMangaVolumes"];
   };
   "/volumeChapters": {
-    /** @description get volume chapters */
+    /** @description Get volume chapters */
     get: operations["getVolumeChapters"];
   };
   "/provider": {
@@ -177,7 +177,7 @@ export interface operations {
       };
     };
   };
-  /** @description search for mangas */
+  /** @description Search for mangas */
   searchMangas: {
     parameters: {
       query: {
@@ -202,7 +202,7 @@ export interface operations {
       };
     };
   };
-  /** @description get manga volumes */
+  /** @description Get manga volumes */
   getMangaVolumes: {
     parameters: {
       query: {
@@ -229,7 +229,7 @@ export interface operations {
       };
     };
   };
-  /** @description get volume chapters */
+  /** @description Get volume chapters */
   getVolumeChapters: {
     parameters: {
       query: {

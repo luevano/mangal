@@ -33,9 +33,12 @@ func _TypeNoOp() {
 var _TypeValues = []Type{TypeBundle, TypeLua}
 
 var _TypeNameToValueMap = map[string]Type{
-	_TypeName[0:6]:      TypeBundle,
+	_TypeName[0:6]: TypeBundle,
+	_TypeName[6:9]: TypeLua,
+}
+
+var _TypeLowerNameToValueMap = map[string]Type{
 	_TypeLowerName[0:6]: TypeBundle,
-	_TypeName[6:9]:      TypeLua,
 	_TypeLowerName[6:9]: TypeLua,
 }
 
@@ -51,7 +54,7 @@ func TypeString(s string) (Type, error) {
 		return val, nil
 	}
 
-	if val, ok := _TypeNameToValueMap[strings.ToLower(s)]; ok {
+	if val, ok := _TypeLowerNameToValueMap[strings.ToLower(s)]; ok {
 		return val, nil
 	}
 	return 0, fmt.Errorf("%s does not belong to Type values", s)

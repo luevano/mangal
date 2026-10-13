@@ -11,8 +11,8 @@ OPENAPI_SCHEMA="$DIR/openapi.yaml"
 main() {
 	pushd "$DIR"
 	pushd api
-	oapi-codegen --config server.cfg.yaml "$OPENAPI_SCHEMA"
-	oapi-codegen --config types.cfg.yaml "$OPENAPI_SCHEMA"
+	go tool oapi-codegen --config server.cfg.yaml "$OPENAPI_SCHEMA"
+	go tool oapi-codegen --config types.cfg.yaml "$OPENAPI_SCHEMA"
 	popd
 
 	"$UI_DIR/node_modules/.bin/openapi-typescript" "$OPENAPI_SCHEMA" -o "$UI_DIR/src/api/mangal.ts"
