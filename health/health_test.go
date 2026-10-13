@@ -87,6 +87,11 @@ func newChecker(t *testing.T) Checker {
 	record("/dl/mango-old", "Vagabond", "mango-old", "vag", "Vagabond", 1)
 	// 5: in another provider's directory than its watch's
 	adopt("/dl/AsuraScans", "Dungeon Odyssey [alid-555]", "Dungeon Odyssey", al("555"))
+	// 6: on Weeb Central, watched on MangaDex by a placeholder id
+	if err := lib.RememberMangaDir("/dl/Weeb Central", "Yomi no Tsugai [alid-136899]", libmangal.MangaDirInfo{MetadataIDs: []metadata.ID{al("136899")}}); err != nil {
+		t.Fatal(err)
+	}
+	record("/dl/Weeb Central", "Yomi no Tsugai [alid-136899]", "mango-weebcentral", "01J", "Yomi no Tsugai", 1)
 
 	if err := lib.SetStatuses(map[int64]string{2: string(metadata.StatusFinished), 4: string(metadata.StatusHiatus)}, now); err != nil {
 		t.Fatal(err)
@@ -106,6 +111,10 @@ func newChecker(t *testing.T) Checker {
 		{Watch: storage.Watch{ID: 7, Provider: "mango-mangadex", MangaID: "dg", Title: "Dungeon Odyssey", Enabled: true, Added: now},
 			Bindings:     []storage.Binding{{Source: metadata.IDCodeAnilist, ID: "555"}},
 			LibraryIssue: "in the library under AsuraScans (Dungeon Odyssey): move it there (X in the library)", LibraryElsewhere: true},
+		{Watch: storage.Watch{ID: 8, Provider: "mango-mangadex", MangaID: "title:Yomi no Tsugai", Title: "Yomi no Tsugai", Enabled: true, Added: now,
+			NeedsRelink: true, RelinkReason: "placeholder manga id", LibraryManga: 6},
+			Bindings:     []storage.Binding{{Source: metadata.IDCodeAnilist, ID: "136899"}},
+			LibraryIssue: "in the library under Weeb Central (Yomi no Tsugai): move it there (X in the library)", LibraryElsewhere: true},
 	}
 	return Checker{
 		Library: lib,
@@ -161,6 +170,8 @@ func TestRun(t *testing.T) {
 	wants := []want{
 		{"W1", Error, "watch", 4, "mangal watch move 4", "moved from mango-mangasee"},
 		{"W2", Error, "watch", 7, "mangal library move 5 mango-mangadex mid:dg", "not in library"},
+		{"W1", Error, "watch", 8, "mangal watch move 8 mango-weebcentral mid:01J", "placeholder"},
+		{"W2", Info, "watch", 8, "mangal watch move 8 mango-weebcentral mid:01J", "re-link first"},
 		{"W3", Info, "watch", 4, "mangal watch resume 4", "paused"},
 		{"W4", Error, "watch", 1, "mangal watch check 1", "backing off"},
 		{"W5", Info, "watch", 6, "mangal watch pause 6", "200 days"},
@@ -241,7 +252,7 @@ func TestRun(t *testing.T) {
 	if f := report.Findings[0]; f.Category != Watches || f.Severity != Error {
 		t.Errorf("first finding %+v", f)
 	}
-	if report.Counts.Total() != len(report.Findings) || report.Counts.Error != 4 || report.Counts.ByCategory[Gaps] != 2 {
+	if report.Counts.Total() != len(report.Findings) || report.Counts.Error != 5 || report.Counts.ByCategory[Gaps] != 2 {
 		t.Errorf("counts %+v", report.Counts)
 	}
 }

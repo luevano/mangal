@@ -56,15 +56,39 @@ func checkRelink(s *snapshot) []Finding {
 		if reason == "" {
 			reason = "its manga id may be wrong"
 		}
-		out = append(out, Finding{Severity: Error, Subject: watchSubject(w),
+		f := Finding{Severity: Error, Subject: watchSubject(w),
 			Message: "needs re-link, not checked: " + reason,
 			Fix: Fix{
 				Commands: []string{fmt.Sprintf("mangal watch move %d", w.ID)},
 				Note:     fmt.Sprintf("searches its title on %s; add a provider and a query or mid:<id> to pick another manga", w.Provider),
 				TUI:      tuiWatches + ": re-link manga",
-			}})
+			}}
+		if m, src, ok := s.libraryElsewhere(w); ok {
+			f.Details = []string{fmt.Sprintf("library manga %d %s is on %s: %s", m.ID, m.Title, src.Provider, s.rel(m.Path()))}
+			f.Fix.Commands = []string{relinkCommand(w, src), f.Fix.Commands[0]}
+			f.Fix.Note = fmt.Sprintf("re-link it to its library manga's source, or search its title on %s", w.Provider)
+		}
+		out = append(out, f)
 	}
 	return out
+}
+
+// libraryElsewhere is the library manga of a watch in another provider's directory, with
+// the source of it a re-link can use (installed, a real manga id).
+func (s *snapshot) libraryElsewhere(w watch.Watch) (storage.Manga, storage.Source, bool) {
+	if !w.LibraryElsewhere {
+		return storage.Manga{}, storage.Source{}, false
+	}
+	match := storage.MatchLibrary(s.mangas, s.providerInfo(w.Provider), w.MangaID, storage.BindingIDs(w.Bindings), s.providerDirs)
+	if !match.Elsewhere {
+		return storage.Manga{}, storage.Source{}, false
+	}
+	src, ok := installedSource(s, match.Manga)
+	return match.Manga, src, ok
+}
+
+func relinkCommand(w watch.Watch, src storage.Source) string {
+	return fmt.Sprintf("mangal watch move %d %s mid:%s", w.ID, src.Provider, quote(src.MangaID))
 }
 
 // W2: watches without their library manga: elsewhere (move it), downloads not in the
@@ -73,10 +97,21 @@ func checkLibraryIssue(s *snapshot) []Finding {
 	var out []Finding
 	for _, w := range s.watches {
 		switch {
+		case w.LibraryElsewhere && w.NeedsRelink:
+			// W1 has it: its manga id may be wrong, a library move would take it over
+			f := Finding{Severity: Info, Subject: watchSubject(w), Message: "needs a re-link first (W1), " + w.LibraryIssue,
+				Fix: Fix{Commands: []string{fmt.Sprintf("mangal watch move %d", w.ID)}, TUI: tuiWatches + ": re-link manga",
+					Note: "re-link it, then move the library manga to it if it's still elsewhere"}}
+			if m, src, ok := s.libraryElsewhere(w); ok {
+				f.Details = []string{fmt.Sprintf("library manga %d %s is on %s: %s", m.ID, m.Title, src.Provider, s.rel(m.Path()))}
+				f.Fix.Commands = []string{relinkCommand(w, src)}
+				f.Fix.Note = "re-links it to its library manga's source"
+			}
+			out = append(out, f)
 		case w.LibraryElsewhere:
 			f := Finding{Severity: Error, Subject: watchSubject(w), Message: "not in library, not checked: " + w.LibraryIssue}
 			match := storage.MatchLibrary(s.mangas, s.providerInfo(w.Provider), w.MangaID, storage.BindingIDs(w.Bindings), s.providerDirs)
-			if match.Elsewhere {
+			if match.Elsewhere && !strings.HasPrefix(w.MangaID, storage.PlaceholderPrefix) {
 				f.Details = []string{fmt.Sprintf("library manga %d %s: %s", match.Manga.ID, match.Manga.Title, s.rel(match.Manga.Path()))}
 				f.Fix.Commands = []string{fmt.Sprintf("mangal library move %d %s mid:%s", match.Manga.ID, w.Provider, quote(w.MangaID))}
 				f.Fix.Note = "moves the library manga to the watch's manga (its folder into the provider's directory), the watch is linked then"
