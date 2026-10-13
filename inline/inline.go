@@ -1,6 +1,8 @@
 package inline
 
 import (
+	"fmt"
+
 	"github.com/luevano/libmangal/mangadata"
 	lmanilist "github.com/luevano/libmangal/metadata/anilist"
 )
@@ -36,4 +38,28 @@ type Args struct {
 	AnilistID              int    `json:"anilist_id"`
 	AnilistDisable         bool   `json:"anilist_disable"`
 	JSONOutput             bool   `json:"json_output,omitempty"`
+	// Status shows what the run is doing, may be nil.
+	Status Status `json:"-"`
+}
+
+// Status shows what a run is doing (cmd's status line on stderr).
+type Status interface {
+	// Set makes msg the status.
+	Set(msg string)
+	// Print runs print (writing to stdout or stderr) with the status out of the way.
+	Print(print func())
+}
+
+func (a Args) status(format string, v ...any) {
+	if a.Status != nil {
+		a.Status.Set(fmt.Sprintf(format, v...))
+	}
+}
+
+func (a Args) print(print func()) {
+	if a.Status == nil {
+		print()
+		return
+	}
+	a.Status.Print(print)
 }

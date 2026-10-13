@@ -20,14 +20,18 @@ import (
 // search gets the provider's client, searches the query and picks the mangas with the
 // manga selector.
 func search(ctx context.Context, args Args) (*libmangal.Client, []MangaResult, error) {
+	args.status("loading %s", args.Provider)
 	c, warnings, err := client.AcquireByID(ctx, args.Provider)
-	for _, w := range warnings {
-		fmt.Fprintln(os.Stderr, "warning: "+w)
-	}
+	args.print(func() {
+		for _, w := range warnings {
+			fmt.Fprintln(os.Stderr, "warning: "+w)
+		}
+	})
 	if err != nil {
 		return nil, nil, err
 	}
 
+	args.status("searching %q on %s", args.Query, args.Provider)
 	mangas, err := c.SearchMangasContext(ctx, args.Query)
 	if err != nil {
 		return nil, nil, fmt.Errorf("search %q: %w", args.Query, err)
@@ -58,6 +62,7 @@ func assignAnilist(ctx context.Context, c *libmangal.Client, args Args, mangaRes
 		return err
 	}
 	_ = anilist.EnsureLogin(ctx)
+	args.status("looking up %d manga(s) on AniList", len(mangaResults))
 
 	matches := make([]metadata.Match, len(mangaResults))
 	found := make([]bool, len(mangaResults))
@@ -102,7 +107,7 @@ func assignAnilist(ctx context.Context, c *libmangal.Client, args Args, mangaRes
 	if err != nil {
 		// the results are still useful without it
 		log.Warn("anilist: %s", err)
-		fmt.Fprintf(os.Stderr, "warning: anilist: %s\n", err)
+		args.print(func() { fmt.Fprintf(os.Stderr, "warning: anilist: %s\n", err) })
 		return nil
 	}
 
@@ -143,6 +148,7 @@ func anilistBindings(provider string, results []MangaResult) (map[int]int, error
 
 // chapters are the manga's chapters the chapter selector picks.
 func chapters(ctx context.Context, c *libmangal.Client, args Args, manga mangadata.Manga) ([]mangadata.Chapter, error) {
+	args.status("getting the chapters of %q", manga)
 	all, err := client.MangaChapters(ctx, c, manga)
 	if err != nil {
 		return nil, err

@@ -39,6 +39,6 @@ func RunJSON(ctx context.Context, args Args) error {
 		return err
 	}
 
-	fmt.Println(string(queryResultJSON))
+	args.print(func() { fmt.Println(string(queryResultJSON)) })
 	return nil
 }

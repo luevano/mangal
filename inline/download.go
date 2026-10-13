@@ -3,6 +3,7 @@ package inline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -85,36 +86,42 @@ func runDownload(ctx context.Context, args Args) (client.Results, error) {
 
 	var printErr error
 	results := client.Download(ctx, c, chapters, downloadOptions, func(e client.Event) {
-		r := e.Result
-		switch {
-		case e.Kind == client.EventBusy:
-			fmt.Fprintln(os.Stderr, e.Busy.Message())
-		case e.Kind == client.EventWait:
-			// stderr, stdout may be json
-			fmt.Fprintf(os.Stderr, "chapter %s: rate limited (retry #%d), retrying in %s\n", r.Chapter, e.Attempt, e.Wait)
-		case e.Kind != client.EventDone:
-		case r.Unavailable != "":
-			fmt.Fprintf(os.Stderr, "warning: chapter %s skipped, unavailable: %s\n", r.Chapter, r.Unavailable)
-		case r.Err != nil:
-			fmt.Fprintf(os.Stderr, "error: %s\n", util.ErrorTree(fmt.Errorf("chapter %s: %w", r.Chapter, r.Err)))
-		default:
-			if r.Down.Skipped != "" {
-				fmt.Fprintf(os.Stderr, "warning: chapter %s skipped: %s\n", r.Chapter, r.Down.Skipped)
-			}
-			if !args.JSONOutput {
-				fmt.Println(r.Down.Path())
-				return
-			}
-			dc, err := json.Marshal(r.Down)
-			if err != nil {
-				printErr = err
-				return
-			}
-			fmt.Println(string(dc))
-		}
+		args.print(func() { printErr = errors.Join(printErr, printEvent(e, args)) })
 	})
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	return results, printErr
+}
+
+// printEvent prints a download event: the chapters' paths (or json) on stdout, the rest
+// on stderr.
+func printEvent(e client.Event, args Args) error {
+	r := e.Result
+	switch {
+	case e.Kind == client.EventBusy:
+		fmt.Fprintln(os.Stderr, e.Busy.Message())
+	case e.Kind == client.EventWait:
+		// stderr, stdout may be json
+		fmt.Fprintf(os.Stderr, "chapter %s: rate limited (retry #%d), retrying in %s\n", r.Chapter, e.Attempt, e.Wait)
+	case e.Kind != client.EventDone:
+	case r.Unavailable != "":
+		fmt.Fprintf(os.Stderr, "warning: chapter %s skipped, unavailable: %s\n", r.Chapter, r.Unavailable)
+	case r.Err != nil:
+		fmt.Fprintf(os.Stderr, "error: %s\n", util.ErrorTree(fmt.Errorf("chapter %s: %w", r.Chapter, r.Err)))
+	default:
+		if r.Down.Skipped != "" {
+			fmt.Fprintf(os.Stderr, "warning: chapter %s skipped: %s\n", r.Chapter, r.Down.Skipped)
+		}
+		if !args.JSONOutput {
+			fmt.Println(r.Down.Path())
+			return nil
+		}
+		dc, err := json.Marshal(r.Down)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(dc))
+	}
+	return nil
 }

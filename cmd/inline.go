@@ -81,7 +81,11 @@ var inlineJSONCmd = &cobra.Command{
 	Short: "Output search results",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		return inline.RunJSON(cmd.Context(), inlineArgs)
+		st := newStatus(cmd)
+		defer st.Done()
+		args := inlineArgs
+		args.Status = st
+		return inline.RunJSON(st.Context(cmd.Context()), args)
 	},
 }
 
@@ -105,6 +109,10 @@ var inlineDownloadCmd = &cobra.Command{
 single manga: the default "all" only works when the search finds one, use e.g. -m first.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		return inline.RunDownload(cmd.Context(), inlineArgs)
+		st := newStatus(cmd)
+		defer st.Done()
+		args := inlineArgs
+		args.Status = st
+		return inline.RunDownload(st.Context(cmd.Context()), args)
 	},
 }
