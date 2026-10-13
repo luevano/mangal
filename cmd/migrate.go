@@ -51,7 +51,10 @@ Only lists what would change unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		migration, err := library.FindMigration(afs.Afero, st, root, config.Download.Provider.CreateDir.Get(), loaders)
+		status := newStatus(cmd)
+		defer status.Done()
+		migration, err := library.FindMigration(afs.Afero, st, root, config.Download.Provider.CreateDir.Get(), loaders, status.Progress)
+		status.Clear()
 		if err != nil {
 			return err
 		}
@@ -66,9 +69,11 @@ Only lists what would change unless --apply is set.`,
 			cmd.Println("run with --apply to migrate")
 			return nil
 		}
+		migration.OnProgress = status.Progress
 		snapshot, err := client.Operation("migrate", fmt.Sprintf("migrate %d old provider ids, %d markers", len(migration.OldIDs), len(migration.Markers)), func(j library.Journal) error {
 			return migration.ApplyTo(afs.Afero, j, st, client.LibraryModes())
 		})
+		status.Done()
 		undoHint(cmd, snapshot, err)
 		if err != nil {
 			return err

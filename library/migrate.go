@@ -3,6 +3,7 @@ package library
 import (
 	"fmt"
 	"io/fs"
+	"path/filepath"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/storage"
@@ -49,15 +50,19 @@ func UpdateMarker(fsys afero.Fs, j Journal, marker OldMarker, mode fs.FileMode) 
 type Migration struct {
 	OldIDs  []storage.OldID
 	Markers []OldMarker
+	// OnProgress, if set, is told what ApplyTo does.
+	OnProgress func(Progress)
 }
 
 // FindMigration finds the data under old provider ids: library entries, downloads and
-// cache in the databases, and the .libmangal.json files under root.
-func FindMigration(fsys afero.Fs, st storage.Storage, root string, providerDirs bool, loaders []libmangal.ProviderLoader) (Migration, error) {
+// cache in the databases, and the .libmangal.json files under root. onProgress may be nil.
+func FindMigration(fsys afero.Fs, st storage.Storage, root string, providerDirs bool, loaders []libmangal.ProviderLoader, onProgress func(Progress)) (Migration, error) {
+	report(onProgress, Progress{Phase: "looking for old provider ids in the databases"})
 	oldIDs, err := st.FindOldIDs(loaders)
 	if err != nil {
 		return Migration{}, err
 	}
+	report(onProgress, Progress{Phase: "looking for old provider ids in the manga folders"})
 	markers, err := OldMarkers(fsys, root, providerDirs, loaders)
 	if err != nil {
 		return Migration{}, err
@@ -88,10 +93,12 @@ func (m Migration) Lines() []string {
 
 // ApplyTo moves the data to the current ids, recording the file changes in j (may be nil).
 func (m Migration) ApplyTo(fsys afero.Fs, j Journal, st storage.Storage, modes Modes) error {
+	report(m.OnProgress, Progress{Phase: "migrating the databases"})
 	if err := st.MigrateOldIDs(m.OldIDs); err != nil {
 		return err
 	}
-	for _, marker := range m.Markers {
+	for i, marker := range m.Markers {
+		report(m.OnProgress, Progress{Phase: "updating the manga folders", Done: i + 1, Total: len(m.Markers), Item: filepath.Base(marker.Dir)})
 		if err := UpdateMarker(fsys, j, marker, modes.File); err != nil {
 			return err
 		}

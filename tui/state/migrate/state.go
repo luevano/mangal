@@ -54,7 +54,7 @@ func (s *state) Subtitle() string {
 func (s *state) Init(ctx context.Context) tea.Cmd {
 	root := path.Downloads()
 	providerDirs := config.Download.Provider.CreateDir.Get()
-	return base.Load(ctx, "Looking for old provider ids", func(context.Context) (plannedMsg, error) {
+	return base.LoadWithStatus(ctx, "Looking for old provider ids", func(_ context.Context, status func(string)) (plannedMsg, error) {
 		loaders, err := manager.Loaders()
 		if err != nil {
 			return plannedMsg{}, err
@@ -63,7 +63,7 @@ func (s *state) Init(ctx context.Context) tea.Cmd {
 		if err != nil {
 			return plannedMsg{}, err
 		}
-		migration, err := library.FindMigration(afs.Afero, st, root, providerDirs, loaders)
+		migration, err := library.FindMigration(afs.Afero, st, root, providerDirs, loaders, func(p library.Progress) { status(p.String()) })
 		if err != nil {
 			return plannedMsg{}, err
 		}
@@ -88,7 +88,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		migration := *s.migration
 		modes := client.LibraryModes()
-		return base.Load(ctx, "Migrating", func(context.Context) (migratedMsg, error) {
+		return base.LoadWithStatus(ctx, "Migrating", func(_ context.Context, status func(string)) (migratedMsg, error) {
+			migration.OnProgress = func(p library.Progress) { status(p.String()) }
 			st, err := cache.Storage()
 			if err != nil {
 				return migratedMsg{}, err
