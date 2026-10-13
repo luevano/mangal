@@ -16,6 +16,7 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/model/metadata"
 	"github.com/luevano/mangal/v5/tui/util"
@@ -27,8 +28,9 @@ var _ base.State = (*bindingsState)(nil)
 // bindingsState lists the metadata sources of the client with the manga's binding to each.
 type bindingsState struct {
 	list.Screen
-	client *libmangal.Client
-	manga  mangadata.Manga
+	client  *libmangal.Client
+	manga   mangadata.Manga
+	confirm *confirm.Dialog
 
 	search,
 	remove,
@@ -41,6 +43,9 @@ type loadedMsg []*sourceItem
 // changedMsg is a binding changed (removed), the screen reloads.
 type changedMsg struct{ notice string }
 
+// removeMsg is the removal of the source's binding, confirmed.
+type removeMsg struct{ src client.MetadataSource }
+
 // Open shows the metadata bindings of the manga.
 func Open(c *libmangal.Client, manga mangadata.Manga) tea.Cmd {
 	return func() tea.Msg { return newBindings(c, manga) }
@@ -50,6 +55,7 @@ func newBindings(c *libmangal.Client, manga mangadata.Manga) base.State {
 	s := &bindingsState{
 		client:   c,
 		manga:    manga,
+		confirm:  confirm.NewDialog(40, color.Warning),
 		search:   util.Bind("search", "enter", "s"),
 		remove:   base.KeyRemove,
 		metadata: base.KeyMetadata,
@@ -75,6 +81,28 @@ func (s *bindingsState) Title() base.Title {
 
 func (s *bindingsState) Subtitle() string {
 	return fmt.Sprintf("%s · %s", s.manga.Info().Title, s.client.Info().ID)
+}
+
+func (s *bindingsState) Backable() bool  { return s.Screen.Backable() && !s.confirm.Active() }
+func (s *bindingsState) Inputting() bool { return s.Screen.Inputting() || s.confirm.Active() }
+
+func (s *bindingsState) KeyMap() help.KeyMap {
+	if s.confirm.Active() {
+		return s.confirm.KeyMap()
+	}
+	return s.Screen.KeyMap()
+}
+
+func (s *bindingsState) Resize(size base.Size) tea.Cmd {
+	s.confirm.Resize(size)
+	return s.Screen.Resize(size)
+}
+
+func (s *bindingsState) View() string {
+	if s.confirm.Active() {
+		return s.confirm.View()
+	}
+	return s.List.View()
 }
 
 func (s *bindingsState) Init(ctx context.Context) tea.Cmd {
@@ -116,7 +144,16 @@ func (s *bindingsState) load(ctx context.Context) tea.Cmd {
 }
 
 func (s *bindingsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
+	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
+		return s.confirm.Update(msg)
+	}
 	switch msg := msg.(type) {
+	case removeMsg:
+		src := msg.src
+		return s.change(ctx, func(b storage.Bindings) (string, error) {
+			_, err := b.Remove(s.client.Info().ID, s.manga.Info().ID, src.Code)
+			return fmt.Sprintf("Removed the %s binding", src.Name), err
+		})
 	case loadedMsg:
 		items := make([]_list.Item, len(msg))
 		for i, it := range msg {
@@ -145,10 +182,10 @@ func (s *bindingsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			}
 			return func() tea.Msg { return newSearch(s.client, i.src, p, s.manga) }
 		case key.Matches(msg, s.remove) && i.binding != nil:
-			return s.change(ctx, i, func(b storage.Bindings) (string, error) {
-				_, err := b.Remove(s.client.Info().ID, s.manga.Info().ID, i.src.Code)
-				return fmt.Sprintf("Removed the %s binding", i.src.Name), err
-			})
+			src := i.src
+			message := fmt.Sprintf("Remove the %s binding of %q (%s)?", src.Name, s.manga.Info().Title, i.binding.ID)
+			s.confirm.AskDelete("Remove", message, s.View(), func() tea.Msg { return removeMsg{src: src} })
+			return nil
 		case key.Matches(msg, s.metadata):
 			switch {
 			case i.meta != nil:
@@ -161,7 +198,7 @@ func (s *bindingsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return s.List.Update(msg)
 }
 
-func (s *bindingsState) change(ctx context.Context, i *sourceItem, change func(storage.Bindings) (string, error)) tea.Cmd {
+func (s *bindingsState) change(ctx context.Context, change func(storage.Bindings) (string, error)) tea.Cmd {
 	return base.Load(ctx, "", func(context.Context) (changedMsg, error) {
 		bindings, err := cache.Bindings()
 		if err != nil {

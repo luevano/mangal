@@ -199,8 +199,16 @@ func TestMirrors(t *testing.T) {
 		t.Errorf("file:\n%s\nwant:\n%s", got, want)
 	}
 
-	// the cursor is on mango-b, remove mango-a
+	// the cursor is on mango-b, remove mango-a: d asks first (MT-B1)
 	press(s, "k", "d")
+	if !s.confirm.Active() || len(mconfig.Providers.Mirrors.Get()) != 2 {
+		t.Fatal("d removed without asking")
+	}
+	yes := s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	if yes == nil {
+		t.Fatal("d didn't confirm")
+	}
+	s.Update(context.Background(), yes())
 	if got := mconfig.Providers.Mirrors.Get(); len(got) != 1 || got["mango-b"] == "" {
 		t.Errorf("mirrors %v", got)
 	}

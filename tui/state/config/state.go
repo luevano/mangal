@@ -19,6 +19,7 @@ import (
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/util"
 )
@@ -54,8 +55,11 @@ type state struct {
 	err  string
 	maps mapEditor
 	size base.Size
-	// confirmReset is the map key whose reset (removing every entry) waits for a second r
+	// confirmReset is the map key whose reset (removing every entry) waits for a second
+	// press of the reset key
 	confirmReset string
+	// confirm asks before an entry of a map is removed
+	confirm *confirm.Dialog
 
 	keys keyMap
 
@@ -85,6 +89,7 @@ func New(filter string) base.State {
 		expanded: map[string]bool{},
 		input:    input,
 		keys:     newKeyMap(),
+		confirm:  confirm.NewDialog(40, color.Warning),
 		write:    writeKey,
 		reload:   base.ReloadProviders,
 	}
@@ -203,13 +208,18 @@ func (s *state) Subtitle() string {
 
 func (s *state) Status() string { return s.list.Status() }
 
-func (s *state) Backable() bool { return s.mode == browsing && s.list.Unfiltered() }
+func (s *state) Backable() bool {
+	return s.mode == browsing && s.list.Unfiltered() && !s.confirm.Active()
+}
 
 func (s *state) Inputting() bool {
-	return s.list.Filtering() || s.mode == editing || (s.mode == mapping && s.maps.inputting)
+	return s.list.Filtering() || s.mode == editing || (s.mode == mapping && s.maps.inputting) || s.confirm.Active()
 }
 
 func (s *state) KeyMap() help.KeyMap {
+	if s.confirm.Active() {
+		return s.confirm.KeyMap()
+	}
 	switch s.mode {
 	case editing:
 		return util.KeyMap{Short: []key.Binding{s.keys.save, s.keys.cancel}}
@@ -224,6 +234,7 @@ func (s *state) KeyMap() help.KeyMap {
 
 func (s *state) Resize(size base.Size) tea.Cmd {
 	s.size = size
+	s.confirm.Resize(size)
 	s.input.Width = max(10, size.Width-4)
 	return s.list.Resize(base.Size{Width: size.Width, Height: max(2, size.Height-detailsHeight)})
 }
@@ -235,7 +246,16 @@ func (s *state) selected() (string, bool) {
 	return i.key, ok
 }
 
+// removeEntryMsg is the removal of a map entry, confirmed.
+type removeEntryMsg struct{ key, id string }
+
 func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
+	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
+		return s.confirm.Update(msg)
+	}
+	if msg, ok := msg.(removeEntryMsg); ok {
+		return s.removeEntry(msg)
+	}
 	switch s.mode {
 	case editing:
 		return s.updateEditing(msg)
@@ -440,15 +460,23 @@ func (s *state) updateMapping(msg tea.Msg) tea.Cmd {
 		if len(m.ids) == 0 {
 			return nil
 		}
-		entries := s.entries()
-		delete(entries, m.ids[m.cursor])
-		cmd, ok := s.set(s.key, entries)
-		if ok {
-			s.syncIDs()
-		}
-		return cmd
+		k, id := s.key, m.ids[m.cursor]
+		s.confirm.AskDelete("Remove", fmt.Sprintf("Remove %s from %s?", id, k), s.View(), func() tea.Msg { return removeEntryMsg{key: k, id: id} })
 	}
 	return nil
+}
+
+func (s *state) removeEntry(msg removeEntryMsg) tea.Cmd {
+	if s.mode != mapping || s.key != msg.key {
+		return nil
+	}
+	entries := s.entries()
+	delete(entries, msg.id)
+	cmd, ok := s.set(s.key, entries)
+	if ok {
+		s.syncIDs()
+	}
+	return cmd
 }
 
 // saveEntry takes the id of a new entry, or sets the url of the entry.
@@ -492,6 +520,9 @@ func (s *state) syncIDs() {
 }
 
 func (s *state) View() string {
+	if s.confirm.Active() {
+		return s.confirm.View()
+	}
 	if s.mode == mapping {
 		return s.viewMap()
 	}
