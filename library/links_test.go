@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -183,8 +184,12 @@ func TestBackups(t *testing.T) {
 			return metas, nil
 		},
 		ProviderIDs: func(_ context.Context, src storage.Source) ([]metadata.ID, error) {
-			if src.MangaID == "OPM" {
+			switch src.MangaID {
+			case "OPM":
 				return []metadata.ID{alID("74347"), {Raw: "24147", Source: metadata.IDSourceKitsu, Code: metadata.IDCodeKitsu}}, nil
+			case "Berserk":
+				// one provider failing doesn't stop the others
+				return nil, errors.New("mangadex down")
 			}
 			return nil, nil
 		},
@@ -206,7 +211,8 @@ func TestBackups(t *testing.T) {
 	if b := byTitle["Berserk"]; len(b.Fill) != 0 || len(b.Conflicts) != 1 || b.Conflicts[0].New != "2" || !b.NoKitsu {
 		t.Errorf("Berserk %+v", b)
 	}
-	if got := strings.Join(byTitle["Berserk"].Lines(), "\n"); !strings.Contains(got, `"Berserk": MyAnimeList is 1, AniList 30002 says 2`) {
+	if got := strings.Join(byTitle["Berserk"].Lines(), "\n"); !strings.Contains(got, `"Berserk": MyAnimeList is 1, AniList 30002 says 2`) ||
+		!strings.Contains(got, "couldn't get the links of mango-mangadex Berserk (mangadex down)") {
 		t.Errorf("lines %q", got)
 	}
 	if fill, conflicts, noKitsu, noMAL := BackupSummary(backups); fill != 1 || conflicts != 1 || noKitsu != 1 || noMAL != 0 {

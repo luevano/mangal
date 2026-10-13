@@ -28,6 +28,8 @@ type Backup struct {
 	// Pick is the Kitsu link to pick when a MangaDex source and Kitsu's mapping disagree
 	// (saved, see storage.LinkPick), nil if there's none.
 	Pick *storage.LinkPick
+	// Failed are the sources whose links couldn't be got, with why (the others are used).
+	Failed []string
 }
 
 // BackupFinder finds the backups of library mangas.
@@ -95,7 +97,7 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 	var backups []Backup
 	for i, t := range todos {
 		found := Links{}
-		var disagree []string
+		var disagree, failed []string
 		// the Kitsu id of a MangaDex source that agrees on the AniList id
 		var kitsuProvider, kitsuFrom string
 		if metas[i] != nil {
@@ -107,8 +109,13 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 			for _, src := range t.info.Manga.Sources {
 				report(b.OnProgress, Progress{Phase: "looking up provider links", Done: i + 1, Total: len(todos), Item: t.info.Manga.Title})
 				pids, err := b.ProviderIDs(ctx, src)
-				if err != nil {
+				switch {
+				case err != nil && ctx.Err() != nil:
 					return nil, fmt.Errorf("links of %s %q: %w", src.Provider, src.MangaID, err)
+				case err != nil:
+					// one provider down doesn't stop the others
+					failed = append(failed, fmt.Sprintf("%s %s (%s)", src.Provider, src.MangaID, err))
+					continue
 				}
 				// only when the provider agrees on the AniList id
 				if al := idOf(pids, metadata.IDCodeAnilist); al != "" && al != t.al {
@@ -147,7 +154,7 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 		case mapped != "":
 			found[metadata.IDCodeKitsu] = mapped
 		}
-		if pick == nil && b.ProviderIDs != nil && b.KitsuIDs != nil {
+		if pick == nil && b.ProviderIDs != nil && b.KitsuIDs != nil && len(failed) == 0 {
 			// both asked and they agree (or it's linked): nothing left to pick
 			if _, err := b.savePick(t.info.Manga.ID, nil); err != nil {
 				return nil, err
@@ -156,7 +163,7 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 		if pick != nil && pick.Dismissed {
 			pick = nil
 		}
-		backup := Backup{Manga: t.info.Manga, AniList: t.al, Fill: Links{}, Disagree: disagree, Pick: pick}
+		backup := Backup{Manga: t.info.Manga, AniList: t.al, Fill: Links{}, Disagree: disagree, Pick: pick, Failed: failed}
 		for _, code := range []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList} {
 			s := t.info.Source(code)
 			id := found[code]
@@ -268,6 +275,9 @@ func (b Backup) Lines() []string {
 			hint = "saved, pick one"
 		}
 		lines = append(lines, fmt.Sprintf("%d %q: linked to AniList %s, but %s (%s: mangal library bind %d)", b.Manga.ID, b.Manga.Title, b.AniList, d, hint, b.Manga.ID))
+	}
+	for _, f := range b.Failed {
+		lines = append(lines, fmt.Sprintf("%d %q: couldn't get the links of %s, try again later", b.Manga.ID, b.Manga.Title, f))
 	}
 	return lines
 }
