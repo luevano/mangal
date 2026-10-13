@@ -3,13 +3,15 @@ package web
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
+	"strconv"
 
 	"github.com/labstack/echo/v4"
-	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/libmangal"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/web/api"
-	mango "github.com/luevano/mangoprovider"
 )
 
 var (
@@ -28,12 +30,18 @@ func apiError(err error, c echo.Context) {
 	}
 
 	status := http.StatusInternalServerError
+	wait, limited := client.RetryAfter(err)
 	var httpErr *echo.HTTPError
 	switch {
 	case errors.As(err, &httpErr):
 		status = httpErr.Code
-	case errors.Is(err, errNotFound), errors.Is(err, mango.ErrNotFound), errors.Is(err, metadata.ErrNotFound):
+	case errors.Is(err, errNotFound), errors.Is(err, libmangal.ErrNotFound):
 		status = http.StatusNotFound
+	case limited:
+		status = http.StatusTooManyRequests
+		if wait > 0 {
+			c.Response().Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+		}
 	case errors.Is(err, errBadRequest):
 		status = http.StatusBadRequest
 	case errors.Is(err, errUpstream):
