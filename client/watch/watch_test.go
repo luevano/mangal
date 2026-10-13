@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1627,5 +1628,46 @@ func TestCheckClosesSources(t *testing.T) {
 	}
 	if src.closed != 2 {
 		t.Errorf("closed %d times after the check", src.closed)
+	}
+}
+
+// TestLostLockStopsTheCheck: another mangal taking a provider's lock over (it went stale)
+// stops the check of that provider.
+func TestLostLockStopsTheCheck(t *testing.T) {
+	e := newEnv(t)
+	e.svc.Options.LockStale = 50 * time.Millisecond
+	var lost atomic.Bool
+	e.svc.OnError = func(err error) {
+		if errors.Is(err, storage.ErrLockLost) {
+			lost.Store(true)
+		}
+	}
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "m", Title: "M"}}
+	src := e.source("p", m)
+	src.chs["m"] = m.chapters(1)
+	src.gate, src.entered = make(chan struct{}), make(chan struct{}, 1)
+	if _, err := e.svc.Add(context.Background(), AddOptions{Provider: "p", MangaID: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan Report, 1)
+	go func() {
+		r, err := e.svc.Check(context.Background(), nil, CheckOptions{})
+		if err != nil {
+			t.Error(err)
+		}
+		done <- r
+	}()
+	<-src.entered
+	if _, err := e.svc.Watches.DB.Exec(`UPDATE locks SET token = 'other'`); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if !lost.Load() || len(src.downloaded) != 0 || r.NewChapters != 0 {
+			t.Errorf("lost %v, downloaded %v, report %+v", lost.Load(), src.downloaded, r)
+		}
+	case <-time.After(5 * time.Second):
+		close(src.gate)
+		t.Fatal("still checking without the lock")
 	}
 }

@@ -225,6 +225,8 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 			defer wg.Done()
 			// the provider is free for other runs as soon as it's done
 			defer locks.unlock(provider)
+			ctx, done := locks.context(ctx, provider)
+			defer done()
 			if hub != nil {
 				defer hub.end(provider)
 			}
@@ -309,11 +311,14 @@ func (s *Service) lockStale() time.Duration {
 	return s.Options.LockStale
 }
 
-// providerLocks are the locks a check holds, each kept alive until unlocked.
+// providerLocks are the locks a check holds, each kept alive until unlocked. A lost one
+// cancels the context of its provider's run.
 type providerLocks struct {
-	s    *Service
-	mu   sync.Mutex
-	held map[string]heldLock
+	s       *Service
+	mu      sync.Mutex
+	held    map[string]heldLock
+	cancels map[string]context.CancelCauseFunc
+	lost    map[string]error
 }
 
 type heldLock struct {
@@ -325,7 +330,7 @@ type heldLock struct {
 // busy is ErrBusy.
 func (s *Service) lockProviders(providers []string) (*providerLocks, []string, error) {
 	stale := s.lockStale()
-	l := &providerLocks{s: s, held: map[string]heldLock{}}
+	l := &providerLocks{s: s, held: map[string]heldLock{}, cancels: map[string]context.CancelCauseFunc{}, lost: map[string]error{}}
 	var busy []string
 	var busyErr error
 	for _, p := range providers {
@@ -339,12 +344,41 @@ func (s *Service) lockProviders(providers []string) (*providerLocks, []string, e
 			l.unlockAll()
 			return nil, nil, err
 		}
-		l.held[p] = heldLock{lock: lock, stop: lock.KeepAlive(stale/5, s.warn, s.warn)}
+		l.held[p] = heldLock{lock: lock, stop: lock.KeepAlive(stale/5, func(err error) {
+			s.warn(fmt.Errorf("%w: another mangal took it over, %s isn't checked further", err, p))
+			l.lose(p, err)
+		}, s.warn)}
 	}
 	if len(providers) > 0 && len(busy) == len(providers) {
 		return nil, nil, fmt.Errorf("%w (%s): %w", ErrBusy, strings.Join(busy, ", "), busyErr)
 	}
 	return l, busy, nil
+}
+
+// context is ctx cancelled when the provider's lock is lost (the cause is
+// storage.ErrLockLost), until done.
+func (l *providerLocks) context(ctx context.Context, provider string) (_ context.Context, done func()) {
+	if l == nil {
+		return ctx, func() {}
+	}
+	c, cancel := context.WithCancelCause(ctx)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if err := l.lost[provider]; err != nil {
+		cancel(err)
+	} else {
+		l.cancels[provider] = cancel
+	}
+	return c, func() { cancel(nil) }
+}
+
+func (l *providerLocks) lose(provider string, err error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.lost[provider] = err
+	if cancel := l.cancels[provider]; cancel != nil {
+		cancel(err)
+	}
 }
 
 // since is when the provider's lock was taken.
