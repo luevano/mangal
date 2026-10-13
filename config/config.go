@@ -16,6 +16,8 @@ import (
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/util/cron"
+	// before the defaults below read the xdg dirs: tests never touch the user's files
+	_ "github.com/luevano/mangal/v5/util/testenv"
 )
 
 var (

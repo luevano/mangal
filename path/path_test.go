@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/luevano/mangal/v5/config"
@@ -100,5 +101,14 @@ func TestExistingDownloads(t *testing.T) {
 	}
 	if got, err := ExistingDownloads(); err != nil || got != dir {
 		t.Fatalf("%q %v", got, err)
+	}
+}
+
+// the tests' library operations snapshot and journal in a temp dir, not the user's data
+func TestAwayFromTheUser(t *testing.T) {
+	for _, d := range []string{Data(), Logs(), Config(), config.Cache.Path.Default, config.Download.Path.Default} {
+		if !strings.HasPrefix(d, filepath.Join(os.TempDir(), "mangal-test-")) {
+			t.Errorf("%s isn't in a test dir", d)
+		}
 	}
 }
