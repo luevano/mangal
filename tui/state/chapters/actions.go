@@ -154,7 +154,7 @@ func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
 	}
 	waits := make(chan waitMsg)
 	c := s.client
-	load := base.Load(ctx, fmt.Sprintf("Downloading %q", chapter), func(ctx context.Context) (downloadedMsg, error) {
+	load := base.LoadWithStatus(ctx, fmt.Sprintf("Downloading %q", chapter), func(ctx context.Context, status func(string)) (downloadedMsg, error) {
 		defer close(waits)
 		if options.Directory == path.Temp() {
 			if _, err := path.EnsureTemp(); err != nil {
@@ -162,9 +162,17 @@ func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
 			}
 		}
 		down, err := client.DownloadChapter(ctx, c, chapter, options, func(e client.Event) {
-			msg := waitMsg{attempt: e.Attempt, wait: e.Wait}
-			if e.Kind == client.EventBusy {
+			var msg waitMsg
+			switch e.Kind {
+			case client.EventProgress:
+				status(fmt.Sprintf("Downloading %q: %s", chapter, e))
+				return
+			case client.EventWait:
+				msg = waitMsg{attempt: e.Attempt, wait: e.Wait}
+			case client.EventBusy:
 				msg = waitMsg{busy: e.Busy.Message()}
+			default:
+				return
 			}
 			select {
 			case waits <- msg:

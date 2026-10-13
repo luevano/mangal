@@ -44,6 +44,11 @@ func TestDownloadEvents(t *testing.T) {
 	if got := ansi.Strip(s.viewSummary()); !strings.Contains(got, `Retrying chapter 2 "Chapter 2"`) || !strings.Contains(s.message, "retry #2") {
 		t.Errorf("waiting: summary %q, message %q", got, s.message)
 	}
+	s.Update(ctx, eventMsg{run: run, kind: client.EventProgress, index: 1, progress: &libmangal.DownloadProgress{Stage: libmangal.DownloadStageImages, Done: 23, Total: 57}})
+	s.Update(ctx, eventMsg{run: run, kind: eventStatus, status: "MangaDex: rate limited"})
+	if got := ansi.Strip(s.viewDownloading()); !strings.Contains(got, "23/57 pages") || !strings.Contains(got, "MangaDex: rate limited") {
+		t.Errorf("progress: %q", got)
+	}
 	s.Update(ctx, done(run, 1, client.Result{Chapter: chapters[1], Down: down}))
 	s.Update(ctx, done(run, 2, client.Result{Chapter: chapters[2], Unavailable: "paid"}))
 	s.Update(ctx, finishedMsg{run: run})

@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	lmprogress "github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/notify"
@@ -50,6 +51,11 @@ type state struct {
 	// attempt is the rate limit retry of the current chapter, 0 if not waiting
 	attempt int
 	message string
+	// status is the provider's latest (e.g. a mirror switch, a rate limit), shown a while
+	status   string
+	statusAt time.Time
+	// pages is the share of the current chapter's pages that are downloaded
+	pages float64
 
 	sep    string
 	size   base.Size
@@ -68,9 +74,18 @@ type eventMsg struct {
 	attempt int
 	wait    time.Duration
 	busy    *client.ProviderBusy
+	// progress is set for client.EventProgress, status for eventStatus
+	progress *libmangal.DownloadProgress
+	status   string
 	// next waits for the following event
 	next tea.Cmd
 }
+
+// eventStatus is a provider's status (libmangal's progress) during the download.
+const eventStatus client.EventKind = -1
+
+// statusFor is how long a provider's status is shown.
+const statusFor = 15 * time.Second
 
 type finishedMsg struct {
 	run int
@@ -158,12 +173,17 @@ func (s *state) start(ctx context.Context, batch client.Results) tea.Cmd {
 		go func() {
 			defer release()
 			defer close(events)
-			client.Download(ctx, c, chapters, options, func(e client.Event) {
-				msg := eventMsg{run: run, kind: e.Kind, index: e.Index, result: *e.Result, attempt: e.Attempt, wait: e.Wait, busy: e.Busy}
+			send := func(msg eventMsg) {
 				select {
 				case events <- msg:
 				case <-ctx.Done():
 				}
+			}
+			ctx := lmprogress.WithReporter(ctx, func(st lmprogress.Status) {
+				send(eventMsg{run: run, kind: eventStatus, status: st.String()})
+			})
+			client.Download(ctx, c, chapters, options, func(e client.Event) {
+				send(eventMsg{run: run, kind: e.Kind, index: e.Index, result: *e.Result, attempt: e.Attempt, wait: e.Wait, busy: e.Busy, progress: e.Progress})
 			})
 		}()
 		return nil
@@ -217,13 +237,25 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 }
 
 func (s *state) onEvent(msg eventMsg) tea.Cmd {
+	if msg.kind == eventStatus {
+		s.status, s.statusAt = msg.status, time.Now()
+		return nil
+	}
 	if msg.index < 0 || msg.index >= len(s.batch) {
 		return nil
 	}
 	switch msg.kind {
 	case client.EventStart:
-		s.current, s.attempt = msg.index, 0
+		s.current, s.attempt, s.pages, s.status = msg.index, 0, 0, ""
 		s.message = "Downloading..."
+	case client.EventProgress:
+		// a rate limited chapter is being tried again
+		s.current, s.attempt = msg.index, 0
+		p := msg.progress
+		if p.Total > 0 {
+			s.pages = float64(p.Done) / float64(p.Total)
+		}
+		s.message = capitalize(client.Event{Progress: p}.String())
 	case client.EventWait:
 		s.current, s.attempt = msg.index, msg.attempt
 		s.message = fmt.Sprintf("429 Too Many Requests (retry #%d)", msg.attempt)
@@ -236,7 +268,7 @@ func (s *state) onEvent(msg eventMsg) tea.Cmd {
 	case client.EventDone:
 		*s.batch[msg.index] = msg.result
 		s.done = msg.index + 1
-		s.attempt = 0
+		s.attempt, s.pages = 0, 0
 		s.updateView()
 	}
 	return nil

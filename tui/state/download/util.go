@@ -3,8 +3,12 @@ package download
 import (
 	"fmt"
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/theme/icon"
@@ -15,7 +19,16 @@ import (
 func (s *state) viewDownloading() string {
 	progress := 0.0
 	if len(s.batch) != 0 {
-		progress = float64(s.done) / float64(len(s.batch))
+		progress = min(1, (float64(s.done)+s.pages)/float64(len(s.batch)))
+	}
+	message := s.message
+	if s.status != "" && time.Since(s.statusAt) < statusFor {
+		message += s.sep + s.status
+	}
+	line := s.spinner.View() + " " + style.Normal.Secondary.Render(message)
+	if s.size.Width > 1 {
+		// one line, or the viewport below would be pushed off
+		line = ansi.Truncate(line, s.size.Width-1, "…")
 	}
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -23,8 +36,17 @@ func (s *state) viewDownloading() string {
 		" ",
 		s.progress.ViewAs(progress),
 		" ",
-		s.spinner.View()+" "+style.Normal.Secondary.Render(s.message),
+		line,
 	)
+}
+
+// capitalize upper-cases the first letter, client's progress lines are lowercase.
+func capitalize(s string) string {
+	r, size := utf8.DecodeRuneInString(s)
+	if r == utf8.RuneError {
+		return s
+	}
+	return string(unicode.ToUpper(r)) + s[size:]
 }
 
 func (s *state) viewSummary() string {
