@@ -192,3 +192,23 @@ func TestUndoTrash(t *testing.T) {
 		t.Error("trash folders left")
 	}
 }
+
+func TestNeedTrash(t *testing.T) {
+	root := t.TempDir()
+	fsys := afero.NewOsFs()
+	touch(t, filepath.Join(root, "M", "a.cbz"))
+	u := journaled(t, func(j Journal) error {
+		return moveToTrash(fsys, j, root, "batch", filepath.Join(root, "M", "a.cbz"), DefaultModes)
+	})
+	need, err := u.NeedTrash(root)
+	if err != nil || len(need) != 1 || need[0].Kind != "test" {
+		t.Fatalf("need %+v, %v", need, err)
+	}
+	plan, _ := u.Plan(0)
+	if _, err := u.Apply(plan, false); err != nil {
+		t.Fatal(err)
+	}
+	if need, err := u.NeedTrash(root); err != nil || len(need) != 0 {
+		t.Errorf("after the undo: %+v, %v", need, err)
+	}
+}

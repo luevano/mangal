@@ -300,6 +300,7 @@ func init() {
 	libraryMoveCmd.Flags().StringVarP(&libraryMoveArgs.Selector, "manga-selector", "m", "exact", "Manga selector of the search (first|last|exact|closest|<index>)")
 	libraryCmd.AddCommand(libraryTrashCmd)
 	libraryTrashCmd.AddCommand(libraryTrashEmptyCmd)
+	libraryTrashEmptyCmd.Flags().BoolVarP(&libraryTrashEmptyArgs.Yes, "yes", "y", false, "Empty it without asking")
 }
 
 // libraryFiles is client.LibraryFiles, an error when download.path doesn't exist.
@@ -888,10 +889,17 @@ var libraryTrashCmd = &cobra.Command{
 	},
 }
 
+var libraryTrashEmptyArgs = struct {
+	Yes bool
+}{}
+
 var libraryTrashEmptyCmd = &cobra.Command{
 	Use:   "empty",
 	Short: "Delete what's in the trash",
-	Args:  cobra.NoArgs,
+	Long: `Delete what's in the trash, for good. The operations that put files there can't be
+undone after it ("mangal library undo"): they're listed before asking (--yes doesn't ask;
+without a terminal it's needed).`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		root := path.Downloads()
 		batches, err := library.Trash(afs.Afero, root)
@@ -906,7 +914,21 @@ var libraryTrashEmptyCmd = &cobra.Command{
 		for _, b := range batches {
 			files += b.Files
 		}
-		if !confirm(cmd, fmt.Sprintf("Delete the %d files in the trash?", files)) {
+		undoer, err := client.LibraryUndoer()
+		if err != nil {
+			return err
+		}
+		blocked, err := undoer.NeedTrash(root)
+		if err != nil {
+			return err
+		}
+		if len(blocked) > 0 {
+			cmd.Printf("these operations can't be undone after it:\n")
+			for _, op := range blocked {
+				cmd.Printf("  %d  %s  %s  %s\n", op.ID, op.Started.Format(time.DateTime), op.Kind, op.Summary)
+			}
+		}
+		if !libraryTrashEmptyArgs.Yes && !confirm(cmd, fmt.Sprintf("Delete the %d files in the trash?", files)) {
 			return nil
 		}
 		snapshot, err := client.Snapshot("empty-trash")

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/spf13/afero"
 )
 
@@ -116,4 +117,31 @@ func Trash(fsys afero.Fs, root string) ([]TrashBatch, error) {
 // EmptyTrash deletes everything in the trash of root.
 func EmptyTrash(fsys afero.Fs, root string) error {
 	return fsys.RemoveAll(filepath.Join(root, TrashDir))
+}
+
+// NeedTrash are the operations not undone yet whose undo needs files in the trash of
+// root: emptying it blocks their undo.
+func (u Undoer) NeedTrash(root string) ([]storage.Op, error) {
+	ops, err := u.Journal.Ops(0)
+	if err != nil {
+		return nil, err
+	}
+	trash := filepath.Join(root, TrashDir)
+	var need []storage.Op
+	for _, op := range ops {
+		if !op.Undone.IsZero() {
+			continue
+		}
+		steps, err := u.Journal.Steps(op)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range steps {
+			if _, in := under(trash, s.Dest); s.Kind == storage.StepMove && in {
+				need = append(need, op)
+				break
+			}
+		}
+	}
+	return need, nil
 }
