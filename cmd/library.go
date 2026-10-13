@@ -38,7 +38,7 @@ var libraryCmd = &cobra.Command{
 }
 
 var libraryRenameArgs = struct {
-	Apply, Refresh, Chapters bool
+	Apply, Refresh, Chapters, Fallback bool
 }{}
 
 func init() {
@@ -46,6 +46,7 @@ func init() {
 	libraryRenameCmd.Flags().BoolVar(&libraryRenameArgs.Apply, "apply", false, "Rename, instead of only listing the renames")
 	libraryRenameCmd.Flags().BoolVar(&libraryRenameArgs.Refresh, "refresh", false, "Get the AniList metadata again instead of the cached one")
 	libraryRenameCmd.Flags().BoolVar(&libraryRenameArgs.Chapters, "chapters", false, "Also rename the chapter files to the chapter name template")
+	libraryRenameCmd.Flags().BoolVar(&libraryRenameArgs.Fallback, "fallback", false, "Also rename the folders whose metadata isn't found to the fallback name (drops their year and id tags)")
 }
 
 var libraryRenameCmd = &cobra.Command{
@@ -66,7 +67,9 @@ its own ids: what "mangal library bind" sets), which win over the ids of its
 metadata again (batched) instead of the cached one, e.g. after a title changed there.
 --chapters also renames the chapter files to the chapter name template (in their folder;
 a name already taken is skipped, as chapters without a recorded title). Folders without a
-.libmangal.json aren't renamed ("mangal library scan --mark" marks them).`,
+.libmangal.json aren't renamed ("mangal library scan --mark" marks them). A folder with
+metadata ids whose metadata isn't found isn't renamed either (its fallback name would drop
+the year and the id tags) and is listed as a warning; --fallback renames it anyway.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
@@ -99,6 +102,7 @@ a name already taken is skipped, as chapters without a recorded title). Folders 
 		if libraryRenameArgs.Refresh {
 			namer.Metadata = anilist.MetadataByIDsFresh
 		}
+		namer.Fallback = libraryRenameArgs.Fallback
 		providerDirs := config.Download.Provider.CreateDir.Get()
 		renames, err := namer.Plan(st.Context(cmd.Context()), dir, providerDirs)
 		if err != nil {
@@ -138,6 +142,18 @@ a name already taken is skipped, as chapters without a recorded title). Folders 
 		if untitled != 0 {
 			cmd.Printf("%d chapter files kept: no chapter title recorded\n", untitled)
 		}
+		var noMetadata []library.Rename
+		for _, r := range renames {
+			if r.NoMetadata && r.Skip != "" {
+				noMetadata = append(noMetadata, r)
+			}
+		}
+		if len(noMetadata) != 0 {
+			cmd.Printf("warning: %d folders not renamed, no metadata found for their ids (the fallback name would drop the year and ids; --fallback renames them anyway):\n", len(noMetadata))
+			for _, r := range noMetadata {
+				cmd.Printf("  %s: %s (would be %s)\n", rel(r.From), r.Skip, filepath.Base(r.To))
+			}
+		}
 		if len(renames) == 0 {
 			cmd.Println("nothing to rename")
 			return nil
@@ -146,6 +162,8 @@ a name already taken is skipped, as chapters without a recorded title). Folders 
 		if !libraryRenameArgs.Apply {
 			for _, r := range renames {
 				switch {
+				case r.NoMetadata && r.Skip != "":
+					// listed in the warning above
 				case r.Skip != "":
 					cmd.Printf("skip %s: %s\n", rel(r.From), r.Skip)
 				case r.RemoveEmpty:

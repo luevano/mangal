@@ -28,6 +28,10 @@ type Rename struct {
 	RemoveEmpty bool
 	// Chapter is a chapter file's rename (PlanChapters): its download's path follows.
 	Chapter bool
+	// NoMetadata is a manga folder with metadata ids whose metadata wasn't found: its name
+	// would be the fallback one, without its year and id tags. It's skipped unless
+	// Namer.Fallback.
+	NoMetadata bool
 	// ProviderDir is the provider directory a provider directory's rename is of: the
 	// directory itself, or its manga folders moving into an existing one; empty for a
 	// manga folder's own rename.
@@ -70,6 +74,9 @@ type Namer struct {
 	// cached metadata is asked), telling OnNoMetadata: their names aren't worked out.
 	NeedMetadata bool
 	OnNoMetadata func(folder string)
+	// Fallback renames the manga folders with metadata ids whose metadata wasn't found to
+	// the fallback name too (it drops their year and id tags); they're skipped otherwise.
+	Fallback bool
 }
 
 // Plan lists the renames of the manga directories under dir (found by their
@@ -81,8 +88,8 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 		return nil, err
 	}
 	metas := make([]metadata.Metadata, len(folders))
+	ids := make([][]metadata.ID, len(folders))
 	if n.Metadata != nil && len(folders) != 0 {
-		ids := make([][]metadata.ID, len(folders))
 		for i, f := range folders {
 			if ids[i], err = n.linkedIDs(f); err != nil {
 				return nil, err
@@ -124,8 +131,14 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 		}
 		if name := n.MangaName(provider, &dirManga{info: f.info.Manga, meta: metas[i]}); name != filepath.Base(f.path) {
 			r := Rename{From: f.path, To: filepath.Join(filepath.Dir(f.path), name)}
-			if r.Skip, err = n.taken(r); err != nil {
-				return nil, err
+			r.NoMetadata = n.Metadata != nil && metas[i] == nil && len(ids[i]) != 0
+			switch {
+			case r.NoMetadata && !n.Fallback:
+				r.Skip = "no metadata found for " + formatIDs(ids[i])
+			default:
+				if r.Skip, err = n.taken(r); err != nil {
+					return nil, err
+				}
 			}
 			renames = append(renames, r)
 		}
@@ -587,3 +600,12 @@ func (m *dirManga) String() string                     { return m.info.Title }
 func (m *dirManga) Info() mangadata.MangaInfo          { return m.info }
 func (m *dirManga) Metadata() metadata.Metadata        { return m.meta }
 func (m *dirManga) SetMetadata(meta metadata.Metadata) { m.meta = meta }
+
+// formatIDs are metadata ids as "al 30002, kt 8".
+func formatIDs(ids []metadata.ID) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = string(id.Code) + " " + id.Raw
+	}
+	return strings.Join(parts, ", ")
+}

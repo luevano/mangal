@@ -439,3 +439,48 @@ func TestPlanUsesLinks(t *testing.T) {
 		t.Errorf("1: %+v", r)
 	}
 }
+
+// TestPlanNoMetadataSkipped: a folder with ids whose metadata isn't found keeps its name
+// (the fallback one would drop the year and ids) unless Fallback; one without ids falls
+// back as always.
+func TestPlanNoMetadataSkipped(t *testing.T) {
+	fsys := afero.NewMemMapFs()
+	n := Namer{
+		FS:           fsys,
+		ProviderName: func(p libmangal.ProviderInfo) string { return p.ID },
+		MangaName: func(_ libmangal.ProviderInfo, m mangadata.Manga) string {
+			if m.Metadata() != nil {
+				return m.Metadata().Title()
+			}
+			return m.Info().Title
+		},
+		Metadata: func(_ context.Context, ids [][]metadata.ID) ([]metadata.Metadata, error) {
+			return make([]metadata.Metadata, len(ids)), nil
+		},
+	}
+	al := metadata.ID{Raw: "30002", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}
+	writeInfo(t, fsys, "/lib/Berserk (1989) [alid-30002]", libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "Berserk"}, MetadataIDs: []metadata.ID{al}})
+	writeInfo(t, fsys, "/lib/no ids", libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "No Ids"}})
+
+	renames, err := n.Plan(context.Background(), "/lib", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(renames) != 2 {
+		t.Fatalf("got %+v", renames)
+	}
+	if r := renames[0]; r.From != "/lib/Berserk (1989) [alid-30002]" || !r.NoMetadata || !strings.Contains(r.Skip, "al 30002") {
+		t.Errorf("no metadata: %+v", r)
+	}
+	if r := renames[1]; r.From != "/lib/no ids" || r.NoMetadata || r.Skip != "" {
+		t.Errorf("no ids: %+v", r)
+	}
+
+	n.Fallback = true
+	if renames, err = n.Plan(context.Background(), "/lib", false); err != nil {
+		t.Fatal(err)
+	}
+	if r := renames[0]; !r.NoMetadata || r.Skip != "" || r.To != "/lib/Berserk" {
+		t.Errorf("with fallback: %+v", r)
+	}
+}
