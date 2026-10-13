@@ -1304,7 +1304,7 @@ func TestDownloadsNotInLibrary(t *testing.T) {
 }
 
 // a folder adopted by scan (no source, named after the AniList title) is linked to the
-// watch by its AniList binding as soon as the watches are listed
+// watch by its AniList binding when it's added; listing only shows a link it'd make
 func TestListLinksAdoptedFolder(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
@@ -1341,6 +1341,28 @@ func TestListLinksAdoptedFolder(t *testing.T) {
 	if m, found, _ := e.svc.Library.MangaBySource("mango-mangadex", "f6333441"); !found || m.ID != all[0].LibraryManga {
 		t.Errorf("source not added: %+v %v", m, found)
 	}
+	// adopted after the watch was added: shown linked, nothing written
+	later := metadata.ID{Raw: "1", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}
+	if err := e.svc.Library.RememberMangaDir("/lib/mango-mangadex", "Nope [alid-1]",
+		libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "Nope"}, MetadataIDs: []metadata.ID{later}}); err != nil {
+		t.Fatal(err)
+	}
+	if listed, err := e.svc.Get(ctx, other.ID); err != nil || listed.LibraryManga == 0 {
+		t.Errorf("not shown linked: %+v %v", listed, err)
+	}
+	if stored, _ := e.svc.Watches.Get(other.ID); stored.LibraryManga != 0 {
+		t.Errorf("listing linked it: %d", stored.LibraryManga)
+	}
+	if _, found, _ := e.svc.Library.MangaBySource("mango-mangadex", "x"); found {
+		t.Error("listing added a source")
+	}
+	if err := e.svc.Library.RemoveManga(func() int64 {
+		m, _, _ := e.svc.Library.MangaByFolder("/lib/mango-mangadex", "Nope [alid-1]")
+		return m.ID
+	}()); err != nil {
+		t.Fatal(err)
+	}
+	all, _ = e.svc.List(ctx)
 	if p := all[1].LibraryProblem(); all[1].ID != other.ID || all[1].LibraryManga != 0 || !strings.Contains(p, "al 1") || all[1].LibraryIssue != "" {
 		t.Errorf("unmatched watch: %q %+v", p, all[1])
 	}

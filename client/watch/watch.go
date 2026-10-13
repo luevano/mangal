@@ -388,6 +388,23 @@ func (s *Service) linkSource(w storage.Watch) error {
 	return err
 }
 
+// link links the watch without a library manga to the one matching it (by its bindings
+// and ids), with the watched manga as its source.
+func (s *Service) link(w storage.Watch, ids []metadata.ID) (storage.Watch, error) {
+	if w.LibraryManga != 0 {
+		return w, nil
+	}
+	match, err := s.matchLibrary(s.providerInfo()(w.Provider), w, ids)
+	if err != nil || !match.Linked {
+		return w, err
+	}
+	if err := s.Watches.SetLibraryManga(w.ID, match.Manga.ID); err != nil {
+		return w, err
+	}
+	w.LibraryManga = match.Manga.ID
+	return w, s.linkSource(w)
+}
+
 // addOffline adds the watch as AddOptions say, the provider isn't asked.
 func (s *Service) addOffline(opts AddOptions) (Watch, error) {
 	id := opts.MangaID
@@ -429,6 +446,9 @@ func (s *Service) addOffline(opts AddOptions) (Watch, error) {
 		return Watch{}, err
 	}
 	if err := s.bindAnilist(w, opts.AnilistID); err != nil {
+		return Watch{}, err
+	}
+	if w, err = s.link(w, nil); err != nil {
 		return Watch{}, err
 	}
 	full, err := s.complete(w)
@@ -588,15 +608,10 @@ func (s *Service) completeWith(w storage.Watch, since time.Time, view libraryVie
 		match := storage.MatchLibrary(view.mangas, view.provider(w.Provider), w.MangaID, ids, s.Options.ProviderDirs)
 		switch {
 		case match.Linked:
+			// only shown: reading writes nothing (an undo would see it as a change), the
+			// next check links it
 			libraryManga = match.Manga.ID
-			if err := s.Watches.SetLibraryManga(w.ID, libraryManga); err != nil {
-				s.warn(err)
-			} else {
-				full.LibraryManga = libraryManga
-				if err := s.linkSource(full.Watch); err != nil {
-					s.warn(err)
-				}
-			}
+			full.LibraryManga = libraryManga
 		default:
 			full.LibraryIssue = libraryIssue(match, view.downloads[w.ID])
 			full.LibraryElsewhere = match.Elsewhere
