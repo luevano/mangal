@@ -18,16 +18,6 @@ type ConfigWindow interface {
 	Filter(filter string) tea.Cmd
 }
 
-// OpenConfigMsg opens the config window (or filters the shown one).
-type OpenConfigMsg struct {
-	Filter string
-}
-
-// OpenConfig opens the config window filtered to filter (e.g. a key), from any State.
-func OpenConfig(filter string) tea.Cmd {
-	return func() tea.Msg { return OpenConfigMsg{Filter: filter} }
-}
-
 func (m *model) openConfig(filter string) tea.Cmd {
 	if NewConfigWindow == nil || m.standalone {
 		return nil

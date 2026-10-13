@@ -24,10 +24,7 @@ func New[T any](
 	border := lipgloss.ThickBorder()
 	delegate := list.NewDefaultDelegate()
 
-	// TODO: possibly use the current "window" (where the list is being displayed) accent color,
-	// instead of always hardcoding color.Accent
-	//
-	// Styles don't use mangal/theme/style, as they are more specialized with paddings and whatnot
+	// styles don't use mangal/theme/style, they're more specialized (paddings, borders)
 	styles := delegate.Styles
 	styles.NormalTitle = styles.NormalTitle.Bold(true)
 	styles.SelectedTitle = styles.SelectedTitle.Bold(true).

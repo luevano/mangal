@@ -107,7 +107,7 @@ type MangaOptions struct {
 
 var _ base.State = (*Manga)(nil)
 
-// Manga searches a provider for a manga: enter picks it (MangaOptions.Pick), p searches
+// Manga searches a provider for a manga: enter picks it (MangaOptions.Pick), tab searches
 // another provider.
 type Manga struct {
 	searchlist.Screen

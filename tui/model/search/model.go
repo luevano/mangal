@@ -40,19 +40,9 @@ func (m *Model) SetSuggestions(suggestions []string) {
 	m.input.SetSuggestions(suggestions)
 }
 
-// Unsearched is a convenience method to check if there hasn't been a search done.
-func (m *Model) Unsearched() bool {
-	return m.state == unsearched
-}
-
 // Searching is a convenience method to check if a search is being performed.
 func (m *Model) Searching() bool {
 	return m.state == searching
-}
-
-// SearchCanceled is a convenience method to check if the search was canceled.
-func (m *Model) SearchCanceled() bool {
-	return m.state == searchCanceled
 }
 
 // Focus sets the state to Searching and enables the input.

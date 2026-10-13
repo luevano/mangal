@@ -63,17 +63,9 @@ func (m *Model) Status() string {
 	return p
 }
 
-func (m *Model) Size() base.Size {
-	return m.size
-}
-
 func (m *Model) Resize(size base.Size) tea.Cmd {
 	m.size = size
 	m.Model.SetSize(m.size.Width, m.size.Height)
-	return nil
-}
-
-func (m *Model) Init() tea.Cmd {
 	return nil
 }
 

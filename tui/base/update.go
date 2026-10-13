@@ -39,8 +39,6 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		cmd := m.showViewport(msg.Title, msg.Content, msg.Color)
 		m.viewportConfigKey = msg.ConfigKey
 		return cmd
-	case OpenConfigMsg:
-		return m.openConfig(msg.Filter)
 	case viewport.NotificationMsg:
 		return m.notify(msg.Message, m.notificationDefaultDuration)
 	case viewport.BackMsg:
