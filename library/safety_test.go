@@ -205,10 +205,23 @@ func TestCancelled(t *testing.T) {
 		t.Errorf("mark: %v", err)
 	}
 	renames := []Rename{{From: filepath.Join(root, "Berserk"), To: filepath.Join(root, "B")}}
-	if err := ApplyRenamesContext(ctx, afero.NewOsFs(), library, nil, renames, nil, nil); !errors.Is(err, context.Canceled) {
+	if err := ApplyRenamesContext(ctx, afero.NewOsFs(), DefaultModes, library, nil, renames, nil, nil); !errors.Is(err, context.Canceled) {
 		t.Errorf("rename: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "Berserk")); err != nil {
 		t.Error("renamed")
+	}
+}
+
+// the folders a rename makes get download.mode_dir
+func TestRenameModeDir(t *testing.T) {
+	root := t.TempDir()
+	touch(t, filepath.Join(root, "A", "1.cbz"))
+	renames := []Rename{{From: filepath.Join(root, "A"), To: filepath.Join(root, "New", "A")}}
+	if err := ApplyRenamesContext(context.Background(), afero.NewOsFs(), Modes{File: 0o600, Dir: 0o700}, newLibrary(t), nil, renames, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(filepath.Join(root, "New")); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("%v, %v", info.Mode(), err)
 	}
 }

@@ -193,7 +193,7 @@ the year and the id tags) and is listed as a warning; --fallback renames it anyw
 			if op, ok := j.(interface{ SetSummary(string) }); ok {
 				defer func() { op.SetSummary(renameSummary(folders, files)) }()
 			}
-			return library.ApplyRenamesContext(cmd.Context(), afs.Afero, index, j, renames, st.Progress, func(i int, err error) {
+			return library.ApplyRenamesContext(cmd.Context(), afs.Afero, client.LibraryModes(), index, j, renames, st.Progress, func(i int, err error) {
 				r := renames[i]
 				switch {
 				case errors.Is(err, library.ErrNotEmpty):

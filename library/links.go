@@ -651,7 +651,7 @@ func (f Files) ApplyLinks(plan LinkPlan, opts LinkOptions) error {
 		}
 	}
 	if opts.Rename && plan.Rename != nil && plan.Rename.Skip == "" {
-		if err := applyRename(f.FS, f.Journal, *plan.Rename); err != nil {
+		if err := applyRename(f.FS, f.Journal, *plan.Rename, f.Modes); err != nil {
 			return rollback(err)
 		}
 		change.From, change.To = plan.Rename.From, plan.Rename.To
