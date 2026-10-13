@@ -549,7 +549,35 @@ func (db *DB) Snapshot(dir, name string) (string, error) {
 		_ = os.Remove(path)
 		return "", fmt.Errorf("snapshot %s: %w", path, err)
 	}
+	if err := stripSecrets(path); err != nil {
+		_ = os.Remove(path)
+		return "", fmt.Errorf("snapshot %s: %w", path, err)
+	}
 	return path, nil
+}
+
+// secretTables are emptied in the snapshots: a restore keeps them (keptTables), an old
+// login or secret would only outlive its logout or rotation there.
+var secretTables = []string{TableAuthTokens, TableAuthHistory}
+
+// stripSecrets empties the secretTables of the snapshot, overwriting their pages.
+func stripSecrets(path string) error {
+	snap, err := sql.Open("sqlite", "file:"+escapeURIPath(path)+"?_pragma=secure_delete(1)")
+	if err != nil {
+		return err
+	}
+	defer snap.Close()
+	snap.SetMaxOpenConns(1)
+	for _, t := range secretTables {
+		if _, err := snap.Exec(`DELETE FROM ` + quote(t)); err != nil {
+			return fmt.Errorf("empty %s: %w", t, err)
+		}
+	}
+	// what was freed leaves the file
+	if _, err := snap.Exec(`VACUUM`); err != nil {
+		return err
+	}
+	return snap.Close()
 }
 
 // Snapshots are the snapshots in dir, oldest first.

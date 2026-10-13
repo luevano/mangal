@@ -9,8 +9,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -304,8 +306,15 @@ func (db *DB) migrateOne(migrations []Migration) (done bool, err error) {
 	return false, tx.Commit()
 }
 
-// OpenCache opens the cache database and removes its expired entries.
+// OpenCache opens the cache database and removes its expired entries. It's only
+// readable by the user (it has what the providers cached, logged in).
 func OpenCache(path string) (*DB, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	if err := privateFile(path); err != nil {
+		return nil, err
+	}
 	db, err := Open(path, cacheMigrations)
 	if err != nil {
 		return nil, err
@@ -335,16 +344,30 @@ func OpenData(path string) (*DB, error) {
 	return open(path, dataMigrations, "FULL")
 }
 
-// makePrivate makes the database (and its directory) only accessible by the user,
-// SQLite creates the -wal and -shm files with the database's permissions.
+// makePrivate makes the database (and its directory, when it's mangal's: data.path may
+// be a folder of the user's) only accessible by the user, SQLite creates the -wal and -shm
+// files with the database's permissions.
 func makePrivate(path string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
 		return err
 	}
+	ours := []string{filepath.Base(path), filepath.Base(path) + "-wal", filepath.Base(path) + "-shm", "backups"}
+	if !slices.ContainsFunc(entries, func(e fs.DirEntry) bool { return !slices.Contains(ours, e.Name()) }) {
+		// MkdirAll's mode goes through the umask, and older mangals made it 0755
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return err
+		}
+	}
+	return privateFile(path)
+}
+
+// privateFile creates the database file only readable by the user, or makes it so.
+func privateFile(path string) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDONLY, 0o600)
 	if err != nil {
 		return err

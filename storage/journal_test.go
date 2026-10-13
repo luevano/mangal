@@ -46,6 +46,10 @@ func TestSnapshotRestore(t *testing.T) {
 	if err := check.QueryRow("PRAGMA integrity_check").Scan(&result); err != nil || result != "ok" {
 		t.Fatalf("integrity %q, %v", result, err)
 	}
+	var secrets int
+	if err := check.QueryRow(`SELECT count(*) FROM auth_tokens`).Scan(&secrets); err != nil || secrets != 0 {
+		t.Fatalf("secrets in the snapshot: %d, %v", secrets, err)
+	}
 	check.Close()
 
 	j := st.Journal()

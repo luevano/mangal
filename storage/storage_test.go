@@ -227,3 +227,39 @@ func TestClearChapterCache(t *testing.T) {
 		t.Errorf("another provider's cache cleared")
 	}
 }
+
+func TestPermissions(t *testing.T) {
+	dir := t.TempDir()
+	cache, err := OpenCache(filepath.Join(dir, "cache", FilenameCache))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache.Close()
+	if info, err := os.Stat(filepath.Join(dir, "cache", FilenameCache)); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("cache %v, %v", info.Mode(), err)
+	}
+	// a folder of the user's keeps its mode, one made for the database is private
+	shared := filepath.Join(dir, "shared")
+	if err := os.Mkdir(shared, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(shared, "notes.txt"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{shared, filepath.Join(dir, "new")} {
+		data, err := OpenData(filepath.Join(d, FilenameData))
+		if err != nil {
+			t.Fatal(err)
+		}
+		data.Close()
+	}
+	if info, _ := os.Stat(shared); info.Mode().Perm() != 0o755 {
+		t.Errorf("shared folder %v", info.Mode())
+	}
+	if info, _ := os.Stat(filepath.Join(dir, "new")); info.Mode().Perm() != 0o700 {
+		t.Errorf("new folder %v", info.Mode())
+	}
+	if info, _ := os.Stat(filepath.Join(shared, FilenameData)); info.Mode().Perm() != 0o600 {
+		t.Errorf("data %v", info.Mode())
+	}
+}
