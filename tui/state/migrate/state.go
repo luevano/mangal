@@ -17,6 +17,7 @@ import (
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/viewport"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -26,7 +27,9 @@ var _ base.State = (*state)(nil)
 
 type state struct {
 	migration *library.Migration
-	keyMap    keyMap
+	// plan shows the migration, it can be long
+	plan   *viewport.Model
+	keyMap keyMap
 }
 
 type plannedMsg struct {
@@ -38,16 +41,18 @@ type migratedMsg struct{ relink int }
 
 // New lists what would be migrated, enter does it.
 func New() base.State {
-	return &state{keyMap: keyMap{apply: util.Bind("migrate", "enter")}}
+	return &state{plan: viewport.New(), keyMap: keyMap{apply: util.Bind("migrate", "enter")}}
 }
 
-func (s *state) Key() string                   { return "migrate" }
-func (s *state) Backable() bool                { return true }
-func (s *state) Inputting() bool               { return false }
-func (s *state) KeyMap() help.KeyMap           { return util.KeyMap{Short: []key.Binding{s.keyMap.apply}} }
+func (s *state) Key() string     { return "migrate" }
+func (s *state) Backable() bool  { return true }
+func (s *state) Inputting() bool { return false }
+func (s *state) KeyMap() help.KeyMap {
+	return base.CombinedKeyMap(util.KeyMap{Short: []key.Binding{s.keyMap.apply}}, s.plan.KeyMap)
+}
 func (s *state) Title() base.Title             { return base.Title{Text: "Migrate"} }
 func (s *state) Status() string                { return "" }
-func (s *state) Resize(size base.Size) tea.Cmd { return nil }
+func (s *state) Resize(size base.Size) tea.Cmd { return s.plan.Resize(size) }
 func (s *state) Subtitle() string {
 	return "data under old provider ids moves to the current ones, the old cache is dropped"
 }
@@ -77,14 +82,23 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case plannedMsg:
 		s.migration = &msg.migration
 		s.keyMap.apply.SetEnabled(!msg.migration.Empty())
+		if msg.migration.Empty() {
+			s.plan.SetContent(style.Normal.Secondary.Render("Nothing to migrate."))
+		} else {
+			s.plan.SetContent(strings.Join(msg.migration.Lines(), "\n"))
+		}
 	case migratedMsg:
 		if msg.relink > 0 {
 			return tea.Sequence(base.Back, base.NotifyWithDuration(fmt.Sprintf(
-				"Migrated. %d watches need a re-link (the site may use other ids): w, then n lists them, m re-links one", msg.relink), 10*time.Second))
+				"Migrated. %d watches need a re-link (the site may use other ids): %s, then %s lists them, %s re-links one", msg.relink,
+				base.KeyWatches.Help().Key, base.KeyNeedsRelink.Help().Key, base.KeyRelink.Help().Key), 10*time.Second))
 		}
 		return tea.Sequence(base.Back, base.Notify("Migrated, folders keep their names (mangal library rename renames them)"))
 	case tea.KeyMsg:
-		if s.migration == nil || s.migration.Empty() || !key.Matches(msg, s.keyMap.apply) || base.Busy(ctx) {
+		if !key.Matches(msg, s.keyMap.apply) {
+			return s.plan.Update(msg)
+		}
+		if s.migration == nil || s.migration.Empty() || base.Busy(ctx) {
 			return nil
 		}
 		migration := *s.migration
@@ -115,13 +129,10 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 }
 
 func (s *state) View() string {
-	switch {
-	case s.migration == nil:
+	if s.migration == nil {
 		return ""
-	case s.migration.Empty():
-		return style.Normal.Secondary.Render("Nothing to migrate.")
 	}
-	return strings.Join(s.migration.Lines(), "\n")
+	return s.plan.View()
 }
 
 type keyMap struct {
