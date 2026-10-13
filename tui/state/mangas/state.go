@@ -163,7 +163,9 @@ func loginCmd(ctx context.Context) tea.Cmd {
 			return nil
 		}
 		defer release()
-		_ = clientanilist.EnsureLogin(ctx)
+		if err := clientanilist.EnsureLogin(ctx); err != nil {
+			log.Debug("anilist login: %s", err)
+		}
 		return nil
 	}
 }

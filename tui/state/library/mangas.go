@@ -171,12 +171,19 @@ func (s *mangasState) reload(ctx context.Context) tea.Cmd {
 		if err := client.UpdateLibraryStatuses(ctx, files.Library, mangas, false, nil); err != nil {
 			log.Warn("publication statuses: %s", err)
 		}
-		watched, _ := watches.Watched(ctx)
+		watched, err := watches.Watched(ctx)
+		if err != nil {
+			// the list without the watch marks
+			log.Warn("library: the watches: %s", err)
+		}
 		dups := duplicates(files.Library, mangas, watched)
 		ids := library.DuplicateIDs(dups)
 		items := make([]*mangaItem, len(mangas))
 		for i, m := range mangas {
-			exists, _ := afero.DirExists(files.FS, m.Path())
+			exists, err := afero.DirExists(files.FS, m.Path())
+			if err != nil {
+				log.Warn("library: %s", err)
+			}
 			keep, dup := ids[m.ID]
 			items[i] = &mangaItem{manga: m, missing: !exists, watches: watched.ForLibrary(m), duplicate: dup, dupKeep: keep}
 		}
@@ -459,7 +466,10 @@ func scan(ctx context.Context, files library.Files, providerDirs, check bool, st
 	onProgress := func(p library.Progress) { status(p.String()) }
 	msg := scannedMsg{result: res, otherRoot: otherRoot, checked: check}
 	if mangas, err := files.Library.Mangas(); err == nil {
-		watched, _ := watches.Watched(ctx)
+		watched, err := watches.Watched(ctx)
+		if err != nil {
+			log.Warn("library: the watches: %s", err)
+		}
 		msg.dups = duplicates(files.Library, mangas, watched)
 	}
 	if check && msg.otherRoot == "" {
@@ -481,7 +491,10 @@ func checkIDs(ctx context.Context, files library.Files, onProgress func(library.
 	if err != nil {
 		return nil, err
 	}
-	_ = anilist.EnsureLogin(ctx)
+	if err := anilist.EnsureLogin(ctx); err != nil {
+		// the checks go on without the login
+		log.Debug("anilist login: %s", err)
+	}
 	kt, err := kitsu.Kitsu()
 	if err != nil {
 		return nil, err

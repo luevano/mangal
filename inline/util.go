@@ -62,7 +62,9 @@ func assignAnilist(ctx context.Context, c *libmangal.Client, args Args, mangaRes
 	if err != nil {
 		return err
 	}
-	_ = anilist.EnsureLogin(ctx)
+	if err := anilist.EnsureLogin(ctx); err != nil {
+		log.Debug("anilist login: %s", err)
+	}
 	args.status("looking up %d manga(s) on AniList", len(mangaResults))
 
 	matches := make([]metadata.Match, len(mangaResults))

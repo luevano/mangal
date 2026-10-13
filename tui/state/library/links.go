@@ -12,6 +12,7 @@ import (
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -288,7 +289,10 @@ func loadPick(ctx context.Context, pick storage.LinkPick) tea.Cmd {
 		msg := pickLoadedMsg{pick: pick, metas: make([]lmmeta.Metadata, len(pick.Candidates))}
 		for i, c := range pick.Candidates {
 			// one that doesn't load is still a choice
-			msg.metas[i], _ = client.LinkMetadata(ctx, pick.Source, c.ID)
+			var err error
+			if msg.metas[i], err = client.LinkMetadata(ctx, pick.Source, c.ID); err != nil {
+				log.Warn("look up %s %s: %s", pick.Source, c.ID, err)
+			}
 		}
 		return msg, nil
 	}, func(msg pickLoadedMsg) tea.Msg { return msg })

@@ -65,7 +65,10 @@ func runDownload(ctx context.Context, args Args) (client.Results, error) {
 		ctx = client.WithoutBinding(ctx)
 	}
 	if downloadOptions.SearchMetadata || (!useMangaMetadata && args.AnilistID != 0) {
-		_ = anilist.EnsureLogin(ctx)
+		if err := anilist.EnsureLogin(ctx); err != nil {
+			// the search goes on without the login
+			log.Debug("anilist login: %s", err)
+		}
 	}
 
 	// If AnilistID is provided via argument, then search for it and replace the manga metadata,
