@@ -118,6 +118,11 @@ type liveState struct {
 	progress map[int64]int
 	// offset is how many lines from the end the view is scrolled up, 0 follows
 	offset int
+	// anchor is the top line shown when the screen was left scrolled up: the replay of a
+	// new subscription scrolls back to it
+	anchor string
+	// pinned is the index of the anchor once replayed, the top line while lines come in
+	pinned int
 	size   base.Size
 
 	up, down, pageUp, pageDown, follow key.Binding
@@ -127,6 +132,7 @@ func newLiveState(m watch.Manager, w *watch.Watch) *liveState {
 	return &liveState{
 		manager:  m,
 		watch:    w,
+		pinned:   -1,
 		up:       util.BindNamedKey("↑/k", "up", "up", "k"),
 		down:     util.BindNamedKey("↓/j", "down", "down", "j"),
 		pageUp:   util.BindNamedKey("pgup/b", "page up", "pgup", "b"),
@@ -192,7 +198,11 @@ func (s *liveState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		s.feed = nil
 		return subscribe(ctx, s.manager)
 	case feedMsg:
-		// a new subscription replays the recent events
+		// a new subscription replays the recent events, the view goes back to its top line
+		s.anchor, s.pinned = "", -1
+		if s.offset > 0 {
+			s.anchor = s.lines[s.top()]
+		}
 		s.feed, s.lines, s.offset, s.progress = msg.feed, nil, 0, nil
 		return msg.feed.next()
 	case liveMsg:
@@ -204,6 +214,7 @@ func (s *liveState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		return s.feed.next()
 	case tea.KeyMsg:
+		s.anchor, s.pinned = "", -1
 		page := max(1, s.height()-1)
 		switch {
 		case key.Matches(msg, s.up):
@@ -242,8 +253,12 @@ func (s *liveState) onEvent(e watch.LiveEvent) {
 
 func (s *liveState) add(line string) {
 	s.lines = append(s.lines, line)
+	if s.anchor != "" && line == s.anchor {
+		s.anchor, s.pinned = "", len(s.lines)-1
+	}
 	if n := len(s.lines) - maxLiveLines; n > 0 {
 		s.lines = s.lines[n:]
+		s.pinned -= n
 		for w, i := range s.progress {
 			if i < n {
 				delete(s.progress, w)
@@ -251,6 +266,10 @@ func (s *liveState) add(line string) {
 				s.progress[w] = i - n
 			}
 		}
+	}
+	if s.pinned >= 0 {
+		s.offset = max(0, len(s.lines)-s.pinned-s.height())
+		return
 	}
 	if s.offset > 0 {
 		// keep the lines being read in place, up to the oldest kept
@@ -264,6 +283,12 @@ func (s *liveState) scroll(n int) {
 
 func (s *liveState) height() int { return max(1, s.size.Height) }
 
+// top is the index of the top line shown.
+func (s *liveState) top() int {
+	end := min(max(0, len(s.lines)-s.offset), len(s.lines))
+	return max(0, end-s.height())
+}
+
 func (s *liveState) View() string {
 	if len(s.lines) == 0 {
 		what := "No check is running"
@@ -273,8 +298,7 @@ func (s *liveState) View() string {
 		return style.Italic.Secondary.Render(what)
 	}
 	end := min(max(0, len(s.lines)-s.offset), len(s.lines))
-	start := max(0, end-s.height())
-	lines := s.lines[start:end]
+	lines := s.lines[max(0, end-s.height()):end]
 	if s.size.Width > 0 {
 		cut := make([]string, len(lines))
 		for i, l := range lines {

@@ -4,16 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/libmangal/metadata"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/metadata"
+
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -1023,5 +1025,38 @@ func TestRemoveSaysUndo(t *testing.T) {
 	notify, err := action.do(ctx)
 	if err != nil || !strings.Contains(notify, base.KeyUndo.Help().Key+" in the library undoes it") {
 		t.Errorf("%q %v", notify, err)
+	}
+}
+
+// back on the live log, the replay of the new subscription scrolls back to where it was
+func TestLiveLogKeepsScroll(t *testing.T) {
+	s := newLiveState(testManager(), nil)
+	s.Resize(base.Size{Width: 80, Height: 5})
+	ctx := context.Background()
+	replay := func(f *feed, n int) {
+		s.Update(ctx, feedMsg{feed: f})
+		for i := range n {
+			s.Update(ctx, liveMsg{feed: f, e: watch.LiveEvent{Kind: watch.LiveFound, Watch: 1, Message: fmt.Sprintf("line %d", i), Time: now}})
+		}
+	}
+	replay(&feed{}, 20)
+	for range 3 {
+		s.Update(ctx, press("k"))
+	}
+	before := s.View()
+	if !strings.HasPrefix(ansi.Strip(before), ansi.Strip(eventLine(watch.LiveEvent{Message: "line 12", Time: now}, true))) {
+		t.Fatalf("scrolled up 3:\n%s", before)
+	}
+
+	s.Update(ctx, base.RestoredMsg{})
+	replay(&feed{}, 22)
+	if got := s.View(); got != before {
+		t.Errorf("after the replay:\n%s\nwant\n%s", got, before)
+	}
+	// following, it follows again
+	s.Update(ctx, press("G"))
+	replay(&feed{}, 25)
+	if !strings.Contains(s.View(), "line 24") {
+		t.Errorf("following:\n%s", s.View())
 	}
 }
