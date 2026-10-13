@@ -16,6 +16,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/form"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -112,9 +113,9 @@ type addState struct {
 	watched     bool
 	libraryLast *float32
 
-	form          *form
-	from, anilist *field
-	gaps          *field
+	form          *form.Form
+	from, anilist *form.Field
+	gaps          *form.Field
 }
 
 // infoMsg is what the add screen needs to know first.
@@ -140,11 +141,11 @@ func newAddState(connect connector, c *libmangal.Client, manga mangadata.Manga, 
 		manga:    manga,
 		chapters: chapters,
 		connect:  connect,
-		anilist:  textField("AniList id", formatAnilistID(anilistID(manga)), "the metadata of its downloads, empty to search it as usual", validateAnilistID),
-		gaps:     toggleField("Gaps", config.Watch.Gaps.Get(), "also download the missing chapters below the last one"),
+		anilist:  form.Text("AniList id", formatAnilistID(anilistID(manga)), "the metadata of its downloads, empty to search it as usual", validateAnilistID),
+		gaps:     form.Toggle("Gaps", config.Watch.Gaps.Get(), "also download the missing chapters below the last one"),
 	}
-	s.from = textField("From chapter", fromAll, fromHint(nil, nil), validateFrom)
-	s.form = newForm(s.from, s.anilist, s.gaps)
+	s.from = form.Text("From chapter", fromAll, fromHint(nil, nil), validateFrom)
+	s.form = form.New(s.from, s.anilist, s.gaps)
 	return s
 }
 
@@ -152,16 +153,16 @@ func newAddState(connect connector, c *libmangal.Client, manga mangadata.Manga, 
 // was changed already.
 func (s *addState) setFrom(libraryLast, latest *float32) {
 	s.libraryLast = libraryLast
-	s.from.hint = fromHint(libraryLast, latest)
-	if s.from.value() == fromAll {
-		s.from.input.SetValue(defaultFrom(libraryLast, latest))
-		s.from.input.CursorEnd()
+	s.from.Hint = fromHint(libraryLast, latest)
+	if s.from.Value() == fromAll {
+		s.from.Input.SetValue(defaultFrom(libraryLast, latest))
+		s.from.Input.CursorEnd()
 	}
 }
 
 func (s *addState) Backable() bool      { return true }
 func (s *addState) Inputting() bool     { return true }
-func (s *addState) KeyMap() help.KeyMap { return util.KeyMap{Short: s.form.keys()} }
+func (s *addState) KeyMap() help.KeyMap { return util.KeyMap{Short: s.form.Keys()} }
 func (s *addState) Title() base.Title   { return base.Title{Text: "Watch " + s.manga.String()} }
 func (s *addState) Key() string {
 	return "watch-add/" + s.client.Info().ID + "/" + s.manga.Info().ID
@@ -244,14 +245,14 @@ func (s *addState) options() watch.AddOptions {
 		// providers without a lookup by id find it by its title
 		Query: s.manga.Info().Title,
 	}
-	opts.AnilistID, _ = parseAnilistID(s.anilist.value())
-	from, _ := parseFrom(s.from.value())
+	opts.AnilistID, _ = parseAnilistID(s.anilist.Value())
+	from, _ := parseFrom(s.from.Value())
 	// the checks start from the library's last chapter anyway, a from would stop gap
 	// filling below it
 	if from != nil && (s.libraryLast == nil || *from != *s.libraryLast) {
 		opts.From = from
 	}
-	gaps := s.gaps.on
+	gaps := s.gaps.On
 	opts.Gaps = &gaps
 	return opts
 }

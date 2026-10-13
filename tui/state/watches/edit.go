@@ -13,6 +13,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/form"
 	"github.com/luevano/mangal/v5/tui/util"
 )
 
@@ -56,9 +57,9 @@ var _ base.State = (*editState)(nil)
 type editState struct {
 	manager                        watch.Manager
 	w                              watch.Watch
-	form                           *form
-	manga, schedule, gaps, anilist *field
-	skip                           *field
+	form                           *form.Form
+	manga, schedule, gaps, anilist *form.Field
+	skip                           *form.Field
 	relink                         key.Binding
 }
 
@@ -82,23 +83,23 @@ func newEditState(m watch.Manager, w watch.Watch) *editState {
 	s := &editState{
 		manager:  m,
 		w:        w,
-		manga:    actionField("Manga", mangaDisplay(w), "enter: change it (search a provider), the watch keeps its history and settings"),
+		manga:    form.Action("Manga", mangaDisplay(w), "enter: change it (search a provider), the watch keeps its history and settings"),
 		relink:   util.Bind("change manga", "enter"),
-		schedule: textField("Schedule", w.Schedule, fmt.Sprintf(`cron, e.g. "0 */6 * * *" or @daily; empty for the default (%s)`, config.Watch.Schedule.Get()), validateSchedule),
-		gaps:     toggleField("Gaps", w.Gaps, "also download the missing chapters below the last one"),
-		anilist:  textField("AniList id", formatAnilistID(w.AnilistID), "the metadata of its downloads, empty for none", validateAnilistID),
-		skip:     textField("Skip", watch.FormatNumbers(w.Skip), "chapter numbers never to download (fake or broken ones), e.g. 189.5, 190; remove one to get it again", validateSkip),
+		schedule: form.Text("Schedule", w.Schedule, fmt.Sprintf(`cron, e.g. "0 */6 * * *" or @daily; empty for the default (%s)`, config.Watch.Schedule.Get()), validateSchedule),
+		gaps:     form.Toggle("Gaps", w.Gaps, "also download the missing chapters below the last one"),
+		anilist:  form.Text("AniList id", formatAnilistID(w.AnilistID), "the metadata of its downloads, empty for none", validateAnilistID),
+		skip:     form.Text("Skip", watch.FormatNumbers(w.Skip), "chapter numbers never to download (fake or broken ones), e.g. 189.5, 190; remove one to get it again", validateSkip),
 	}
-	s.form = newForm(s.manga, s.schedule, s.gaps, s.anilist, s.skip)
-	s.form.focus(1)
+	s.form = form.New(s.manga, s.schedule, s.gaps, s.anilist, s.skip)
+	s.form.Focus(1)
 	return s
 }
 
 func (s *editState) Backable() bool  { return true }
 func (s *editState) Inputting() bool { return true }
 func (s *editState) KeyMap() help.KeyMap {
-	s.relink.SetEnabled(s.form.focused() == s.manga)
-	return util.KeyMap{Short: append([]key.Binding{s.relink}, s.form.keys()...)}
+	s.relink.SetEnabled(s.form.Focused() == s.manga)
+	return util.KeyMap{Short: append([]key.Binding{s.relink}, s.form.Keys()...)}
 }
 func (s *editState) Key() string                   { return fmt.Sprintf("watch-edit/%d", s.w.ID) }
 func (s *editState) Title() base.Title             { return base.Title{Text: "Edit " + s.w.Title} }
@@ -106,23 +107,23 @@ func (s *editState) Subtitle() string              { return s.w.Provider + " · 
 func (s *editState) Status() string                { return "" }
 func (s *editState) Resize(size base.Size) tea.Cmd { return nil }
 func (s *editState) Init(ctx context.Context) tea.Cmd {
-	return s.form.focus(s.form.current)
+	return s.form.Focus(s.form.Current())
 }
 
 // options are the changed settings, valid once the form is.
 func (s *editState) options() watch.UpdateOptions {
 	var opts watch.UpdateOptions
-	if sched := strings.TrimSpace(s.schedule.value()); sched != s.w.Schedule {
+	if sched := strings.TrimSpace(s.schedule.Value()); sched != s.w.Schedule {
 		opts.Schedule = &sched
 	}
-	if s.gaps.on != s.w.Gaps {
-		gaps := s.gaps.on
+	if s.gaps.On != s.w.Gaps {
+		gaps := s.gaps.On
 		opts.Gaps = &gaps
 	}
-	if id, _ := parseAnilistID(s.anilist.value()); id != s.w.AnilistID {
+	if id, _ := parseAnilistID(s.anilist.Value()); id != s.w.AnilistID {
 		opts.AnilistID = &id
 	}
-	if skip, _ := watch.ParseNumbers(s.skip.value()); !slices.Equal(watch.AddNumbers(nil, skip), s.w.Skip) {
+	if skip, _ := watch.ParseNumbers(s.skip.Value()); !slices.Equal(watch.AddNumbers(nil, skip), s.w.Skip) {
 		skip = watch.AddNumbers(nil, skip)
 		if skip == nil {
 			skip = []float32{}
@@ -140,13 +141,13 @@ func (s *editState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		// the bindings moved with it, the AniList field stays right
 		s.w.Provider, s.w.MangaID, s.w.Title = msg.w.Provider, msg.w.MangaID, msg.w.Title
 		s.w.NeedsRelink, s.w.RelinkReason, s.w.ProviderMissing = msg.w.NeedsRelink, msg.w.RelinkReason, msg.w.ProviderMissing
-		s.manga.display = mangaDisplay(s.w)
+		s.manga.Display = mangaDisplay(s.w)
 		return nil
 	case tea.KeyMsg:
 		if base.Busy(ctx) {
 			return nil
 		}
-		if s.form.focused() == s.manga && key.Matches(msg, s.relink) {
+		if s.form.Focused() == s.manga && key.Matches(msg, s.relink) {
 			m, w := s.manager, s.w
 			return func() tea.Msg { return newRelinkState(m, w) }
 		}
