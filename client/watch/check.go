@@ -145,14 +145,17 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 		return Report{}, err
 	}
 
-	// by provider, in the order of the watches
+	// by provider (an old id's watches with the current id's: one lock, one at a time),
+	// in the order of the watches
 	var providers []string
 	byProvider := map[string][]int{}
+	info := s.providerInfo()
 	for i, w := range watches {
-		if _, ok := byProvider[w.Provider]; !ok {
-			providers = append(providers, w.Provider)
+		p := info(w.Provider).ID
+		if _, ok := byProvider[p]; !ok {
+			providers = append(providers, p)
 		}
-		byProvider[w.Provider] = append(byProvider[w.Provider], i)
+		byProvider[p] = append(byProvider[p], i)
 	}
 
 	report := Report{CheckRun: storage.CheckRun{Kind: opts.Kind, Started: s.now()}, DryRun: opts.DryRun}
@@ -578,7 +581,10 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 			errs = append(errs, fmt.Sprintf("chapter %s: %s", stringutil.FormatFloa32(res.Chapter.Info().Number), res.Err))
 		case res.Unavailable != "":
 			r.Unavailable++
-		case res.Down != nil && res.Down.Skipped == "":
+		case res.Down == nil:
+			// not got to (cancelled): picked again next time, wherever it is by then
+			r.Retry = append(r.Retry, res.Chapter.Info().Number)
+		case res.Down.Skipped == "":
 			r.Chapters = append(r.Chapters, runChapter(res.Chapter, res.Down.Path()))
 		}
 	}
@@ -733,7 +739,7 @@ func (s *Service) finish(ctx context.Context, w storage.Watch, r *Result) {
 			w.LibraryManga = match.Manga.ID
 		}
 	}
-	if err := s.Watches.Save(w); err != nil {
+	if err := s.Watches.SaveCheck(w); err != nil {
 		s.warn(err)
 	} else if err := s.linkSource(w); err != nil {
 		s.warn(err)

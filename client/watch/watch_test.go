@@ -163,6 +163,10 @@ func (s *fakeSource) Download(ctx context.Context, chapters []mangadata.Chapter,
 	}
 	results := client.NewResults(chapters)
 	for i, r := range results {
+		if ctx.Err() != nil {
+			// as client.Download: the rest isn't got to
+			break
+		}
 		info := r.Chapter.Info()
 		if info.Unavailable != "" {
 			r.Unavailable = info.Unavailable
@@ -1142,6 +1146,64 @@ func TestCheckRetriesFailed(t *testing.T) {
 	}
 }
 
+// a cancelled check keeps the chapters to retry it didn't get to
+func TestCancelledCheckKeepsRetries(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.svc.Options.Notify = NotifyNone
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "do", Title: "Dungeon Odyssey"}}
+	src := e.source("mango-asurascans", m)
+	src.chs["do"] = m.chapters(1, 2, 3, 4, 5)
+	src.fail = map[float32]bool{2: true, 3: true}
+	w, err := e.svc.Add(ctx, AddOptions{Provider: "mango-asurascans", MangaID: "do"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Check(ctx, []int64{w.ID}, CheckOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	src.fail = nil
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	src.onDownload = func(context.Context) { cancel() }
+	if _, err := e.svc.Check(cctx, []int64{w.ID}, CheckOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if w, _ = e.svc.Get(ctx, w.ID); !slices.Equal(w.Retry, []float32{2, 3}) {
+		t.Errorf("retry %v after a cancelled check", w.Retry)
+	}
+}
+
+// pausing a watch or editing its skip list while it's checked survives the check
+func TestCheckKeepsEditsMadeMeanwhile(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.svc.Options.Notify = NotifyNone
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "do", Title: "Dungeon Odyssey"}}
+	src := e.source("mango-asurascans", m)
+	src.chs["do"] = m.chapters(1, 2)
+	w, err := e.svc.Add(ctx, AddOptions{Provider: "mango-asurascans", MangaID: "do"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src.onDownload = func(context.Context) {
+		if _, err := e.svc.SetEnabled(ctx, w.ID, false); err != nil {
+			t.Error(err)
+		}
+		skip := []float32{7}
+		if _, err := e.svc.Update(ctx, w.ID, UpdateOptions{Skip: &skip}); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, err := e.svc.Check(ctx, []int64{w.ID}, CheckOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.svc.Watches.Get(w.ID)
+	if got.Enabled || !slices.Equal(got.Skip, []float32{7}) || got.LastChecked.IsZero() {
+		t.Errorf("after the check: %+v", got)
+	}
+}
+
 func TestResumeWaitsForItsTick(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
@@ -1432,5 +1494,42 @@ func TestNewChapters(t *testing.T) {
 	}
 	if _, err := NewChapters(context.Background(), src, "gone", "Gone", nil); !errors.Is(err, ErrMangaNotFound) {
 		t.Errorf("missing manga: %v", err)
+	}
+}
+
+// a watch under a provider's old id and one under its current id check one after the
+// other under the current id's lock, even one provider at a time
+func TestCheckOldAndCurrentID(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	e := newEnv(t)
+	e.svc.Options.ParallelProviders = 1
+	wc := libmangal.ProviderInfo{ID: "mango-weebcentral", Name: "Weeb Central", History: []libmangal.ProviderAlias{{ID: "mango-mangasee", Name: "MangaSee"}}}
+	e.svc.Providers = func() ([]libmangal.ProviderInfo, error) { return []libmangal.ProviderInfo{wc}, nil }
+	a := &fakeManga{info: mangadata.MangaInfo{ID: "a", Title: "A"}}
+	b := &fakeManga{info: mangadata.MangaInfo{ID: "b", Title: "B"}}
+	src := e.source("mango-weebcentral", a, b)
+	src.chs["a"] = []*fakeChapter{a.chapter(1)}
+	src.chs["b"] = []*fakeChapter{b.chapter(1)}
+	e.sources["mango-mangasee"] = src
+	old, err := e.svc.Watches.Add(storage.Watch{Provider: "mango-mangasee", MangaID: "a", Title: "A", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cur, err := e.svc.Watches.Add(storage.Watch{Provider: "mango-weebcentral", MangaID: "b", Title: "B", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := e.svc.Check(ctx, []int64{cur.ID, old.ID}, CheckOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("deadlocked")
+	}
+	for _, r := range report.Results {
+		if r.Status != storage.StatusNew {
+			t.Errorf("%s: %s %s", r.Title, r.Status, r.Error)
+		}
 	}
 }

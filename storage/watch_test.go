@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -422,5 +423,43 @@ func TestWatchesWithDownloads(t *testing.T) {
 	with, err := watches.WithDownloads()
 	if err != nil || !with[a.ID] || with[b.ID] {
 		t.Errorf("with downloads %v, %v", with, err)
+	}
+}
+
+func TestSaveCheck(t *testing.T) {
+	data, err := OpenData(filepath.Join(t.TempDir(), FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	s := Watches{DB: data}
+	w, err := s.Add(Watch{Provider: "p", MangaID: "a", Title: "A", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := w
+	checked.Enabled, checked.Skip, checked.Title, checked.LastChecked, checked.Retry = true, nil, "A2", time.Unix(100, 0), []float32{3}
+	// paused and a skip list set while it was checked
+	w.Enabled, w.Skip = false, []float32{9}
+	if err := s.Save(w); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveCheck(checked); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Get(w.ID)
+	if got.Enabled || !slices.Equal(got.Skip, []float32{9}) || got.Title != "A2" || !got.LastChecked.Equal(time.Unix(100, 0)) || !slices.Equal(got.Retry, []float32{3}) {
+		t.Errorf("got %+v", got)
+	}
+	// re-linked meanwhile: the check was of the old manga
+	if err := s.Relink(w.ID, "p", "b", "B", 0, time.Unix(200, 0)); err != nil {
+		t.Fatal(err)
+	}
+	checked.Title = "A3"
+	if err := s.SaveCheck(checked); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(w.ID); got.Title != "B" {
+		t.Errorf("re-linked watch overwritten: %+v", got)
 	}
 }
