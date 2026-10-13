@@ -349,3 +349,87 @@ func TestRestoreRechecks(t *testing.T) {
 		t.Fatal("restored over a change")
 	}
 }
+
+// TestRestoreLinkedTables: rows that reference others (sources, chapters, downloads of a
+// manga) come back with them, though deleting the manga cascaded.
+func TestRestoreLinkedTables(t *testing.T) {
+	dir := t.TempDir()
+	db, err := OpenData(filepath.Join(dir, FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, q := range []string{
+		`INSERT INTO library_mangas (id, title, parent, dir) VALUES (7, 'A', '/lib', 'A')`,
+		`INSERT INTO library_sources (provider, manga_id, manga, title) VALUES ('p', 'm', 7, 'A')`,
+		`INSERT INTO library_chapters (id, manga, number) VALUES (3, 7, 1)`,
+		`INSERT INTO downloads (path, provider, manga_id, manga_title, volume, chapter, chapter_title, chapter_url, format, pages, downloaded, chapter_id)
+VALUES ('/lib/A/1.cbz', 'p', 'm', 'A', 0, 1, '', '', 'CBZ', 1, 0, 3)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	j := Journal{DB: db}
+	snap, err := db.Snapshot(filepath.Join(dir, "backups"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, err := j.Begin("test", "delete", snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM library_mangas WHERE id = 7`); err != nil {
+		t.Fatal(err)
+	}
+	var left int
+	if err := db.QueryRow(`SELECT count(*) FROM downloads`).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("the delete didn't cascade: %d, %v", left, err)
+	}
+	if err := op.Finish(nil); err != nil {
+		t.Fatal(err)
+	}
+	last, _, err := j.Last()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Restore(last, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"library_mangas", "library_sources", "library_chapters", "downloads"} {
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM ` + table).Scan(&n); err != nil || n != 1 {
+			t.Errorf("%s: %d rows, %v", table, n, err)
+		}
+	}
+	var chapter sql.NullInt64
+	if err := db.QueryRow(`SELECT chapter_id FROM downloads`).Scan(&chapter); err != nil || chapter.Int64 != 3 {
+		t.Errorf("download's chapter %v, %v", chapter, err)
+	}
+}
+
+// TestRestoreRefusesOtherSchemas: a snapshot of another schema version or table set (another
+// mangal made it) isn't restored.
+func TestRestoreRefusesOtherSchemas(t *testing.T) {
+	for name, change := range map[string]string{
+		"schema version": `PRAGMA user_version = 999`,
+		"other tables":   `CREATE TABLE extra (x)`,
+	} {
+		db, j, op := journaledOp(t, nil)
+		snap, err := sql.Open("sqlite", op.Snapshot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := snap.Exec(change); err != nil {
+			t.Fatal(err)
+		}
+		snap.Close()
+		if err := j.Restore(op, true); err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s: %v", name, err)
+		}
+		var title string
+		if err := db.QueryRow(`SELECT title FROM library_mangas`).Scan(&title); err != nil || title != "B" {
+			t.Errorf("%s: restored anyway (%q, %v)", name, title, err)
+		}
+	}
+}
