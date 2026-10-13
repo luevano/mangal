@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/sanitize"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -98,7 +100,7 @@ var historyClearArgs = struct {
 var historyClearCmd = &cobra.Command{
 	Use:               "clear [provider [manga-id]]",
 	Short:             "Forget the chapters read",
-	Long:              `Forget every chapter read, or those of one provider or manga.`,
+	Long:              `Forget every chapter read, or those of one provider or manga. "mangal library undo" brings them back.`,
 	Args:              cobra.MaximumNArgs(2),
 	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -119,7 +121,19 @@ var historyClearCmd = &cobra.Command{
 			cmd.Println("nothing cleared (--yes clears without asking)")
 			return nil
 		}
-		n, err := history.Clear(provider, mangaID)
+		what := "every read chapter"
+		switch {
+		case mangaID != "":
+			what = fmt.Sprintf("the read chapters of %s %s", provider, mangaID)
+		case provider != "":
+			what = "the read chapters of " + provider
+		}
+		var n int64
+		snapshot, err := client.Operation("history-clear", "forget "+what, func(library.Journal) error {
+			n, err = history.Clear(provider, mangaID)
+			return err
+		})
+		undoHint(cmd, snapshot, err)
 		if err != nil {
 			return err
 		}
