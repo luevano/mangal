@@ -14,11 +14,12 @@ func wrap(message string, width int) []string {
 	var lines []string
 	for _, line := range strings.Split(message, "\n") {
 		indent := strings.Repeat(" ", len(line)-len(strings.TrimLeft(line, " "))+2)
-		for ansi.StringWidth(line) > width && len([]rune(line)) > width {
+		for ansi.StringWidth(line) > width {
 			runes := []rune(line)
-			cut := width
+			fit := fitting(runes, width)
+			cut := fit
 			// break after the last space or separator of the line's second half
-			for i := width; i > width/2; i-- {
+			for i := fit; i > fit/2; i-- {
 				if r := runes[i-1]; r == ' ' || r == '/' || r == '\\' {
 					cut = i
 					break
@@ -33,6 +34,17 @@ func wrap(message string, width int) []string {
 		lines = append(lines, line)
 	}
 	return lines
+}
+
+// fitting is how many of the runes fit in width cells (wide ones take two), at least one.
+func fitting(runes []rune, width int) int {
+	cells := 0
+	for i, r := range runes {
+		if cells += ansi.StringWidth(string(r)); cells > width {
+			return max(1, i)
+		}
+	}
+	return len(runes)
 }
 
 // scrollKeys are the keys that scroll an overflowing message: the arrows and pgup/pgdown,

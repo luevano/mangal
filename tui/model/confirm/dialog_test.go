@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
@@ -156,5 +157,14 @@ func TestLateQuestionWaits(t *testing.T) {
 	}
 	if d.Active() {
 		t.Error("still active")
+	}
+}
+
+// wide runes take two cells: a CJK title wraps at the width, not past it (MT-A13)
+func TestWrapWide(t *testing.T) {
+	for _, line := range wrap("ワンピースワンピースワンピースワンピース", 10) {
+		if w := ansi.StringWidth(line); w > 10 {
+			t.Errorf("%q is %d wide", line, w)
+		}
 	}
 }

@@ -541,26 +541,28 @@ func scanReport(res library.ScanResult) string {
 
 // merge marks the manga to keep, the next one is merged into it.
 func (s *mangasState) merge(ctx context.Context, item *mangaItem) tea.Cmd {
-	if s.keep == 0 && s.duplicates && item.dupKeep != 0 {
+	keepID := s.keep
+	if keepID == 0 && s.duplicates && item.dupKeep != 0 {
 		// a duplicate merges into its suggested keep right away
-		s.keep = item.dupKeep
+		keepID = item.dupKeep
 	}
 	switch {
-	case s.keep == 0:
+	case keepID == 0:
 		s.keep, item.keep = item.manga.ID, true
 		return base.Notify(fmt.Sprintf("keeping %q, select the manga to merge into it and press %s", item.manga.Title, s.keys.merge.Help().Key))
-	case s.keep == item.manga.ID:
+	case keepID == item.manga.ID:
 		s.keep, item.keep = 0, false
 		return base.Notify("merge cancelled")
+	case base.Busy(ctx):
+		// nothing marked: the merge isn't on
+		return base.Notify(busyNotice)
 	}
+	s.keep = keepID
 	var keep storage.Manga
 	for _, i := range s.items {
 		if i.manga.ID == s.keep {
 			keep, i.keep = i.manga, true
 		}
-	}
-	if base.Busy(ctx) {
-		return nil
 	}
 	files, other := s.files, item.manga
 	return base.Load(ctx, "Planning the merge", func(context.Context) (mergePlannedMsg, error) {

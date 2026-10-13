@@ -212,6 +212,9 @@ type linkMsg struct {
 // pushMsg opens a screen once its data loaded.
 type pushMsg struct{ state base.State }
 
+// maxChoices is how many numbered choices a question has: one key each, 1 to 9.
+const maxChoices = 9
+
 // choiceMsg asks to choose (the link's id, the merge's keep), once its data loaded.
 type choiceMsg struct {
 	title, message string
@@ -648,11 +651,16 @@ func (s *state) apply(ctx context.Context, f health.Finding) tea.Cmd {
 			return func() tea.Msg { return linkMsg{manga: manga, code: code, id: id} }
 		}
 		var choices []confirm.Choice
-		for i, id := range a.IDs {
+		ids := a.IDs[:min(len(a.IDs), maxChoices)]
+		for i, id := range ids {
 			choices = append(choices, confirm.Choice{Key: strconv.Itoa(i + 1), Label: fmt.Sprintf("link %s %s", sourceName(code), id),
 				Cmd: func() tea.Msg { return linkMsg{manga: manga, code: code, id: id} }})
 		}
-		s.confirm.Choose("Link", f.Message+"\n\nWhich one? (the link's plan comes next)", s.View(), choices...)
+		message := f.Message + "\n\nWhich one? (the link's plan comes next)"
+		if n := len(a.IDs) - len(ids); n > 0 {
+			message += fmt.Sprintf("\n(%d more not shown, link one from the links screen: enter)", n)
+		}
+		s.confirm.Choose("Link", message, s.View(), choices...)
 	case health.ActionPick:
 		source := a.Source
 		return loadManga(ctx, a.Manga, func(m storage.Manga) (tea.Msg, error) {
@@ -707,7 +715,8 @@ func (s *state) merge(ctx context.Context, a *health.Action) tea.Cmd {
 		}
 		lines := []string{"Merge them into one, which one stays? (the merge's plan comes next)"}
 		var choices []confirm.Choice
-		for i, keep := range mangas {
+		// a key each: the first ones, the next merges are asked again
+		for i, keep := range mangas[:min(len(mangas), maxChoices)] {
 			other := mangas[0]
 			if i == 0 {
 				other = mangas[1]

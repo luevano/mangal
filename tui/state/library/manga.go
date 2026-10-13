@@ -219,13 +219,14 @@ func (s *mangaState) scanCmd(ctx context.Context) tea.Cmd {
 func (s *mangaState) onScanned(ctx context.Context, msg mangaScannedMsg) tea.Cmd {
 	s.manga = msg.manga
 	res := msg.result
+	resize := s.Resize(s.size)
 	switch {
 	case len(res.Missing) != 0:
-		return withNotify(s.reload(ctx), "the manga's folder wasn't found, a library scan looks everywhere")
+		return tea.Batch(resize, withNotify(s.reload(ctx), "the manga's folder wasn't found, a library scan looks everywhere"))
 	case res.Added+res.Moved+res.Removed+res.Relocated != 0:
-		return withNotify(s.reload(ctx), fmt.Sprintf("updated from the files: %d added, %d moved, %d removed", res.Added, res.Moved, res.Removed))
+		return tea.Batch(resize, withNotify(s.reload(ctx), fmt.Sprintf("updated from the files: %d added, %d moved, %d removed", res.Added, res.Moved, res.Removed)))
 	}
-	return s.reload(ctx)
+	return tea.Batch(resize, s.reload(ctx))
 }
 
 func (s *mangaState) Backable() bool    { return s.Screen.Backable() && !s.confirm.Active() }
@@ -264,8 +265,9 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		// chapters downloaded by a watch meanwhile
 		return tea.Batch(s.watchesCmd(ctx), s.bindingsCmd(ctx), s.mangaCmd(ctx), s.reload(ctx))
 	case mangaMsg:
+		// its sources may have changed, the header with them
 		s.manga = storage.Manga(msg)
-		return nil
+		return s.Resize(s.size)
 	case mangaScannedMsg:
 		return s.onScanned(ctx, msg)
 	case actionMsg:

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/x/ansi"
 	mconfig "github.com/luevano/mangal/v5/config"
 )
 
@@ -169,10 +170,7 @@ func displayValue(key string) string {
 	default:
 		s = fmt.Sprint(v)
 	}
-	if len([]rune(s)) > maxValueWidth {
-		s = string([]rune(s)[:maxValueWidth-1]) + "…"
-	}
-	return s
+	return ansi.Truncate(s, maxValueWidth, "…")
 }
 
 func isDefault(key string) bool {
