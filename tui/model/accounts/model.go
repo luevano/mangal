@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
@@ -164,10 +163,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 func copyCmd(url string) tea.Cmd {
 	return func() tea.Msg {
-		if err := clipboard.WriteAll(url); err != nil {
-			return base.NotificationMsg{Message: "Copy: " + err.Error()}
-		}
-		return base.NotificationMsg{Message: "Copied " + url}
+		return base.NotificationMsg{Message: util.CopyNotice(url, "Copied "+url)}
 	}
 }
 

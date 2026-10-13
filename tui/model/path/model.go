@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
@@ -86,10 +85,7 @@ func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		return func() tea.Msg {
-			if err := clipboard.WriteAll(row[1]); err != nil {
-				return base.NotificationMsg{Message: "Copy: " + err.Error()}
-			}
-			return base.NotificationMsg{Message: fmt.Sprintf("Copied the %s path", row[0])}
+			return base.NotificationMsg{Message: util.CopyNotice(row[1], fmt.Sprintf("Copied the %s path", row[0]))}
 		}
 	}
 	var cmd tea.Cmd

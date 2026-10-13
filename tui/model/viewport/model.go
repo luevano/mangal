@@ -3,7 +3,6 @@ package viewport
 import (
 	"fmt"
 
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -94,10 +93,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 
 func copyCmd(content string) tea.Cmd {
 	return func() tea.Msg {
-		if err := clipboard.WriteAll(content); err != nil {
-			return NotificationMsg{Message: "Copy: " + err.Error()}
-		}
-		return NotificationMsg{Message: "Copied content to clipboard"}
+		return NotificationMsg{Message: util.CopyNotice(content, "Copied content to clipboard")}
 	}
 }
 
