@@ -2,6 +2,8 @@ package watch
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/adrg/xdg"
+	"github.com/luevano/mangal/v5/storage"
 )
 
 func TestFind(t *testing.T) {
@@ -84,5 +87,18 @@ func TestFind(t *testing.T) {
 	}
 	if _, err := os.Stat(file); err != nil {
 		t.Errorf("file of a running process removed: %v", err)
+	}
+}
+
+// TestAPIErrorMatchesRunErrors: the remote's run errors match the storage ones, as local.
+func TestAPIErrorMatchesRunErrors(t *testing.T) {
+	for _, local := range []error{storage.ErrRunNotFound, storage.ErrRunUnfinished, ErrNotFound, ErrBusy, ErrExists} {
+		remote := &APIError{Code: ErrorCode(fmt.Errorf("x: %w", local))}
+		if !errors.Is(remote, local) {
+			t.Errorf("%v: code %q doesn't match it", local, remote.Code)
+		}
+	}
+	if remote := (&APIError{Code: ErrorCode(storage.ErrRunNotFound)}); !errors.Is(remote, ErrNotFound) || errors.Is(remote, ErrBusy) {
+		t.Errorf("run not found: %+v", remote)
 	}
 }

@@ -1474,7 +1474,7 @@ func TestRemoveRun(t *testing.T) {
 	if err != nil || run.Watches != 1 || run.NewChapters != 1 || len(run.Results) != 1 || run.Results[0].Watch != wb.ID {
 		t.Errorf("check run after %+v, %v", run, err)
 	}
-	if _, err := e.svc.RemoveRun(ctx, runA); !errors.Is(err, storage.ErrRunNotFound) || ErrorCode(err) != CodeNotFound || len(ops) != 1 {
+	if _, err := e.svc.RemoveRun(ctx, runA); !errors.Is(err, storage.ErrRunNotFound) || ErrorCode(err) != CodeRunNotFound || len(ops) != 1 {
 		t.Errorf("removed twice: %v (%d operations)", err, len(ops))
 	}
 	removed, err = e.svc.RemoveRun(ctx, run.Results[0].ID)
@@ -1492,7 +1492,7 @@ func TestRemoveRun(t *testing.T) {
 	}
 	started, _ := e.svc.Watches.StartRun(storage.CheckRun{Kind: KindManual, Started: e.now})
 	r, _ := e.svc.Watches.RecordWatchRun(storage.WatchRun{CheckRun: started.ID, Watch: wa.ID, Provider: "mango-mangaplus", MangaID: "a", Title: "A", Status: storage.StatusNone})
-	if _, err := e.svc.RemoveRun(ctx, r.ID); !errors.Is(err, storage.ErrRunUnfinished) || ErrorCode(err) != CodeBusy {
+	if _, err := e.svc.RemoveRun(ctx, r.ID); !errors.Is(err, storage.ErrRunUnfinished) || ErrorCode(err) != CodeRunUnfinished {
 		t.Errorf("running: %v", err)
 	}
 	// it crashed: nothing holds a lock, it never finishes

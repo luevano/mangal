@@ -196,9 +196,9 @@ func writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.As(err, &he):
 		status = he.status
-	case code == watch.CodeNotFound:
+	case watch.NotFound(code):
 		status = http.StatusNotFound
-	case code == watch.CodeExists, code == watch.CodeBusy:
+	case code == watch.CodeExists, watch.Busy(code):
 		status = http.StatusConflict
 	}
 	writeJSON(w, status, watch.ErrorResponse{Error: err.Error(), Code: code})

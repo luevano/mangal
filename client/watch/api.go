@@ -81,27 +81,39 @@ const (
 	CodeNotFound = "not_found"
 	CodeExists   = "exists"
 	CodeBusy     = "busy"
+	// CodeRunNotFound and CodeRunUnfinished are a not found and a busy too.
+	CodeRunNotFound   = "run_not_found"
+	CodeRunUnfinished = "run_unfinished"
 )
 
 // ErrorResponse is the body of an API error.
 type ErrorResponse struct {
 	Error string `json:"error"`
-	// Code is set for the errors that match ErrNotFound, ErrExists and ErrBusy.
+	// Code is set for the errors that match ErrNotFound, ErrExists and ErrBusy (and the
+	// storage run errors).
 	Code string `json:"code,omitempty"`
 }
 
 // ErrorCode is the Code of err, empty if none.
 func ErrorCode(err error) string {
 	switch {
-	case errors.Is(err, ErrNotFound), errors.Is(err, storage.ErrRunNotFound):
+	case errors.Is(err, storage.ErrRunNotFound):
+		return CodeRunNotFound
+	case errors.Is(err, storage.ErrRunUnfinished):
+		return CodeRunUnfinished
+	case errors.Is(err, ErrNotFound):
 		return CodeNotFound
 	case errors.Is(err, ErrExists):
 		return CodeExists
-	case errors.Is(err, ErrBusy), errors.Is(err, storage.ErrRunUnfinished):
+	case errors.Is(err, ErrBusy):
 		return CodeBusy
 	}
 	return ""
 }
+
+// NotFound and Busy are true for the codes of a not found and of a busy.
+func NotFound(code string) bool { return code == CodeNotFound || code == CodeRunNotFound }
+func Busy(code string) bool     { return code == CodeBusy || code == CodeRunUnfinished }
 
 // APIError is an error answered by the API, it matches the error of its Code.
 type APIError struct {
@@ -114,6 +126,10 @@ func (e *APIError) Error() string { return e.Message }
 
 func (e *APIError) Is(target error) bool {
 	switch e.Code {
+	case CodeRunNotFound:
+		return target == storage.ErrRunNotFound || target == ErrNotFound
+	case CodeRunUnfinished:
+		return target == storage.ErrRunUnfinished || target == ErrBusy
 	case CodeNotFound:
 		return target == ErrNotFound
 	case CodeExists:
