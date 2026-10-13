@@ -18,6 +18,19 @@ function handleLoad() {
     emit('load')
 }
 
+// httpURL is the url if it's http(s): a provider's url could be javascript:
+function httpURL(url?: string): string | undefined {
+    if (!url) {
+        return undefined
+    }
+    try {
+        const u = new URL(url)
+        return u.protocol === "http:" || u.protocol === "https:" ? u.toString() : undefined
+    } catch {
+        return undefined
+    }
+}
+
 function getImageURL(manga: Manga): string {
     if (!manga.cover) {
         return ""
@@ -43,7 +56,7 @@ function getImageURL(manga: Manga): string {
             <h5 class="card-title">{{ manga.title }}</h5>
             <!-- <p class="card-text">{{ manga. }}</p> -->
 
-            <a v-if="manga.url" target="_blank" :href="manga.url" class="link-primary icon-link icon-link-hover">
+            <a v-if="httpURL(manga.url)" target="_blank" rel="noopener noreferrer" :href="httpURL(manga.url)" class="link-primary icon-link icon-link-hover">
                 Website
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
                     class="bi bi-arrow-up-left" viewBox="0 0 16 16">

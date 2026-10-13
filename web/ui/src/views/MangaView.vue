@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router';
 import client from '@/api/client';
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import type { MangaPage } from '@/api/schemas';
 import type { Manga } from '@/api/schemas';
 
@@ -9,6 +9,16 @@ const route = useRoute()
 const error = ref("")
 const loading = ref(true)
 const data = ref(null as MangaPage | null)
+
+// the AniList description is HTML from the site: shown as text, never as markup
+const description = computed(() => {
+    const html = data.value?.anilistManga?.description
+    if (!html) {
+        return ""
+    }
+    const doc = new DOMParser().parseFromString(html.replace(/<br\s*\/?>/gi, "\n"), "text/html")
+    return doc.body.textContent ?? ""
+})
 
 onMounted(async () => {
     loading.value = true
@@ -43,7 +53,7 @@ onMounted(async () => {
     <div v-else>
         <img :src="data?.anilistManga?.coverImage.extraLarge ?? data?.manga.cover" alt="">
         <h2>{{ data?.manga.title }}</h2>
-        <div v-html="data?.anilistManga?.description"></div>
+        <p class="description">{{ description }}</p>
         <ul v-for="volume in data?.volumes">
             <li>Vol. {{ volume.volume.number }}</li>
             <ul v-for="chapter in volume.chapters">
@@ -52,3 +62,9 @@ onMounted(async () => {
         </ul>
     </div>
 </template>
+
+<style scoped>
+.description {
+    white-space: pre-line;
+}
+</style>
