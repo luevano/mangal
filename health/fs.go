@@ -178,8 +178,12 @@ func checkUnmarked(s *snapshot) []Finding {
 		return nil
 	}
 	f := Finding{Severity: Warning, Subject: Subject{Kind: "library", Name: "library"},
-		Message: fmt.Sprintf("%s without a .libmangal.json (rename skips them, downloads may not find them): %d can be marked (%d from the library source, %d provider from its directory, %d metadata ids only), %d with nothing to go by",
-			plural(len(items), "folder"), len(mark), counts[library.MarkedFromSource], counts[library.MarkedFromDir], counts[library.MarkedFromIDs], none),
+		Message: fmt.Sprintf("%s without a .libmangal.json: %d can be marked, %d with nothing to go by", plural(len(items), "folder"), len(mark), none),
+		Details: []string{
+			"library rename skips them, downloads and scans may not recognize them",
+			fmt.Sprintf("would mark %d from the library source, %d provider from its directory, %d metadata ids only",
+				counts[library.MarkedFromSource], counts[library.MarkedFromDir], counts[library.MarkedFromIDs]),
+		},
 		Items: items,
 		Fix: Fix{
 			Commands: []string{"mangal library scan --mark", "mangal library scan --mark --apply"},
