@@ -24,7 +24,6 @@ var (
 	KeyLogOut        = util.Bind("log out", "o")
 	KeyNewLogin      = util.Bind("new login", "n")
 	KeyForget        = util.Bind("forget", "ctrl+d")
-	KeyClearField    = util.Bind("clear field", "c")
 	KeyCloseAll      = util.Bind("close all", "backspace")
 	KeyToggle        = util.Bind("toggle", " ")
 	KeyRead          = util.Bind("read", "r")
@@ -108,8 +107,8 @@ var (
 var keyConcepts = map[string][]string{
 	// old: info, and log in on the login screens (no info there)
 	"i": {"info", "log in", "log in / set secret"},
-	// old: chapter number on the chapters, copy, clear field on the logins
-	"c": {"toggle number", "copy", "copy url", "clear field"},
+	// old: chapter number on the chapters, copy
+	"c": {"toggle number", "copy", "copy url"},
 	// old: open, and log out on the logins
 	"o": {"open url", "open directory", "log out"},
 	// old: read on the chapters, retry on the downloads
@@ -135,7 +134,7 @@ var keyConcepts = map[string][]string{
 func Keys() (old, newer []key.Binding) {
 	return []key.Binding{
 		KeyInfo, KeyMetadata, KeyFullMetadata, KeyBindings, KeySearch, KeyLogIn, KeyLogOut, KeyNewLogin,
-		KeyForget, KeyClearField, KeyCloseAll, KeyToggle, KeyRead, KeyDownload, KeyFormat, KeyOpenURL,
+		KeyForget, KeyCloseAll, KeyToggle, KeyRead, KeyDownload, KeyFormat, KeyOpenURL,
 		KeySelectAll, KeyUnselectAll, KeyVolumeNumber, KeyChapterNumber, KeyGroup, KeyDate, KeyOpenDir,
 		KeyRetry, KeyCopy, KeyUp, KeyDown,
 	}, []key.Binding{
