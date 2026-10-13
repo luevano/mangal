@@ -1,12 +1,14 @@
 package serve
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -138,4 +140,39 @@ func runServerAddress(t *testing.T) string {
 	}
 	t.Fatal("serve didn't start")
 	return ""
+}
+
+// syncBuffer is a bytes.Buffer for a server's output.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.String()
+}
+
+func TestShortTokenWarns(t *testing.T) {
+	for token, warns := range map[string]bool{"s3cret": true, "0123456789abcdef": false} {
+		var out syncBuffer
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- Run(ctx, Args{Host: "127.0.0.1", Token: token, TokenOnLoopback: true}, &out) }()
+		runServerAddress(t)
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(out.String(), "token is short"); got != warns {
+			t.Errorf("%q: warns %v, output:\n%s", token, got, out.String())
+		}
+	}
 }

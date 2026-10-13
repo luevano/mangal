@@ -37,6 +37,9 @@ type Args struct {
 	TokenOnLoopback bool
 }
 
+// MinTokenLen is the shortest token used without a warning.
+const MinTokenLen = 16
+
 // lockName is the data db lock of the server, one per data db.
 const lockName = watch.ServeLock
 
@@ -122,6 +125,9 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	token := args.Token
 	if loopback && !args.TokenOnLoopback {
 		token = ""
+	}
+	if token != "" && len(token) < MinTokenLen {
+		lg.Warnf("the serve token is short (%d characters), use %d or more: `mangal serve token --generate` makes one", len(token), MinTokenLen)
 	}
 
 	var current atomic.Pointer[watch.Service]

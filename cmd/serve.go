@@ -105,6 +105,9 @@ none is saved. The token is read from the terminal without echo, or from stdin.`
 			if token == "" {
 				return errors.New("no token given (--generate makes one, --clear removes the saved one)")
 			}
+			if len(token) < serve.MinTokenLen {
+				cmd.PrintErrf("warning: the token is short (%d characters), use %d or more (--generate makes one)\n", len(token), serve.MinTokenLen)
+			}
 		}
 		if err := cache.SetServeToken(token); err != nil {
 			return err
