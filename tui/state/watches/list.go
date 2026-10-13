@@ -348,7 +348,7 @@ func (s *listState) onEvent(e watch.LiveEvent) {
 		s.status.Providers = slices.DeleteFunc(s.status.Providers, func(ps watch.ProviderStatus) bool { return ps.Provider == e.Provider })
 	case watch.LiveStart:
 		s.live[e.Watch] = liveWatch{provider: e.Provider, state: "checking", since: e.Time}
-	case watch.LiveFound, watch.LiveChapter, watch.LiveWait:
+	case watch.LiveFound, watch.LiveChapter, watch.LiveWait, watch.LiveProgress, watch.LiveStatus:
 		if lw, ok := s.live[e.Watch]; ok {
 			lw.state = e.Message
 			if e.Chapter != nil {

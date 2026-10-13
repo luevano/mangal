@@ -377,6 +377,14 @@ func TestLiveLog(t *testing.T) {
 	if !strings.Contains(all.View(), "Frieren: found 12 chapters") {
 		t.Errorf("every check:\n%s", all.View())
 	}
+	// the page progress rewrites its line
+	for _, msg := range []string{"chapter 13: 1/20 pages", "chapter 13: 2/20 pages"} {
+		all.Update(ctx, liveMsg{feed: f, e: watch.LiveEvent{Kind: watch.LiveProgress, Watch: 3, Title: "Frieren", Message: msg, Time: now}})
+	}
+	all.Update(ctx, liveMsg{feed: f, e: watch.LiveEvent{Kind: watch.LiveChapterDone, Watch: 3, Title: "Frieren", Message: "downloaded chapter 13 (20 pages)", Time: now}})
+	if view := all.View(); len(all.lines) != 3 || strings.Contains(view, "1/20") || !strings.Contains(view, "2/20 pages") || !strings.Contains(view, "(20 pages)") {
+		t.Errorf("progress:\n%s", view)
+	}
 }
 
 func TestCheckDue(t *testing.T) {

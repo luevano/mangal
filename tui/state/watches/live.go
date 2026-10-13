@@ -113,6 +113,9 @@ type liveState struct {
 	watch *watch.Watch
 	feed  *feed
 	lines []string
+	// progress is the line of each watch's page progress, rewritten until another of its
+	// events comes
+	progress map[int64]int
 	// offset is how many lines from the end the view is scrolled up, 0 follows
 	offset int
 	size   base.Size
@@ -183,14 +186,14 @@ func (s *liveState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return subscribe(ctx, s.manager)
 	case feedMsg:
 		// a new subscription replays the recent events
-		s.feed, s.lines, s.offset = msg.feed, nil, 0
+		s.feed, s.lines, s.offset, s.progress = msg.feed, nil, 0, nil
 		return msg.feed.next()
 	case liveMsg:
 		if msg.feed != s.feed || msg.closed {
 			return nil
 		}
 		if s.shows(msg.e) {
-			s.add(eventLine(msg.e, s.watch == nil))
+			s.onEvent(msg.e)
 		}
 		return s.feed.next()
 	case tea.KeyMsg:
@@ -211,10 +214,36 @@ func (s *liveState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return nil
 }
 
+// onEvent adds the event's line, a page progress replaces the watch's previous one.
+func (s *liveState) onEvent(e watch.LiveEvent) {
+	line := eventLine(e, s.watch == nil)
+	if e.Kind != watch.LiveProgress {
+		delete(s.progress, e.Watch)
+		s.add(line)
+		return
+	}
+	if i, ok := s.progress[e.Watch]; ok {
+		s.lines[i] = line
+		return
+	}
+	s.add(line)
+	if s.progress == nil {
+		s.progress = map[int64]int{}
+	}
+	s.progress[e.Watch] = len(s.lines) - 1
+}
+
 func (s *liveState) add(line string) {
 	s.lines = append(s.lines, line)
-	if len(s.lines) > maxLiveLines {
-		s.lines = s.lines[len(s.lines)-maxLiveLines:]
+	if n := len(s.lines) - maxLiveLines; n > 0 {
+		s.lines = s.lines[n:]
+		for w, i := range s.progress {
+			if i < n {
+				delete(s.progress, w)
+			} else {
+				s.progress[w] = i - n
+			}
+		}
 	}
 	if s.offset > 0 {
 		// keep the lines being read in place
