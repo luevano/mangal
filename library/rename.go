@@ -28,6 +28,10 @@ type Rename struct {
 	RemoveEmpty bool
 	// Chapter is a chapter file's rename (PlanChapters): its download's path follows.
 	Chapter bool
+	// ProviderDir is the provider directory a provider directory's rename is of: the
+	// directory itself, or its manga folders moving into an existing one; empty for a
+	// manga folder's own rename.
+	ProviderDir string
 }
 
 // ErrNotEmpty is a directory Apply leaves as it isn't empty (Rename.RemoveEmpty).
@@ -61,6 +65,11 @@ type Namer struct {
 
 	// ChapterName is the chapter name template, for PlanChapters.
 	ChapterName func(libmangal.ProviderInfo, mangadata.Chapter) string
+
+	// NeedMetadata leaves out the manga folders Metadata has nothing for (e.g. only the
+	// cached metadata is asked), telling OnNoMetadata: their names aren't worked out.
+	NeedMetadata bool
+	OnNoMetadata func(folder string)
 }
 
 // Plan lists the renames of the manga directories under dir (found by their
@@ -107,6 +116,12 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 				mixed[f.providerDir] = true
 			}
 		}
+		if n.NeedMetadata && n.Metadata != nil && metas[i] == nil {
+			if n.OnNoMetadata != nil {
+				n.OnNoMetadata(f.path)
+			}
+			continue
+		}
 		if name := n.MangaName(provider, &dirManga{info: f.info.Manga, meta: metas[i]}); name != filepath.Base(f.path) {
 			r := Rename{From: f.path, To: filepath.Join(filepath.Dir(f.path), name)}
 			if r.Skip, err = n.taken(r); err != nil {
@@ -120,7 +135,7 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 			continue
 		}
 		if name := n.ProviderName(providers[providerDir]); name != filepath.Base(providerDir) {
-			renames = append(renames, Rename{From: providerDir, To: filepath.Join(dir, name)})
+			renames = append(renames, Rename{From: providerDir, To: filepath.Join(dir, name), ProviderDir: providerDir})
 		}
 	}
 	if providerDirs {
@@ -142,7 +157,7 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 				if exists, err := afero.DirExists(n.FS, from); err != nil {
 					return nil, err
 				} else if exists {
-					renames = append(renames, Rename{From: from, To: filepath.Join(dir, name)})
+					renames = append(renames, Rename{From: from, To: filepath.Join(dir, name), ProviderDir: from})
 				}
 			}
 		}
@@ -352,7 +367,7 @@ func (n Namer) intoExisting(r Rename, renames []Rename) ([]Rename, error) {
 		if err != nil {
 			return nil, err
 		}
-		move := Rename{From: from, To: filepath.Join(r.To, name)}
+		move := Rename{From: from, To: filepath.Join(r.To, name), ProviderDir: r.From}
 		switch {
 		case !id.known():
 			move.To, move.Skip = "", "no known manga (no .libmangal.json, not in the library), left in place"
@@ -369,7 +384,7 @@ func (n Namer) intoExisting(r Rename, renames []Rename) ([]Rename, error) {
 		}
 		out = append(out, move)
 	}
-	return append(out, Rename{From: r.From, RemoveEmpty: true}), nil
+	return append(out, Rename{From: r.From, RemoveEmpty: true, ProviderDir: r.From}), nil
 }
 
 // mergeHint is the skip of a manga the target directory has already.

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -56,7 +57,7 @@ func TestPlanAndApply(t *testing.T) {
 	}
 	want := []Rename{
 		{From: "/lib/MangaSee/Only I Level Up", To: "/lib/MangaSee/Solo Leveling"},
-		{From: "/lib/MangaSee", To: "/lib/Weeb Central"},
+		{From: "/lib/MangaSee", To: "/lib/Weeb Central", ProviderDir: "/lib/MangaSee"},
 	}
 	if len(renames) != len(want) || renames[0] != want[0] || renames[1] != want[1] {
 		t.Fatalf("got %v, want %v", renames, want)
@@ -128,7 +129,7 @@ func TestPlanOldProviderDirs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(renames) != 1 || renames[0] != (Rename{From: "/lib/mango-mangasee", To: "/lib/mango-weebcentral"}) {
+	if len(renames) != 1 || renames[0] != (Rename{From: "/lib/mango-mangasee", To: "/lib/mango-weebcentral", ProviderDir: "/lib/mango-mangasee"}) {
 		t.Fatalf("got %+v", renames)
 	}
 	if renames, _ := n.Plan(context.Background(), "/lib", false); len(renames) != 0 {
@@ -315,6 +316,41 @@ func TestPlanMetadataBatched(t *testing.T) {
 	}
 	if len(progress) == 0 || progress[0] != "looking up metadata" {
 		t.Errorf("progress %q", progress)
+	}
+}
+
+// TestPlanNeedMetadata: folders without metadata (not cached) aren't planned, told.
+func TestPlanNeedMetadata(t *testing.T) {
+	fsys := afero.NewMemMapFs()
+	var told []string
+	n := Namer{
+		FS:           fsys,
+		ProviderName: func(p libmangal.ProviderInfo) string { return p.ID },
+		MangaName: func(_ libmangal.ProviderInfo, m mangadata.Manga) string {
+			if m.Metadata() != nil {
+				return m.Metadata().Title()
+			}
+			return m.Info().Title
+		},
+		Metadata: func(_ context.Context, ids [][]metadata.ID) ([]metadata.Metadata, error) {
+			metas := make([]metadata.Metadata, len(ids))
+			metas[0] = fakeMeta{title: "Berserk"}
+			return metas, nil
+		},
+		NeedMetadata: true,
+		OnNoMetadata: func(folder string) { told = append(told, folder) },
+	}
+	writeInfo(t, fsys, "/lib/Berserk (1989)", libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "x"}})
+	writeInfo(t, fsys, "/lib/One Piece (1997)", libmangal.MangaDirInfo{Manga: mangadata.MangaInfo{Title: "One Piece"}})
+	renames, err := n.Plan(context.Background(), "/lib", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (Rename{From: "/lib/Berserk (1989)", To: "/lib/Berserk"}); len(renames) != 1 || renames[0] != want {
+		t.Errorf("got %v, want %v", renames, want)
+	}
+	if !slices.Equal(told, []string{"/lib/One Piece (1997)"}) {
+		t.Errorf("told %q", told)
 	}
 }
 
