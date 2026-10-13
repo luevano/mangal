@@ -544,7 +544,7 @@ func (s *state) viewMap() string {
 	lines := []string{style.Bold.Accent.Render(s.key), ""}
 	entries := s.entries()
 	if len(m.ids) == 0 {
-		lines = append(lines, style.Normal.Secondary.Render("no entries, a adds one"))
+		lines = append(lines, style.Normal.Secondary.Render("no entries, "+s.keys.add.Help().Key+" adds one"))
 	}
 	for n, id := range m.ids {
 		cursor := "  "

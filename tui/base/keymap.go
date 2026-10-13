@@ -24,6 +24,13 @@ func newKeyMap() *keyMap {
 	}
 }
 
+// ConfigKeys are the keys of the config window and of changing an error's config key, for
+// the messages that tell them.
+func ConfigKeys() (open, change string) {
+	k := newKeyMap()
+	return k.config.Help().Key, k.configFix.Help().Key
+}
+
 // keyMap implements help.KeyMap.
 type keyMap struct {
 	quit,

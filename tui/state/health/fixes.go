@@ -46,7 +46,7 @@ type renamePlannedMsg struct {
 }
 
 // undoable ends the notification of a journaled change.
-const undoable = " (U in the library undoes it)"
+var undoable = " (" + base.KeyUndo.Help().Key + " in the library undoes it)"
 
 // applyLibrary asks to apply a library fix (mark, forget, scan, rename, empty the trash),
 // false when the action isn't one.

@@ -96,7 +96,7 @@ func (s *state) Subtitle() string {
 	if s.inputting {
 		return "the device secret of the official app (empty removes it), see the mangoplus docs"
 	}
-	return "cached for 12 hours, r fetches them now"
+	return "cached for 12 hours, " + s.keys.refresh.Help().Key + " fetches them now"
 }
 
 func (s *state) KeyMap() help.KeyMap {

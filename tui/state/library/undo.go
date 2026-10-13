@@ -21,7 +21,7 @@ func journaled(kind, summary, notify string, do func(library.Journal) error) (st
 	if err != nil {
 		return "", err
 	}
-	return notify + " (U undoes it)", nil
+	return notify + " (" + base.KeyUndo.Help().Key + " undoes it)", nil
 }
 
 type undoPlannedMsg struct {

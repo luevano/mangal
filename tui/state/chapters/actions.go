@@ -2,7 +2,6 @@ package chapters
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"sort"
@@ -24,7 +23,11 @@ import (
 
 // errNoMetadata is a download with download.metadata.strict of a manga without valid
 // metadata, libmangal would refuse it.
-var errNoMetadata = base.ConfigError(errors.New("no valid metadata (no AniList match?): bind one with the AniList screen (A), or press e to turn off download.metadata.strict in the config (, from any screen)"), config.Download.Metadata.Strict.Key)
+var errNoMetadata = func() error {
+	open, change := base.ConfigKeys()
+	return base.ConfigError(fmt.Errorf("no valid metadata (no AniList match?): bind one with the AniList screen (%s), or press %s to turn off download.metadata.strict in the config (%s from any screen)",
+		base.KeyBindings.Help().Key, change, open), config.Download.Metadata.Strict.Key)
+}()
 
 // downloadMsg is a confirmed download: of one chapter (to read it after if read), or of
 // the toggled ones on the download screen.

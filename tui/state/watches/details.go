@@ -85,7 +85,7 @@ func (s *detailsState) header() string {
 			if ps.State != "" && ps.State != "checking" {
 				line += ": " + ps.State
 			}
-			line += " (t: live log)"
+			line += " (" + s.live.Help().Key + ": live log)"
 		}
 		header += "\n" + style.Normal.Accent.Render(line)
 	}

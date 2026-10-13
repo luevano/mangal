@@ -299,7 +299,7 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 		c, manga := s.client, s.manga
 		return func() tea.Msg { return watches.NewAdd(c, manga, chapters) }
 	case key.Matches(msg, k.jump):
-		return watches.JumpCmd(s.watched, "w watches it")
+		return watches.JumpCmd(s.watched, k.watch.Help().Key+" watches it")
 	case key.Matches(msg, k.changeFormat):
 		s.formatsBehind = s.View()
 		s.inFormats = true

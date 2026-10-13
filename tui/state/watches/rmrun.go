@@ -59,17 +59,17 @@ func (rr *runRemover) update(ctx context.Context, msg tea.Msg, l *list.Model, m 
 			return nil, true
 		}
 		r := i.r
-		message := fmt.Sprintf("Delete the check of %q from %s (%s, %s) from the history? Its downloads stay. A database snapshot is taken first: U in the library undoes it.",
-			r.Title, r.Provider, formatTime(r.Started), result(r))
+		message := fmt.Sprintf("Delete the check of %q from %s (%s, %s) from the history? Its downloads stay. A database snapshot is taken first: %s in the library undoes it.",
+			r.Title, r.Provider, formatTime(r.Started), result(r), base.KeyUndo.Help().Key)
 		rr.confirm.AskDelete("Delete check", message, behind(), func() tea.Msg { return removeRunMsg{r: r} })
 		return nil, true
 	case removeRunMsg:
 		r := msg.r
 		return base.Load(ctx, "Deleting the check of "+r.Title, func(ctx context.Context) (runRemovedMsg, error) {
 			removed, err := m.RemoveRun(ctx, r.ID)
-			notify := fmt.Sprintf("deleted the check of %s from the history (U in the library undoes it)", r.Title)
+			notify := fmt.Sprintf("deleted the check of %s from the history (%s in the library undoes it)", r.Title, base.KeyUndo.Help().Key)
 			if removed.CheckRunRemoved {
-				notify = fmt.Sprintf("deleted the check of %s and its check run %d from the history (U in the library undoes it)", r.Title, r.CheckRun)
+				notify = fmt.Sprintf("deleted the check of %s and its check run %d from the history (%s in the library undoes it)", r.Title, r.CheckRun, base.KeyUndo.Help().Key)
 			}
 			return runRemovedMsg{notify: notify, checkRunGone: removed.CheckRunRemoved}, err
 		}, func(msg runRemovedMsg) tea.Msg { return msg }), true

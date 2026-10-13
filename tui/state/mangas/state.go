@@ -229,7 +229,7 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, s.keys.jump):
 		w, ok := s.watched.Find(s.client.Info().ID, i.manga.Info().ID)
 		if !ok {
-			return watches.JumpCmd(nil, "w watches it"), true
+			return watches.JumpCmd(nil, s.keys.watch.Help().Key+" watches it"), true
 		}
 		return watches.JumpCmd([]watch.Watch{w}, ""), true
 	}

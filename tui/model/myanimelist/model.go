@@ -426,7 +426,7 @@ func (s *state) View() string {
 	case saved:
 		return lipgloss.JoinVertical(lipgloss.Left, "Saved logins", " ", s.list.View())
 	default:
-		return "i opens the MyAnimeList login in the browser (" + oauth.MyAnimeListServerLoginURL + ")"
+		return s.keys.login.Help().Key + " opens the MyAnimeList login in the browser (" + oauth.MyAnimeListServerLoginURL + ")"
 	}
 }
 
