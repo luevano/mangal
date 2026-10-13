@@ -25,15 +25,11 @@ type AddRequest struct {
 }
 
 func (r AddRequest) Options() AddOptions {
-	return AddOptions{Offline: r.Offline, Title: r.Title, Enabled: r.Enabled,
-		Provider: r.Provider, MangaID: r.MangaID, Query: r.Query, Selector: r.Selector,
-		AnilistID: r.AnilistID, From: r.From, Gaps: r.Gaps, Schedule: r.Schedule}
+	return AddOptions(r)
 }
 
 func addRequest(o AddOptions) AddRequest {
-	return AddRequest{Offline: o.Offline, Title: o.Title, Enabled: o.Enabled,
-		Provider: o.Provider, MangaID: o.MangaID, Query: o.Query, Selector: o.Selector,
-		AnilistID: o.AnilistID, From: o.From, Gaps: o.Gaps, Schedule: o.Schedule}
+	return AddRequest(o)
 }
 
 // PatchRequest is PATCH /api/watches/{id}: Enabled pauses or resumes, the rest are

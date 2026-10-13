@@ -220,7 +220,7 @@ func (b BackupFinder) kitsuIDs(ctx context.Context, anilist []string) (map[strin
 		report(b.OnProgress, Progress{Phase: "looking up Kitsu ids", Done: start, Total: len(ids)})
 		mapped, err := b.KitsuIDs(ctx, chunk)
 		if err != nil {
-			return nil, fmt.Errorf("Kitsu ids of AniList %v: %w", chunk, err)
+			return nil, fmt.Errorf("kitsu ids of AniList %v: %w", chunk, err)
 		}
 		for al, kt := range mapped {
 			found[strconv.Itoa(al)] = strconv.Itoa(kt)

@@ -19,6 +19,7 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 	mango "github.com/luevano/mangoprovider"
 	bolt "go.etcd.io/bbolt"
+	bolterrors "go.etcd.io/bbolt/errors"
 )
 
 // The old auth buckets of mangal-auth.db, the owners of their logins now.
@@ -65,7 +66,7 @@ func Import(cacheDir string, data *storage.DB) (notice string) {
 	for _, file := range files {
 		c, ok, err := importFile(file, data)
 		switch {
-		case errors.Is(err, bolt.ErrTimeout):
+		case errors.Is(err, bolterrors.ErrTimeout):
 			inUse = append(inUse, filepath.Base(file))
 		case err != nil:
 			failed = append(failed, fmt.Sprintf("%s (%s)", file, err))
@@ -101,7 +102,7 @@ func Import(cacheDir string, data *storage.DB) (notice string) {
 // cache files (and is kept).
 func importFile(file string, data *storage.DB) (c counts, ok bool, err error) {
 	db, err := bolt.Open(file, 0o600, &bolt.Options{Timeout: time.Second, ReadOnly: true})
-	if errors.Is(err, bolt.ErrTimeout) {
+	if errors.Is(err, bolterrors.ErrTimeout) {
 		return c, false, err
 	}
 	if err != nil {

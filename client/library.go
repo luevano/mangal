@@ -107,11 +107,11 @@ func LibraryDuplicates(lib storage.Library) ([]library.Duplicate, error) {
 	if err != nil {
 		return nil, err
 	}
-	bindings, err := storage.Bindings{DB: lib.DB}.List("", "")
+	bindings, err := storage.Bindings(lib).List("", "")
 	if err != nil {
 		return nil, err
 	}
-	watches, err := storage.Watches{DB: lib.DB}.List()
+	watches, err := storage.Watches(lib).List()
 	if err != nil {
 		return nil, err
 	}

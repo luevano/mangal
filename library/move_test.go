@@ -40,7 +40,7 @@ func TestMove(t *testing.T) {
 		MetadataIDs: []metadata.ID{{Raw: "30002", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}}})
 	record(t, lib, asura, "Berserk", "[0001.0] One.cbz", 1, "asura")
 	manga, _, _ := lib.MangaBySource("asura", "berserk")
-	watches, bindings := storage.Watches{DB: lib.DB}, storage.Bindings{DB: lib.DB}
+	watches, bindings := storage.Watches(lib), storage.Bindings(lib)
 	w, _ := watches.Add(storage.Watch{Provider: "asura", MangaID: "berserk", Title: "Berserk", LibraryManga: manga.ID})
 	_ = bindings.Set(storage.Binding{Provider: "asura", MangaID: "berserk", Source: "al", ID: "30002"})
 

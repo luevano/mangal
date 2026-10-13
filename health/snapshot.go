@@ -67,7 +67,7 @@ func (s *snapshot) loadLibrary(lib storage.Library) error {
 	if s.numbers, err = lib.ChapterNumbers(); err != nil {
 		return err
 	}
-	if s.allBindings, err = (storage.Bindings{DB: lib.DB}).List("", ""); err != nil {
+	if s.allBindings, err = storage.Bindings(lib).List("", ""); err != nil {
 		return err
 	}
 	if s.picks, err = lib.LinkPicks(); err != nil {

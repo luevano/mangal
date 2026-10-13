@@ -66,7 +66,7 @@ func TestLinks(t *testing.T) {
 	if err := lib.RememberMangaDir(dex, filepath.Base(folder), libmangal.MangaDirInfo{MetadataIDs: []metadata.ID{alID("1")}}); err != nil {
 		t.Fatal(err)
 	}
-	bindings, watches := storage.Bindings{DB: lib.DB}, storage.Watches{DB: lib.DB}
+	bindings, watches := storage.Bindings(lib), storage.Watches(lib)
 	_ = bindings.Set(storage.Binding{Provider: "mango-mangadex", MangaID: "berserk", Source: "al", ID: "1"})
 	manga, _, _ := lib.MangaByFolder(dex, filepath.Base(folder))
 	// a watch on another provider downloading into it, bound to the old id
@@ -161,7 +161,7 @@ func TestBackups(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	bindings := storage.Bindings{DB: lib.DB}
+	bindings := storage.Bindings(lib)
 	_ = bindings.Set(storage.Binding{Provider: "mango-mangadex", MangaID: "OPM", Source: "al", ID: "74347"})
 	_ = bindings.Set(storage.Binding{Provider: "mango-mangadex", MangaID: "Berserk", Source: "al", ID: "30002"})
 	_ = bindings.Set(storage.Binding{Provider: "mango-mangadex", MangaID: "Berserk", Source: "mal", ID: "1"})
@@ -224,7 +224,7 @@ func TestBackupsKitsu(t *testing.T) {
 	root := t.TempDir()
 	l := newLinker(t, root, nil)
 	lib := l.Library
-	bindings := storage.Bindings{DB: lib.DB}
+	bindings := storage.Bindings(lib)
 	for i, dir := range []string{"Agree", "Differs", "Disagree", "Unmapped"} {
 		if err := lib.RememberMangaDir(root, dir, libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: dir, Title: dir}}); err != nil {
 			t.Fatal(err)

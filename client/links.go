@@ -161,7 +161,7 @@ func LibraryStatuses(lib storage.Library) library.StatusFinder {
 // UpdateLibraryStatuses fills in the statuses of the mangas (in place), fetching from
 // AniList only when fetch.
 func UpdateLibraryStatuses(ctx context.Context, lib storage.Library, mangas []storage.Manga, fetch bool, onProgress func(library.Progress)) error {
-	bindings, err := storage.Bindings{DB: lib.DB}.List("", "")
+	bindings, err := storage.Bindings(lib).List("", "")
 	if err != nil {
 		return err
 	}

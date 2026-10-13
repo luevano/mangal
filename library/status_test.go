@@ -23,7 +23,7 @@ func TestStatusFinder(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	bindings := storage.Bindings{DB: lib.DB}
+	bindings := storage.Bindings(lib)
 	_ = bindings.Set(storage.Binding{Provider: "p", MangaID: "Death Note", Source: "al", ID: "30021"})
 	_ = bindings.Set(storage.Binding{Provider: "p", MangaID: "HxH", Source: "al", ID: "30026"})
 	_ = bindings.Set(storage.Binding{Provider: "p", MangaID: "Old", Source: "al", ID: "1"})
