@@ -11,7 +11,9 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/spf13/afero"
 )
 
 // snapshot is the data the checks look at, loaded once.
@@ -39,6 +41,14 @@ type snapshot struct {
 
 	oldIDs   []storage.OldID
 	accounts Accounts
+
+	// fs is what the fs checks read (nil when not loaded), renames what library rename
+	// would do; fsys is the download directory's filesystem, mark how scan --mark marks
+	fs           *fsData
+	renames      *renameData
+	fsys         afero.Fs
+	mark         library.MarkOptions
+	providerName func(libmangal.ProviderInfo) string
 
 	// network is true when the network checks run, newChapters are the unwatched mangas'
 	// new chapters on their source

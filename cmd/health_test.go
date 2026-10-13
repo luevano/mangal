@@ -39,7 +39,7 @@ metadata: 1 (1 warning)
       fix: mangal library merge 1 2
 
 3 findings: 1 error, 1 warning, 1 info
-"mangal library bind/merge/move" and "mangal migrate" only list what they'd do, --apply does it
+"mangal library bind/merge/move/mark/rename", "library scan --mark" and "mangal migrate" only list what they'd do, --apply does it
 `
 	if b.String() != want {
 		t.Errorf("got\n%s\nwant\n%s", b.String(), want)

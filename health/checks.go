@@ -32,10 +32,18 @@ var checks = []check{
 	{id: "G1", category: Gaps, needs: []part{partLibrary, partWatches}, run: checkGaps},
 	{id: "G3", category: Gaps, needs: []part{partWatches}, run: checkRetry},
 	{id: "M1", category: Metadata, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkNoAnilist},
-	{id: "M3", category: Metadata, needs: []part{partLibrary}, run: checkDisagreements},
+	{id: "M3", category: Metadata, needs: []part{partLibrary}, wants: []part{partFS}, run: checkDisagreements},
+	{id: "M4", category: Metadata, needs: []part{partLibrary, partFS}, run: checkBrokenMarkers},
 	{id: "M6", category: Metadata, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkDuplicates},
+	{id: "L1", category: Library, needs: []part{partLibrary, partFS}, run: checkMissing},
+	{id: "L2", category: Library, needs: []part{partLibrary, partFS}, run: checkUnmarked},
 	{id: "L3", category: Library, needs: []part{partOldIDs}, run: checkOldIDs},
+	{id: "L4", category: Library, needs: []part{partLibrary, partRenames}, run: checkProviderDirs},
+	{id: "L5", category: Library, needs: []part{partLibrary, partRenames}, run: checkFolderNames},
+	{id: "L6", category: Library, needs: []part{partFS}, run: checkTrash},
 	{id: "L7", category: Library, needs: []part{partLibrary}, run: checkUninstalled},
+	{id: "L8", category: Library, needs: []part{partLibrary}, wants: []part{partFS}, run: checkEmpty},
+	{id: "L9", category: Library, needs: []part{partLibrary, partFS}, run: checkUntracked},
 	{id: "L10", category: Library, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkOldSiteSources},
 	{id: "A1", category: Global, needs: []part{partAccounts}, wants: []part{partWatches}, run: checkAccounts},
 }
@@ -702,7 +710,11 @@ func checkDisagreements(s *snapshot) []Finding {
 		out = append(out, f)
 	}
 	for _, m := range s.mangas {
-		info := library.LinkInfoOf(m, s.sourceBindings(m), nil)
+		var marker *libmangal.MangaDirInfo
+		if s.fs != nil {
+			marker = s.fs.markers[m.ID]
+		}
+		info := library.LinkInfoOf(m, s.sourceBindings(m), marker)
 		for _, src := range info.Sources {
 			dis := src.Disagreements()
 			if len(dis) == 0 {
@@ -740,7 +752,7 @@ func checkDisagreements(s *snapshot) []Finding {
 			out = append(out, f)
 		}
 	}
-	return out
+	return append(out, markerFindings(s)...)
 }
 
 // M6: library mangas sharing a metadata id (library.Duplicates), with the suggested keep.

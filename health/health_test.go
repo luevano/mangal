@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/spf13/afero"
 )
 
 type loader struct{ info libmangal.ProviderInfo }
@@ -125,8 +127,42 @@ func newChecker(t *testing.T) Checker {
 			LibraryIssue: "in the library under Weeb Central (Yomi no Tsugai): move it there (X in the library)", LibraryElsewhere: true},
 		{Watch: storage.Watch{ID: 9, Provider: "mango-weebcentral", MangaID: "Gachiakuta", Title: "Gachiakuta", LibraryManga: 7, Added: now}},
 	}
+	// 9: no chapters
+	if err := lib.RememberMangaDir(md, "Empty", libmangal.MangaDirInfo{}); err != nil {
+		t.Fatal(err)
+	}
 	return Checker{
 		Library: lib,
+		FS:      newFS(t),
+		ProviderName: func(p libmangal.ProviderInfo) string {
+			switch p.ID {
+			case "mango-weebcentral":
+				return "Weeb Central"
+			case "mango-mangasee":
+				return "MangaSee"
+			}
+			return p.ID
+		},
+		MangaName: func(_ libmangal.ProviderInfo, m mangadata.Manga) string {
+			if m.Metadata() != nil {
+				return m.Metadata().Title()
+			}
+			return m.Info().Title
+		},
+		Metadata: func(_ context.Context, ids [][]metadata.ID, _ bool) ([]metadata.Metadata, error) {
+			metas := make([]metadata.Metadata, len(ids))
+			for i, mangaIDs := range ids {
+				for _, id := range mangaIDs {
+					switch id.Raw {
+					case "74347":
+						metas[i] = titled("One-Punch Man (2012) [alid-74347]")
+					case "21":
+						metas[i] = titled("Berserk")
+					}
+				}
+			}
+			return metas, nil
+		},
 		Watches: fakeManager{list: watches},
 		Loaders: []libmangal.ProviderLoader{
 			loader{libmangal.ProviderInfo{ID: "mango-mangadex", Name: "MangaDex"}},
@@ -149,6 +185,46 @@ func newChecker(t *testing.T) Checker {
 		Backoff:      3,
 		Now:          func() time.Time { return now },
 	}
+}
+
+type titledMeta struct {
+	metadata.Metadata
+	title string
+}
+
+func (m titledMeta) Title() string { return m.title }
+
+func titled(title string) metadata.Metadata { return titledMeta{title: title} }
+
+// newFS is the download directory of newChecker's library: Vagabond's folder is gone,
+// One-Punch Man is marked, Berserk's marker is another manga's, Yomi no Tsugai's is
+// broken, the MangaSee directory is Weeb Central's old one, a folder isn't in the library,
+// the trash has a file.
+func newFS(t *testing.T) afero.Fs {
+	t.Helper()
+	fsys := afero.NewMemMapFs()
+	file := func(path, content string) {
+		if err := afero.WriteFile(fsys, path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	md := "/dl/mango-mangadex/"
+	marker := func(dir string, info libmangal.MangaDirInfo) {
+		if err := libmangal.WriteMangaDirInfo(fsys, dir, info, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	marker(md+"One-Punch Man (2012) [alid-74347]", libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "opm", Title: "One-Punch Man"}, MetadataIDs: []metadata.ID{al("74347")}})
+	file(md+"Onepunch-Man [alid-74347]/1.cbz", "x")
+	marker(md+"Berserk (1989) [alid-30002]", libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "guts", Title: "Berserk"}})
+	file(md+"Empty/cover.jpg", "x")
+	file(md+"Stray/1.cbz", "x")
+	file("/dl/AsuraScans/Dungeon Odyssey [alid-555]/1.cbz", "x")
+	file("/dl/Weeb Central/Yomi no Tsugai [alid-136899]/.libmangal.json", "{")
+	file("/dl/MangaSee/Gachiakuta/1.cbz", "x")
+	file("/dl/MangaSee/Kagurabachi/1.cbz", "x")
+	file("/dl/.mangal-trash/2026-10-12 10-00-00/mango-mangadex/x/1.cbz", "12345")
+	return fsys
 }
 
 type want struct {
@@ -201,6 +277,15 @@ func TestRun(t *testing.T) {
 		{"L3", Warning, "provider", 0, "mangal migrate", "mango-mangasee"},
 		{"L7", Warning, "manga", 4, "mangal library move 4 <provider>", "mango-old"},
 		{"A1", Info, "account", 0, "mangal kitsu", "expired"},
+		{"L1", Warning, "manga", 4, "mangal library scan", "mango-old/Vagabond"},
+		{"L2", Warning, "library", 0, "mangal library scan --mark", "5 folders without a .libmangal.json"},
+		{"L4", Warning, "provider directory", 0, "mangal library rename", "MangaSee is Weeb Central's old directory name"},
+		{"L5", Warning, "library", 0, "mangal library rename", "Berserk (1989) [alid-30002] -> Berserk"},
+		{"L6", Info, "library", 0, "mangal library trash empty", "1 file (5 B) in the trash"},
+		{"L8", Info, "manga", 9, "mangal library scan", "no chapters recorded"},
+		{"L9", Warning, "library", 0, "mangal library scan", "mango-mangadex/Stray"},
+		{"M3", Warning, "manga", 3, "mangal library mark 3", "says mango-mangadex guts"},
+		{"M4", Warning, "manga", 6, "mangal library mark 6", "broken .libmangal.json"},
 	}
 	for _, w := range wants {
 		f, ok := find(report, w)
@@ -251,6 +336,18 @@ func TestRun(t *testing.T) {
 		"2 finished, not watched (fine) [mangal watch add <provider> Onepunch-Man]",
 	}; !slices.Equal(items, want) {
 		t.Errorf("W10 items %q, want %q", items, want)
+	}
+	m4 := 0
+	for _, f := range report.Findings {
+		if f.Check == "M4" {
+			m4++
+		}
+		if f.Check == "L5" && len(f.Items) != 1 {
+			t.Errorf("L5 items %+v", f.Items)
+		}
+	}
+	if m4 != 1 {
+		t.Errorf("%d M4 findings, want 1", m4)
 	}
 	var a1 []string
 	for _, f := range report.Findings {

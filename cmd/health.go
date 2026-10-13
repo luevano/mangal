@@ -28,7 +28,8 @@ var healthCmd = &cobra.Command{
 	Use:   "health",
 	Short: "Check the library and the watches for problems",
 	Long: `Check the library and the watches for problems and say how to fix each one. Only
-reads, changes nothing, makes no requests unless --network.
+reads (the library and its folders), changes nothing, makes no requests unless
+--network.
 
 Watches: needing a re-link (W1), not in the library (W2), paused (W3), failing (W4), no new
 chapter for 90 days (W5), provider not installed (W6), old provider id (W8), invalid
@@ -38,10 +39,16 @@ their source (W12, --network), manga ids of a provider's old site (W13: the down
 chapter URLs are all on it, e.g. MangaSee slugs on Weeb Central).
 Gaps: chapters missing between the first and last downloaded (G1, whole numbers only, not
 up to a watch's --from or in its skip list), chapters to retry (G3).
-Metadata: no AniList link (M1, with the folder tag's id), links that disagree (M3),
-mangas sharing a metadata id (M6, with the one to keep).
-Library: data under old provider ids (L3), mangas whose providers are all gone (L7),
-sources with a manga id of the provider's old site (L10, as W13).
+Metadata: no AniList link (M1, with the folder tag's id), links that disagree (M3, also
+a .libmangal.json whose provider manga isn't one of the library's sources), broken
+.libmangal.json files (M4), mangas sharing a metadata id (M6, with the one to keep).
+Library: folders that are gone (L1), folders without a .libmangal.json (L2: what
+"scan --mark" would write, "--only L2" lists them), data under old provider ids (L3),
+provider directories "library rename" would rename (L4: a provider's old name), folder
+names off the manga template (L5: from the cached AniList metadata, --network looks the
+rest up; "--only L5" lists them), the trash (L6), mangas whose providers are all gone
+(L7), mangas without chapters (L8), folders not in the library (L9), sources with a manga
+id of the provider's old site (L10, as W13).
 Global: expired logins, Lua providers that didn't load, notifications without a Discord
 webhook (A1).
 
@@ -143,13 +150,13 @@ func printHealth(w io.Writer, report health.Report, only []string) {
 	}
 	fmt.Fprintf(w, "%s: %s\n", countNoun(report.Counts.Total(), "finding", "findings"), severityCounts(report.Counts))
 	if slices.ContainsFunc(report.Findings, func(f health.Finding) bool { return slices.ContainsFunc(f.Fix.Commands, dryRunCommand) }) {
-		fmt.Fprintln(w, `"mangal library bind/merge/move" and "mangal migrate" only list what they'd do, --apply does it`)
+		fmt.Fprintln(w, `"mangal library bind/merge/move/mark/rename", "library scan --mark" and "mangal migrate" only list what they'd do, --apply does it`)
 	}
 }
 
 // dryRunCommand is a command that only lists what it would do without --apply.
 func dryRunCommand(c string) bool {
-	for _, prefix := range []string{"mangal library bind ", "mangal library merge ", "mangal library move ", "mangal migrate"} {
+	for _, prefix := range []string{"mangal library bind ", "mangal library merge ", "mangal library move ", "mangal library mark ", "mangal library rename", "mangal library scan --mark", "mangal migrate"} {
 		if strings.HasPrefix(c, prefix) && !strings.Contains(c, "--apply") {
 			return true
 		}

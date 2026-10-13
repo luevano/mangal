@@ -5,17 +5,21 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/client/myanimelist"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/template"
+	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
@@ -55,6 +59,16 @@ func New(ctx context.Context) (Checker, error) {
 			return client.LibraryStatuses(st.Library()).Update(ctx, mangas, bindings, fetch)
 		},
 		NewChapters:  listNewChapters,
+		FS:           afs.Afero,
+		Mark:         library.MarkOptions{ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider},
+		ProviderName: template.Provider,
+		MangaName:    template.Manga,
+		Metadata: func(ctx context.Context, ids [][]metadata.ID, fetch bool) ([]metadata.Metadata, error) {
+			if fetch {
+				return anilist.MetadataByIDsBatch(ctx, ids)
+			}
+			return anilist.MetadataByIDsCached(ctx, ids)
+		},
 		Parallel:     config.Watch.ParallelProviders.Get(),
 		Root:         path.Downloads(),
 		ProviderDirs: config.Download.Provider.CreateDir.Get(),

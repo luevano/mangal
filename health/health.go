@@ -12,9 +12,12 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/spf13/afero"
 )
 
 // Severity is how bad a finding is.
@@ -95,6 +98,19 @@ const (
 	ActionWatch = "watch"
 	// ActionMerge merges the library Mangas into one (the suggested keep first).
 	ActionMerge = "merge"
+	// ActionMark writes the .libmangal.json of the library Manga, or of each of Mangas
+	// (library.Files.MarkManga).
+	ActionMark = "mark"
+	// ActionForget forgets the library Manga (its folder is gone, or it has no chapters),
+	// a library scan is the other choice.
+	ActionForget = "forget"
+	// ActionScan scans the library.
+	ActionScan = "scan"
+	// ActionRename does library rename's renames of the Paths (manga folders, provider
+	// directories).
+	ActionRename = "rename"
+	// ActionEmptyTrash empties the trash.
+	ActionEmptyTrash = "empty-trash"
 )
 
 // Action is a fix the TUI can apply: the same change as the fix's command.
@@ -107,6 +123,7 @@ type Action struct {
 	Provider string          `json:"provider,omitempty"`
 	MangaID  string          `json:"manga_id,omitempty"`
 	Mangas   []int64         `json:"mangas,omitempty"`
+	Paths    []string        `json:"paths,omitempty"`
 }
 
 // Finding is a problem a check found.
@@ -209,6 +226,16 @@ type Checker struct {
 	NewChapters func(ctx context.Context, provider string, mangas []ProviderManga, wait func(string), done func(i int, numbers []float32, err error)) error
 	// Parallel is how many providers the network checks ask at once, 1 when 0.
 	Parallel int
+	// FS is the download directory's filesystem (Root), nil skips the fs checks.
+	FS afero.Fs
+	// Mark is how scan --mark tells a folder's provider (L2), its Loaders are Loaders.
+	Mark library.MarkOptions
+	// ProviderName and MangaName are the name templates, Metadata the AniList metadata of
+	// mangas by their ids, cached only unless fetch (batched): L4 and L5 plan library
+	// rename with them, nil skips them.
+	ProviderName func(libmangal.ProviderInfo) string
+	MangaName    func(libmangal.ProviderInfo, mangadata.Manga) string
+	Metadata     func(ctx context.Context, ids [][]metadata.ID, fetch bool) ([]metadata.Metadata, error)
 	// Now is time.Now when nil.
 	Now func() time.Time
 	// OnProgress is told what's loading, may be nil.
@@ -223,12 +250,15 @@ const (
 	partWatches
 	partOldIDs
 	partAccounts
+	// partFS is the folders and markers, partRenames what library rename would do
+	partFS
+	partRenames
 	// partNetwork is the providers' chapters (network checks only)
 	partNetwork
 )
 
 var partNames = map[part]string{partLibrary: "the library", partWatches: "the watches", partOldIDs: "the old provider ids",
-	partAccounts: "the accounts", partNetwork: "the providers' chapters"}
+	partAccounts: "the accounts", partFS: "the folders", partRenames: "the rename plan", partNetwork: "the providers' chapters"}
 
 // check is one check over the snapshot.
 type check struct {
@@ -401,8 +431,10 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool) (
 	if staleAfter <= 0 {
 		staleAfter = DefaultStaleAfter
 	}
+	mark := c.Mark
+	mark.Loaders = c.Loaders
 	s := &snapshot{now: c.now(), root: c.Root, providerDirs: c.ProviderDirs, staleAfter: staleAfter, backoff: c.Backoff,
-		loaders: c.Loaders, bindings: map[[2]string][]storage.Binding{}, newChapters: map[int64]newChapters{}, network: network}
+		loaders: c.Loaders, fsys: c.FS, mark: mark, providerName: c.ProviderName, bindings: map[[2]string][]storage.Binding{}, newChapters: map[int64]newChapters{}, network: network}
 	failed := map[part]error{}
 	if needed[partLibrary] {
 		c.progress("loading the library")
@@ -448,6 +480,21 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool) (
 		}
 		if err != nil {
 			failed[partAccounts] = err
+		}
+	}
+	if needed[partFS] {
+		if failed[partLibrary] != nil {
+			failed[partFS] = errors.New("needs the library")
+		} else if err := c.loadFS(s); err != nil {
+			failed[partFS] = err
+		}
+	}
+	if needed[partRenames] {
+		c.progress("planning the renames")
+		if failed[partLibrary] != nil {
+			failed[partRenames] = errors.New("needs the library")
+		} else if err := c.loadRenames(ctx, s, network); err != nil {
+			failed[partRenames] = err
 		}
 	}
 	if needed[partNetwork] {
