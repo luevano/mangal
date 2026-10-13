@@ -15,6 +15,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/metadata/myanimelist"
 	"github.com/luevano/mangal/v5/auth/oauth"
+	"github.com/luevano/mangal/v5/client/internal/logins"
 	"github.com/luevano/mangal/v5/config"
 	mlog "github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/provider/loader"
@@ -37,16 +38,32 @@ var (
 	providerID string
 	malLock    sync.Mutex
 
-	// loginSem serializes the logins, a channel so waiting can be cancelled
-	loginSem   = make(chan struct{}, 1)
-	loginTried bool
-
-	loginErr     error
-	loginErrLock sync.Mutex
+	account *logins.Account
 
 	// httpClient is swapped in tests
 	httpClient = loader.HTTPClient
 )
+
+func init() {
+	account = logins.New(logins.Service{
+		Name:         "myanimelist",
+		History:      cache.MyAnimeListAuthHistory,
+		LoggedOut:    cache.MyAnimeListLoggedOut,
+		SetLoggedOut: cache.SetMyAnimeListLoggedOut,
+		DeleteToken:  cache.DeleteMyAnimeListAuthData,
+		Check:        checkLogin,
+		Drop: func() error {
+			m, err := client()
+			if errors.Is(err, ErrNotConfigured) {
+				return nil
+			}
+			if err != nil || !m.Authenticated() {
+				return err
+			}
+			return m.Logout()
+		},
+	})
+}
 
 // Configured is true when MyAnimeList can be used: enabled (metadata.myanimelist.enabled),
 // with a saved client id.
@@ -140,24 +157,7 @@ func EnsureLogin(ctx context.Context) error {
 	if _, err := MyAnimeList(); err != nil {
 		return err
 	}
-	select {
-	case loginSem <- struct{}{}:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	defer func() { <-loginSem }()
-	if loginTried {
-		return nil
-	}
-
-	err := checkLogin(ctx)
-	if ctx.Err() == nil {
-		loginTried = true
-	}
-	if err != nil {
-		mlog.Warn("myanimelist login: %s", err)
-	}
-	return err
+	return account.Ensure(ctx)
 }
 
 // Login is the saved login of the last MyAnimeList user.
@@ -177,10 +177,7 @@ func (l Login) Expired() bool {
 // SavedLogin is the last user's saved login, read locally (no request). There's none after
 // a logout, until the next login.
 func SavedLogin() (Login, bool, error) {
-	if out, err := cache.MyAnimeListLoggedOut(); err != nil || out {
-		return Login{}, false, err
-	}
-	user, err := lastUser()
+	user, err := account.LastUser()
 	if err != nil || user == "" {
 		return Login{}, false, err
 	}
@@ -189,22 +186,14 @@ func SavedLogin() (Login, bool, error) {
 	if err != nil || !found {
 		return Login{}, false, err
 	}
-	loginErrLock.Lock()
-	defer loginErrLock.Unlock()
-	return Login{User: user, Expires: token.Expiry, Err: loginErr, token: token}, true, nil
+	return Login{User: user, Expires: token.Expiry, Err: account.Err(), token: token}, true, nil
 }
 
 // CheckLogin logs into MyAnimeList with the saved login, unless it already is or the login
 // expired. The token is refreshed when it expires soon, one MyAnimeList rejects is marked
 // expired.
 func CheckLogin(ctx context.Context) error {
-	select {
-	case loginSem <- struct{}{}:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	defer func() { <-loginSem }()
-	return checkLogin(ctx)
+	return account.CheckLogin(ctx)
 }
 
 func checkLogin(ctx context.Context) error {
@@ -221,12 +210,7 @@ func checkLogin(ctx context.Context) error {
 	}
 
 	err = logInSaved(ctx, m, login.User, login.token)
-	loginErrLock.Lock()
-	loginErr = nil
-	if err != nil && !rejected(err) && ctx.Err() == nil {
-		loginErr = err
-	}
-	loginErrLock.Unlock()
+	account.SetErr(ctx, err, rejected(err))
 	if err != nil {
 		return fmt.Errorf("log in %q: %w", login.User, err)
 	}
@@ -294,15 +278,17 @@ func refresh(ctx context.Context, user string, token *oauth2.Token) error {
 	return nil
 }
 
-// ResetLogin logs out of this process's session and makes the next EnsureLogin log in again
-// with the saved login (it changed, e.g. from a TUI while `mangal serve` runs).
+// ResetLogin is ResetLoginContext with context.Background.
 func ResetLogin() {
-	loginSem <- struct{}{}
-	defer func() { <-loginSem }()
-	loginTried = false
-	if m, err := client(); err == nil && m.Authenticated() {
-		_ = m.Logout()
+	if err := ResetLoginContext(context.Background()); err != nil {
+		mlog.Warn("myanimelist logout: %s", err)
 	}
+}
+
+// ResetLoginContext logs out of this process's session and makes the next EnsureLogin log
+// in again with the saved login (it changed, e.g. from a TUI while `mangal serve` runs).
+func ResetLoginContext(ctx context.Context) error {
+	return account.Reset(ctx)
 }
 
 // SetClient saves the MyAnimeList API client, an empty id removes it. The next MyAnimeList

@@ -40,7 +40,7 @@ func TestLogoutSticks(t *testing.T) {
 	if err := cache.SetAnilistAuthData("me", token); err != nil {
 		t.Fatal(err)
 	}
-	if err := updateUsers(func(h *cache.UserHistory) { h.Add("me") }); err != nil {
+	if err := account.UpdateUsers(func(h *cache.UserHistory) { h.Add("me") }); err != nil {
 		t.Fatal(err)
 	}
 	if _, found, err := SavedLogin(); err != nil || !found {
@@ -133,7 +133,7 @@ func TestResetLoginDropsTheSession(t *testing.T) {
 	if err := cache.SetAnilistAuthData("me", token); err != nil {
 		t.Fatal(err)
 	}
-	if err := updateUsers(func(h *cache.UserHistory) { h.Add("me") }); err != nil {
+	if err := account.UpdateUsers(func(h *cache.UserHistory) { h.Add("me") }); err != nil {
 		t.Fatal(err)
 	}
 	if err := cache.SetAnilistLoggedOut(false); err != nil {

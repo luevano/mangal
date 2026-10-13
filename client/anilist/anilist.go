@@ -9,6 +9,7 @@ import (
 
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/metadata/anilist"
+	"github.com/luevano/mangal/v5/client/internal/logins"
 	mlog "github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/provider/loader"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -23,16 +24,29 @@ var (
 	anilistErr  error
 	anilistOnce sync.Once
 
-	// loginSem serializes the logins, a channel so waiting can be cancelled
-	loginSem   = make(chan struct{}, 1)
-	loginTried bool
-
-	loginErr     error
-	loginErrLock sync.Mutex
+	account *logins.Account
 
 	// httpClient is swapped in tests
 	httpClient = loader.HTTPClient
 )
+
+func init() {
+	account = logins.New(logins.Service{
+		Name:         "anilist",
+		History:      cache.AnilistAuthHistory,
+		LoggedOut:    cache.AnilistLoggedOut,
+		SetLoggedOut: cache.SetAnilistLoggedOut,
+		DeleteToken:  cache.DeleteAnilistAuthData,
+		Check:        checkLogin,
+		Drop: func() error {
+			ani, err := Anilist()
+			if err != nil || !ani.Authenticated() {
+				return err
+			}
+			return ani.Logout()
+		},
+	})
+}
 
 // Anilist is the AniList metadata provider shared by every client. It makes no request:
 // EnsureLogin logs in with the saved user.
@@ -68,24 +82,7 @@ func newAnilist() (*metadata.ProviderWithCache, error) {
 // EnsureLogin logs into AniList with the saved user once per process (see CheckLogin).
 // A cancelled attempt is tried again by the next call.
 func EnsureLogin(ctx context.Context) error {
-	select {
-	case loginSem <- struct{}{}:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	defer func() { <-loginSem }()
-	if loginTried {
-		return nil
-	}
-
-	err := checkLogin(ctx)
-	if ctx.Err() == nil {
-		loginTried = true
-	}
-	if err != nil {
-		mlog.Warn("anilist login: %s", err)
-	}
-	return err
+	return account.Ensure(ctx)
 }
 
 // Login is the saved login of the last Anilist user.
@@ -105,10 +102,7 @@ func (l Login) Expired() bool {
 // SavedLogin is the last user's saved login, read locally (no request). There's none after
 // a logout, until the next login.
 func SavedLogin() (Login, bool, error) {
-	if out, err := cache.AnilistLoggedOut(); err != nil || out {
-		return Login{}, false, err
-	}
-	user, err := lastUser()
+	user, err := account.LastUser()
 	if err != nil || user == "" {
 		return Login{}, false, err
 	}
@@ -117,21 +111,13 @@ func SavedLogin() (Login, bool, error) {
 	if err != nil || !found {
 		return Login{}, false, err
 	}
-	loginErrLock.Lock()
-	defer loginErrLock.Unlock()
-	return Login{User: user, Expires: token.Expiry, Err: loginErr, token: token}, true, nil
+	return Login{User: user, Expires: token.Expiry, Err: account.Err(), token: token}, true, nil
 }
 
 // CheckLogin logs into Anilist with the saved login, unless it already is or the login
 // expired. A token Anilist rejects is marked expired.
 func CheckLogin(ctx context.Context) error {
-	select {
-	case loginSem <- struct{}{}:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	defer func() { <-loginSem }()
-	return checkLogin(ctx)
+	return account.CheckLogin(ctx)
 }
 
 func checkLogin(ctx context.Context) error {
@@ -149,12 +135,7 @@ func checkLogin(ctx context.Context) error {
 
 	err = ani.LoginContext(ctx, login.token.AccessToken)
 	unauthorized := errors.Is(err, metadata.ErrUnauthorized)
-	loginErrLock.Lock()
-	loginErr = nil
-	if err != nil && !unauthorized && ctx.Err() == nil {
-		loginErr = err
-	}
-	loginErrLock.Unlock()
+	account.SetErr(ctx, err, unauthorized)
 	if unauthorized {
 		if err := cache.ExpireAnilistAuthData(login.User); err != nil {
 			return err
@@ -183,13 +164,15 @@ func LoginNotice() string {
 	return ""
 }
 
-// ResetLogin logs out of this process's session and makes the next EnsureLogin log in again
-// with the saved login (it changed, e.g. from a TUI while `mangal serve` runs).
+// ResetLogin is ResetLoginContext with context.Background.
 func ResetLogin() {
-	loginSem <- struct{}{}
-	defer func() { <-loginSem }()
-	loginTried = false
-	if ani, err := Anilist(); err == nil && ani.Authenticated() {
-		_ = ani.Logout()
+	if err := ResetLoginContext(context.Background()); err != nil {
+		mlog.Warn("anilist logout: %s", err)
 	}
+}
+
+// ResetLoginContext logs out of this process's session and makes the next EnsureLogin log
+// in again with the saved login (it changed, e.g. from a TUI while `mangal serve` runs).
+func ResetLoginContext(ctx context.Context) error {
+	return account.Reset(ctx)
 }

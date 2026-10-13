@@ -10,6 +10,7 @@ import (
 
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/metadata/kitsu"
+	"github.com/luevano/mangal/v5/client/internal/logins"
 	mlog "github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/provider/loader"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -24,16 +25,29 @@ var (
 	kitsuErr  error
 	kitsuOnce sync.Once
 
-	// loginSem serializes the logins, a channel so waiting can be cancelled
-	loginSem   = make(chan struct{}, 1)
-	loginTried bool
-
-	loginErr     error
-	loginErrLock sync.Mutex
+	account *logins.Account
 
 	// httpClient is swapped in tests
 	httpClient = loader.HTTPClient
 )
+
+func init() {
+	account = logins.New(logins.Service{
+		Name:         "kitsu",
+		History:      cache.KitsuAuthHistory,
+		LoggedOut:    cache.KitsuLoggedOut,
+		SetLoggedOut: cache.SetKitsuLoggedOut,
+		DeleteToken:  cache.DeleteKitsuAuthData,
+		Check:        checkLogin,
+		Drop: func() error {
+			k, err := client()
+			if err != nil || !k.Authenticated() {
+				return err
+			}
+			return k.Logout()
+		},
+	})
+}
 
 // Kitsu is the Kitsu metadata provider shared by every client. It makes no request:
 // EnsureLogin logs in with the saved user.
@@ -78,24 +92,7 @@ func client() (*kitsu.Kitsu, error) {
 // EnsureLogin logs into Kitsu with the saved user once per process (see CheckLogin).
 // A cancelled attempt is tried again by the next call.
 func EnsureLogin(ctx context.Context) error {
-	select {
-	case loginSem <- struct{}{}:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	defer func() { <-loginSem }()
-	if loginTried {
-		return nil
-	}
-
-	err := checkLogin(ctx)
-	if ctx.Err() == nil {
-		loginTried = true
-	}
-	if err != nil {
-		mlog.Warn("kitsu login: %s", err)
-	}
-	return err
+	return account.Ensure(ctx)
 }
 
 // Login is the saved login of the last Kitsu user.
@@ -115,10 +112,7 @@ func (l Login) Expired() bool {
 // SavedLogin is the last user's saved login, read locally (no request). There's none after
 // a logout, until the next login.
 func SavedLogin() (Login, bool, error) {
-	if out, err := cache.KitsuLoggedOut(); err != nil || out {
-		return Login{}, false, err
-	}
-	user, err := lastUser()
+	user, err := account.LastUser()
 	if err != nil || user == "" {
 		return Login{}, false, err
 	}
@@ -127,21 +121,13 @@ func SavedLogin() (Login, bool, error) {
 	if err != nil || !found {
 		return Login{}, false, err
 	}
-	loginErrLock.Lock()
-	defer loginErrLock.Unlock()
-	return Login{User: user, Expires: token.Expiry(), Err: loginErr, token: token}, true, nil
+	return Login{User: user, Expires: token.Expiry(), Err: account.Err(), token: token}, true, nil
 }
 
 // CheckLogin logs into Kitsu with the saved login, unless it already is or the login
 // expired. The token is refreshed when it expires soon, one Kitsu rejects is marked expired.
 func CheckLogin(ctx context.Context) error {
-	select {
-	case loginSem <- struct{}{}:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	defer func() { <-loginSem }()
-	return checkLogin(ctx)
+	return account.CheckLogin(ctx)
 }
 
 func checkLogin(ctx context.Context) error {
@@ -158,12 +144,7 @@ func checkLogin(ctx context.Context) error {
 	}
 
 	err = logInSaved(ctx, k, login.User, login.token)
-	loginErrLock.Lock()
-	loginErr = nil
-	if err != nil && !errors.Is(err, metadata.ErrUnauthorized) && ctx.Err() == nil {
-		loginErr = err
-	}
-	loginErrLock.Unlock()
+	account.SetErr(ctx, err, errors.Is(err, metadata.ErrUnauthorized))
 	if err != nil {
 		return fmt.Errorf("log in %q: %w", login.User, err)
 	}
@@ -224,13 +205,15 @@ func refresh(ctx context.Context, k *kitsu.Kitsu, user string, token *kitsu.Toke
 	return nil
 }
 
-// ResetLogin logs out of this process's session and makes the next EnsureLogin log in again
-// with the saved login (it changed, e.g. from a TUI while `mangal serve` runs).
+// ResetLogin is ResetLoginContext with context.Background.
 func ResetLogin() {
-	loginSem <- struct{}{}
-	defer func() { <-loginSem }()
-	loginTried = false
-	if k, err := client(); err == nil && k.Authenticated() {
-		_ = k.Logout()
+	if err := ResetLoginContext(context.Background()); err != nil {
+		mlog.Warn("kitsu logout: %s", err)
 	}
+}
+
+// ResetLoginContext logs out of this process's session and makes the next EnsureLogin log
+// in again with the saved login (it changed, e.g. from a TUI while `mangal serve` runs).
+func ResetLoginContext(ctx context.Context) error {
+	return account.Reset(ctx)
 }

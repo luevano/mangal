@@ -124,7 +124,7 @@ func start(t *testing.T) {
 	if m.Authenticated() {
 		_ = m.Logout()
 	}
-	loginTried = false
+	ResetLogin()
 	users, _ := Users()
 	for _, u := range users {
 		if err := Forget(u); err != nil {
@@ -141,7 +141,7 @@ func save(t *testing.T, token oauth2.Token) {
 	if err := cache.SetMyAnimeListAuthData("me", &token); err != nil {
 		t.Fatal(err)
 	}
-	if err := updateUsers(func(h *cache.UserHistory) { h.Add("me") }); err != nil {
+	if err := account.UpdateUsers(func(h *cache.UserHistory) { h.Add("me") }); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -241,7 +241,7 @@ func TestEnsureLoginExpiresRejectedRefresh(t *testing.T) {
 		t.Fatalf("saved login after the rejected refresh: %+v, %v, %v", login, found, err)
 	}
 	// not tried again
-	loginTried = false
+	ResetLogin()
 	fake.reset(nil, nil)
 	if err := EnsureLogin(context.Background()); err != nil || len(fake.requests) != 0 {
 		t.Errorf("tried the expired login: %v, %v", err, fake.requests)

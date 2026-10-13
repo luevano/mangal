@@ -9,51 +9,21 @@ import (
 
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/auth/oauth"
+	"github.com/luevano/mangal/v5/client/internal/logins"
 	mlog "github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/util/cache"
 	"golang.org/x/oauth2"
 )
 
 // ErrUserNotFound is a user of the history without a saved login (it's removed from the history).
-var ErrUserNotFound = errors.New("saved login not found")
+var ErrUserNotFound = logins.ErrUserNotFound
 
 // ExpiredError is a saved login that expired, or AniList rejected.
-type ExpiredError struct {
-	User string
-	On   time.Time
-}
-
-func (e *ExpiredError) Error() string {
-	return fmt.Sprintf("the login of %q expired on %s, log in again", e.User, e.On.Format(time.DateOnly))
-}
+type ExpiredError = logins.ExpiredError
 
 // Users are the users with a saved login, the last one logged in last.
 func Users() ([]string, error) {
-	var history cache.UserHistory
-	if _, err := cache.GetAuthHistory(cache.AnilistAuthHistory, &history); err != nil {
-		return nil, fmt.Errorf("get anilist users: %w", err)
-	}
-	return history.Get(), nil
-}
-
-func lastUser() (string, error) {
-	users, err := Users()
-	if err != nil || len(users) == 0 {
-		return "", err
-	}
-	return users[len(users)-1], nil
-}
-
-func updateUsers(update func(*cache.UserHistory)) error {
-	var history cache.UserHistory
-	if _, err := cache.GetAuthHistory(cache.AnilistAuthHistory, &history); err != nil {
-		return fmt.Errorf("get anilist users: %w", err)
-	}
-	update(&history)
-	if err := cache.SetAuthHistory(cache.AnilistAuthHistory, history); err != nil {
-		return fmt.Errorf("set anilist users: %w", err)
-	}
-	return nil
+	return account.Users()
 }
 
 // login logs in with the token, holding the login lock so EnsureLogin doesn't race it.
@@ -62,21 +32,12 @@ func login(ctx context.Context, token string) (metadata.User, error) {
 	if err != nil {
 		return nil, err
 	}
-	select {
-	case loginSem <- struct{}{}:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-	defer func() { <-loginSem }()
-	if err := ani.LoginContext(ctx, token); err != nil {
-		return nil, err
-	}
-	loginTried = true
-	user := ani.User()
-	if user == nil {
-		return nil, errors.New("anilist returned no user")
-	}
-	return user, nil
+	return account.Login(ctx, func() (metadata.User, error) {
+		if err := ani.LoginContext(ctx, token); err != nil {
+			return nil, err
+		}
+		return ani.User(), nil
+	})
 }
 
 // LoginSaved logs in with the saved login of the user. It returns ErrUserNotFound or an
@@ -88,10 +49,7 @@ func LoginSaved(ctx context.Context, user string) (metadata.User, error) {
 		return nil, fmt.Errorf("get login of %q: %w", user, err)
 	}
 	if !found {
-		if err := updateUsers(func(h *cache.UserHistory) { h.Delete(user) }); err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("%q: %w", user, ErrUserNotFound)
+		return nil, account.NotFound(user)
 	}
 	if !token.Expiry.IsZero() && time.Now().After(token.Expiry) {
 		return nil, &ExpiredError{User: user, On: token.Expiry}
@@ -107,18 +65,7 @@ func LoginSaved(ctx context.Context, user string) (metadata.User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("log in %q: %w", user, err)
 	}
-	return u, loggedIn(u)
-}
-
-// loggedIn makes the user the last one, so it logs in on startup again.
-func loggedIn(u metadata.User) error {
-	if err := updateUsers(func(h *cache.UserHistory) { h.Add(u.Name()) }); err != nil {
-		return err
-	}
-	if err := cache.SetAnilistLoggedOut(false); err != nil {
-		return fmt.Errorf("save the login: %w", err)
-	}
-	return nil
+	return u, account.LoggedIn(u)
 }
 
 // LoginNew authorizes mangal with the AniList API client (in the browser), logs in and
@@ -162,7 +109,7 @@ func loginNew(ctx context.Context, id, secret string, authorize func(*oauth.Anil
 	if err := cache.SetAnilistClient(id, secret); err != nil {
 		mlog.Warn("save the anilist client: %s", err)
 	}
-	return u, loggedIn(u)
+	return u, account.LoggedIn(u)
 }
 
 // Client is the AniList API client of the last new login, an empty id if none.
@@ -170,31 +117,20 @@ func Client() (id, secret string, err error) {
 	return cache.AnilistClient()
 }
 
-// Logout logs out, also of the next runs: the saved login stays (a login picks it from the
-// saved users) but isn't used on startup until the next login.
+// Logout is LogoutContext with context.Background.
 func Logout() error {
-	ani, err := Anilist()
-	if err != nil {
-		return err
-	}
-	loginSem <- struct{}{}
-	defer func() { <-loginSem }()
-	loginTried = true
-	if err := cache.SetAnilistLoggedOut(true); err != nil {
-		return fmt.Errorf("save the logout: %w", err)
-	}
-	if !ani.Authenticated() {
-		return nil
-	}
-	return ani.Logout()
+	return LogoutContext(context.Background())
+}
+
+// LogoutContext logs out, also of the next runs: the saved login stays (a login picks it
+// from the saved users) but isn't used on startup until the next login.
+func LogoutContext(ctx context.Context) error {
+	return account.Logout(ctx)
 }
 
 // Forget deletes the saved login of the user.
 func Forget(user string) error {
-	if err := cache.DeleteAnilistAuthData(user); err != nil {
-		return fmt.Errorf("delete login of %q: %w", user, err)
-	}
-	return updateUsers(func(h *cache.UserHistory) { h.Delete(user) })
+	return account.Forget(user)
 }
 
 // clean drops every space, pasted ids and secrets often carry some.
