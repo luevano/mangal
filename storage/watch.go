@@ -27,6 +27,9 @@ var ErrWatchExists = errors.New("manga already watched")
 // ErrWatchNotFound is a watch id that doesn't exist.
 var ErrWatchNotFound = errors.New("watch not found")
 
+// ErrLockLost is a lock taken over by another holder (its heartbeat was stale).
+var ErrLockLost = errors.New("lock lost")
+
 // ErrLocked is a lock held by another process (or another holder in this one).
 var ErrLocked = errors.New("locked")
 
@@ -848,7 +851,7 @@ func (l *Lock) Heartbeat() error {
 		return fmt.Errorf("lock %s heartbeat: %w", l.Name, err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("lock %s lost", l.Name)
+		return fmt.Errorf("lock %s: %w", l.Name, ErrLockLost)
 	}
 	return nil
 }

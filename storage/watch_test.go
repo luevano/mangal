@@ -237,8 +237,8 @@ func TestLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stale lock not taken: %v", err)
 	}
-	if err := lock.Heartbeat(); err == nil {
-		t.Error("the old holder still has it")
+	if err := lock.Heartbeat(); !errors.Is(err, ErrLockLost) {
+		t.Errorf("the old holder still has it: %v", err)
 	}
 	_ = lock.Unlock() // not its lock anymore, no-op
 	if _, err := watches.Lock("check", time.Minute); !errors.Is(err, ErrLocked) {

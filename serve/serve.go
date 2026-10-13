@@ -223,9 +223,7 @@ func heartbeat(lock *storage.Lock, lg logger, lost func(error)) (stop func()) {
 				err := lock.Heartbeat()
 				switch {
 				case err == nil:
-				// TODO: match a storage.ErrLockLost once there's one; the db errors are
-				// wrapped, the lost lock isn't
-				case errors.Unwrap(err) == nil:
+				case errors.Is(err, storage.ErrLockLost):
 					lost(fmt.Errorf("%w: another mangal serve took over %s", err, watch.DataDB()))
 					return
 				default:
