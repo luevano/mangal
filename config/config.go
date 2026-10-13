@@ -253,7 +253,7 @@ var Metadata = configMetadata{
 var Download = configDownload{
 	Path:      pathEntry("download.path", xdg.UserDirs.Download, "Path where chapters will be downloaded.", true),
 	Format:    enumEntry("download.format", libmangal.FormatPDF, "Format to download chapters in.", libmangal.FormatString, libmangal.FormatStrings()),
-	UserAgent: stringEntry("download.user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0", "User-Agent to use for making HTTP requests."),
+	UserAgent: stringEntry("download.user_agent", libmangal.DefaultUserAgent, "User-Agent of the providers' requests, a current Firefox by default (libmangal's, updated with it)."),
 	ModeDir:   modeEntry("download.mode_dir_decimal", 0o755, "Permission bits used for all dirs created. Encodes into `int64` (decimal)."),
 	ModeFile:  modeEntry("download.mode_file_decimal", 0o644, "Permission bits used for all files created. Encodes into `int64` (decimal)."),
 	SkipIfExists: boolEntry("download.skip_if_exists", true,
