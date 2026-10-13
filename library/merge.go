@@ -107,8 +107,10 @@ func isInside(dir, path string) bool {
 // ApplyMerge does the plan: moves and trashes the files, updates the library and
 // trashes what's left of other's folder (its .libmangal.json, cover, ...).
 //
-// The library is updated as each file moves, so if it stops midway the library still
-// matches the files; "mangal library scan" then finishes the job.
+// Unlike ApplyMove and ApplyLinks (one folder, one transaction: a failed step rolls back
+// what was done), a merge moves many files and doesn't roll back: the library is updated
+// as each file moves, so if it stops midway the library still matches the files. Journaled
+// (Journal set), the undo reverts it; otherwise "mangal library scan" finishes the job.
 func (f Files) ApplyMerge(plan MergePlan) error {
 	return f.ApplyMergeContext(context.Background(), plan)
 }
@@ -120,7 +122,11 @@ func (f Files) ApplyMergeContext(ctx context.Context, plan MergePlan) error {
 		if !started {
 			return fmt.Errorf("merge %q into %q: %w", plan.Other.Title, plan.Keep.Title, err)
 		}
-		return fmt.Errorf("merge %q into %q: %w (it's partly done, \"mangal library scan\" fixes the rest)", plan.Other.Title, plan.Keep.Title, err)
+		hint := `"mangal library scan" fixes the rest`
+		if f.Journal != nil {
+			hint = "undoing it reverts it"
+		}
+		return fmt.Errorf("merge %q into %q: %w (it's partly done, %s)", plan.Other.Title, plan.Keep.Title, err, hint)
 	}
 
 	// a download of other's since the plan would go with its rows

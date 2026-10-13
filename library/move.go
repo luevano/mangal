@@ -356,7 +356,8 @@ func (p MovePlan) FolderLines() []string {
 
 // ApplyMove does the plan: the folder moves and gets its new .libmangal.json, then the
 // library, the watch and the bindings change in one transaction. When that fails the
-// folder goes back.
+// folder goes back (that rollback isn't journaled), see ApplyMerge for the many-files
+// operations.
 func (f Files) ApplyMove(plan MovePlan) error {
 	fail := func(err error) error {
 		return fmt.Errorf("move %q to %s: %w", plan.Manga.Title, plan.Provider.ID, err)
