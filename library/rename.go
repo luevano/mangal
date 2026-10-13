@@ -503,25 +503,18 @@ func applyRename(fsys afero.Fs, j Journal, r Rename, modes Modes) error {
 		return removeDir(fsys, j, r.From)
 	}
 	exists, err := afero.Exists(fsys, r.To)
-	if err == nil && exists && !sameFile(fsys, r.From, r.To) {
+	if err != nil {
+		return err
+	}
+	if exists && !sameFile(fsys, r.From, r.To) {
 		// an empty directory in the way (e.g. a provider's of its current name) goes
-		if entries, readErr := afero.ReadDir(fsys, r.To); readErr == nil && len(entries) == 0 {
-			if err = removeDir(fsys, j, r.To); err == nil {
-				exists = false
+		if entries, err := afero.ReadDir(fsys, r.To); err == nil && len(entries) == 0 {
+			if err := removeDir(fsys, j, r.To); err != nil {
+				return err
 			}
 		}
 	}
-	switch {
-	case err != nil:
-		return err
-	case exists && sameFile(fsys, r.From, r.To):
-		// only the case changes, on a case-insensitive filesystem
-		return renameCase(fsys, j, r.From, r.To)
-	case exists:
-		return fmt.Errorf("%s already exists", r.To)
-	}
-	// copied when it's on another drive (the copy goes when that fails)
-	return moveFile(fsys, j, r.From, r.To, modes)
+	return moveDir(fsys, j, r.From, r.To, modes)
 }
 
 func sameFile(fsys afero.Fs, a, b string) bool {

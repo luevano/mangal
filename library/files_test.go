@@ -1,6 +1,7 @@
 package library
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -184,5 +185,41 @@ func TestWalkMangaDirs(t *testing.T) {
 	}
 	if want := "/lib/Provider|/lib/Root Manga|/lib/Unmarked Root"; strings.Join(got, "|") != want {
 		t.Errorf("without provider dirs: got %v, want %v", got, want)
+	}
+}
+
+// failRename fails the renames to one path.
+type failRename struct {
+	afero.Fs
+	to string
+}
+
+func (f failRename) Rename(from, to string) error {
+	if to == f.to {
+		return errors.New("rename: boom")
+	}
+	return f.Fs.Rename(from, to)
+}
+
+// TestRenameCaseRollsBack: a failed second step of a case-only rename puts it back.
+func TestRenameCaseRollsBack(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	if err := mem.MkdirAll("/lib/manga", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := renameCase(failRename{mem, "/lib/Manga"}, nil, "/lib/manga", "/lib/Manga"); err == nil {
+		t.Fatal("no error")
+	}
+	if ok, _ := afero.DirExists(mem, "/lib/manga"); !ok {
+		t.Error("not renamed back")
+	}
+	if ok, _ := afero.Exists(mem, "/lib/manga.mangal-rename"); ok {
+		t.Error("temporary name left")
+	}
+	if err := renameCase(mem, nil, "/lib/manga", "/lib/Manga"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := afero.DirExists(mem, "/lib/Manga"); !ok {
+		t.Error("not renamed")
 	}
 }

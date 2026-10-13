@@ -410,8 +410,9 @@ func (f Files) ApplyMove(plan MovePlan) error {
 	return nil
 }
 
-// moveDir moves a folder, through a temporary name when only the case changes (on a
-// case-insensitive filesystem).
+// moveDir moves a folder (or a file), through a temporary name when only the case changes
+// (on a case-insensitive filesystem), copied when it's on another drive (the copy goes
+// when that fails). Something else at to is an error.
 func moveDir(fsys afero.Fs, j Journal, from, to string, modes Modes) error {
 	exists, err := afero.Exists(fsys, to)
 	switch {
