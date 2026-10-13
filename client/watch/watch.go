@@ -331,6 +331,7 @@ func (s *Service) Add(ctx context.Context, opts AddOptions) (Watch, error) {
 	if err != nil {
 		return Watch{}, err
 	}
+	defer CloseSource(src)
 	manga, err := s.find(ctx, src, opts)
 	if err != nil {
 		return Watch{}, err
@@ -836,6 +837,7 @@ func (s *Service) Relink(ctx context.Context, id int64, opts RelinkOptions) (Wat
 	if err != nil {
 		return Watch{}, err
 	}
+	defer CloseSource(src)
 	manga, err := s.find(ctx, src, AddOptions{MangaID: opts.MangaID, Query: opts.Query, Selector: opts.Selector})
 	if err != nil {
 		return Watch{}, err

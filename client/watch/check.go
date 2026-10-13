@@ -442,6 +442,9 @@ func (s *Service) checkProvider(ctx context.Context, provider string, watches []
 		}
 		if src == nil && srcErr == nil && !missing {
 			src, srcErr = s.Source(status(ctx), provider)
+			if srcErr == nil {
+				defer CloseSource(src)
+			}
 			if srcErr == nil && src.Info().ID != provider && !opts.DryRun {
 				var unlock func()
 				ctx, unlock, srcErr = client.LockProvider(ctx, s.Watches, src.Info().ID, client.LockForWatch, func(b client.ProviderBusy) {

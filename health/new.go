@@ -84,6 +84,7 @@ func listNewChapters(ctx context.Context, provider string, mangas []ProviderMang
 	if err != nil {
 		return err
 	}
+	defer watch.CloseSource(src)
 	store, err := cache.Watches()
 	if err != nil {
 		return err

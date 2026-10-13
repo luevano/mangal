@@ -97,6 +97,14 @@ type fakeSource struct {
 	downloaded []float32
 	// checked are the bindings checked with BoundMetadata
 	checked []string
+	// closed is how many times it was closed (CloseSource)
+	closed int
+}
+
+func (s *fakeSource) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed++
 }
 
 func (s *fakeSource) Info() libmangal.ProviderInfo {
@@ -1597,5 +1605,27 @@ func TestNumbersAreChapterNumbers(t *testing.T) {
 	nan := float32(math.NaN())
 	if _, err := e.svc.Add(context.Background(), AddOptions{Offline: true, Provider: "p", MangaID: "m", From: &nan}); err == nil {
 		t.Error("added from nan")
+	}
+}
+
+// the sources a check loads are closed once it's done with them (held clients released)
+func TestCheckClosesSources(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	m := &fakeManga{info: mangadata.MangaInfo{ID: "a", Title: "A"}}
+	src := e.source("mango-mangaplus", m)
+	src.chs["a"] = m.chapters(1)
+	w, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangaplus", MangaID: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if src.closed != 1 {
+		t.Errorf("closed %d times after add", src.closed)
+	}
+	if _, err := e.svc.Check(ctx, []int64{w.ID}, CheckOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if src.closed != 2 {
+		t.Errorf("closed %d times after the check", src.closed)
 	}
 }

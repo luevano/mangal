@@ -2,6 +2,7 @@ package watch
 
 import (
 	"context"
+	"sync"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -12,22 +13,34 @@ import (
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
-// ClientSource is the provider's shared client (client.AcquireByID). Its cached chapter
-// lists are dropped: a check needs the current ones.
+// ClientSource is the provider's shared client, held until the Source is closed
+// (CloseSource; client.HoldByID: closing every client elsewhere doesn't close it under a
+// running check). Its cached chapter lists are dropped: a check needs the current ones.
 func ClientSource(ctx context.Context, provider string) (Source, error) {
-	c, _, err := client.AcquireByID(ctx, provider)
+	c, _, release, err := client.HoldByID(ctx, provider)
 	if err != nil {
 		return nil, err
 	}
 	if err := cache.ClearChapterCache(c.Info().ID); err != nil {
+		release()
 		return nil, err
 	}
-	return clientSource{c}, nil
+	return clientSource{c: c, release: sync.OnceFunc(release)}, nil
+}
+
+// CloseSource is done with the source: a held client is released.
+func CloseSource(src Source) {
+	if c, ok := src.(interface{ Close() }); ok {
+		c.Close()
+	}
 }
 
 type clientSource struct {
-	c *libmangal.Client
+	c       *libmangal.Client
+	release func()
 }
+
+func (s clientSource) Close() { s.release() }
 
 func (s clientSource) Info() libmangal.ProviderInfo { return s.c.Info() }
 
