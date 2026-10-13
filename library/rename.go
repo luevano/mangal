@@ -426,6 +426,28 @@ func ApplyEach(fsys afero.Fs, j Journal, renames []Rename, onProgress func(Progr
 	return nil
 }
 
+// ApplyRenames is ApplyEach moving the library's rows with each rename done (a folder's
+// mangas and downloads, a chapter file's download): done is told each rename's error
+// (nil when done), a library error stops it.
+func ApplyRenames(fsys afero.Fs, lib storage.Library, j Journal, renames []Rename, onProgress func(Progress), done func(i int, err error)) error {
+	return ApplyEach(fsys, j, renames, onProgress, func(i int, err error) error {
+		r := renames[i]
+		if err == nil && r.Skip == "" && !r.RemoveEmpty {
+			move := lib.Moved
+			if r.Chapter {
+				move = lib.SetDownloadPath
+			}
+			if err := move(r.From, r.To); err != nil {
+				return err
+			}
+		}
+		if done != nil {
+			done(i, err)
+		}
+		return nil
+	})
+}
+
 func applyRename(fsys afero.Fs, j Journal, r Rename) error {
 	if r.Skip != "" {
 		return errors.New(r.Skip)

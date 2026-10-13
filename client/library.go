@@ -6,6 +6,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
@@ -45,6 +46,25 @@ func LibraryMarkOptions() (library.MarkOptions, error) {
 		return library.MarkOptions{}, err
 	}
 	return library.MarkOptions{Loaders: loaders, ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider}, nil
+}
+
+// LibraryNamer plans library rename with the configured name templates and the
+// installed providers, the AniList metadata from meta (anilist.MetadataByIDsBatch, or
+// its Cached or Fresh variant).
+func LibraryNamer(lib storage.Library, meta func(context.Context, [][]metadata.ID) ([]metadata.Metadata, error)) (library.Namer, error) {
+	loaders, err := manager.Loaders()
+	if err != nil {
+		return library.Namer{}, err
+	}
+	return library.Namer{
+		FS:           afs.Afero,
+		Loaders:      loaders,
+		ProviderName: template.Provider,
+		MangaName:    template.Manga,
+		ChapterName:  template.Chapter,
+		Metadata:     meta,
+		Library:      lib,
+	}, nil
 }
 
 // LibraryMover moves library mangas to other providers, with the configured name

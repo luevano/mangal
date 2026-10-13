@@ -71,10 +71,6 @@ a name already taken is skipped, as chapters without a recorded title). Folders 
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
 		defer st.Done()
-		loaders, err := manager.Loaders()
-		if err != nil {
-			return err
-		}
 		index, err := cache.Library()
 		if err != nil {
 			return err
@@ -90,20 +86,15 @@ a name already taken is skipped, as chapters without a recorded title). Folders 
 			return p
 		}
 		var disagree []string
-		namer := library.Namer{
-			FS:           afs.Afero,
-			Loaders:      loaders,
-			ProviderName: template.Provider,
-			MangaName:    template.Manga,
-			ChapterName:  template.Chapter,
-			Metadata:     anilist.MetadataByIDsBatch,
-			Library:      index,
-			OnProgress:   st.Progress,
-			OnDisagree: func(folder string, d []string) {
-				for _, line := range d {
-					disagree = append(disagree, fmt.Sprintf("  %s: %s", rel(folder), line))
-				}
-			},
+		namer, err := client.LibraryNamer(index, anilist.MetadataByIDsBatch)
+		if err != nil {
+			return err
+		}
+		namer.OnProgress = st.Progress
+		namer.OnDisagree = func(folder string, d []string) {
+			for _, line := range d {
+				disagree = append(disagree, fmt.Sprintf("  %s: %s", rel(folder), line))
+			}
 		}
 		if libraryRenameArgs.Refresh {
 			namer.Metadata = anilist.MetadataByIDsFresh
@@ -184,38 +175,22 @@ a name already taken is skipped, as chapters without a recorded title). Folders 
 			if op, ok := j.(interface{ SetSummary(string) }); ok {
 				defer func() { op.SetSummary(renameSummary(folders, files)) }()
 			}
-			return library.ApplyEach(afs.Afero, j, renames, st.Progress, func(i int, err error) error {
+			return library.ApplyRenames(afs.Afero, index, j, renames, st.Progress, func(i int, err error) {
 				r := renames[i]
-				if err == nil && r.Skip == "" && !r.RemoveEmpty {
-					if r.Chapter {
-						files++
-					} else {
-						folders++
-					}
-				}
 				switch {
 				case errors.Is(err, library.ErrNotEmpty):
 					st.Print(func() { cmd.Printf("kept %s: not empty\n", rel(r.From)) })
-					return nil
 				case err != nil:
 					st.Print(func() { cmd.PrintErrf("skipped %s: %s\n", rel(r.From), err) })
-					return nil
 				case r.RemoveEmpty:
 					st.Print(func() { cmd.Printf("removed %s\n", rel(r.From)) })
-					return nil
-				}
-				if r.Chapter {
-					if err := index.SetDownloadPath(r.From, r.To); err != nil {
-						return err
-					}
+				case r.Chapter:
+					files++
 					st.Print(func() { cmd.Printf("%s -> %s\n", rel(r.From), filepath.Base(r.To)) })
-					return nil
+				default:
+					folders++
+					st.Print(func() { cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To)) })
 				}
-				if err := index.Moved(r.From, r.To); err != nil {
-					return err
-				}
-				st.Print(func() { cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To)) })
-				return nil
 			})
 		})
 		st.Done()
