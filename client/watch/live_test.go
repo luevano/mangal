@@ -7,6 +7,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/storage"
 )
@@ -91,9 +92,13 @@ func TestLiveEventMessages(t *testing.T) {
 	if le, ok := liveEvent(9, pages); !ok || le.Kind != LiveProgress || le.Message != "chapter 65: 23/57 pages" || le.Pages != 57 || le.PagesDone != 23 {
 		t.Errorf("progress %+v", le)
 	}
-	status := Event{Kind: EventStatus, Watch: w, Status: "MangaDex: rate limited"}
+	status := Event{Kind: EventStatus, Watch: w, Status: &progress.Status{Message: "MangaDex: rate limited"}}
 	if le, ok := liveEvent(9, status); !ok || le.Kind != LiveStatus || le.Message != "MangaDex: rate limited" || le.Provider != "p" {
 		t.Errorf("status %+v", le)
+	}
+	page := Event{Kind: EventStatus, Watch: w, Status: &progress.Status{Message: "MangaDex: 100 results so far, getting page 2", Minor: true}}
+	if le, _ := liveEvent(9, page); le.Kind != LiveProgress {
+		t.Errorf("minor status %+v", le)
 	}
 
 	// the page progress isn't kept for new subscribers

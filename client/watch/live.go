@@ -30,8 +30,8 @@ const (
 	LiveChapter = "chapter"
 	// LiveWait is a rate limit waited out before trying the chapter again.
 	LiveWait = "wait"
-	// LiveProgress is the page progress of the chapter being downloaded (Chapter, Pages and
-	// PagesDone are set). Not kept for new subscribers.
+	// LiveProgress is a routine step: the page progress of the chapter being downloaded
+	// (Chapter, Pages and PagesDone are set), a page of results. Not kept for new subscribers.
 	LiveProgress = "progress"
 	// LiveStatus is what the provider is doing (e.g. a mirror down, a rate limit).
 	LiveStatus = "status"
@@ -299,7 +299,10 @@ func liveEvent(run int64, e Event) (LiveEvent, bool) {
 	case EventBusy:
 		le.Kind, le.Message = LiveWait, e.Busy.Message()
 	case EventStatus:
-		le.Kind, le.Message = LiveStatus, e.Status
+		le.Kind, le.Message = LiveStatus, e.Status.String()
+		if e.Status.IsMinor() {
+			le.Kind = LiveProgress
+		}
 	case EventDone:
 		le.Kind, le.Message, le.Status = LiveDone, outcome(*e.Result, false), e.Result.Status
 		if e.Result.Title != "" {

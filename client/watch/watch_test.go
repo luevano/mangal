@@ -378,7 +378,7 @@ func TestCheck(t *testing.T) {
 	src.status = "listing"
 	report, err = e.svc.Check(ctx, nil, CheckOptions{OnEvent: func(ev Event) {
 		events = append(events, ev.Kind)
-		if ev.Kind == EventStatus && ev.Status != "listing" {
+		if ev.Kind == EventStatus && ev.Status.Message != "listing" {
 			t.Errorf("status %q", ev.Status)
 		}
 	}})

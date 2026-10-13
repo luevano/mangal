@@ -54,7 +54,7 @@ const (
 	// alias), locked by a download: the check waits for it (Busy is set).
 	EventBusy
 	// EventStatus is what the provider is doing (libmangal's progress, e.g. a mirror down,
-	// a rate limit), Status is set.
+	// a rate limit, a page of results), Status is set.
 	EventStatus
 )
 
@@ -66,7 +66,7 @@ type Event struct {
 	Result  *Result
 	Found   *Found
 	Busy    *client.ProviderBusy
-	Status  string
+	Status  *progress.Status
 }
 
 // Result is the check of a watch: the recorded run (Chapters are the downloaded ones, or
@@ -430,7 +430,7 @@ func (s *Service) checkProvider(ctx context.Context, provider string, watches []
 		onEvent(Event{Kind: EventStart, Watch: w})
 		status := func(ctx context.Context) context.Context {
 			return progress.WithReporter(ctx, func(st progress.Status) {
-				onEvent(Event{Kind: EventStatus, Watch: w, Status: st.String()})
+				onEvent(Event{Kind: EventStatus, Watch: w, Status: &st})
 			})
 		}
 		if src == nil && srcErr == nil && !missing {
