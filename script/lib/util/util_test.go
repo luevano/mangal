@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -22,6 +23,8 @@ func TestToGoValue(t *testing.T) {
 		{`{[1] = 1, [3] = 3}`, map[any]any{1.0: 1.0, 3.0: 3.0}},
 		{`{a = 1, b = {2}}`, map[any]any{"a": 1.0, "b": []any{2.0}}},
 		{`{1, x = 2}`, map[any]any{1.0: 1.0, "x": 2.0}},
+		// a table twice isn't a cycle
+		{`(function() local s = {1}; return {s, s} end)()`, []any{[]any{1.0}, []any{1.0}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.lua, func(t *testing.T) {
@@ -30,10 +33,30 @@ func TestToGoValue(t *testing.T) {
 			if err := state.DoString("return " + tt.lua); err != nil {
 				t.Fatal(err)
 			}
-			got := ToGoValue(state.Get(-1))
+			got, err := ToGoValue(state.Get(-1))
+			if err != nil {
+				t.Fatal(err)
+			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("got %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestToGoValueCyclic(t *testing.T) {
+	for _, code := range []string{
+		`(function() local t = {}; t.self = t; return t end)()`,
+		`(function() local t = {}; t[1] = {t}; return t end)()`,
+		`(function() local t = {}; t[t] = 1; return t end)()`,
+	} {
+		state := lua.NewState()
+		if err := state.DoString("return " + code); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ToGoValue(state.Get(-1)); !errors.Is(err, ErrCyclic) {
+			t.Errorf("%s: %v", code, err)
+		}
+		state.Close()
 	}
 }

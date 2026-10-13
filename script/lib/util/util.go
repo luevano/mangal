@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 
 	lua "github.com/yuin/gopher-lua"
@@ -44,18 +45,32 @@ func SliceToTable[T any](state *lua.LState, items []T, convert func(T) lua.LValu
 	return table
 }
 
-func ToGoValue(value lua.LValue) any {
+// ErrCyclic is a table that contains itself, it has no Go (JSON) value.
+var ErrCyclic = errors.New("cyclic table")
+
+// ToGoValue is the value in Go: tables are slices (a sequence 1..n) or maps.
+func ToGoValue(value lua.LValue) (any, error) {
+	return toGoValue(value, map[*lua.LTable]bool{})
+}
+
+// toGoValue converts value, path are the tables it's inside of.
+func toGoValue(value lua.LValue, path map[*lua.LTable]bool) (any, error) {
 	switch value.Type() {
 	case lua.LTNil:
-		return nil
+		return nil, nil
 	case lua.LTBool:
-		return bool(value.(lua.LBool))
+		return bool(value.(lua.LBool)), nil
 	case lua.LTNumber:
-		return float64(value.(lua.LNumber))
+		return float64(value.(lua.LNumber)), nil
 	case lua.LTString:
-		return string(value.(lua.LString))
+		return string(value.(lua.LString)), nil
 	case lua.LTTable:
 		table := value.(*lua.LTable)
+		if path[table] {
+			return nil, ErrCyclic
+		}
+		path[table] = true
+		defer delete(path, table)
 
 		// a sequence 1..n is a slice, anything else a map
 		var count int
@@ -63,19 +78,37 @@ func ToGoValue(value lua.LValue) any {
 		if n := table.Len(); n == count {
 			slice := make([]any, n)
 			for i := range n {
-				slice[i] = ToGoValue(table.RawGetInt(i + 1))
+				v, err := toGoValue(table.RawGetInt(i+1), path)
+				if err != nil {
+					return nil, err
+				}
+				slice[i] = v
 			}
-			return slice
+			return slice, nil
 		}
 
 		m := make(map[any]any, count)
+		var err error
 		table.ForEach(func(key lua.LValue, value lua.LValue) {
-			m[ToGoValue(key)] = ToGoValue(value)
+			if err != nil {
+				return
+			}
+			var k, v any
+			if k, err = toGoValue(key, path); err != nil {
+				return
+			}
+			if v, err = toGoValue(value, path); err != nil {
+				return
+			}
+			m[k] = v
 		})
-		return m
+		if err != nil {
+			return nil, err
+		}
+		return m, nil
 	case lua.LTUserData:
-		return value.(*lua.LUserData).Value
+		return value.(*lua.LUserData).Value, nil
 	default:
-		return nil
+		return nil, nil
 	}
 }

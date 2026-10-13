@@ -52,7 +52,8 @@ func marshal(value any) (string, error) {
 }
 
 func jsonPrint(state *lua.LState) int {
-	value := util.ToGoValue(state.CheckAny(1))
+	value, err := util.ToGoValue(state.CheckAny(1))
+	util.Must(state, err)
 
 	marshalled, err := marshal(value)
 	util.Must(state, err)
