@@ -34,12 +34,14 @@ Watches: needing a re-link (W1), not in the library (W2), paused (W3), failing (
 chapter for 90 days (W5), provider not installed (W6), old provider id (W8), invalid
 schedule (W9), library mangas not watched (W10: one line by publication status, "--only
 W10" lists them), watched on two providers (W11), unwatched mangas with new chapters on
-their source (W12, --network).
+their source (W12, --network), manga ids of a provider's old site (W13: the downloads'
+chapter URLs are all on it, e.g. MangaSee slugs on Weeb Central).
 Gaps: chapters missing between the first and last downloaded (G1, whole numbers only, not
 up to a watch's --from or in its skip list), chapters to retry (G3).
 Metadata: no AniList link (M1, with the folder tag's id), links that disagree (M3),
 mangas sharing a metadata id (M6, with the one to keep).
-Library: data under old provider ids (L3), mangas whose providers are all gone (L7).
+Library: data under old provider ids (L3), mangas whose providers are all gone (L7),
+sources with a manga id of the provider's old site (L10, as W13).
 Global: expired logins, Lua providers that didn't load, notifications without a Discord
 webhook (A1).
 

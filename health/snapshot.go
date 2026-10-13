@@ -1,8 +1,11 @@
 package health
 
 import (
+	"cmp"
 	"fmt"
+	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +31,8 @@ type snapshot struct {
 	allBindings []storage.Binding
 	// picks are the links to pick (not dismissed)
 	picks []storage.LinkPick
+	// hosts are the sites of the downloads' chapter URLs by provider and manga id
+	hosts map[[2]string][]string
 
 	watches       []watch.Watch
 	watchesLoaded bool
@@ -58,6 +63,9 @@ func (s *snapshot) loadLibrary(lib storage.Library) error {
 	if s.picks, err = lib.LinkPicks(); err != nil {
 		return err
 	}
+	if s.hosts, err = lib.ChapterHosts(); err != nil {
+		return err
+	}
 	for _, b := range s.allBindings {
 		k := [2]string{b.Provider, b.MangaID}
 		s.bindings[k] = append(s.bindings[k], b)
@@ -69,6 +77,38 @@ func (s *snapshot) loadLibrary(lib storage.Library) error {
 func (s *snapshot) installed(provider string) bool {
 	_, _, ok := libmangal.FindLoader(s.loaders, provider)
 	return ok
+}
+
+// oldSite is the old name of the provider whose site the manga id is from: its downloads'
+// chapter URLs are all on an old site of the provider (a History website), none on its
+// current one. A provider id migration keeps the manga ids, the new site may not know them.
+func (s *snapshot) oldSite(provider, mangaID string) (string, bool) {
+	hosts := s.hosts[[2]string{provider, mangaID}]
+	if len(hosts) == 0 {
+		return "", false
+	}
+	l, _, ok := libmangal.FindLoader(s.loaders, provider)
+	if !ok {
+		return "", false
+	}
+	info := l.Info()
+	if slices.Contains(hosts, siteHost(info.Website)) {
+		return "", false
+	}
+	for _, alias := range info.History {
+		if host := siteHost(alias.Website); host != "" && slices.Contains(hosts, host) {
+			return cmp.Or(alias.Name, alias.ID), true
+		}
+	}
+	return "", false
+}
+
+func siteHost(website string) string {
+	u, err := url.Parse(website)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(strings.ToLower(u.Host), "www.")
 }
 
 // providerInfo is the provider's info, just its id when it isn't installed.

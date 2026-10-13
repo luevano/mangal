@@ -28,6 +28,7 @@ var checks = []check{
 	{id: "W10", category: Watches, needs: []part{partWatches, partLibrary}, run: checkNotWatched},
 	{id: "W11", category: Watches, needs: []part{partWatches, partLibrary}, run: checkWatchedTwice},
 	{id: "W12", category: Watches, needs: []part{partWatches, partLibrary, partNetwork}, run: checkNewChapters, network: true},
+	{id: "W13", category: Watches, needs: []part{partWatches, partLibrary}, run: checkOldSiteWatches},
 	{id: "G1", category: Gaps, needs: []part{partLibrary, partWatches}, run: checkGaps},
 	{id: "G3", category: Gaps, needs: []part{partWatches}, run: checkRetry},
 	{id: "M1", category: Metadata, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkNoAnilist},
@@ -35,6 +36,7 @@ var checks = []check{
 	{id: "M6", category: Metadata, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkDuplicates},
 	{id: "L3", category: Library, needs: []part{partOldIDs}, run: checkOldIDs},
 	{id: "L7", category: Library, needs: []part{partLibrary}, run: checkUninstalled},
+	{id: "L10", category: Library, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkOldSiteSources},
 	{id: "A1", category: Global, needs: []part{partAccounts}, wants: []part{partWatches}, run: checkAccounts},
 }
 
@@ -238,6 +240,67 @@ func checkProviderMissing(s *snapshot) []Finding {
 	return out
 }
 
+// W13: watches whose manga id is from the provider's old site (its downloads' chapter
+// URLs): moved by a provider id migration that kept the ids, never re-linked (watches
+// migrated before migrations flagged them). A check would fail with not found.
+func checkOldSiteWatches(s *snapshot) []Finding {
+	var out []Finding
+	for _, w := range s.watches {
+		if w.NeedsRelink {
+			continue
+		}
+		old, ok := s.oldSite(w.Provider, w.MangaID)
+		if !ok {
+			continue
+		}
+		name := s.providerInfo(w.Provider).Name
+		f := Finding{Severity: Warning, Subject: watchSubject(w),
+			Message: fmt.Sprintf("its manga id %s is %s's, %s may not have it", w.MangaID, old, name),
+			Details: []string{fmt.Sprintf("its downloads' chapter URLs are all on %s's site", old)},
+			Fix: Fix{
+				Commands: []string{fmt.Sprintf("mangal watch move %d", w.ID)},
+				Note:     fmt.Sprintf("searches its title on %s and re-links it", name),
+				TUI:      tuiWatches + ": re-link manga",
+			}}
+		if !w.Enabled {
+			f.Severity = Info
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// L10: library sources whose manga id is from the provider's old site (as W13), not of
+// a watch W13 reports.
+func checkOldSiteSources(s *snapshot) []Finding {
+	watched := map[[2]string]bool{}
+	for _, w := range s.watches {
+		watched[[2]string{w.Provider, w.MangaID}] = true
+	}
+	var out []Finding
+	for _, m := range s.mangas {
+		for _, src := range m.Sources {
+			if watched[[2]string{src.Provider, src.MangaID}] {
+				continue
+			}
+			old, ok := s.oldSite(src.Provider, src.MangaID)
+			if !ok {
+				continue
+			}
+			name := s.providerInfo(src.Provider).Name
+			out = append(out, Finding{Severity: Info, Subject: mangaSubject(m),
+				Message: fmt.Sprintf("its source %s %s is %s's manga id, %s may not have it", src.Provider, src.MangaID, old, name),
+				Details: []string{fmt.Sprintf("its downloads' chapter URLs are all on %s's site", old)},
+				Fix: Fix{
+					Commands: []string{fmt.Sprintf("mangal library move %d %s", m.ID, src.Provider)},
+					Note:     fmt.Sprintf("searches its title on %s and gives it that manga as its source (the old one stays for the old downloads)", name),
+					TUI:      tuiLibrary + ": move to a provider",
+				}})
+		}
+	}
+	return out
+}
+
 // W8: watches under an old provider id.
 func checkWatchOldID(s *snapshot) []Finding {
 	var out []Finding
@@ -311,6 +374,13 @@ func checkNotWatched(s *snapshot) []Finding {
 			if len(m.Sources) != 0 {
 				f.Fix.Note = "its providers aren't installed: search it on another one"
 			}
+			for _, src := range m.Sources {
+				if old, ok := s.oldSite(src.Provider, src.MangaID); ok {
+					f.Fix.Commands = []string{fmt.Sprintf("mangal watch add %s %s", src.Provider, quote(m.Title))}
+					f.Fix.Note = fmt.Sprintf("its source's manga id is %s's (L10): search it on %s", old, src.Provider)
+					break
+				}
+			}
 		}
 		items = append(items, f)
 	}
@@ -377,7 +447,9 @@ func (s *snapshot) unwatched() []storage.Manga {
 func installedSource(s *snapshot, m storage.Manga) (storage.Source, bool) {
 	for _, src := range m.Sources {
 		if s.installed(src.Provider) && !strings.HasPrefix(src.MangaID, storage.PlaceholderPrefix) && src.MangaID != "" {
-			return src, true
+			if _, old := s.oldSite(src.Provider, src.MangaID); !old {
+				return src, true
+			}
 		}
 	}
 	return storage.Source{}, false

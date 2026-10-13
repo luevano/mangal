@@ -92,6 +92,14 @@ func newChecker(t *testing.T) Checker {
 		t.Fatal(err)
 	}
 	record("/dl/Weeb Central", "Yomi no Tsugai [alid-136899]", "mango-weebcentral", "01J", "Yomi no Tsugai", 1)
+	// 7 and 8: MangaSee downloads migrated to Weeb Central, one watched
+	for i, title := range []string{"Gachiakuta", "Kagurabachi"} {
+		dl := storage.Download{Path: fmt.Sprintf("/dl/MangaSee/%s/1.cbz", title), Provider: "mango-weebcentral", MangaID: title, MangaTitle: title,
+			Chapter: 1, Format: "CBZ", ChapterURL: fmt.Sprintf("https://mangasee123.com/read-online/%s-chapter-%d.html", title, i+1)}
+		if err := lib.RecordDownload("/dl/MangaSee", title, dl); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	if err := lib.SetStatuses(map[int64]string{2: string(metadata.StatusFinished), 4: string(metadata.StatusHiatus)}, now); err != nil {
 		t.Fatal(err)
@@ -115,13 +123,15 @@ func newChecker(t *testing.T) Checker {
 			NeedsRelink: true, RelinkReason: "placeholder manga id", LibraryManga: 6},
 			Bindings:     []storage.Binding{{Source: metadata.IDCodeAnilist, ID: "136899"}},
 			LibraryIssue: "in the library under Weeb Central (Yomi no Tsugai): move it there (X in the library)", LibraryElsewhere: true},
+		{Watch: storage.Watch{ID: 9, Provider: "mango-weebcentral", MangaID: "Gachiakuta", Title: "Gachiakuta", LibraryManga: 7, Added: now}},
 	}
 	return Checker{
 		Library: lib,
 		Watches: fakeManager{list: watches},
 		Loaders: []libmangal.ProviderLoader{
 			loader{libmangal.ProviderInfo{ID: "mango-mangadex", Name: "MangaDex"}},
-			loader{libmangal.ProviderInfo{ID: "mango-weebcentral", Name: "Weeb Central", History: []libmangal.ProviderAlias{{ID: "mango-mangasee", Name: "MangaSee"}}}},
+			loader{libmangal.ProviderInfo{ID: "mango-weebcentral", Name: "Weeb Central", Website: "https://weebcentral.com/",
+				History: []libmangal.ProviderAlias{{ID: "mango-mangasee", Name: "MangaSee", Website: "https://mangasee123.com/"}}}},
 		},
 		OldIDs: func() ([]storage.OldID, error) {
 			return []storage.OldID{{Old: "mango-mangasee", New: "mango-weebcentral", Name: "Weeb Central", Watches: 1}}, nil
@@ -172,13 +182,15 @@ func TestRun(t *testing.T) {
 		{"W2", Error, "watch", 7, "mangal library move 5 mango-mangadex mid:dg", "not in library"},
 		{"W1", Error, "watch", 8, "mangal watch move 8 mango-weebcentral mid:01J", "placeholder"},
 		{"W2", Info, "watch", 8, "mangal watch move 8 mango-weebcentral mid:01J", "re-link first"},
+		{"W13", Info, "watch", 9, "mangal watch move 9", "Gachiakuta is MangaSee's"},
+		{"L10", Info, "manga", 8, "mangal library move 8 mango-weebcentral", "Kagurabachi is MangaSee's"},
 		{"W3", Info, "watch", 4, "mangal watch resume 4", "paused"},
 		{"W4", Error, "watch", 1, "mangal watch check 1", "backing off"},
 		{"W5", Info, "watch", 6, "mangal watch pause 6", "200 days"},
 		{"W6", Error, "watch", 5, "mangal watch move 5 <provider>", "mango-gone"},
 		{"W8", Warning, "watch", 6, "mangal migrate", "now mango-weebcentral"},
 		{"W9", Warning, "watch", 6, "mangal watch set 6 --schedule ''", "bogus"},
-		{"W10", Info, "library", 0, "mangal health --only W10", "3 mangas aren't watched: 1 ongoing/unknown, 1 on hiatus, 1 finished"},
+		{"W10", Info, "library", 0, "mangal health --only W10", "4 mangas aren't watched: 2 ongoing/unknown, 1 on hiatus, 1 finished"},
 		{"W11", Warning, "manga", 3, "mangal watch pause 2", "2 providers"},
 		{"G1", Warning, "manga", 1, "mangal watch check 1 --gaps", "2 chapters missing: 3-4"},
 		{"G3", Warning, "watch", 2, "mangal watch check 2", "3"},
@@ -234,6 +246,7 @@ func TestRun(t *testing.T) {
 	}
 	if want := []string{
 		"5 status unknown, not watched [mangal watch add <provider> 'Dungeon Odyssey']",
+		"8 status unknown, not watched [mangal watch add mango-weebcentral Kagurabachi]",
 		"4 on hiatus, not watched [mangal watch add <provider> Vagabond]",
 		"2 finished, not watched (fine) [mangal watch add <provider> Onepunch-Man]",
 	}; !slices.Equal(items, want) {

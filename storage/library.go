@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -505,6 +506,32 @@ WHERE EXISTS (SELECT 1 FROM downloads d WHERE d.chapter_id = c.id) ORDER BY c.ma
 		numbers[r.manga] = append(numbers[r.manga], r.number)
 	}
 	return numbers, nil
+}
+
+// ChapterHosts are the hosts of the recorded downloads' chapter URLs by provider and
+// manga id: the site a manga id is from (an old provider id's site, e.g.).
+func (l Library) ChapterHosts() (map[[2]string][]string, error) {
+	type row struct{ provider, mangaID, url string }
+	rows, err := queryAll(l.DB, func(rows *sql.Rows) (row, error) {
+		var r row
+		err := rows.Scan(&r.provider, &r.mangaID, &r.url)
+		return r, err
+	}, `SELECT DISTINCT provider, manga_id, chapter_url FROM downloads WHERE provider != '' AND manga_id != '' AND chapter_url != ''`)
+	if err != nil {
+		return nil, fmt.Errorf("library chapter urls: %w", err)
+	}
+	hosts := map[[2]string][]string{}
+	for _, r := range rows {
+		u, err := url.Parse(r.url)
+		if err != nil || u.Host == "" {
+			continue
+		}
+		k := [2]string{r.provider, r.mangaID}
+		if host := strings.TrimPrefix(strings.ToLower(u.Host), "www."); !slices.Contains(hosts[k], host) {
+			hosts[k] = append(hosts[k], host)
+		}
+	}
+	return hosts, nil
 }
 
 // Moved updates the library after a directory was renamed from one path to another:
