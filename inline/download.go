@@ -14,6 +14,7 @@ import (
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/util"
+	"github.com/luevano/mangal/v5/util/sanitize"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
@@ -113,20 +114,22 @@ func runDownload(ctx context.Context, args Args) (client.Results, error) {
 // on stderr.
 func printEvent(e client.Event, args Args) error {
 	r := e.Result
+	// chapter titles and errors come from the providers
+	warn := func(format string, a ...any) { fmt.Fprint(os.Stderr, sanitize.Text(fmt.Sprintf(format, a...))) }
 	switch {
 	case e.Kind == client.EventBusy:
-		fmt.Fprintln(os.Stderr, e.Busy.Message())
+		warn("%s\n", e.Busy.Message())
 	case e.Kind == client.EventWait:
 		// stderr, stdout may be json
-		fmt.Fprintf(os.Stderr, "chapter %s: rate limited (retry #%d), retrying in %s\n", r.Chapter, e.Attempt, e.Wait)
+		warn("chapter %s: rate limited (retry #%d), retrying in %s\n", r.Chapter, e.Attempt, e.Wait)
 	case e.Kind != client.EventDone:
 	case r.Unavailable != "":
-		fmt.Fprintf(os.Stderr, "warning: chapter %s skipped, unavailable: %s\n", r.Chapter, r.Unavailable)
+		warn("warning: chapter %s skipped, unavailable: %s\n", r.Chapter, r.Unavailable)
 	case r.Err != nil:
-		fmt.Fprintf(os.Stderr, "error: %s\n", util.ErrorTree(fmt.Errorf("chapter %s: %w", r.Chapter, r.Err)))
+		warn("error: %s\n", util.ErrorTree(fmt.Errorf("chapter %s: %w", r.Chapter, r.Err)))
 	default:
 		if r.Down.Skipped != "" {
-			fmt.Fprintf(os.Stderr, "warning: chapter %s skipped: %s\n", r.Chapter, r.Down.Skipped)
+			warn("warning: chapter %s skipped: %s\n", r.Chapter, r.Down.Skipped)
 		}
 		if !args.JSONOutput {
 			fmt.Println(r.Down.Path())

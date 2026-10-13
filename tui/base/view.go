@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/luevano/mangal/v5/util/sanitize"
 )
 
 const newline = "\n"
@@ -18,7 +19,9 @@ func (m *model) View() string {
 	state := m.viewState()
 	footer := m.viewFooter()
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, state, footer)
+	// provider titles, groups and errors are everywhere in it: only the styles' sequences
+	// reach the terminal
+	return sanitize.Styled(lipgloss.JoinVertical(lipgloss.Left, header, state, footer))
 }
 
 func (m *model) viewBreadcrumb() string {

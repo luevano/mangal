@@ -15,6 +15,7 @@ import (
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/util/cache"
+	"github.com/luevano/mangal/v5/util/sanitize"
 )
 
 // search gets the provider's client, searches the query and picks the mangas with the
@@ -24,7 +25,7 @@ func search(ctx context.Context, args Args) (*libmangal.Client, []MangaResult, e
 	c, warnings, err := client.AcquireByID(ctx, args.Provider)
 	args.print(func() {
 		for _, w := range warnings {
-			fmt.Fprintln(os.Stderr, "warning: "+w)
+			fmt.Fprintln(os.Stderr, "warning: "+sanitize.Text(w))
 		}
 	})
 	if err != nil {
@@ -107,7 +108,7 @@ func assignAnilist(ctx context.Context, c *libmangal.Client, args Args, mangaRes
 	if err != nil {
 		// the results are still useful without it
 		log.Warn("anilist: %s", err)
-		args.print(func() { fmt.Fprintf(os.Stderr, "warning: anilist: %s\n", err) })
+		args.print(func() { fmt.Fprintf(os.Stderr, "warning: anilist: %s\n", sanitize.Text(err.Error())) })
 		return nil
 	}
 

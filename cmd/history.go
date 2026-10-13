@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/luevano/mangal/v5/util/cache"
+	"github.com/luevano/mangal/v5/util/sanitize"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/spf13/cobra"
 )
@@ -52,7 +53,7 @@ is set (the default).`,
 		const when = "2006-01-02 15:04"
 		if mangaID != "" {
 			for _, r := range reads {
-				cmd.Printf("vol %g ch %g  %s  read %s, last %s\n", r.Volume, r.Chapter, r.ChapterTitle, times(r.Count), r.Last.Format(when))
+				cmd.Printf("vol %g ch %g  %s  read %s, last %s\n", r.Volume, r.Chapter, sanitize.Text(r.ChapterTitle), times(r.Count), r.Last.Format(when))
 			}
 			return nil
 		}
@@ -77,7 +78,7 @@ is set (the default).`,
 			m.chapters++
 		}
 		for _, m := range mangas {
-			cmd.Printf("%s  %s %s  %s, last ch %g on %s\n", m.title, m.provider, m.id, stringutil.Quantify(m.chapters, "chapter", "chapters"), m.last, m.lastRead.Format(when))
+			cmd.Printf("%s  %s %s  %s, last ch %g on %s\n", sanitize.Text(m.title), m.provider, sanitize.Text(m.id), stringutil.Quantify(m.chapters, "chapter", "chapters"), m.last, m.lastRead.Format(when))
 		}
 		return nil
 	},

@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
+	"github.com/luevano/mangal/v5/util/sanitize"
 	"github.com/spf13/cobra"
 )
 
@@ -63,7 +64,7 @@ Only lists what would change unless --apply is set.`,
 			return nil
 		}
 		for _, line := range migration.Lines() {
-			cmd.Println(line)
+			cmd.Println(sanitize.Text(line))
 		}
 		if !migrateArgs.Apply {
 			cmd.Println("run with --apply to migrate")
@@ -99,7 +100,7 @@ func relinkWarning(cmd *cobra.Command, watches storage.Watches) error {
 	if len(lines) == 0 {
 		return nil
 	}
-	cmd.PrintErrf("warning: %d watches need a re-link, the scheduler skips them until then:\n%s\n", len(lines), strings.Join(lines, "\n"))
+	cmd.PrintErrf("warning: %d watches need a re-link, the scheduler skips them until then:\n%s\n", len(lines), sanitize.Text(strings.Join(lines, "\n")))
 	cmd.PrintErrln(`check one ("mangal watch check <id>": finding its manga clears it) or re-link it: "mangal watch move <id> [provider] [query|mid:<id>]", or e on the watch in the TUI's watches (W on the home screen)`)
 	return nil
 }

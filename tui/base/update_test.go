@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -283,5 +284,20 @@ func TestLoadWithStatus(t *testing.T) {
 	}
 	if msg := listen(); msg != nil {
 		t.Errorf("labels still listened to after the load: %#v", msg)
+	}
+}
+
+// provider text in a title, a notification or the view reaches the terminal without its
+// escape sequences (MT-S1)
+func TestViewSanitized(t *testing.T) {
+	m := newTestModel(t, &fakeState{title: "home"})
+	m.Update(State(&fakeState{title: "One Piece\x1b]52;c;ZWNobyBoaQ==\x07"}))
+	m.Update(NotificationMsg{Message: "Downloaded \x1b[2J\"ch 1\""})
+	v := m.View()
+	if strings.Contains(v, "\x1b]52") || strings.Contains(v, "\x1b[2J") {
+		t.Errorf("escape sequences in the view: %q", v)
+	}
+	if !strings.Contains(v, "One Piece") {
+		t.Error("the title is gone")
 	}
 }

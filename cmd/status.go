@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/util/sanitize"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -99,6 +100,8 @@ func (s *status) erase() {
 
 // Set makes msg the status.
 func (s *status) Set(msg string) {
+	// statuses name mangas and chapters from the providers
+	msg = sanitize.Text(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch {
@@ -113,6 +116,7 @@ func (s *status) Set(msg string) {
 // Transient makes msg the status on a terminal only, not a --verbose line (e.g. a page
 // count).
 func (s *status) Transient(msg string) {
+	msg = sanitize.Text(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.tty {
