@@ -144,6 +144,7 @@ mangal library rename             # list the renames
 mangal library rename --apply     # do them
 mangal library rename --refresh   # with fresh AniList metadata (titles changed there)
 mangal library rename --chapters  # also rename the chapter files to the chapter template
+mangal library rename --fallback  # also folders whose metadata isn't found (drops year and ids)
 ```
 
 The folder names come from each library manga's links (`mangal library bind`, below), which win over the ids in `.libmangal.json` and the folder name.
