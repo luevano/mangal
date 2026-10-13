@@ -83,7 +83,8 @@ func New() base.State {
 
 	l := list.New(1, 0, "user", "users", []string{}, func(u string) _list.DefaultItem { return item(u) })
 	l.SetAccentColor(color.Kitsu)
-	l.KeyMap.List.Filter.SetEnabled(false)
+	// no filtering: its typing would also be the screen's keys
+	l.SetFilteringEnabled(false)
 	l.KeyMap.Reverse.SetEnabled(false)
 	l.KeyMap.List.GoToStart.SetEnabled(false)
 	l.KeyMap.List.GoToEnd.SetEnabled(false)
@@ -107,7 +108,7 @@ func (s *state) Backable() bool {
 	return !s.editing && !s.keys.back.Enabled()
 }
 
-func (s *state) Inputting() bool { return s.editing }
+func (s *state) Inputting() bool { return s.editing || s.list.Filtering() }
 
 func (s *state) Title() base.Title {
 	return base.Title{Text: "Kitsu login", Background: color.Kitsu, Foreground: color.Bright}
