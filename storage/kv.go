@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/luevano/mangal/v5/log"
 	"github.com/philippgille/gokv"
 	"github.com/philippgille/gokv/encoding"
 	"github.com/philippgille/gokv/util"
@@ -88,7 +89,9 @@ func (s KV) Get(k string, v any) (bool, error) {
 		rv.Elem().SetZero()
 	}
 	if err := codec.Unmarshal(data, v); err != nil {
-		// e.g. the type changed since it was stored: a miss, the next Set replaces it
+		// e.g. the type changed since it was stored: a miss, the next Set replaces it; told,
+		// a login read so looks like a logout
+		log.Warn("read %s %s %q: %s (ignored)", s.Table, s.Owner, k, err)
 		return false, nil
 	}
 	return true, nil
