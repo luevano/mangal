@@ -5,11 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/spf13/afero"
 )
 
@@ -151,4 +153,70 @@ func writeSeriesCBZ(t *testing.T, path string) {
 <Web>https://mangadex.org/chapter/0b7c5b4a-21ed-4d3e-9a06-bc02b4f4c1f1</Web><Year>2022</Year></ComicInfo>`))
 	_ = w.Close()
 	_ = f.Close()
+}
+
+// TestMarkManga: one folder is marked, a marker that disagrees with the library source or
+// is broken is replaced (keeping its other ids), one that agrees is left.
+func TestMarkManga(t *testing.T) {
+	root := t.TempDir()
+	lib := newLibrary(t)
+	files := Files{FS: afero.NewOsFs(), Library: lib, Root: root, Modes: DefaultModes}
+	dir := filepath.Join(root, "mango-weebcentral")
+	kt := metadata.ID{Raw: "7", Source: metadata.IDSourceKitsu, Code: metadata.IDCodeKitsu}
+	for _, name := range []string{"Unmarked", "Wrong", "Broken", "Right"} {
+		touch(t, filepath.Join(dir, name, "1.cbz"))
+		if err := lib.RecordDownload(dir, name, storage.Download{Path: filepath.Join(dir, name, "1.cbz"), Provider: "mango-weebcentral",
+			MangaID: strings.ToLower(name), MangaTitle: name, Chapter: 1, Format: libmangal.FormatCBZ.String()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeMarker(t, filepath.Join(dir, "Wrong"), libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "md"}, MetadataIDs: []metadata.ID{kt}})
+	if err := os.WriteFile(filepath.Join(dir, "Broken", libmangal.FilenameMangaDirInfo), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeMarker(t, filepath.Join(dir, "Right"), libmangal.MangaDirInfo{Provider: "mango-mangasee", Manga: mangadata.MangaInfo{ID: "right"}})
+	loaders := []libmangal.ProviderLoader{loader{libmangal.ProviderInfo{ID: "mango-weebcentral", History: []libmangal.ProviderAlias{{ID: "mango-mangasee"}}}}}
+
+	folders, err := Folders(files.FS, root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := 0
+	for _, f := range folders {
+		if f.MarkerErr != nil {
+			broken++
+			if filepath.Base(f.Path) != "Broken" {
+				t.Errorf("broken %s", f.Path)
+			}
+		}
+	}
+	if broken != 1 || len(folders) != 4 {
+		t.Errorf("folders %+v", folders)
+	}
+
+	for _, c := range []struct {
+		dir  string
+		done bool
+	}{{"Unmarked", true}, {"Wrong", true}, {"Broken", true}, {"Right", false}} {
+		m, _, _ := lib.MangaByFolder(dir, c.dir)
+		marked, done, err := files.MarkManga(m, MarkOptions{Loaders: loaders})
+		if err != nil || done != c.done {
+			t.Errorf("%s: done %v, %v", c.dir, done, err)
+			continue
+		}
+		info, err := libmangal.ReadMangaDirInfo(files.FS, m.Path())
+		if c.done && (err != nil || info.Provider != "mango-weebcentral" || info.Manga.ID != strings.ToLower(c.dir) || marked.Evidence != MarkedFromSource) {
+			t.Errorf("%s: marker %+v, %v", c.dir, info, err)
+		}
+		if c.dir == "Wrong" && !slices.Contains(info.MetadataIDs, kt) {
+			t.Errorf("lost the Kitsu id: %+v", info.MetadataIDs)
+		}
+		if c.dir == "Right" && info.Provider != "mango-mangasee" {
+			t.Errorf("replaced an agreeing marker: %+v", info)
+		}
+	}
+	m, _, _ := lib.MangaByFolder(dir, "Right")
+	if what, _ := MarkerDisagreement(m, libmangal.MangaDirInfo{Provider: "mango-weebcentral"}, loaders); what == "" {
+		t.Error("a marker without a manga id agrees")
+	}
 }

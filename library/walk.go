@@ -18,6 +18,8 @@ type mangaFolder struct {
 	info        libmangal.MangaDirInfo
 	// marked folders have a (valid) .libmangal.json.
 	marked bool
+	// markerErr is why its .libmangal.json couldn't be read (not that there's none)
+	markerErr error
 }
 
 // walkMangaDirs lists the folders that may be mangas, the one rule for scan, rename and
@@ -43,9 +45,13 @@ func walkMangaDirs(fsys afero.Fs, root string, providerDirs bool) ([]mangaFolder
 				folders = append(folders, mangaFolder{path: path, providerDir: providerDir, info: info, marked: true})
 				continue
 			}
+			var markerErr error
+			if !errors.Is(err, fs.ErrNotExist) {
+				markerErr = err
+			}
 			dirs = append(dirs, e)
 			if unmarked {
-				folders = append(folders, mangaFolder{path: path, providerDir: providerDir})
+				folders = append(folders, mangaFolder{path: path, providerDir: providerDir, markerErr: markerErr})
 			}
 		}
 		return dirs, nil
@@ -87,4 +93,30 @@ func Unmarked(fsys afero.Fs, root string, providerDirs bool) ([]string, error) {
 		}
 	}
 	return unmarked, err
+}
+
+// Folder is a folder under the download directory that may be a manga's: the folders
+// scan, rename and mark look at.
+type Folder struct {
+	Path string
+	// ProviderDir is the provider directory it's in, empty if it's directly in the root.
+	ProviderDir string
+	// Marker is its .libmangal.json, nil if it has none or it's broken (MarkerErr).
+	Marker    *libmangal.MangaDirInfo
+	MarkerErr error
+}
+
+// Folders are the folders under root that may be mangas (root's folders, and with
+// providerDirs the folders of the provider directories), with their .libmangal.json.
+func Folders(fsys afero.Fs, root string, providerDirs bool) ([]Folder, error) {
+	folders, err := walkMangaDirs(fsys, root, providerDirs)
+	out := make([]Folder, len(folders))
+	for i, f := range folders {
+		out[i] = Folder{Path: f.path, ProviderDir: f.providerDir, MarkerErr: f.markerErr}
+		if f.marked {
+			info := f.info
+			out[i].Marker = &info
+		}
+	}
+	return out, err
 }

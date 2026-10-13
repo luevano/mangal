@@ -1,6 +1,7 @@
 package library
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -160,4 +161,85 @@ func (f Files) dirProvider(m storage.Manga, opts MarkOptions) (string, bool) {
 		return "", false
 	}
 	return found[0], true
+}
+
+// PlanMark is the marker Mark would write into the manga's folder and what it's from, no
+// evidence when there's nothing to go by. It reads nothing.
+func (f Files) PlanMark(m storage.Manga, opts MarkOptions) (libmangal.MangaDirInfo, MarkEvidence) {
+	return f.markerOf(m, opts)
+}
+
+// MarkerDisagreement says how the folder's marker disagrees with the library manga's
+// sources (old provider ids count as their current one), empty when it doesn't: its
+// provider and manga id aren't one of them, or it has no manga id while the manga has a
+// source of its provider (missingID). A source that isn't the current one is fine: the
+// next download rewrites the marker.
+func MarkerDisagreement(m storage.Manga, marker libmangal.MangaDirInfo, loaders []libmangal.ProviderLoader) (what string, missingID bool) {
+	if len(m.Sources) == 0 {
+		return "", false
+	}
+	current := func(provider string) string {
+		if l, _, ok := libmangal.FindLoader(loaders, provider); ok {
+			return l.Info().ID
+		}
+		return provider
+	}
+	provider := current(marker.Provider)
+	cur := m.Sources[0]
+	for _, src := range m.Sources {
+		if current(src.Provider) != provider {
+			continue
+		}
+		if marker.Manga.ID == "" {
+			return fmt.Sprintf("has no manga id, the library source is %s %s", cur.Provider, cur.MangaID), true
+		}
+		if src.MangaID == marker.Manga.ID {
+			return "", false
+		}
+	}
+	if marker.Provider == "" {
+		if marker.Manga.ID == "" {
+			return fmt.Sprintf("has no provider, the library source is %s %s", cur.Provider, cur.MangaID), true
+		}
+	}
+	return fmt.Sprintf("says %s %s, not a source of the library manga (it's on %s %s)", cmp.Or(marker.Provider, "no provider"), marker.Manga.ID, cur.Provider, cur.MangaID), false
+}
+
+// MarkManga is Mark for one library manga: it writes the folder's marker from what's
+// known, replacing one only when it's broken or disagrees with the library
+// (MarkerDisagreement; the ids it had for other sources are kept). False when there's
+// nothing to do: a marker that agrees, no folder, nothing to go by.
+func (f Files) MarkManga(m storage.Manga, opts MarkOptions) (Marked, bool, error) {
+	if m.Dir == "" {
+		return Marked{}, false, nil
+	}
+	if exists, err := afero.DirExists(f.FS, m.Path()); err != nil || !exists {
+		return Marked{}, false, err
+	}
+	old, err := libmangal.ReadMangaDirInfo(f.FS, m.Path())
+	valid := err == nil
+	if valid {
+		if what, _ := MarkerDisagreement(m, old, opts.Loaders); what == "" {
+			return Marked{}, false, nil
+		}
+	}
+	info, evidence := f.markerOf(m, opts)
+	if evidence == "" {
+		return Marked{}, false, nil
+	}
+	if valid {
+		for _, id := range old.MetadataIDs {
+			if !slices.ContainsFunc(info.MetadataIDs, func(o metadata.ID) bool { return o.Code == id.Code }) {
+				info.MetadataIDs = append(info.MetadataIDs, id)
+			}
+		}
+	}
+	marked := Marked{Manga: m, Info: info, Evidence: evidence}
+	if opts.DryRun {
+		return marked, true, nil
+	}
+	if err := writeDirInfo(f.FS, f.Journal, m.Path(), info, f.Modes.File); err != nil {
+		return Marked{}, false, fmt.Errorf("mark %s: %w", m.Path(), err)
+	}
+	return marked, true, nil
 }
