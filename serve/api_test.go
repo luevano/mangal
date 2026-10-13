@@ -443,9 +443,18 @@ func TestRemote(t *testing.T) {
 	if err != nil || !dry.DryRun || len(dry.Results) != 1 || len(dry.Results[0].Chapters) != 2 {
 		t.Errorf("dry run: %+v, %v", dry, err)
 	}
-	report, err := r.Check(ctx, []int64{w.ID}, watch.CheckOptions{})
+	var live []string
+	report, err := r.Check(ctx, []int64{w.ID}, watch.CheckOptions{OnLive: func(e watch.LiveEvent) {
+		if e.Kind != watch.LiveProgress {
+			live = append(live, e.Kind)
+		}
+	}})
 	if err != nil || report.ID == 0 || report.Finished.IsZero() || report.NewChapters != 2 || len(report.Results) != 1 || report.Results[0].Status != storage.StatusNew {
 		t.Fatalf("check: %+v, %v", report, err)
+	}
+	// the check's events streamed, up to its end
+	if len(live) == 0 || live[0] != watch.LiveRunStart || live[len(live)-1] != watch.LiveRunDone || !slices.Contains(live, watch.LiveFound) {
+		t.Errorf("live events %v", live)
 	}
 	runs, err := r.Runs(ctx, watch.RunFilter{Watch: w.ID, Since: time.Now().Add(-time.Hour), Limit: 10})
 	if err != nil || len(runs) != 1 || runs[0].ID != report.ID {

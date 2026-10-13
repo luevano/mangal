@@ -272,13 +272,30 @@ func (s *Scheduler) check(ctx context.Context, c checker, provider string, ids [
 	return false
 }
 
-// logEvents logs each watch once checked and the rate limits waited out.
+// logEvents logs each watch's chapters found and downloaded, its result, the rate limits
+// waited out and what the providers say (a mirror down, a rate limit).
 func logEvents(log logger, dryRun bool) func(watch.Event) {
 	return func(e watch.Event) {
 		switch e.Kind {
+		case watch.EventFound:
+			if le, ok := e.Live(); ok {
+				log.Infof("%s", le.Line())
+			}
+		case watch.EventStatus:
+			if le, ok := e.Live(); ok && le.Kind == watch.LiveStatus {
+				log.Infof("%s", le.Line())
+			}
 		case watch.EventChapter:
-			if c := e.Chapter; c.Kind == client.EventWait {
+			switch c := e.Chapter; c.Kind {
+			case client.EventWait:
 				log.Infof("%s: chapter %s rate limited (retry #%d), retrying in %s", e.Watch.Title, c.Result.Chapter, c.Attempt, c.Wait)
+			case client.EventDone:
+				le, _ := e.Live()
+				if c.Result.Err != nil {
+					log.Warnf("%s", le.Line())
+				} else {
+					log.Infof("%s", le.Line())
+				}
 			}
 		case watch.EventBusy:
 			log.Infof("%s: %s", e.Watch.Title, e.Busy.Message())

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
@@ -460,5 +461,20 @@ func TestSchedulerLibraryIssue(t *testing.T) {
 	s := newTestScheduler(f)
 	if sleep := cycle(s); len(f.callList()) != 0 || sleep != time.Minute {
 		t.Errorf("sleep %s, calls %+v", sleep, f.callList())
+	}
+}
+
+func TestLogEvents(t *testing.T) {
+	var out strings.Builder
+	onEvent := logEvents(newLogger(&out), false)
+	w := storage.Watch{ID: 1, Provider: "mangadex", Title: "One Piece"}
+	from := float32(1122)
+	onEvent(watch.Event{Kind: watch.EventFound, Watch: w, Found: &watch.Found{Chapters: 1124, Picked: []float32{1123, 1124}, From: &from}})
+	onEvent(watch.Event{Kind: watch.EventStatus, Watch: w, Status: &progress.Status{Message: "MangaDex: rate limited, retrying in 5s"}})
+	onEvent(watch.Event{Kind: watch.EventStatus, Watch: w, Status: &progress.Status{Message: "MangaDex: getting page 2", Minor: true}})
+	want := "One Piece (mangadex): found 1124 chapters, 2 to download (1123, 1124)\n" +
+		"One Piece: MangaDex: rate limited, retrying in 5s\n"
+	if out.String() != want {
+		t.Errorf("got\n%s\nwant\n%s", out.String(), want)
 	}
 }
