@@ -157,11 +157,6 @@ func New(svc Service) *Screen {
 	l.SetAccentColor(svc.Color)
 	// no filtering: its typing would also be the screen's keys
 	l.SetFilteringEnabled(false)
-	l.KeyMap.Reverse.SetEnabled(false)
-	l.KeyMap.List.GoToStart.SetEnabled(false)
-	l.KeyMap.List.GoToEnd.SetEnabled(false)
-	l.KeyMap.List.NextPage.SetEnabled(false)
-	l.KeyMap.List.PrevPage.SetEnabled(false)
 
 	s := &Screen{svc: svc, list: l, keys: newKeyMap(), configured: svc.Client == nil}
 	if len(svc.Fields) != 0 {
