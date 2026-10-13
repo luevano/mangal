@@ -27,8 +27,8 @@ func (c fakeChapter) Info() mangadata.ChapterInfo {
 }
 func (fakeChapter) Volume() mangadata.Volume { return nil }
 
-func done(run, index int, r client.Result) eventMsg {
-	return eventMsg{run: run, kind: client.EventDone, index: index, result: r}
+func done(run, index int, r client.Result) EventMsg {
+	return EventMsg{Run: run, Kind: client.EventDone, Index: index, Result: r}
 }
 
 func TestDownloadEvents(t *testing.T) {
@@ -39,21 +39,21 @@ func TestDownloadEvents(t *testing.T) {
 	run := s.run
 	down := &metadata.DownloadedChapter{Directory: "/dl/manga"}
 
-	s.Update(ctx, eventMsg{run: run, kind: client.EventStart, index: 0})
+	s.Update(ctx, EventMsg{Run: run, Kind: client.EventStart, Index: 0})
 	s.Update(ctx, done(run, 0, client.Result{Chapter: chapters[0], Err: errors.New("boom")}))
-	s.Update(ctx, eventMsg{run: run, kind: client.EventStart, index: 1})
-	s.Update(ctx, eventMsg{run: run, kind: client.EventWait, index: 1, attempt: 2, wait: time.Second})
+	s.Update(ctx, EventMsg{Run: run, Kind: client.EventStart, Index: 1})
+	s.Update(ctx, EventMsg{Run: run, Kind: client.EventWait, Index: 1, Attempt: 2, Wait: time.Second})
 	if got := ansi.Strip(s.viewSummary()); !strings.Contains(got, `Retrying chapter 2 "Chapter 2"`) || !strings.Contains(s.message, "retry #2") {
 		t.Errorf("waiting: summary %q, message %q", got, s.message)
 	}
-	s.Update(ctx, eventMsg{run: run, kind: client.EventProgress, index: 1, progress: &libmangal.DownloadProgress{Stage: libmangal.DownloadStageImages, Done: 23, Total: 57}})
-	s.Update(ctx, eventMsg{run: run, kind: eventStatus, status: "MangaDex: rate limited"})
+	s.Update(ctx, EventMsg{Run: run, Kind: client.EventProgress, Index: 1, Progress: &libmangal.DownloadProgress{Stage: libmangal.DownloadStageImages, Done: 23, Total: 57}})
+	s.Update(ctx, EventMsg{Run: run, Kind: EventStatus, Status: "MangaDex: rate limited"})
 	if got := ansi.Strip(s.viewDownloading()); !strings.Contains(got, "23/57 pages") || !strings.Contains(got, "MangaDex: rate limited") {
 		t.Errorf("progress: %q", got)
 	}
 	s.Update(ctx, done(run, 1, client.Result{Chapter: chapters[1], Down: down}))
 	s.Update(ctx, done(run, 2, client.Result{Chapter: chapters[2], Unavailable: "paid"}))
-	s.Update(ctx, finishedMsg{run: run})
+	s.Update(ctx, FinishedMsg{Run: run})
 
 	if s.downloading {
 		t.Fatal("still downloading")
@@ -75,12 +75,12 @@ func TestDownloadEvents(t *testing.T) {
 	if s.done != 0 {
 		t.Error("an event of the previous run was applied")
 	}
-	s.Update(ctx, eventMsg{run: s.run, kind: client.EventWait, index: 0, attempt: 1, wait: time.Second})
+	s.Update(ctx, EventMsg{Run: s.run, Kind: client.EventWait, Index: 0, Attempt: 1, Wait: time.Second})
 	if got := ansi.Strip(s.viewSummary()); !strings.Contains(got, `chapter 1 "Chapter 1"`) || !strings.Contains(got, "1/1") {
 		t.Errorf("retry summary %q, want chapter 1", got)
 	}
 	s.Update(ctx, done(s.run, 0, client.Result{Chapter: chapters[0], Down: down}))
-	s.Update(ctx, finishedMsg{run: s.run})
+	s.Update(ctx, FinishedMsg{Run: s.run})
 	if got := len(s.results.Succeed()); got != 2 {
 		t.Errorf("%d succeeded, want 2", got)
 	}
@@ -127,7 +127,7 @@ func TestLeaveAsks(t *testing.T) {
 		t.Error("yes didn't go back")
 	}
 
-	s.Update(ctx, finishedMsg{run: s.run})
+	s.Update(ctx, FinishedMsg{Run: s.run})
 	if s.Keeping() != "" {
 		t.Error("a finished download kept")
 	}

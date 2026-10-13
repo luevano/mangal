@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -26,6 +25,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/model/metadata"
 	"github.com/luevano/mangal/v5/tui/state/anilist"
+	"github.com/luevano/mangal/v5/tui/state/download"
 	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/afs"
@@ -241,11 +241,10 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return tea.Batch(refresh, func() tea.Msg { return msg.err })
 		}
 		return refresh
-	case waitMsg:
-		if msg.busy != "" {
-			return tea.Batch(base.NotifyWithDuration(msg.busy, 10*time.Second), msg.next)
-		}
-		return tea.Batch(base.NotifyWithDuration(fmt.Sprintf("Rate limited, trying again in %s (#%d)", msg.wait, msg.attempt), msg.wait), msg.next)
+	case download.EventMsg:
+		return onEvent(msg)
+	case download.FinishedMsg:
+		return nil
 	case format.BackMsg:
 		s.inFormats = false
 		s.updateSubtitleFormats()

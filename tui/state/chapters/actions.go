@@ -43,14 +43,6 @@ type downloadedMsg struct {
 	read bool
 }
 
-// waitMsg is a rate limit the download waits out, or the manga's lock (busy).
-type waitMsg struct {
-	attempt int
-	wait    time.Duration
-	busy    string
-	next    tea.Cmd
-}
-
 const busyNotice = "Wait for the running download or read"
 
 // target is the toggled chapter, else the hovered one.
@@ -156,50 +148,39 @@ func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
 	if path := i.downloaded[options.Format]; path != "" && !msg.read {
 		return base.Notify(fmt.Sprintf("Chapter %q already downloaded in %s format", chapter, options.Format))
 	}
-	waits := make(chan waitMsg)
+	feed := download.NewFeed(ctx, 0)
 	c := s.client
 	load := base.LoadWithStatus(ctx, fmt.Sprintf("Downloading %q", chapter), func(ctx context.Context, status func(string)) (downloadedMsg, error) {
-		defer close(waits)
+		defer feed.Close()
 		if options.Directory == path.Temp() {
 			if _, err := path.EnsureTemp(); err != nil {
 				return downloadedMsg{}, err
 			}
 		}
 		down, err := client.DownloadChapter(ctx, c, chapter, options, func(e client.Event) {
-			var msg waitMsg
-			switch e.Kind {
-			case client.EventProgress:
+			if e.Kind == client.EventProgress {
 				status(fmt.Sprintf("Downloading %q: %s", chapter, e))
 				return
-			case client.EventWait:
-				msg = waitMsg{attempt: e.Attempt, wait: e.Wait}
-			case client.EventBusy:
-				msg = waitMsg{busy: e.Busy.Message()}
-			default:
-				return
 			}
-			select {
-			case waits <- msg:
-			case <-ctx.Done():
-			}
+			feed.Send(e)
 		})
 		if err != nil {
 			return downloadedMsg{}, fmt.Errorf("download %q: %w", chapter, err)
 		}
 		return downloadedMsg{item: i, down: down, read: msg.read}, nil
 	}, func(msg downloadedMsg) tea.Msg { return msg })
-	return tea.Batch(load, listenWaits(waits))
+	return tea.Batch(load, feed.Listen())
 }
 
-func listenWaits(waits <-chan waitMsg) tea.Cmd {
-	return func() tea.Msg {
-		msg, ok := <-waits
-		if !ok {
-			return nil
-		}
-		msg.next = listenWaits(waits)
-		return msg
+// onEvent tells the waits of the download: a rate limit, the manga's lock (busy).
+func onEvent(msg download.EventMsg) tea.Cmd {
+	switch msg.Kind {
+	case client.EventWait:
+		return tea.Batch(base.NotifyWithDuration(fmt.Sprintf("Rate limited, trying again in %s (#%d)", msg.Wait, msg.Attempt), msg.Wait), msg.Next)
+	case client.EventBusy:
+		return tea.Batch(base.NotifyWithDuration(msg.Busy.Message(), 10*time.Second), msg.Next)
 	}
+	return msg.Next
 }
 
 func (s *state) onDownloaded(ctx context.Context, msg downloadedMsg) tea.Cmd {
