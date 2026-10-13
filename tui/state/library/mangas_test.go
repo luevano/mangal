@@ -229,3 +229,30 @@ func TestRestoredWithMerge(t *testing.T) {
 		t.Errorf("keep %d, duplicates %v, pending %d", s.keep, s.duplicates, s.pendingMerge)
 	}
 }
+
+// emptying the trash lists the undos it blocks, like the cli
+func TestEmptyTrashListsBlockedUndos(t *testing.T) {
+	ctx := context.Background()
+	s := newTrashState(library.Files{Root: "/dl"})
+	s.Resize(base.Size{Width: 120, Height: 40})
+	s.Update(ctx, trashLoadedMsg{&batchItem{batch: library.TrashBatch{Name: "b"}}})
+	if cmd := s.Update(ctx, press("d")); cmd == nil || s.Confirm.Active() {
+		t.Fatal("d asks before checking the undos")
+	}
+	started := time.Date(2026, 10, 12, 9, 30, 0, 0, time.Local)
+	s.Update(ctx, TrashCheckedMsg{{ID: 7, Started: started, Kind: "delete", Summary: "delete Berserk"}})
+	if !s.Confirm.Active() {
+		t.Fatal("no confirm")
+	}
+	view := s.Confirm.View()
+	for _, want := range []string{"These operations can't be undone", "7  2026-10-12 09:30:00  delete", "delete Berserk", "Delete everything in the trash?"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("confirm misses %q:\n%s", want, view)
+		}
+	}
+	s.Update(ctx, press("n"))
+	s.Update(ctx, TrashCheckedMsg{})
+	if view := s.Confirm.View(); strings.Contains(view, "These operations") {
+		t.Errorf("nothing blocked, still lists:\n%s", view)
+	}
+}

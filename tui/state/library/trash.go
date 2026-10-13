@@ -3,6 +3,8 @@ package library
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -10,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/util"
@@ -91,13 +94,47 @@ func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if base.Busy(ctx) {
 			return base.Notify(busyNotice)
 		}
+		return CheckTrash(ctx, s.files.Root)
+	case TrashCheckedMsg:
 		files := s.files
-		s.Confirm.AskDelete("Empty the trash", "Delete everything in the trash? It can't be undone.", s.View(), action("Emptying the trash", func() (string, error) {
+		s.Confirm.AskDelete("Empty the trash", EmptyTrashQuestion("Delete everything in the trash? It can't be undone.", msg), s.View(), action("Emptying the trash", func() (string, error) {
 			return EmptyTrash(files)
 		}))
 		return nil
 	}
 	return s.List.Update(msg)
+}
+
+// TrashCheckedMsg are the operations whose undo emptying the trash blocks.
+type TrashCheckedMsg []storage.Op
+
+// CheckTrash looks for the operations whose undo needs the trash of root, to confirm emptying it.
+func CheckTrash(ctx context.Context, root string) tea.Cmd {
+	return base.Load(ctx, "Checking the undos", func(context.Context) (TrashCheckedMsg, error) {
+		return TrashBlocks(root)
+	}, func(msg TrashCheckedMsg) tea.Msg { return msg })
+}
+
+// TrashBlocks are the operations whose undo needs the trash of root.
+func TrashBlocks(root string) (TrashCheckedMsg, error) {
+	undoer, err := client.LibraryUndoer()
+	if err != nil {
+		return nil, err
+	}
+	return undoer.NeedTrash(root)
+}
+
+// EmptyTrashQuestion is question with the undos emptying the trash blocks listed before it.
+func EmptyTrashQuestion(question string, blocked TrashCheckedMsg) string {
+	if len(blocked) == 0 {
+		return question
+	}
+	var b strings.Builder
+	b.WriteString("These operations can't be undone after it:\n")
+	for _, op := range blocked {
+		fmt.Fprintf(&b, "  %d  %s  %s  %s\n", op.ID, op.Started.Format(time.DateTime), op.Kind, op.Summary)
+	}
+	return b.String() + "\n" + question
 }
 
 // EmptyTrash deletes what's in the trash for good, after a snapshot of the database.

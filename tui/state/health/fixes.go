@@ -82,18 +82,35 @@ func (s *state) applyLibrary(ctx context.Context, f health.Finding) (tea.Cmd, bo
 			return planRenames(ctx, paths)
 		}, func(msg tea.Msg) tea.Msg { return msg }), true
 	case health.ActionEmptyTrash:
-		s.Confirm.AskDelete("Empty the trash", f.Message+"\n\nDelete them for good? It can't be undone.", s.View(),
-			libChange("Emptying the trash", func(context.Context, func(string)) (string, error) {
-				files, err := client.LibraryFiles()
-				if err != nil {
-					return "", err
-				}
-				return tuilibrary.EmptyTrash(files)
-			}))
+		message := f.Message
+		return base.Load(ctx, "Checking the undos", func(context.Context) (trashCheckedMsg, error) {
+			blocked, err := tuilibrary.TrashBlocks(path.Downloads())
+			return trashCheckedMsg{message: message, blocked: blocked}, err
+		}, func(msg trashCheckedMsg) tea.Msg { return msg }), true
 	default:
 		return nil, false
 	}
 	return nil, true
+}
+
+// trashCheckedMsg is a finding's message and the undos emptying the trash blocks, to confirm.
+type trashCheckedMsg struct {
+	message string
+	blocked tuilibrary.TrashCheckedMsg
+}
+
+// askEmptyTrash asks to empty the trash.
+func (s *state) askEmptyTrash(msg trashCheckedMsg) tea.Cmd {
+	question := tuilibrary.EmptyTrashQuestion("Delete them for good? It can't be undone.", msg.blocked)
+	s.Confirm.AskDelete("Empty the trash", msg.message+"\n\n"+question, s.View(),
+		libChange("Emptying the trash", func(context.Context, func(string)) (string, error) {
+			files, err := client.LibraryFiles()
+			if err != nil {
+				return "", err
+			}
+			return tuilibrary.EmptyTrash(files)
+		}))
+	return nil
 }
 
 // askRename asks to do the planned renames.

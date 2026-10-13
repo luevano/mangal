@@ -356,6 +356,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return s.runLib(ctx, msg)
 	case renamePlannedMsg:
 		return s.askRename(msg)
+	case trashCheckedMsg:
+		return s.askEmptyTrash(msg)
 	case linkMsg:
 		return loadManga(ctx, msg.manga, func(m storage.Manga) (tea.Msg, error) {
 			return pushMsg{state: tuilibrary.NewLinks(m, library.Links{msg.code: msg.id})}, nil
