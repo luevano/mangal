@@ -551,6 +551,12 @@ func markFolders(cmd *cobra.Command, st *status, lib storage.Library, root strin
 	}
 	cmd.Printf("%d %s (%d from the library source, %d provider from its directory, %d metadata ids only), %d with nothing to go by (not marked)\n",
 		len(res.Marked), count, counts[library.MarkedFromSource], counts[library.MarkedFromDir], counts[library.MarkedFromIDs], len(res.Unknown))
+	if len(res.Broken) != 0 {
+		cmd.Printf("%d folders have a broken %s, left as they are (\"mangal library mark <id>\" replaces one):\n", len(res.Broken), libmangal.FilenameMangaDirInfo)
+		for _, m := range res.Broken {
+			cmd.Printf("  %d  %s\n", m.ID, m.Path())
+		}
+	}
 	if !apply && len(res.Marked) != 0 {
 		cmd.Println("run with --mark --apply to write them")
 	}

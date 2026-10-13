@@ -194,6 +194,9 @@ func TestMarkManga(t *testing.T) {
 		t.Errorf("folders %+v", folders)
 	}
 
+	if res, err := files.Mark(MarkOptions{Loaders: loaders, DryRun: true}); err != nil || len(res.Broken) != 1 || len(res.Marked) != 1 {
+		t.Errorf("mark with a broken marker: %+v, %v", res, err)
+	}
 	for _, c := range []struct {
 		dir  string
 		done bool

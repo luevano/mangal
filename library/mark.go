@@ -40,6 +40,8 @@ type MarkResult struct {
 	// Unknown are the folders without a marker nor anything to make one from (no source,
 	// provider directory or metadata id), left unmarked.
 	Unknown []storage.Manga
+	// Broken are the folders whose marker can't be read (invalid JSON), left as they are.
+	Broken []storage.Manga
 }
 
 // MarkOptions say how Mark tells a folder's provider.
@@ -82,7 +84,8 @@ func (f Files) Mark(opts MarkOptions) (MarkResult, error) {
 		if _, err := libmangal.ReadMangaDirInfo(f.FS, m.Path()); err == nil {
 			continue
 		} else if !errors.Is(err, fs.ErrNotExist) {
-			return res, err
+			res.Broken = append(res.Broken, m)
+			continue
 		}
 		info, evidence := f.markerOf(m, opts)
 		if evidence == "" {
