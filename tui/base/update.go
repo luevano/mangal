@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/model/viewport"
@@ -36,7 +35,7 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	// receiving any of these msgs override the behavior of the keybinds;
 	// even if the keybinds are disabled, these messages will work.
 	case ShowViewportMsg:
-		cmd := m.showViewport(msg.Title, msg.Content, msg.Color)
+		cmd := m.showViewport(msg)
 		m.viewportConfigKey = msg.ConfigKey
 		return cmd
 	case viewport.NotificationMsg:
@@ -301,9 +300,13 @@ func (m *model) notify(message string, duration time.Duration) tea.Cmd {
 	})
 }
 
-func (m *model) showViewport(title, content string, color lipgloss.Color) tea.Cmd {
+func (m *model) showViewport(msg ShowViewportMsg) tea.Cmd {
 	m.inViewport = true
-	m.viewport.SetData(title, content, color)
+	if msg.Render != nil {
+		m.viewport.SetDataRender(msg.Title, msg.Render, msg.Color)
+	} else {
+		m.viewport.SetData(msg.Title, msg.Content, msg.Color)
+	}
 	return m.viewport.Resize(m.stateSize())
 }
 

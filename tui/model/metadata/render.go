@@ -12,33 +12,57 @@ import (
 	_style "github.com/luevano/mangal/v5/theme/style"
 )
 
-// Details renders every field of meta.
-//
-// TODO: handle wrapping for smaller terminals
-func Details(meta metadata.Metadata) string {
-	m := renderer{styles: newStyles(metaIDStyle(meta.ID()))}
+// Details renders every field of meta in width columns (0 for no limit): the values
+// wrap, the fields side by side go one under the other when they don't fit.
+func Details(meta metadata.Metadata, width int) string {
+	m := renderer{styles: newStyles(metaIDStyle(meta.ID())), width: width}
 	f := allFields(meta)
 
-	// manually managing is prone to errros
-	l := make([]string, 12)
-	l[0] = jH(m.render(f.id), m.render(f.title))
-	l[1] = jH(m.render(f.status), m.render(f.chapters), m.render(f.startDate), m.render(f.endDate))
-	l[2] = jH(m.render(f.country), m.render(f.score), m.render(f.format), m.render(f.publisher))
-	l[3] = m.render(f.url)
-	l[4] = m.render(f.description)
-	l[5] = m.render(f.cover)
-	l[6] = m.render(f.banner)
-	l[7] = m.render(f.characters)
-	l[8] = jH(jV(m.render(f.genres), m.render(f.tags)), m.render(f.alternateTitles))
-	l[9] = jH(m.render(f.authors), m.render(f.artists), m.render(f.translators), m.render(f.letterers))
-	l[10] = m.render(f.extraIDs)
-	l[11] = m.render(f.notes)
-
-	return jV(l...)
+	return jV(
+		m.row(m.render(f.id), m.render(f.title)),
+		m.row(m.render(f.status), m.render(f.chapters), m.render(f.startDate), m.render(f.endDate)),
+		m.row(m.render(f.country), m.render(f.score), m.render(f.format), m.render(f.publisher)),
+		m.render(f.url),
+		m.render(f.description),
+		m.render(f.cover),
+		m.render(f.banner),
+		m.render(f.characters),
+		m.row(jV(m.render(f.genres), m.render(f.tags)), m.render(f.alternateTitles)),
+		m.row(m.render(f.authors), m.render(f.artists), m.render(f.translators), m.render(f.letterers)),
+		m.render(f.extraIDs),
+		m.render(f.notes),
+	)
 }
 
 type renderer struct {
 	styles styles
+	// width is the columns there are, 0 for no limit
+	width int
+}
+
+// row puts the fields side by side, the ones that don't fit go below.
+func (m renderer) row(fields ...string) string {
+	if m.width <= 0 {
+		return jH(fields...)
+	}
+	var rows []string
+	var row []string
+	for _, f := range fields {
+		if len(row) != 0 && lipgloss.Width(jH(append(row, f)...)) > m.width {
+			rows = append(rows, jH(row...))
+			row = nil
+		}
+		row = append(row, f)
+	}
+	return jV(append(rows, jH(row...))...)
+}
+
+// fit is the width of a value next to used columns, at most want.
+func (m renderer) fit(want, used int) int {
+	if m.width <= 0 {
+		return want
+	}
+	return max(2, min(want, m.width-used))
 }
 
 func (m renderer) render(f field) string {
@@ -47,7 +71,7 @@ func (m renderer) render(f field) string {
 	case string:
 		str = value
 	case []string:
-		return m.renderList(f.name, value, _style.Normal.Secondary.Width(f.width))
+		return m.renderList(f.name, value, _style.Normal.Secondary.Width(m.fit(f.width, m.listIndent())))
 	case int:
 		if value != 0 {
 			str = strconv.Itoa(value)
@@ -75,7 +99,7 @@ func (m renderer) render(f field) string {
 			}
 			strs[i] = lipgloss.NewStyle().Foreground(style.Color).Render(prefix+": ") + value[i].Raw
 		}
-		return m.renderList(f.name, strs, lipgloss.NewStyle().Width(f.width))
+		return m.renderList(f.name, strs, lipgloss.NewStyle().Width(m.fit(f.width, m.listIndent())))
 	default:
 		str = _style.Bold.Error.Render(fmt.Sprintf("RenderField: unkown field type: %T", value))
 	}
@@ -87,14 +111,18 @@ func (m renderer) renderFieldName(name string) string {
 }
 
 func (m renderer) renderField(name string, str string, width int) string {
-	minWidth := 2
-	if width < minWidth {
-		width = minWidth
-	}
+	label := m.renderFieldName(name)
+	// jH puts a space after the label
+	width = m.fit(max(2, width), lipgloss.Width(label)+1)
 	if str == "" {
 		str = _style.Normal.Secondary.Render(strings.Repeat(".", width))
 	}
-	return jH(m.renderFieldName(name), lipgloss.NewStyle().Width(width).MaxWidth(width).Render(str))
+	return jH(label, lipgloss.NewStyle().Width(width).MaxWidth(width).Render(str))
+}
+
+// listIndent is the width of a list's enumerator.
+func (m renderer) listIndent() int {
+	return lipgloss.Width(m.styles.enumerator.Render(m.styles.enum(nil, 0)))
 }
 
 func (m renderer) renderList(name string, items []string, itemStyle lipgloss.Style) string {

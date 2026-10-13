@@ -48,3 +48,11 @@ func Viewport(title, content string, color lipgloss.Color) tea.Cmd {
 		}
 	}
 }
+
+// ViewportRender is Viewport with content laid out for the viewport's width (again on a
+// resize).
+func ViewportRender(title string, render func(width int) string, color lipgloss.Color) tea.Cmd {
+	return func() tea.Msg {
+		return ShowViewportMsg{Title: title, Render: render, Color: color}
+	}
+}

@@ -45,7 +45,7 @@ func Color(meta metadata.Metadata) lipgloss.Color {
 
 // ShowCmd shows the details in the TUI's viewport.
 func ShowCmd(meta metadata.Metadata) tea.Cmd {
-	return base.Viewport(Title(meta), Details(meta), Color(meta))
+	return base.ViewportRender(Title(meta), func(width int) string { return Details(meta, width) }, Color(meta))
 }
 
 // Status is the Badge with a trailing space for a State's status, empty without metadata.

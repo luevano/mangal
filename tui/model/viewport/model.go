@@ -16,7 +16,9 @@ type Model struct {
 
 	title,
 	content string
-	color lipgloss.Color
+	// render lays the content out for a width, nil wraps content
+	render func(width int) string
+	color  lipgloss.Color
 
 	borderHorizontalSize,
 	borderVerticalSize int
@@ -34,8 +36,16 @@ func (m *Model) Color() lipgloss.Color {
 }
 
 func (m *Model) SetContent(content string) {
-	m.content = content
+	m.content, m.render = content, nil
 	m.Model.SetContent(m.wrap(content))
+	m.updateKeybinds()
+}
+
+// SetRender sets content that lays itself out for the viewport's width (render(0) is
+// what's copied).
+func (m *Model) SetRender(render func(width int) string) {
+	m.content, m.render = render(0), render
+	m.Model.SetContent(m.wrap(m.content))
 	m.updateKeybinds()
 }
 
@@ -44,15 +54,29 @@ func (m *Model) wrap(content string) string {
 	if m.Width <= 0 {
 		return content
 	}
+	if m.render != nil {
+		content = m.render(m.Width)
+	}
 	return lipgloss.NewStyle().Width(m.Width).Render(content)
 }
 
 func (m *Model) SetData(title, content string, color lipgloss.Color) {
+	m.setData(title, color)
+	m.SetContent(content)
+	m.GotoTop()
+}
+
+// SetDataRender is SetData with SetRender.
+func (m *Model) SetDataRender(title string, render func(width int) string, color lipgloss.Color) {
+	m.setData(title, color)
+	m.SetRender(render)
+	m.GotoTop()
+}
+
+func (m *Model) setData(title string, color lipgloss.Color) {
 	m.title = title
 	m.color = color
 	m.style = m.style.BorderForeground(color)
-	m.SetContent(content)
-	m.GotoTop()
 }
 
 func (m *Model) Status() string {

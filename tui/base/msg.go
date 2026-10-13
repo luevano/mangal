@@ -35,7 +35,9 @@ type RestoredMsg struct {
 type ShowViewportMsg struct {
 	Title,
 	Content string
-	Color lipgloss.Color
+	// Render, if set, lays the content out for the viewport's width instead of Content
+	Render func(width int) string
+	Color  lipgloss.Color
 	// ConfigKey fixes the error shown, a key opens the config window on it
 	ConfigKey string
 }
