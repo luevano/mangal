@@ -154,7 +154,9 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 func (s *state) bindCmd(ctx context.Context, meta lmmeta.Metadata) tea.Cmd {
 	c, manga, src := s.client, s.manga, s.src
 	return base.Load(ctx, fmt.Sprintf("Binding %s %q", src.Name, meta), func(ctx context.Context) (boundMsg, error) {
-		bound, err := client.Bind(ctx, c, c.Info().ID, manga.Info().ID, manga, src.Code, meta.ID().Raw)
+		// no manga: its metadata is only set in Update (a download may be reading it), the
+		// bindings screen sets the default one when it's shown again
+		bound, err := client.Bind(ctx, c, c.Info().ID, manga.Info().ID, nil, src.Code, meta.ID().Raw)
 		return boundMsg{src: src, meta: bound}, err
 	}, func(msg boundMsg) tea.Msg { return msg })
 }
