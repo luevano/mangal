@@ -68,7 +68,8 @@ func HoldingProvider(ctx context.Context, provider string) context.Context {
 
 // LockProvider takes the provider's lock in the store for purpose (LockForDownload,
 // LockForWatch), waiting while someone else holds it (onWait, which may be nil, is told
-// once). The returned ctx carries the lock (HoldingProvider). unlock releases it (nothing
+// once). The returned ctx carries the lock (HoldingProvider) and is cancelled when the
+// lock is lost to another mangal (cause storage.ErrLockLost). unlock releases it (nothing
 // when ctx already had it). A cancelled ctx stops the wait.
 func LockProvider(ctx context.Context, store storage.Watches, provider, purpose string, onWait func(ProviderBusy)) (_ context.Context, unlock func(), _ error) {
 	name := ProviderLockName(provider)
@@ -79,7 +80,12 @@ func LockProvider(ctx context.Context, store storage.Watches, provider, purpose 
 	for {
 		lock, err := store.LockAs(name, purpose, ProviderLockStale)
 		if err == nil {
-			return HoldingProvider(ctx, provider), keepAlive(lock), nil
+			held, lost := context.WithCancelCause(HoldingProvider(ctx, provider))
+			stop := keepAlive(lock, lost)
+			return held, func() {
+				stop()
+				lost(nil)
+			}, nil
 		}
 		var locked *storage.LockError
 		if !errors.As(err, &locked) {
@@ -102,8 +108,9 @@ func LockProvider(ctx context.Context, store storage.Watches, provider, purpose 
 	}
 }
 
-// keepAlive beats the lock until the returned unlock.
-func keepAlive(lock *storage.Lock) func() {
+// keepAlive beats the lock until the returned unlock. A lost lock calls lost and stops
+// beating.
+func keepAlive(lock *storage.Lock, lost func(error)) func() {
 	stop, stopped := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(stopped)
@@ -114,7 +121,13 @@ func keepAlive(lock *storage.Lock) func() {
 			case <-stop:
 				return
 			case <-ticker.C:
-				if err := lock.Heartbeat(); err != nil {
+				err := lock.Heartbeat()
+				if errors.Is(err, storage.ErrLockLost) {
+					log.Warn("%s: another mangal took it over", err)
+					lost(err)
+					return
+				}
+				if err != nil {
 					log.Warn("%s", err)
 				}
 			}

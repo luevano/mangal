@@ -224,3 +224,26 @@ func TestWatchCheckAndDownload(t *testing.T) {
 		_ = l.Unlock()
 	}
 }
+
+// TestLostLockStopsTheDownload: another mangal taking the provider's lock over (it went
+// stale) stops the download holding it.
+func TestLostLockStopsTheDownload(t *testing.T) {
+	store, _ := withLockStore(t)
+	oldBeat := providerLockBeat
+	providerLockBeat = 10 * time.Millisecond
+	t.Cleanup(func() { providerLockBeat = oldBeat })
+	lib := &fakeLib{have: map[string]bool{}}
+	start, done := started("p", []mangadata.Chapter{chapter{number: 1}, chapter{number: 2}}, lib.get(make(chan struct{})))
+	<-start
+	if _, err := store.DB.Exec(`UPDATE locks SET token = 'other' WHERE name = ?`, ProviderLockName("p")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if !errors.Is(r[0].Err, storage.ErrLockLost) || len(lib.gets) != 0 {
+			t.Errorf("results %+v, gets %v", r, lib.gets)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("still downloading without the lock")
+	}
+}

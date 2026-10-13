@@ -143,6 +143,11 @@ func download(ctx context.Context, provider string, chapters []mangadata.Chapter
 		if ctx.Err() != nil {
 			break
 		}
+		if locked && lockedCtx.Err() != nil {
+			r.Err = fmt.Errorf("download stopped: %w", context.Cause(lockedCtx))
+			onEvent(Event{Kind: EventDone, Index: i, Result: r})
+			break
+		}
 		if reason := r.Chapter.Info().Unavailable; reason != "" {
 			r.Unavailable = reason
 			onEvent(Event{Kind: EventDone, Index: i, Result: r})
@@ -171,6 +176,11 @@ func download(ctx context.Context, provider string, chapters []mangadata.Chapter
 			r.Err = nil
 			break
 		}
+		if r.Err != nil && lockedCtx.Err() != nil {
+			r.Err = fmt.Errorf("download stopped: %w", context.Cause(lockedCtx))
+			onEvent(Event{Kind: EventDone, Index: i, Result: r})
+			break
+		}
 		if noDelay(r.Err) {
 			r.Err = fmt.Errorf("%w (stopped: the site didn't say how long to wait)", r.Err)
 			onEvent(Event{Kind: EventDone, Index: i, Result: r})
@@ -192,7 +202,7 @@ func DownloadChapter(ctx context.Context, client *libmangal.Client, chapter mang
 		onEvent = func(Event) {}
 	}
 	r := &Result{Chapter: chapter}
-	ctx, unlock, err := lockStored(ctx, client.Info().ID, func(b ProviderBusy) {
+	lockedCtx, unlock, err := lockStored(ctx, client.Info().ID, func(b ProviderBusy) {
 		onEvent(Event{Kind: EventBusy, Result: r, Busy: &b})
 	})
 	if err != nil {
@@ -205,11 +215,15 @@ func DownloadChapter(ctx context.Context, client *libmangal.Client, chapter mang
 	options.OnProgress = func(p libmangal.DownloadProgress) {
 		onEvent(Event{Kind: EventProgress, Result: r, Progress: &p})
 	}
-	return retry(ctx, chapter, func(ctx context.Context, ch mangadata.Chapter) (*metadata.DownloadedChapter, error) {
+	down, err := retry(lockedCtx, chapter, func(ctx context.Context, ch mangadata.Chapter) (*metadata.DownloadedChapter, error) {
 		return downloadChapter(ctx, client, ch, options)
 	}, func(attempt int, wait time.Duration) {
 		onEvent(Event{Kind: EventWait, Result: r, Attempt: attempt, Wait: wait})
 	})
+	if err != nil && ctx.Err() == nil && lockedCtx.Err() != nil {
+		err = fmt.Errorf("download stopped: %w", context.Cause(lockedCtx))
+	}
+	return down, err
 }
 
 // newTimer is swapped in tests
