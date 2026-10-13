@@ -13,6 +13,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/storage"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -52,6 +53,9 @@ const (
 	// EventBusy is the provider, under the id it has now (the watch has an old one or an
 	// alias), locked by a download: the check waits for it (Busy is set).
 	EventBusy
+	// EventStatus is what the provider is doing (libmangal's progress, e.g. a mirror down,
+	// a rate limit), Status is set.
+	EventStatus
 )
 
 // Event is the progress of Check.
@@ -62,6 +66,7 @@ type Event struct {
 	Result  *Result
 	Found   *Found
 	Busy    *client.ProviderBusy
+	Status  string
 }
 
 // Result is the check of a watch: the recorded run (Chapters are the downloaded ones, or
@@ -423,8 +428,13 @@ func (s *Service) checkProvider(ctx context.Context, provider string, watches []
 			continue
 		}
 		onEvent(Event{Kind: EventStart, Watch: w})
+		status := func(ctx context.Context) context.Context {
+			return progress.WithReporter(ctx, func(st progress.Status) {
+				onEvent(Event{Kind: EventStatus, Watch: w, Status: st.String()})
+			})
+		}
 		if src == nil && srcErr == nil && !missing {
-			src, srcErr = s.Source(ctx, provider)
+			src, srcErr = s.Source(status(ctx), provider)
 			if srcErr == nil && src.Info().ID != provider && !opts.DryRun {
 				var unlock func()
 				ctx, unlock, srcErr = client.LockProvider(ctx, s.Watches, src.Info().ID, client.LockForWatch, func(b client.ProviderBusy) {
@@ -443,7 +453,7 @@ func (s *Service) checkProvider(ctx context.Context, provider string, watches []
 			r = s.failed(w, s.now(), fmt.Errorf("load %s: %w", provider, srcErr))
 		} else {
 			gaps := opts.Gaps || s.GapsDue(w, s.now())
-			r = s.checkOne(ctx, src, w, gaps, opts.DryRun, func(f Found) {
+			r = s.checkOne(status(ctx), src, w, gaps, opts.DryRun, func(f Found) {
 				onEvent(Event{Kind: EventFound, Watch: w, Found: &f})
 			}, func(e client.Event) {
 				onEvent(Event{Kind: EventChapter, Watch: w, Chapter: &e})

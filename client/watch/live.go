@@ -30,6 +30,11 @@ const (
 	LiveChapter = "chapter"
 	// LiveWait is a rate limit waited out before trying the chapter again.
 	LiveWait = "wait"
+	// LiveProgress is the page progress of the chapter being downloaded (Chapter, Pages and
+	// PagesDone are set). Not kept for new subscribers.
+	LiveProgress = "progress"
+	// LiveStatus is what the provider is doing (e.g. a mirror down, a rate limit).
+	LiveStatus = "status"
 	// LiveChapterDone is a chapter downloaded, failed or unavailable.
 	LiveChapterDone = "chapter_done"
 	// LiveDone is a watch checked (Status is its result's).
@@ -57,6 +62,10 @@ type LiveEvent struct {
 	Message string `json:"message"`
 	// Status is the watch's result on LiveDone (new, none, error, skipped).
 	Status string `json:"status,omitempty"`
+	// Pages is the chapter's page count (LiveProgress, LiveChapterDone), PagesDone how
+	// many are downloaded (LiveProgress).
+	Pages     int `json:"pages,omitempty"`
+	PagesDone int `json:"pages_done,omitempty"`
 }
 
 // ProviderStatus is a provider being checked.
@@ -188,11 +197,14 @@ func (h *Hub) publish(e LiveEvent) {
 		e.Time = time.Now()
 	}
 	h.track(e)
-	events := append(h.recent[e.Run], e)
-	if len(events) > recentPerRun {
-		events = slices.Delete(events, 0, len(events)-recentPerRun)
+	// one per page would push the rest out
+	if e.Kind != LiveProgress {
+		events := append(h.recent[e.Run], e)
+		if len(events) > recentPerRun {
+			events = slices.Delete(events, 0, len(events)-recentPerRun)
+		}
+		h.recent[e.Run] = events
 	}
-	h.recent[e.Run] = events
 	if e.Kind == LiveRunDone {
 		h.finished = append(h.finished, e.Run)
 		if len(h.finished) > keepFinished {
@@ -222,7 +234,7 @@ func (h *Hub) track(e LiveEvent) {
 		ps.State = "checking"
 	case LiveStart:
 		ps.Watch, ps.Title, ps.WatchSince, ps.Chapter, ps.State = e.Watch, e.Title, e.Time, nil, "checking"
-	case LiveFound, LiveChapter, LiveWait:
+	case LiveFound, LiveChapter, LiveWait, LiveProgress, LiveStatus:
 		ps.State = e.Message
 		if e.Chapter != nil {
 			ps.Chapter = e.Chapter
@@ -259,6 +271,11 @@ func liveEvent(run int64, e Event) (LiveEvent, bool) {
 			le.Kind, le.Message = LiveChapter, "downloading chapter "+num
 		case client.EventWait:
 			le.Kind, le.Message = LiveWait, fmt.Sprintf("chapter %s rate limited (retry #%d), waiting %s", num, c.Attempt, c.Wait)
+		case client.EventProgress:
+			le.Kind, le.Message = LiveProgress, fmt.Sprintf("chapter %s: %s", num, c)
+			if c.Progress.Total > 0 {
+				le.Pages, le.PagesDone = c.Progress.Total, c.Progress.Done
+			}
 		case client.EventDone:
 			le.Kind = LiveChapterDone
 			r := c.Result
@@ -271,12 +288,18 @@ func liveEvent(run int64, e Event) (LiveEvent, bool) {
 				le.Message = fmt.Sprintf("chapter %s already there (%s)", num, r.Down.Skipped)
 			default:
 				le.Message = "downloaded chapter " + num
+				if r.Down != nil && r.Down.Pages > 0 {
+					le.Pages = r.Down.Pages
+					le.Message += fmt.Sprintf(" (%d pages)", r.Down.Pages)
+				}
 			}
 		default:
 			return le, false
 		}
 	case EventBusy:
 		le.Kind, le.Message = LiveWait, e.Busy.Message()
+	case EventStatus:
+		le.Kind, le.Message = LiveStatus, e.Status
 	case EventDone:
 		le.Kind, le.Message, le.Status = LiveDone, outcome(*e.Result, false), e.Result.Status
 		if e.Result.Title != "" {

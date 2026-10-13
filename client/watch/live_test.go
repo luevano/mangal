@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/storage"
@@ -84,5 +85,22 @@ func TestLiveEventMessages(t *testing.T) {
 	nothing := Event{Kind: EventFound, Watch: w, Found: &Found{Chapters: 70, From: f32(65)}}
 	if le, _ := liveEvent(9, nothing); le.Message != "found 70 chapters, nothing new from 65" {
 		t.Errorf("nothing %q", le.Message)
+	}
+	pages := Event{Kind: EventChapter, Watch: w, Chapter: &client.Event{Kind: client.EventProgress, Result: r,
+		Progress: &libmangal.DownloadProgress{Stage: libmangal.DownloadStageImages, Done: 23, Total: 57}}}
+	if le, ok := liveEvent(9, pages); !ok || le.Kind != LiveProgress || le.Message != "chapter 65: 23/57 pages" || le.Pages != 57 || le.PagesDone != 23 {
+		t.Errorf("progress %+v", le)
+	}
+	status := Event{Kind: EventStatus, Watch: w, Status: "MangaDex: rate limited"}
+	if le, ok := liveEvent(9, status); !ok || le.Kind != LiveStatus || le.Message != "MangaDex: rate limited" || le.Provider != "p" {
+		t.Errorf("status %+v", le)
+	}
+
+	// the page progress isn't kept for new subscribers
+	h := NewHub()
+	h.publish(LiveEvent{Run: 1, Kind: LiveProgress})
+	h.publish(LiveEvent{Run: 1, Kind: LiveStatus})
+	if recent := h.Recent(); len(recent) != 1 || recent[0].Kind != LiveStatus {
+		t.Errorf("recent %+v", recent)
 	}
 }

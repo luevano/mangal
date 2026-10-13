@@ -15,6 +15,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cron"
@@ -88,6 +89,8 @@ type fakeSource struct {
 	entered chan struct{}
 	// onDownload, when set, is called before each download
 	onDownload func(ctx context.Context)
+	// status, when set, is reported by Chapters
+	status string
 
 	mu         sync.Mutex
 	downloaded []float32
@@ -132,6 +135,9 @@ func (s *fakeSource) Chapters(ctx context.Context, manga mangadata.Manga) ([]man
 	}
 	if s.err != nil {
 		return nil, s.err
+	}
+	if s.status != "" {
+		progress.Report(ctx, progress.Status{Message: s.status})
 	}
 	var chs []mangadata.Chapter
 	for _, c := range s.chs[manga.Info().ID] {
@@ -369,7 +375,13 @@ func TestCheck(t *testing.T) {
 
 	e.now = e.now.Add(time.Minute)
 	var events []EventKind
-	report, err = e.svc.Check(ctx, nil, CheckOptions{OnEvent: func(ev Event) { events = append(events, ev.Kind) }})
+	src.status = "listing"
+	report, err = e.svc.Check(ctx, nil, CheckOptions{OnEvent: func(ev Event) {
+		events = append(events, ev.Kind)
+		if ev.Kind == EventStatus && ev.Status != "listing" {
+			t.Errorf("status %q", ev.Status)
+		}
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +392,7 @@ func TestCheck(t *testing.T) {
 	if !slices.Equal(src.downloaded, []float32{65.5, 66}) {
 		t.Errorf("downloaded %v", src.downloaded)
 	}
-	if !slices.Equal(events, []EventKind{EventStart, EventFound, EventChapter, EventChapter, EventDone}) {
+	if !slices.Equal(events, []EventKind{EventStart, EventStatus, EventFound, EventChapter, EventChapter, EventDone}) {
 		t.Errorf("events %v", events)
 	}
 	// one notification for the manga
