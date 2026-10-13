@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -252,6 +253,12 @@ func TestImage(t *testing.T) {
 		case "/sniffed":
 			w.Header().Set("Content-Type", "application/octet-stream")
 			w.Write(data)
+		case "/x.svg":
+			w.Header().Set("Content-Type", "image/svg+xml")
+			w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`))
+		case "/svg-octet":
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Write([]byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`))
 		case "/html":
 			w.Header().Set("Content-Type", "text/html")
 			w.Write([]byte("<html>cloudflare</html>"))
@@ -286,6 +293,9 @@ func TestImage(t *testing.T) {
 		if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "image/webp" || !bytes.Equal(body, data) {
 			t.Fatalf("status %d, type %q, %d bytes", resp.StatusCode, resp.Header.Get("Content-Type"), len(body))
 		}
+		if resp.Header.Get("X-Content-Type-Options") != "nosniff" || !strings.HasPrefix(resp.Header.Get("Content-Security-Policy"), "sandbox") {
+			t.Errorf("headers %v", resp.Header)
+		}
 	}
 	if hits.Load() != 1 {
 		t.Errorf("not cached: %d upstream requests", hits.Load())
@@ -295,7 +305,7 @@ func TestImage(t *testing.T) {
 		t.Errorf("sniffed: status %d, type %q", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
 
-	for _, path := range []string{"/html", "/missing", "/big"} {
+	for _, path := range []string{"/html", "/missing", "/big", "/x.svg", "/svg-octet"} {
 		before := hits.Load()
 		for range 2 {
 			if resp, _ := getImage(path, ""); resp.StatusCode != http.StatusBadGateway {

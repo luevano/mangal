@@ -158,6 +158,7 @@ func newHandler(server *Server) (*echo.Echo, error) {
 	e.HideBanner = true
 	e.HidePort = true
 	e.HTTPErrorHandler = apiError
+	e.Use(imageHeaders)
 	api.RegisterHandlersWithBaseURL(e, api.NewStrictHandler(server, nil), "api")
 	e.StaticFS("/", ui)
 	return e, nil

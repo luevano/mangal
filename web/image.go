@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/labstack/echo/v4"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/web/api"
 )
@@ -96,16 +97,39 @@ func (s *Server) fetchImage(ctx context.Context, rawURL, referer string) (cached
 	return cachedImage{data: data, contentType: contentType}, nil
 }
 
+// rasterTypes are the image types the proxy passes: no SVG, which runs scripts when opened
+// from mangal's origin.
+var rasterTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/gif":  true,
+	"image/webp": true,
+	"image/avif": true,
+	"image/bmp":  true,
+}
+
 // imageType is the image's media type, from the header or else the content.
 func imageType(header string, data []byte) (string, error) {
-	if mediaType, _, err := mime.ParseMediaType(header); err == nil && strings.HasPrefix(mediaType, "image/") {
+	if mediaType, _, err := mime.ParseMediaType(header); err == nil && rasterTypes[mediaType] {
 		return mediaType, nil
 	}
 	// some sites send images as application/octet-stream
-	if sniffed := http.DetectContentType(data); strings.HasPrefix(sniffed, "image/") {
+	if sniffed, _, _ := mime.ParseMediaType(http.DetectContentType(data)); rasterTypes[sniffed] {
 		return sniffed, nil
 	}
 	return "", fmt.Errorf("not an image (%q): %w", header, errUpstream)
+}
+
+// imageHeaders keep a proxied image from being anything but an image in the browser.
+func imageHeaders(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if strings.HasPrefix(c.Request().URL.Path, "/api/") {
+			h := c.Response().Header()
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("Content-Security-Policy", "sandbox; default-src 'none'")
+		}
+		return next(c)
+	}
 }
 
 func checkHTTPURL(rawURL string) error {
