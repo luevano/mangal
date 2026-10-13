@@ -293,7 +293,11 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case backupsFoundMsg:
 		return askBackups(s.confirm, s.View(), msg)
 	case setRootMsg:
-		// in Update, the config isn't safe to write from the background
+		// in Update, the config isn't safe to write from the background; there may be no
+		// file yet
+		if err := config.CreateFile(); err != nil {
+			return func() tea.Msg { return err }
+		}
 		if err := config.WriteKey(config.Download.Path.Key, msg.dir); err != nil {
 			return func() tea.Msg { return err }
 		}
