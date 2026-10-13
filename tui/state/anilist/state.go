@@ -157,7 +157,7 @@ func (s *state) bindCmd(ctx context.Context, meta lmmeta.Metadata) tea.Cmd {
 var idQuery = regexp.MustCompile(`^\s*(?:id:\s*)?(\d+)\s*$`)
 
 func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
-	return base.Load(ctx, fmt.Sprintf("Searching %q on %s", query, s.src.Name), func(ctx context.Context) ([]_list.Item, error) {
+	return base.LoadWithStatus(ctx, fmt.Sprintf("Searching %q on %s", query, s.src.Name), func(ctx context.Context, _ func(string)) ([]_list.Item, error) {
 		if m := idQuery.FindStringSubmatch(query); m != nil {
 			id, _ := strconv.Atoi(m[1])
 			meta, found, err := s.provider.SearchByIDContext(ctx, id)

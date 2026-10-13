@@ -217,7 +217,7 @@ func (s *Manga) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 func (s *Manga) searchCmd(ctx context.Context, query string) tea.Cmd {
 	provider := s.provider
-	return base.Load(ctx, fmt.Sprintf("Searching %q on %s", query, provider), func(ctx context.Context) (ResultsMsg, error) {
+	return base.LoadWithStatus(ctx, fmt.Sprintf("Searching %q on %s", query, provider), func(ctx context.Context, _ func(string)) (ResultsMsg, error) {
 		return s.Results(ctx, provider, query)
 	}, func(msg ResultsMsg) tea.Msg { return msg })
 }

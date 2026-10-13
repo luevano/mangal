@@ -228,7 +228,7 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
 }
 
 func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
-	return base.Load(ctx, fmt.Sprintf("Searching for %q", query), func(ctx context.Context) ([]_list.Item, error) {
+	return base.LoadWithStatus(ctx, fmt.Sprintf("Searching for %q", query), func(ctx context.Context, _ func(string)) ([]_list.Item, error) {
 		mangas, err := s.client.SearchMangasContext(ctx, query)
 		if err != nil {
 			return nil, fmt.Errorf("search %q: %w", query, err)
@@ -253,10 +253,11 @@ func (s *state) openCmd(ctx context.Context, i *item) tea.Cmd {
 	if searchMeta {
 		label = fmt.Sprintf("Searching metadata and volumes for %q", manga)
 	}
-	return base.Load(ctx, label, func(ctx context.Context) (openedMsg, error) {
+	return base.LoadWithStatus(ctx, label, func(ctx context.Context, status func(string)) (openedMsg, error) {
 		msg := openedMsg{item: i}
 		if searchMeta {
 			msg.meta, msg.notice = s.searchMetadata(ctx, manga)
+			status(fmt.Sprintf("Searching volumes for %q", manga))
 		}
 
 		vols, err := s.client.MangaVolumesContext(ctx, manga)
@@ -273,7 +274,10 @@ func (s *state) openCmd(ctx context.Context, i *item) tea.Cmd {
 			expand, msg.expanded = vols, fmt.Sprintf("Skipped single volume (cfg: %s)", config.TUI.ExpandSingleVolume.Key)
 			msg.volume = vols[0]
 		}
-		for _, v := range expand {
+		for n, v := range expand {
+			if len(expand) > 1 {
+				status(fmt.Sprintf("Searching chapters: volume %d/%d", n+1, len(expand)))
+			}
 			c, err := s.client.VolumeChaptersContext(ctx, v)
 			if err != nil {
 				return msg, fmt.Errorf("get the chapters of volume %s: %w", v, err)
