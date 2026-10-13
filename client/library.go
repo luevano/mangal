@@ -11,6 +11,7 @@ import (
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/template"
 	"github.com/luevano/mangal/v5/util/afs"
@@ -34,6 +35,16 @@ func LibraryFiles() (library.Files, error) {
 // LibraryModes are download.mode_file and download.mode_dir.
 func LibraryModes() library.Modes {
 	return library.Modes{File: config.Download.ModeFile.Get(), Dir: config.Download.ModeDir.Get()}
+}
+
+// LibraryMarkOptions are how Mark tells a folder's provider: the installed providers,
+// download.provider.create_dir and the provider name template.
+func LibraryMarkOptions() (library.MarkOptions, error) {
+	loaders, err := manager.Loaders()
+	if err != nil {
+		return library.MarkOptions{}, err
+	}
+	return library.MarkOptions{Loaders: loaders, ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider}, nil
 }
 
 // LibraryMover moves library mangas to other providers, with the configured name

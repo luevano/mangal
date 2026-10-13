@@ -557,6 +557,95 @@ func markFolders(cmd *cobra.Command, st *status, lib storage.Library, root strin
 	return nil
 }
 
+var libraryMarkArgs = struct {
+	Apply bool
+}{}
+
+func init() {
+	libraryCmd.AddCommand(libraryMarkCmd)
+	libraryMarkCmd.Flags().BoolVar(&libraryMarkArgs.Apply, "apply", false, "Write the markers, instead of only listing them")
+}
+
+var libraryMarkCmd = &cobra.Command{
+	Use:   "mark <id>...",
+	Short: "Write the .libmangal.json of library mangas",
+	Long: `Write the .libmangal.json of these library mangas (ids from "mangal library ls") from
+what the library knows, as "mangal library scan --mark" does for every folder without one.
+Unlike it, a .libmangal.json that's broken (invalid JSON) or says another provider manga
+than the library's sources (or has no manga id) is replaced, keeping its metadata ids of
+other sources; one that agrees is left. Only lists what it would write unless --apply.`,
+	Example: `  mangal library mark 12
+  mangal library mark 12 15 --apply`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		files, err := client.LibraryFiles()
+		if err != nil {
+			return err
+		}
+		opts, err := client.LibraryMarkOptions()
+		if err != nil {
+			return err
+		}
+		var mangas []storage.Manga
+		for _, arg := range args {
+			id, err := strconv.ParseInt(arg, 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid manga id %q", arg)
+			}
+			m, ok, err := files.Library.MangaByID(id)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("no manga %d in the library", id)
+			}
+			mangas = append(mangas, m)
+		}
+		verb := "would mark"
+		mark := func(dryRun bool) (int, error) {
+			n := 0
+			opts.DryRun = dryRun
+			for _, m := range mangas {
+				marked, done, err := files.MarkManga(m, opts)
+				if err != nil {
+					return n, err
+				}
+				if !done {
+					if dryRun {
+						cmd.Printf("%d %s: nothing to do (its %s agrees, or no folder, or nothing to go by)\n", m.ID, m.Title, libmangal.FilenameMangaDirInfo)
+					}
+					continue
+				}
+				n++
+				as := cmp.Or(marked.Info.Provider, "no provider")
+				if marked.Info.Manga.ID != "" {
+					as += " " + marked.Info.Manga.ID
+				}
+				if dryRun == !libraryMarkArgs.Apply {
+					cmd.Printf("%s %s as %s (%s)\n", verb, m.Path(), as, marked.Evidence)
+				}
+			}
+			return n, nil
+		}
+		n, err := mark(true)
+		if err != nil || n == 0 {
+			return err
+		}
+		if !libraryMarkArgs.Apply {
+			cmd.Println("run with --apply to write them")
+			return nil
+		}
+		verb = "marked"
+		snapshot, err := client.Operation("mark", fmt.Sprintf("mark %d folders", n), func(j library.Journal) error {
+			files.Journal = j
+			_, err := mark(false)
+			return err
+		})
+		undoHint(cmd, snapshot, err)
+		return err
+	},
+}
+
 // checkIDs reports the metadata ids of the adopted folders that look wrong.
 func checkIDs(cmd *cobra.Command, st *status, lib storage.Library) error {
 	mangas, err := lib.Mangas()
