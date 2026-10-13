@@ -19,7 +19,7 @@ build:
 
 # run tests
 test:
-    go test ./...
+    go test -race ./...
 
 # generate assets
 generate:

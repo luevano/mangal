@@ -24,7 +24,7 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
-    files: [LICENSE, README.md]
+    files: [LICENSE, README.md, mangal.service]
 
 checksum:
   name_template: checksums.txt
