@@ -14,7 +14,7 @@ import (
 func New(accentColor lipgloss.Color) *Model {
 	list := list.New(
 		2, 0,
-		"manga", "mangas",
+		"format", "formats",
 		libmangal.FormatValues(),
 		func(format libmangal.Format) _list.DefaultItem {
 			return &item{format: format}
@@ -27,8 +27,7 @@ func New(accentColor lipgloss.Color) *Model {
 		Padding(0, 1).
 		Margin(0, 1, 1, 1).
 		Render("Formats")
-	// needs to be rendered here, as rendering aat item.go
-	// (on its definition) will load the incorrect icon type
+	// rendered here: at init the icons aren't configured yet
 	sep = style.Bold.Warning.Padding(0, 1).Render(icon.Separator.Raw())
 
 	h := help.New()
@@ -38,10 +37,8 @@ func New(accentColor lipgloss.Color) *Model {
 		list:  list,
 		title: t,
 		help:  h.View(_keyMap),
-		size: base.Size{ // basically perfect size, will make tweakable later
-			Width:  24,
-			Height: 12, // only space required for current formats
-		},
+		// fits the formats
+		size:   base.Size{Width: 24, Height: 12},
 		keyMap: _keyMap,
 	}
 }

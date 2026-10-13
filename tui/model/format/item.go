@@ -14,8 +14,7 @@ var (
 	_ list.DefaultItem = (*item)(nil)
 )
 
-// the sep needs to be rendered after the app is
-// completely loaded, else the incorrect icon will be used
+// sep is rendered by New, once the icons are configured
 var (
 	sep  string
 	down = style.Bold.Warning.Render("down")

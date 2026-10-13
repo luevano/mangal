@@ -24,8 +24,7 @@ type Model struct {
 	title,
 	help string
 
-	size,
-	maxSize base.Size
+	size base.Size
 
 	keyMap keyMap
 }
@@ -39,8 +38,11 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	if !ok || m.list.FilterState() == _list.Filtering {
 		return m.list.Update(msg)
 	}
-	// guaranteed to always have items
-	i, _ := m.list.SelectedItem().(*item)
+	i, ok := m.list.SelectedItem().(*item)
+	if !ok {
+		// a filter that matches none
+		return m.list.Update(msg)
+	}
 	switch {
 	case key.Matches(keyMsg, m.keyMap.setRead):
 		return m.setFormat(forRead, i.format)
