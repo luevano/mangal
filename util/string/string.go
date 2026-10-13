@@ -25,3 +25,17 @@ func Quantify(n int, singular, plural string) string {
 func FormatFloa32(n float32) string {
 	return strconv.FormatFloat(float64(n), 'f', -1, 32)
 }
+
+// HumanSize is a byte size like 12.3 MB.
+func HumanSize(n int64) string {
+	const unit = 1000
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "kMGTPE"[exp])
+}

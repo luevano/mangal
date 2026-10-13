@@ -24,6 +24,7 @@ import (
 	"github.com/luevano/mangal/v5/template"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/spf13/cobra"
 )
 
@@ -378,7 +379,7 @@ func printTrash(cmd *cobra.Command) {
 		files += b.Files
 		size += b.Size
 	}
-	cmd.Printf("\n%d files (%s) in the trash, \"mangal library trash empty\" deletes them\n", files, humanSize(size))
+	cmd.Printf("\n%d files (%s) in the trash, \"mangal library trash empty\" deletes them\n", files, stringutil.HumanSize(size))
 }
 
 var libraryScanArgs = struct {
@@ -881,7 +882,7 @@ var libraryTrashCmd = &cobra.Command{
 			return nil
 		}
 		for _, b := range batches {
-			cmd.Printf("%s  %d files  %s  %s\n", b.Name, b.Files, humanSize(b.Size), b.Path)
+			cmd.Printf("%s  %d files  %s  %s\n", b.Name, b.Files, stringutil.HumanSize(b.Size), b.Path)
 		}
 		return nil
 	},

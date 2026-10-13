@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/spf13/afero"
 )
 
@@ -412,26 +413,13 @@ func checkTrash(s *snapshot) []Finding {
 		return nil
 	}
 	return []Finding{{Severity: Info, Subject: Subject{Kind: "library", Name: "trash"},
-		Message: fmt.Sprintf("%s (%s) in the trash, from %s", plural(files, "file"), humanSize(size), plural(len(s.fs.trash), "batch")),
+		Message: fmt.Sprintf("%s (%s) in the trash, from %s", plural(files, "file"), stringutil.HumanSize(size), plural(len(s.fs.trash), "batch")),
 		Fix: Fix{
 			Commands: []string{"mangal library trash", "mangal library trash empty"},
 			Note:     "lists the batches; emptying deletes them for good (no undo)",
 			TUI:      tuiLibrary + ": trash, empty",
 			Action:   &Action{Kind: ActionEmptyTrash},
 		}}}
-}
-
-func humanSize(n int64) string {
-	const unit = 1000
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for m := n / unit; m >= unit; m /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "kMGTPE"[exp])
 }
 
 // M4: broken .libmangal.json files (unreadable, invalid JSON): scans and renames take the

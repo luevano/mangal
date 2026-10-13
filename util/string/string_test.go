@@ -45,3 +45,11 @@ func TestFormatFloa32(t *testing.T) {
 		}
 	}
 }
+
+func TestHumanSize(t *testing.T) {
+	for n, want := range map[int64]string{0: "0 B", 999: "999 B", 1000: "1.0 kB", 12_300_000: "12.3 MB", 2_500_000_000: "2.5 GB"} {
+		if got := HumanSize(n); got != want {
+			t.Errorf("%d: got %q, want %q", n, got, want)
+		}
+	}
+}
