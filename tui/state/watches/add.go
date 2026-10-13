@@ -185,7 +185,7 @@ func (s *addState) Resize(size base.Size) tea.Cmd { return nil }
 func (s *addState) Init(ctx context.Context) tea.Cmd {
 	c, manga, chapters, connect := s.client, s.manga, s.chapters, s.connect
 	providerDirs := config.Download.Provider.CreateDir.Get()
-	return base.Load(ctx, "Looking up "+manga.String(), func(ctx context.Context) (infoMsg, error) {
+	return base.LoadWithStatus(ctx, "Looking up "+manga.String(), func(ctx context.Context, status func(string)) (infoMsg, error) {
 		var msg infoMsg
 		m, err := connect(ctx)
 		if err != nil {
@@ -204,6 +204,7 @@ func (s *addState) Init(ctx context.Context) tea.Cmd {
 			return msg, err
 		}
 		if chapters == nil {
+			status("Getting the chapters of " + manga.String())
 			if chapters, err = client.MangaChapters(ctx, c, manga); err != nil {
 				return msg, err
 			}
@@ -280,7 +281,7 @@ func (s *addState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return base.Notify("Already watched, see the watches (" + base.KeyWatches.Help().Key + " on the home screen)")
 	}
 	m, opts := s.manager, s.options()
-	return base.Load(ctx, "Watching "+s.manga.String(), func(ctx context.Context) (addedMsg, error) {
+	return base.LoadWithStatus(ctx, "Watching "+s.manga.String(), func(ctx context.Context, _ func(string)) (addedMsg, error) {
 		w, err := m.Add(ctx, opts)
 		if errors.Is(err, watch.ErrExists) {
 			return addedMsg{}, fmt.Errorf("already watched: %w", err)
