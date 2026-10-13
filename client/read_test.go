@@ -68,10 +68,11 @@ func TestOpenFailed(t *testing.T) {
 		want bool
 	}{
 		{nil, false},
-		{fmt.Errorf("open %s: %w", path, errors.New("exit status 4")), true},
+		{&libmangal.OpenError{Path: path, Err: errors.New("exit status 4")}, true},
+		{fmt.Errorf("open %s: %w", path, errors.New("a message alike")), false},
 		{errors.Join(errors.New("set progress on anilist: unauthorized")), false},
 	} {
-		if got := openFailed(c.err, path); got != c.want {
+		if got := openFailed(c.err); got != c.want {
 			t.Errorf("%v: got %t", c.err, got)
 		}
 	}

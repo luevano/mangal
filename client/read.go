@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/luevano/libmangal"
@@ -33,7 +32,7 @@ func ReadChapter(ctx context.Context, c *libmangal.Client, path string, chapter 
 		return err
 	}
 	err = c.ReadChapterContext(ctx, path, chapter, options)
-	if openFailed(err, path) {
+	if openFailed(err) {
 		return err
 	}
 	err = errors.Join(err, syncBound(ctx, c, chapter, bound))
@@ -75,9 +74,9 @@ func loggedIn(ctx context.Context, ensure func(context.Context) error, provider 
 }
 
 // openFailed is a ReadChapterContext error from opening the file, not from the sync.
-// TODO: a typed error from libmangal instead of its message.
-func openFailed(err error, path string) bool {
-	return err != nil && strings.HasPrefix(err.Error(), "open "+path+": ")
+func openFailed(err error) bool {
+	var openErr *libmangal.OpenError
+	return errors.As(err, &openErr)
 }
 
 func recordRead(provider libmangal.ProviderInfo, chapter mangadata.Chapter, providerDirs bool, at time.Time) error {
