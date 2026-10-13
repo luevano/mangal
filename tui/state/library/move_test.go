@@ -71,6 +71,7 @@ func TestMove(t *testing.T) {
 		t.Error("the library manga's source isn't marked")
 	}
 	res, _ := ms.Results(ctx, "mango-weebcentral", "Berserk")
+	res.Search = ms.NewSearch()
 	ms.Update(ctx, res)
 
 	// another title: keep it or adopt the new one

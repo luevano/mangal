@@ -730,6 +730,8 @@ func TestRelink(t *testing.T) {
 	if err != nil || res.Provider != "mango-weebcentral" || len(res.Items) != 2 || res.Items[0].(*pick.MangaItem).Current {
 		t.Fatalf("search %+v, %v", res, err)
 	}
+	// the search started by the pick
+	res.Search = r.NewSearch()
 	r.Update(ctx, res)
 	if r.Provider() != "mango-weebcentral" || len(r.List.Items()) != 2 || !r.Assign.Enabled() {
 		t.Errorf("results: %s, %d", r.Provider(), len(r.List.Items()))
@@ -980,5 +982,27 @@ func TestLiveLogCapScrolled(t *testing.T) {
 	}
 	if got := s.View(); got == "" || got == top && !strings.Contains(got, "line 50") {
 		t.Errorf("view at the top:\n%s", got)
+	}
+}
+
+// the results of a search that a later one replaced are dropped: enter would re-link to
+// a manga of the old search (MT-A7)
+func TestRelinkDropsLateResults(t *testing.T) {
+	m := testManager()
+	ctx := context.Background()
+	r := newRelinkState(m, m.watches[1])
+	search := pick.SearchProvider
+	t.Cleanup(func() { pick.SearchProvider = search })
+	pick.SearchProvider = func(ctx context.Context, provider, query string) ([]mangadata.Manga, string, error) {
+		return []mangadata.Manga{&testManga{mangadata.MangaInfo{ID: query, Title: query}}}, provider, nil
+	}
+	old, _ := r.Results(ctx, "mango-mangaplus", "old query")
+	old.Search = r.NewSearch()
+	latest, _ := r.Results(ctx, "mango-mangaplus", "new query")
+	latest.Search = r.NewSearch()
+	r.Update(ctx, latest)
+	r.Update(ctx, old)
+	if got := r.List.Items()[0].(*pick.MangaItem).Manga.Info().ID; got != "new query" {
+		t.Errorf("shown %q, the late results replaced the latest", got)
 	}
 }

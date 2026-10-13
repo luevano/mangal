@@ -123,6 +123,8 @@ type Manga struct {
 type ResultsMsg struct {
 	Provider string
 	Items    []_list.Item
+	// Search is its number (searchlist.Screen.NewSearch)
+	Search int
 }
 
 // ProviderPickedMsg is the provider picked for the search.
@@ -181,6 +183,10 @@ func (s *Manga) Init(ctx context.Context) tea.Cmd {
 func (s *Manga) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case ResultsMsg:
+		// a late one would re-link or move to a manga of the search before
+		if !s.Latest(msg.Search) {
+			return nil
+		}
 		s.provider = msg.Provider
 		cmd := s.SetResults(msg.Items)
 		s.updateKeys()
@@ -216,10 +222,13 @@ func (s *Manga) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 }
 
 func (s *Manga) searchCmd(ctx context.Context, query string) tea.Cmd {
-	provider := s.provider
+	provider, n := s.provider, s.NewSearch()
 	return base.LoadWithStatus(ctx, fmt.Sprintf("Searching %q on %s", query, provider), func(ctx context.Context, _ func(string)) (ResultsMsg, error) {
 		return s.Results(ctx, provider, query)
-	}, func(msg ResultsMsg) tea.Msg { return msg })
+	}, func(msg ResultsMsg) tea.Msg {
+		msg.Search = n
+		return msg
+	})
 }
 
 // Results searches the provider, marking the current manga.

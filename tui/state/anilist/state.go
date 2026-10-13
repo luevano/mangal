@@ -46,7 +46,11 @@ type state struct {
 	metadata key.Binding
 }
 
-type resultsMsg []_list.Item
+// resultsMsg are the results of a search, numbered by NewSearch.
+type resultsMsg struct {
+	search int
+	items  []_list.Item
+}
 
 type boundMsg struct {
 	src  client.MetadataSource
@@ -120,7 +124,10 @@ func (s *state) Init(ctx context.Context) tea.Cmd {
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case resultsMsg:
-		cmd := s.SetResults(msg)
+		if !s.Latest(msg.search) {
+			return nil
+		}
+		cmd := s.SetResults(msg.items)
 		s.updateKeys()
 		return cmd
 	case boundMsg:
@@ -164,6 +171,7 @@ func (s *state) bindCmd(ctx context.Context, meta lmmeta.Metadata) tea.Cmd {
 var idQuery = regexp.MustCompile(`^\s*(?:id:\s*)?(\d+)\s*$`)
 
 func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
+	n := s.NewSearch()
 	return base.LoadWithStatus(ctx, fmt.Sprintf("Searching %q on %s", query, s.src.Name), func(ctx context.Context, _ func(string)) ([]_list.Item, error) {
 		if m := idQuery.FindStringSubmatch(query); m != nil {
 			id, _ := strconv.Atoi(m[1])
@@ -201,7 +209,7 @@ func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 			items = append(items, &item{src: s.src, meta: manga, bad: score < lmmeta.GoodMatchScore, score: score})
 		}
 		return items, nil
-	}, func(items []_list.Item) tea.Msg { return resultsMsg(items) })
+	}, func(items []_list.Item) tea.Msg { return resultsMsg{search: n, items: items} })
 }
 
 func (s *state) updateKeys() {

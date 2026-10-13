@@ -24,14 +24,19 @@ type History struct {
 }
 
 // Screen is embedded in a search base.State, it implements all but Title, KeyMap and
-// Update. The State starts its search on a search.SearchMsg, shows the results with
-// SetResults, and sends every msg to Screen.Update (which keeps the history):
+// Update. The State starts its search on a search.SearchMsg (numbered by NewSearch),
+// shows the results of the latest one with SetResults, and sends every msg to
+// Screen.Update (which keeps the history):
 //
 //	func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 //		switch msg := msg.(type) {
 //		case search.SearchMsg:
-//			return tea.Batch(s.Screen.Update(msg), base.Load(ctx, "Searching", ..., toResultsMsg))
+//			n := s.NewSearch()
+//			return tea.Batch(s.Screen.Update(msg), base.Load(ctx, "Searching", ..., toResultsMsg(n)))
 //		case resultsMsg:
+//			if !s.Latest(msg.search) {
+//				return nil
+//			}
 //			return s.SetResults(msg.items)
 //		case tea.KeyMsg:
 //			if !s.Inputting() {
@@ -47,6 +52,8 @@ type Screen struct {
 	history  History
 	records  cache.Records
 	searched bool
+	// searches counts the searches started, results of an older one are dropped
+	searches int
 }
 
 // New makes a Screen, the history (its funcs may be nil) gives the suggestions.
@@ -57,6 +64,18 @@ func New(search *search.Model, list *list.Model, history History) Screen {
 type historyMsg struct {
 	screen  *Screen
 	records cache.Records
+}
+
+// NewSearch numbers a search started now, its results carry the number to Latest.
+func (s *Screen) NewSearch() int {
+	s.searches++
+	return s.searches
+}
+
+// Latest is true for the results of the latest search: an older one's that comes late
+// (a slow search, then another) would replace them.
+func (s *Screen) Latest(search int) bool {
+	return search == s.searches
 }
 
 // Searched is true once results were set.

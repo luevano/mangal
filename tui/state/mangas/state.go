@@ -56,7 +56,11 @@ type keyMap struct {
 	toggleFullMeta key.Binding
 }
 
-type resultsMsg []_list.Item
+// resultsMsg are the results of a search, numbered by NewSearch.
+type resultsMsg struct {
+	search int
+	items  []_list.Item
+}
 
 // openedMsg is a manga ready to be shown: its metadata (nil if none was searched or
 // found) and its volumes.
@@ -154,7 +158,10 @@ func loginCmd(ctx context.Context) tea.Cmd {
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case resultsMsg:
-		cmd := s.SetResults(msg)
+		if !s.Latest(msg.search) {
+			return nil
+		}
+		cmd := s.SetResults(msg.items)
 		s.markWatched()
 		s.updateKeys()
 		return cmd
@@ -230,6 +237,7 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
 }
 
 func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
+	n := s.NewSearch()
 	return base.LoadWithStatus(ctx, fmt.Sprintf("Searching for %q", query), func(ctx context.Context, _ func(string)) ([]_list.Item, error) {
 		mangas, err := s.client.SearchMangasContext(ctx, query)
 		if err != nil {
@@ -240,7 +248,7 @@ func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 			items[i] = newItem(m, &s.extraInfo, &s.fullExtraInfo)
 		}
 		return items, nil
-	}, func(items []_list.Item) tea.Msg { return resultsMsg(items) })
+	}, func(items []_list.Item) tea.Msg { return resultsMsg{search: n, items: items} })
 }
 
 // openCmd searches the manga's metadata (download.metadata.search) and its volumes, or
