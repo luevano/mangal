@@ -34,7 +34,7 @@ var historyCmd = &cobra.Command{
 (provider and manga ids as shown in the list). Reads are recorded when read.history.local
 is set (the default).`,
 	Args:              cobra.MaximumNArgs(2),
-	ValidArgsFunction: completionProviderIDs,
+	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		history, err := cache.History()
 		if err != nil {
@@ -100,7 +100,7 @@ var historyClearCmd = &cobra.Command{
 	Short:             "Forget the chapters read",
 	Long:              `Forget every chapter read, or those of one provider or manga.`,
 	Args:              cobra.MaximumNArgs(2),
-	ValidArgsFunction: completionProviderIDs,
+	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		history, err := cache.History()
 		if err != nil {

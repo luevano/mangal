@@ -174,7 +174,7 @@ ones after --from.`,
 	Example: `  mangal watch add mango-mangapill "One-Punch Man" --from 200
   mangal watch add mango-mangaplus mid:100171 --anilist-id 132029`,
 	Args:              cobra.MinimumNArgs(2),
-	ValidArgsFunction: completionProviderIDs,
+	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		schedule, _, err := scheduleFlag(cmd.Flags(), watchAddArgs.Schedule, watchAddArgs.Interval)
 		if err != nil {

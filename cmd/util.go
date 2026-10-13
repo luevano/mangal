@@ -21,6 +21,7 @@ func successf(cmd *cobra.Command, format string, a ...any) {
 	cmd.Printf("%s %s\n", icon.Check.Colored(), fmt.Sprintf(format, a...))
 }
 
+// completionProviderIDs completes a provider id (a flag's value).
 func completionProviderIDs(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	loaders, err := manager.Loaders()
 	if err != nil {
@@ -31,17 +32,30 @@ func completionProviderIDs(_ *cobra.Command, _ []string, _ string) ([]string, co
 		return loader.Info().ID
 	})
 
-	return IDs, cobra.ShellCompDirectiveDefault
+	return IDs, cobra.ShellCompDirectiveNoFileComp
 }
 
-func completionConfigKeys(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+// completionFirstProvider completes the first argument with a provider id, nothing after
+// it (manga ids, queries).
+func completionFirstProvider(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return completionProviderIDs(cmd, args, toComplete)
+}
+
+// completionConfigKeys completes the first argument with a config key.
+func completionConfigKeys(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
 	keys := config.Keys()
 
 	filtered := lo.Filter(keys, func(key string, _ int) bool {
 		return strings.HasPrefix(key, toComplete)
 	})
 
-	return filtered, cobra.ShellCompDirectiveDefault
+	return filtered, cobra.ShellCompDirectiveNoFileComp
 }
 
 // readSecret reads a line from in, without echo when cmd's input is a terminal. An empty

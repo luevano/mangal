@@ -80,6 +80,7 @@ func init() {
 }
 
 func Execute() {
+	noFileCompletion(rootCmd)
 	rootCmd.SetOut(os.Stdout)
 	rootCmd.SetErr(os.Stderr)
 	rootCmd.SetIn(os.Stdin)
@@ -199,6 +200,17 @@ func setup(cmd *cobra.Command, _ []string) error {
 		}
 	}
 	return nil
+}
+
+// noFileCompletion makes the arguments of the commands without a completion complete
+// nothing: none takes a local file.
+func noFileCompletion(c *cobra.Command) {
+	if c.ValidArgsFunction == nil && len(c.ValidArgs) == 0 {
+		c.ValidArgsFunction = cobra.NoFileCompletions
+	}
+	for _, sub := range c.Commands() {
+		noFileCompletion(sub)
+	}
 }
 
 // bindFlags binds the flags that set a config key (configKeyFlag) to it.

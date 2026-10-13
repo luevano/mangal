@@ -55,3 +55,24 @@ func TestJSONFlags(t *testing.T) {
 		t.Errorf("inline download --json-output: %+v", f)
 	}
 }
+
+// manga ids and queries aren't completed with provider ids, nor files
+func TestCompletion(t *testing.T) {
+	noFileCompletion(rootCmd)
+	for _, path := range [][]string{{"history"}, {"bind"}, {"watch", "add"}, {"library", "downloads"}} {
+		c, _, err := rootCmd.Find(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, dir := c.ValidArgsFunction(c, []string{"mango-mangapill"}, ""); len(got) != 0 || dir != cobra.ShellCompDirectiveNoFileComp {
+			t.Errorf("%v second arg: %v, %v", path, got, dir)
+		}
+	}
+	c, _, _ := rootCmd.Find([]string{"watch", "rm"})
+	if c.ValidArgsFunction == nil {
+		t.Error("watch rm completes files")
+	}
+	if got, dir := completionConfigKeys(nil, []string{"icons"}, ""); len(got) != 0 || dir != cobra.ShellCompDirectiveNoFileComp {
+		t.Errorf("config set value: %v, %v", got, dir)
+	}
+}

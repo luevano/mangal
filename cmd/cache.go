@@ -21,7 +21,7 @@ var cacheClearCmd = &cobra.Command{
 	Short:             "Clear the whole cache, or only a provider's",
 	Long:              "Clear the whole cache, or only the cache of the given provider (or metadata provider, e.g. anilist). Title bindings, logins and history aren't cache, they're kept.",
 	Args:              cobra.MaximumNArgs(1),
-	ValidArgsFunction: completionProviderIDs,
+	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		st, err := cache.Storage()
 		if err != nil {

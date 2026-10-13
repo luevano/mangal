@@ -240,7 +240,7 @@ var libraryDownloadsCmd = &cobra.Command{
 	Long: `List the downloaded chapters, grouped by manga, or the chapters of one provider or manga
 (provider and manga ids as shown in the list).`,
 	Args:              cobra.MaximumNArgs(2),
-	ValidArgsFunction: completionProviderIDs,
+	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		lib, err := cache.Library()
 		if err != nil {

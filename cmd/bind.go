@@ -51,7 +51,7 @@ manga) share the bindings.`,
   mangal bind mango-mangaplus mid:100171 --remove kitsu
   mangal bind ls mango-mangapill`,
 	Args:              cobra.MinimumNArgs(2),
-	ValidArgsFunction: completionProviderIDs,
+	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
 		type set struct {
@@ -167,10 +167,11 @@ func formatBindings(bindings []storage.Binding) string {
 }
 
 var bindLsCmd = &cobra.Command{
-	Use:     "ls [provider [manga-id]]",
-	Aliases: []string{"list"},
-	Short:   "List the metadata bindings",
-	Args:    cobra.MaximumNArgs(2),
+	Use:               "ls [provider [manga-id]]",
+	Aliases:           []string{"list"},
+	Short:             "List the metadata bindings",
+	Args:              cobra.MaximumNArgs(2),
+	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		bindings, err := cache.Bindings()
 		if err != nil {
