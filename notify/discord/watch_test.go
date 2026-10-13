@@ -2,6 +2,8 @@ package discord
 
 import (
 	"context"
+	"errors"
+	"net/url"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -51,5 +53,28 @@ func TestSendWithoutMessageBack(t *testing.T) {
 	}
 	if len(got.Embeds) != 1 || got.Embeds[0].Timestamp == nil {
 		t.Errorf("sent %+v", got)
+	}
+}
+
+func TestSendRedactsWebhook(t *testing.T) {
+	saved := createMessage
+	t.Cleanup(func() { createMessage = saved })
+	const hook = "https://discord.com/api/webhooks/1/s3cr3tt0ken"
+	for _, sendErr := range []error{
+		&url.Error{Op: "Post", URL: "https://discord.com/api/v10/webhooks/1/s3cr3tt0ken?wait=true", Err: context.DeadlineExceeded},
+		errors.New("bad webhook " + hook),
+	} {
+		createMessage = func(context.Context, string, discord.WebhookMessageCreate) (*discord.Message, error) {
+			return nil, sendErr
+		}
+		r := watch.Result{WatchRun: storage.WatchRun{Provider: "p", Title: "X", Status: storage.StatusNew, Chapters: []storage.RunChapter{{Number: 1}}}}
+		err := SendWatch(context.Background(), hook, r, false)
+		if err == nil || strings.Contains(err.Error(), "s3cr3tt0ken") {
+			t.Errorf("error %v", err)
+		}
+		var ue *url.Error
+		if errors.As(sendErr, &ue) && !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("%v isn't the deadline", err)
+		}
 	}
 }

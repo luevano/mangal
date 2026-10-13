@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	neturl "net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -160,7 +161,7 @@ func send(ctx context.Context, url string, e discord.Embed, what string) error {
 		Embeds:   []discord.Embed{e},
 	})
 	if err != nil {
-		return err
+		return redact(err, url)
 	}
 	if m != nil {
 		log.Info("sent discord %s with id %d", what, m.ID)
@@ -168,6 +169,21 @@ func send(ctx context.Context, url string, e discord.Embed, what string) error {
 		log.Info("sent discord %s", what)
 	}
 	return nil
+}
+
+// redact drops the webhook URL from the error: its token is the secret, and the errors of
+// the requests (*url.Error) carry it to the logs.
+func redact(err error, webhook string) error {
+	var ue *neturl.Error
+	if errors.As(err, &ue) {
+		err = fmt.Errorf("%s discord webhook: %w", ue.Op, ue.Err)
+	}
+	// disgo builds its own url from the webhook's id and token
+	token := webhook[strings.LastIndex(webhook, "/")+1:]
+	if msg := err.Error(); token != "" && strings.Contains(msg, token) {
+		err = errors.New(strings.ReplaceAll(strings.ReplaceAll(msg, webhook, "<webhook url>"), token, "<token>"))
+	}
+	return err
 }
 
 // Send sends a summary of the download to the webhook.
