@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"mime"
 	"net/http"
 	"slices"
 	"strconv"
@@ -167,6 +168,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func decode(r *http.Request, v any) error {
+	// a page of another site can only send simple content types without a CORS preflight
+	if mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mediaType != "application/json" {
+		return &httpError{http.StatusUnsupportedMediaType, errors.New("the body has to be JSON (Content-Type: application/json)")}
+	}
 	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {

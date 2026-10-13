@@ -39,8 +39,10 @@ minute. Logs go to stderr and the log file; GET /api/events streams the live pro
 
 The JSON API (serve.host:serve.port, 127.0.0.1 by default) is what the TUI and the "mangal
 watch" commands use while it runs. On an address that isn't loopback it needs serve.token
-(Authorization: Bearer <token>). One server per data db: a second instance needs another
-config (--config) with its own data.path and serve.port.`,
+(Authorization: Bearer <token>), on loopback only with serve.token_on_loopback. Requests
+from another site's pages (a foreign Origin) are refused, bodies have to be JSON. One
+server per data db: a second instance needs another config (--config) with its own
+data.path and serve.port.`,
 	Example: `  mangal serve
   mangal --config ~/.config/mangal-b/mangal.toml serve --port 6978`,
 	GroupID: groupMode,
@@ -51,10 +53,11 @@ config (--config) with its own data.path and serve.port.`,
 			return err
 		}
 		return serve.Run(cmd.Context(), serve.Args{
-			Host:  config.Serve.Host.Get(),
-			Port:  config.Serve.Port.Get(),
-			Web:   config.Serve.Web.Get(),
-			Token: token,
+			Host:            config.Serve.Host.Get(),
+			Port:            config.Serve.Port.Get(),
+			Web:             config.Serve.Web.Get(),
+			Token:           token,
+			TokenOnLoopback: config.Serve.TokenOnLoopback.Get(),
 		}, cmd.ErrOrStderr())
 	},
 }

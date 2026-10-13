@@ -33,6 +33,8 @@ type Args struct {
 	Web bool
 	// Token is required by the API (as a bearer token), needed when Host isn't loopback.
 	Token string
+	// TokenOnLoopback requires the token on loopback too.
+	TokenOnLoopback bool
 }
 
 // lockName is the data db lock of the server, one per data db.
@@ -111,8 +113,11 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	if !loopback && args.Token == "" {
 		return fmt.Errorf("listening on %s (not loopback) needs a token: set serve.token (or MANGAL_SERVE_TOKEN)", listener.Addr())
 	}
+	if loopback && args.TokenOnLoopback && args.Token == "" {
+		return errors.New("serve.token_on_loopback needs a token: set serve.token (or MANGAL_SERVE_TOKEN), or save one with `mangal serve token --generate`")
+	}
 	token := args.Token
-	if loopback {
+	if loopback && !args.TokenOnLoopback {
 		token = ""
 	}
 
@@ -146,7 +151,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		})
 	}
 	server := &http.Server{
-		Handler:           web.CheckHost(listener.Addr(), mux),
+		Handler:           web.Guard(listener.Addr(), mux),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
@@ -166,8 +171,11 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		extra = ", web UI on " + address
 	}
 	listen := address
-	if !loopback {
+	switch {
+	case !loopback:
 		listen = fmt.Sprintf("%s (%s, token required)", listener.Addr(), address)
+	case token != "":
+		listen += " (token required)"
 	}
 	lg.Infof("mangal serve %s on %s%s, data %s (pid %d)", meta.Version, listen, extra, dataDB, os.Getpid())
 

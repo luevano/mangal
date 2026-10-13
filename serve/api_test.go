@@ -199,6 +199,9 @@ func (s *testServer) call(t *testing.T, method, path string, body string, out an
 	if err != nil {
 		t.Fatal(err)
 	}
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -378,7 +381,7 @@ func TestHostCheck(t *testing.T) {
 	s := newTestServer(t, "")
 	mux := http.NewServeMux()
 	s.api.Register(mux)
-	h := web.CheckHost(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}, mux)
+	h := web.Guard(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}, mux)
 	for host, want := range map[string]int{"127.0.0.1:6977": http.StatusOK, "localhost:6977": http.StatusOK, "evil.example:6977": http.StatusMisdirectedRequest} {
 		req := httptest.NewRequest("GET", "/api/watches", nil)
 		req.Host = host
@@ -387,6 +390,48 @@ func TestHostCheck(t *testing.T) {
 		if rec.Code != want {
 			t.Errorf("%s: %d, want %d", host, rec.Code, want)
 		}
+	}
+}
+
+// TestCrossSite: a page of another site can't use the API (no-cors POSTs need no preflight).
+func TestCrossSite(t *testing.T) {
+	s := newTestServer(t, "")
+	mux := http.NewServeMux()
+	s.api.Register(mux)
+	h := web.Guard(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}, mux)
+	for _, tc := range []struct {
+		method, path, origin, contentType string
+		want                              int
+	}{
+		{"POST", "/api/check", "", "text/plain", http.StatusUnsupportedMediaType},
+		{"POST", "/api/check", "", "", http.StatusUnsupportedMediaType},
+		{"POST", "/api/check", "https://evil.example", "application/json", http.StatusForbidden},
+		{"POST", "/api/check", "null", "application/json", http.StatusForbidden},
+		{"GET", "/api/watches", "https://evil.example", "", http.StatusForbidden},
+		{"GET", "/api/events", "http://127.0.0.1:1234", "", http.StatusForbidden},
+		{"POST", "/api/watches", "http://127.0.0.1:6977", "application/json; charset=utf-8", http.StatusBadRequest},
+		{"GET", "/api/watches", "http://127.0.0.1:6977", "", http.StatusOK},
+	} {
+		// the event stream ends with the request
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		req := httptest.NewRequestWithContext(ctx, tc.method, tc.path, strings.NewReader(`{"dry_run":true,"nope":1}`))
+		req.Host = "127.0.0.1:6977"
+		if tc.origin != "" {
+			req.Header.Set("Origin", tc.origin)
+		}
+		if tc.contentType != "" {
+			req.Header.Set("Content-Type", tc.contentType)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != tc.want {
+			t.Errorf("%s %s origin %q type %q: %d, want %d", tc.method, tc.path, tc.origin, tc.contentType, rec.Code, tc.want)
+		}
+	}
+	runs, err := s.svc.Runs(context.Background(), watch.RunFilter{})
+	if err != nil || len(runs) != 0 {
+		t.Errorf("runs %v %v", runs, err)
 	}
 }
 
@@ -573,6 +618,7 @@ func TestAPIEvents(t *testing.T) {
 	var resp watch.CheckResponse
 	req, _ := http.NewRequest("POST", s.URL+"/api/check", strings.NewReader(`{}`))
 	req.Header.Set("Authorization", "Bearer tok")
+	req.Header.Set("Content-Type", "application/json")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

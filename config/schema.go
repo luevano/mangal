@@ -177,5 +177,7 @@ type configServe struct {
 	Host  *entry[string, string]
 	Port  *entry[int64, int]
 	Token *entry[string, string]
-	Web   *entry[bool, bool]
+	// TokenOnLoopback requires the token on loopback too.
+	TokenOnLoopback *entry[bool, bool]
+	Web             *entry[bool, bool]
 }

@@ -355,3 +355,27 @@ func TestCheckHost(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckOrigin(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	h := Guard(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6970}, ok)
+	for origin, want := range map[string]int{
+		"":                       http.StatusOK,
+		"http://127.0.0.1:6970":  http.StatusOK,
+		"http://127.0.0.1:6971":  http.StatusForbidden,
+		"https://127.0.0.1:6970": http.StatusForbidden,
+		"https://evil.example":   http.StatusForbidden,
+		"null":                   http.StatusForbidden,
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/api/image?url=x", nil)
+		r.Host = "127.0.0.1:6970"
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Errorf("%q: %d, want %d", origin, w.Code, want)
+		}
+	}
+}
