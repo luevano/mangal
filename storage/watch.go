@@ -306,6 +306,7 @@ func scanWatch(rows *sql.Rows) (Watch, error) {
 
 // Add adds a watch, its ID and Added are set. A manga already watched is ErrWatchExists.
 func (s Watches) Add(w Watch) (Watch, error) {
+	s.DB.touch()
 	if w.Added.IsZero() {
 		w.Added = time.Now()
 	}
@@ -370,6 +371,7 @@ func (s Watches) Remove(id int64) error {
 
 // SetLibraryManga links the watch to its library manga, unless it's linked already.
 func (s Watches) SetLibraryManga(id, manga int64) error {
+	s.DB.touch()
 	if _, err := s.DB.Exec(`UPDATE watches SET library_manga = ? WHERE id = ? AND library_manga IS NULL`, manga, id); err != nil {
 		return fmt.Errorf("link watch %d to library manga %d: %w", id, manga, err)
 	}
@@ -378,6 +380,7 @@ func (s Watches) SetLibraryManga(id, manga int64) error {
 
 // Save writes every field of the watch but its provider, manga id and added time.
 func (s Watches) Save(w Watch) error {
+	s.DB.touch()
 	res, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = ?, enabled = ?, schedule = ?, gaps = ?,
 	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?, retry = ?, resumed = ?, skip = ?
 WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, w.Schedule, w.Gaps,
@@ -398,6 +401,7 @@ WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, w.Schedule, w.Gaps,
 // metadata bindings move to the new manga (a source the new manga has a binding of already
 // keeps the watch's). A manga another watch has is ErrWatchExists.
 func (s Watches) Relink(id int64, provider, mangaID, title string, libraryManga int64, at time.Time) error {
+	s.DB.touch()
 	err := s.DB.InTx(func(tx *sql.Tx) error {
 		return relinkWatch(tx, id, provider, mangaID, title, libraryManga, at, true)
 	})
@@ -473,6 +477,7 @@ WHERE c.manga = ? AND EXISTS (SELECT 1 FROM downloads d WHERE d.chapter_id = c.i
 
 // StartRun records the start of a check run, its ID is set.
 func (s Watches) StartRun(run CheckRun) (CheckRun, error) {
+	s.DB.touch()
 	res, err := s.DB.Exec(`INSERT INTO check_runs (kind, started) VALUES (?, ?)`, run.Kind, unix(run.Started))
 	if err != nil {
 		return run, fmt.Errorf("start check run: %w", err)
@@ -483,6 +488,7 @@ func (s Watches) StartRun(run CheckRun) (CheckRun, error) {
 
 // FinishRun records the end of a check run and its totals.
 func (s Watches) FinishRun(run CheckRun) error {
+	s.DB.touch()
 	_, err := s.DB.Exec(`UPDATE check_runs SET finished = ?, watches = ?, new_chapters = ?, errors = ? WHERE id = ?`,
 		unix(run.Finished), run.Watches, run.NewChapters, run.Errors, run.ID)
 	if err != nil {
@@ -493,6 +499,7 @@ func (s Watches) FinishRun(run CheckRun) error {
 
 // RecordWatchRun records the check of a watch with its chapters, its ID is set.
 func (s Watches) RecordWatchRun(r WatchRun) (WatchRun, error) {
+	s.DB.touch()
 	err := s.DB.InTx(func(tx *sql.Tx) error {
 		r.NewChapters = r.New()
 		res, err := tx.Exec(`INSERT INTO watch_runs (check_run, watch, provider, manga_id, title, from_number, status, error, started, finished, new_chapters, skipped)

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"modernc.org/sqlite"
@@ -130,12 +131,57 @@ CREATE INDEX downloads_manga ON downloads (provider, manga_id)`),
 	sqlMigration(linkPicksTable),
 	sqlMigration(libraryStatus),
 	sqlMigration(healthIgnoresTable),
+	sqlMigration(journalInterfered),
 }
 
 // DB is an open SQLite database.
 type DB struct {
 	*sql.DB
 	Path string
+	// activity counts this process's writes that aren't library operations (downloads,
+	// reads, watch checks and edits), see Mark
+	activity *atomic.Int64
+}
+
+// touch counts a write of this process that isn't a library operation's.
+func (db *DB) touch() {
+	if db.activity != nil {
+		db.activity.Add(1)
+	}
+}
+
+// Mark is how far the database's writes are, to tell later if others wrote since.
+type Mark struct {
+	version, activity int64
+}
+
+// Mark is how far the writes of others are now: other processes' commits
+// (data_version: the process has one connection) and this process's downloads, reads and
+// watch checks.
+func (db *DB) Mark() (Mark, error) {
+	var m Mark
+	if err := db.QueryRow(`PRAGMA data_version`).Scan(&m.version); err != nil {
+		return m, fmt.Errorf("data version: %w", err)
+	}
+	if db.activity != nil {
+		m.activity = db.activity.Load()
+	}
+	return m, nil
+}
+
+// writtenSince says who wrote to the database since the mark (other than a library
+// operation of this process), "" when nobody did.
+func (db *DB) writtenSince(m Mark) (string, error) {
+	now, err := db.Mark()
+	switch {
+	case err != nil:
+		return "", err
+	case now.version != m.version:
+		return "another mangal process changed the database while it ran", nil
+	case now.activity != m.activity:
+		return "a download, read or watch check changed the database while it ran", nil
+	}
+	return "", nil
 }
 
 // Open opens (creating it if needed) the database at path and applies the migrations.
@@ -159,7 +205,7 @@ func open(path string, migrations []Migration, synchronous string) (*DB, error) 
 	// writes are serialized anyway, one connection avoids busy errors inside the process
 	sqlDB.SetMaxOpenConns(1)
 
-	db := &DB{DB: sqlDB, Path: path}
+	db := &DB{DB: sqlDB, Path: path, activity: new(atomic.Int64)}
 	if err := db.migrate(migrations); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("migrate %s: %w", path, err)

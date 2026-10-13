@@ -142,6 +142,9 @@ func (p UndoPlan) Refusal(force bool) error {
 	if p.ChangedErr != nil {
 		reasons = append(reasons, p.ChangedErr.Error())
 	}
+	if p.Op.Interfered != "" {
+		reasons = append(reasons, p.Op.Interfered+": restoring the snapshot loses that")
+	}
 	if len(p.Changed) != 0 {
 		reasons = append(reasons, fmt.Sprintf("the library changed since (%s): restoring the snapshot loses those changes", strings.Join(p.Changed, ", ")))
 	}
@@ -412,7 +415,7 @@ func (u Undoer) Apply(plan UndoPlan, force bool) (UndoResult, error) {
 		}
 		return res, nil
 	}
-	if err := u.Journal.Restore(plan.Op); err != nil {
+	if err := u.Journal.Restore(plan.Op, force); err != nil {
 		return res, fmt.Errorf("restore the database: %w (the files are undone, \"mangal library scan\" fixes the library)", err)
 	}
 	res.Restored = true

@@ -181,6 +181,7 @@ func (l Library) FindMangaDir(parent string, provider libmangal.ProviderInfo, in
 
 // RememberMangaDir implements libmangal.MangaDirIndex.
 func (l Library) RememberMangaDir(parent, name string, info libmangal.MangaDirInfo) error {
+	l.DB.touch()
 	return l.DB.InTx(func(tx *sql.Tx) error {
 		return rememberDir(tx, parent, name, info)
 	})
@@ -379,6 +380,7 @@ LIMIT 1`, filepath.Dir(mangaDir), filepath.Base(mangaDir), mangaDir, chapter.Inf
 
 // RecordDownload records a downloaded chapter of the manga folder.
 func (l Library) RecordDownload(parent, dir string, dl Download) error {
+	l.DB.touch()
 	err := l.DB.InTx(func(tx *sql.Tx) error {
 		manga, err := mangaFor(tx, parent, dir, Source{Provider: dl.Provider, MangaID: dl.MangaID, Title: dl.MangaTitle})
 		if err != nil {

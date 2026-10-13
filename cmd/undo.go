@@ -37,7 +37,9 @@ history and title bindings aren't restored.
 
 Nothing is ever overwritten: a step whose file is gone or whose old place is taken
 again is listed and refuses the undo. It's refused too when the library changed since
-(a download, a read, a watch check, ...): restoring the snapshot would lose that.
+(a download, a read, a watch check, ...) or while it ran (another mangal, e.g. "mangal
+serve", or a download): restoring the snapshot would lose that. Publication statuses and
+the link picks of "library bind" don't count, they're looked up again.
 --force undoes it anyway, skipping those steps; "mangal library scan" then fixes the
 library. Emptying the trash can't be undone.
 
@@ -136,6 +138,8 @@ func listOperations(cmd *cobra.Command, undoer library.Undoer) error {
 			state = "  never finished"
 		case op.Error != "":
 			state = "  stopped midway: " + op.Error
+		case op.Interfered != "":
+			state = "  " + op.Interfered
 		}
 		cmd.Printf("%d  %s  %s  %s  %d steps  %s%s\n", op.ID, op.Started.Format(time.DateTime), op.Kind, op.Summary, op.Steps, op.Snapshot, state)
 	}

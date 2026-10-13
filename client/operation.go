@@ -62,15 +62,20 @@ func pruneSnapshots() {
 // undo"): the data database is snapshotted first (if that fails nothing is done), and
 // the file changes do makes through the journal are recorded. It returns the snapshot.
 func Operation(kind, summary string, do func(library.Journal) error) (string, error) {
+	st, err := cache.Storage()
+	if err != nil {
+		return "", err
+	}
+	// before the snapshot: a write by others between them is lost by an undo too
+	mark, err := st.Data.Mark()
+	if err != nil {
+		return "", err
+	}
 	snapshot, err := Snapshot(kind)
 	if err != nil {
 		return "", err
 	}
-	st, err := cache.Storage()
-	if err != nil {
-		return snapshot, err
-	}
-	op, err := st.Journal().Begin(kind, summary, snapshot)
+	op, err := st.Journal().BeginAfter(mark, kind, summary, snapshot)
 	if err != nil {
 		return snapshot, err
 	}

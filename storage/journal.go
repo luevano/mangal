@@ -43,12 +43,25 @@ CREATE TABLE journal_steps (
 	PRIMARY KEY (op, seq)
 ) WITHOUT ROWID`
 
+// journalInterfered: why an operation can't be undone cleanly, other changes made while
+// it ran (a restore of its snapshot would lose them).
+const journalInterfered = `ALTER TABLE journal ADD COLUMN interfered TEXT NOT NULL DEFAULT ''`
+
 // keptTables aren't restored from a snapshot: no library operation changes them, and
 // logins, searches or dismissed health findings made since are worth more than the old
 // ones.
 var keptTables = []string{
 	TableTitleBindings, TableAuthTokens, TableAuthHistory, TableSearchHistory,
 	"locks", "journal", "journal_steps", "health_ignores",
+}
+
+// unfingerprinted are the tables (all columns: nil) and columns that are restored but
+// whose changes don't count as the library changing: looked up or worked out again
+// anytime (publication statuses, the link picks a dry run finds), they'd refuse every
+// undo after a "library ls" or a "library bind" dry run.
+var unfingerprinted = map[string][]string{
+	"library_mangas": {"status", "status_updated"},
+	"link_picks":     nil,
 }
 
 // StepKind is what a journal step did.
@@ -89,10 +102,14 @@ type Op struct {
 	Undone time.Time
 	// Steps is how many file changes it made.
 	Steps int
+	// Interfered says what else changed the database while it ran (another process, a
+	// download): undoing it would lose that.
+	Interfered string
 
 	fingerprint string
 	db          *DB
 	seq         int
+	since       Mark
 }
 
 // Journal is the journal of the library operations, in the data database.
@@ -105,9 +122,19 @@ func (s Storage) Journal() Journal {
 	return Journal{DB: s.Data}
 }
 
-// Begin starts journaling an operation, whose database snapshot is snapshot.
+// Begin starts journaling an operation, whose database snapshot is snapshot, taken now.
 func (j Journal) Begin(kind, summary, snapshot string) (*Op, error) {
-	op := &Op{Kind: kind, Summary: summary, Started: time.Now(), Snapshot: snapshot, db: j.DB}
+	mark, err := j.DB.Mark()
+	if err != nil {
+		return nil, fmt.Errorf("journal %s: %w", kind, err)
+	}
+	return j.BeginAfter(mark, kind, summary, snapshot)
+}
+
+// BeginAfter starts journaling an operation, whose database snapshot is snapshot, taken
+// after mark: what others write to the database since makes it not cleanly undoable.
+func (j Journal) BeginAfter(mark Mark, kind, summary, snapshot string) (*Op, error) {
+	op := &Op{Kind: kind, Summary: summary, Started: time.Now(), Snapshot: snapshot, db: j.DB, since: mark}
 	res, err := j.DB.Exec(`INSERT INTO journal (kind, summary, started, snapshot) VALUES (?, ?, ?, ?)`,
 		kind, summary, op.Started.UnixMilli(), snapshot)
 	if err != nil {
@@ -143,13 +170,17 @@ func (o *Op) Finish(opErr error) error {
 	if err != nil {
 		return fmt.Errorf("journal %s: %w", o.Kind, err)
 	}
+	interfered, err := o.db.writtenSince(o.since)
+	if err != nil {
+		return fmt.Errorf("journal %s: %w", o.Kind, err)
+	}
 	msg := ""
 	if opErr != nil {
 		msg = opErr.Error()
 	}
-	o.Finished, o.Error, o.fingerprint = time.Now(), msg, sum
-	_, err = o.db.Exec(`UPDATE journal SET finished = ?, error = ?, fingerprint = ?, summary = ? WHERE id = ?`,
-		o.Finished.UnixMilli(), msg, sum, o.Summary, o.ID)
+	o.Finished, o.Error, o.fingerprint, o.Interfered = time.Now(), msg, sum, interfered
+	_, err = o.db.Exec(`UPDATE journal SET finished = ?, error = ?, fingerprint = ?, summary = ?, interfered = ? WHERE id = ?`,
+		o.Finished.UnixMilli(), msg, sum, o.Summary, interfered, o.ID)
 	if err != nil {
 		return fmt.Errorf("journal %s: %w", o.Kind, err)
 	}
@@ -157,12 +188,12 @@ func (o *Op) Finish(opErr error) error {
 }
 
 const opColumns = `id, kind, summary, started, finished, error, snapshot, fingerprint, undone,
-	(SELECT count(*) FROM journal_steps WHERE op = journal.id)`
+	(SELECT count(*) FROM journal_steps WHERE op = journal.id), interfered`
 
 func scanOp(rows *sql.Rows) (Op, error) {
 	var op Op
 	var started, finished, undone int64
-	err := rows.Scan(&op.ID, &op.Kind, &op.Summary, &started, &finished, &op.Error, &op.Snapshot, &op.fingerprint, &undone, &op.Steps)
+	err := rows.Scan(&op.ID, &op.Kind, &op.Summary, &started, &finished, &op.Error, &op.Snapshot, &op.fingerprint, &undone, &op.Steps, &op.Interfered)
 	op.Started = time.UnixMilli(started)
 	if finished != 0 {
 		op.Finished = time.UnixMilli(finished)
@@ -241,6 +272,10 @@ var ErrNotFinished = errors.New("the operation never finished (mangal was killed
 // what the operation itself did: changed since it finished (downloads, reads, watch
 // checks, other operations).
 func (j Journal) Changed(op Op) ([]string, error) {
+	return changed(j.DB, op)
+}
+
+func changed(q querier, op Op) ([]string, error) {
 	if op.fingerprint == "" {
 		return nil, ErrNotFinished
 	}
@@ -248,7 +283,8 @@ func (j Journal) Changed(op Op) ([]string, error) {
 	if err := json.Unmarshal([]byte(op.fingerprint), &then); err != nil {
 		return nil, fmt.Errorf("fingerprint of operation %d: %w", op.ID, err)
 	}
-	sum, err := fingerprint(j.DB)
+	_, v2 := then[fingerprintVersion]
+	sum, err := fingerprintOf(q, v2)
 	if err != nil {
 		return nil, err
 	}
@@ -272,8 +308,11 @@ func (j Journal) Changed(op Op) ([]string, error) {
 }
 
 // Restore puts the tables back as they were in the operation's snapshot (all but
-// keptTables) and marks it undone, in one transaction.
-func (j Journal) Restore(op Op) error {
+// keptTables) and marks it undone, in one transaction. It's refused when newer
+// operations aren't undone, and unless force when the database changed since the
+// operation finished, others changed it while it ran or it never finished: checked again
+// inside the transaction, things may have changed since the undo was planned.
+func (j Journal) Restore(op Op, force bool) error {
 	if _, err := os.Stat(op.Snapshot); err != nil {
 		return fmt.Errorf("snapshot of operation %d: %w", op.ID, err)
 	}
@@ -304,6 +343,9 @@ func (j Journal) Restore(op Op) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := restoreRefusal(tx, op, force); err != nil {
+		return err
+	}
 	// deleting cascades only into tables that are restored too
 	if _, err := tx.Exec(`PRAGMA defer_foreign_keys = ON`); err != nil {
 		return err
@@ -338,6 +380,39 @@ func (j Journal) Restore(op Op) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// restoreRefusal is why the operation's snapshot can't be restored now, nil if it can.
+func restoreRefusal(tx *sql.Tx, op Op, force bool) error {
+	var newer int
+	if err := tx.QueryRow(`SELECT count(*) FROM journal WHERE id > ? AND undone = 0`, op.ID).Scan(&newer); err != nil {
+		return err
+	}
+	if newer != 0 {
+		return fmt.Errorf("%d operations made after it aren't undone: undo them first", newer)
+	}
+	if force {
+		return nil
+	}
+	var undone int64
+	var interfered string
+	if err := tx.QueryRow(`SELECT undone, interfered FROM journal WHERE id = ?`, op.ID).Scan(&undone, &interfered); err != nil {
+		return fmt.Errorf("operation %d: %w", op.ID, err)
+	}
+	if undone != 0 {
+		return fmt.Errorf("operation %d was undone already", op.ID)
+	}
+	if interfered != "" {
+		return errors.New(interfered + ": restoring the snapshot loses that")
+	}
+	changed, err := changed(tx, op)
+	if err != nil {
+		return err
+	}
+	if len(changed) != 0 {
+		return fmt.Errorf("the library changed since (%s): restoring the snapshot loses those changes", strings.Join(changed, ", "))
+	}
+	return nil
 }
 
 // MarkUndone marks the operation undone without restoring the database.
@@ -376,23 +451,44 @@ func columns(q querier, table string) ([]string, error) {
 	return cols, nil
 }
 
-// fingerprint is a hash per restorable table of its rows, as JSON.
-func fingerprint(db *DB) (string, error) {
-	tables, err := restorable(db, "main")
+// fingerprintVersion is in the fingerprints since unfingerprinted, the older ones hash
+// every column.
+const fingerprintVersion = "_v2"
+
+// fingerprint is a hash per restorable table of its rows, as JSON (but unfingerprinted).
+func fingerprint(q querier) (string, error) {
+	return fingerprintOf(q, true)
+}
+
+func fingerprintOf(q querier, v2 bool) (string, error) {
+	tables, err := restorable(q, "main")
 	if err != nil {
 		return "", err
 	}
 	sums := map[string]string{}
+	if v2 {
+		sums[fingerprintVersion] = ""
+	}
 	for _, t := range tables {
-		cols, err := columns(db, t)
+		skip, ok := unfingerprinted[t]
+		if !v2 {
+			skip, ok = nil, false
+		}
+		if ok && skip == nil {
+			continue
+		}
+		all, err := columns(q, t)
 		if err != nil {
 			return "", err
 		}
+		cols := slices.DeleteFunc(all, func(c string) bool {
+			return slices.ContainsFunc(skip, func(s string) bool { return quote(s) == c })
+		})
 		order := make([]string, len(cols))
 		for i := range cols {
 			order[i] = fmt.Sprint(i + 1)
 		}
-		rows, err := db.Query(`SELECT * FROM main.` + quote(t) + ` ORDER BY ` + strings.Join(order, ", "))
+		rows, err := q.Query(`SELECT ` + strings.Join(cols, ", ") + ` FROM main.` + quote(t) + ` ORDER BY ` + strings.Join(order, ", "))
 		if err != nil {
 			return "", fmt.Errorf("fingerprint %s: %w", t, err)
 		}

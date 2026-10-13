@@ -54,6 +54,7 @@ CREATE INDEX reads_library_manga ON reads (library_manga)`
 
 // Record records a read of the chapter at r.Last (Count, First are ignored).
 func (h History) Record(r Read) error {
+	h.DB.touch()
 	var libraryManga sql.NullInt64
 	if r.LibraryManga != 0 {
 		libraryManga = sql.NullInt64{Int64: r.LibraryManga, Valid: true}
