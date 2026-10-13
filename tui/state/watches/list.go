@@ -671,8 +671,10 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 			return s.check(ctx, []int64{w.ID}, watch.CheckOptions{Gaps: true, Kind: watch.KindGaps}, w.Title+" (gaps)"), true
 		}
 		s.started = s.now()
+		// a new poll loop: the spinner's goes with the old one
 		s.gen++
-		return tea.Batch(checkProviderCmd(ctx, m, w.Provider), s.tick(pollChecking)), true
+		s.spinning = false
+		return tea.Batch(checkProviderCmd(ctx, m, w.Provider), s.tick(pollChecking), s.spin()), true
 	case key.Matches(msg, s.keys.pause):
 		return pauseCmd(m, w), true
 	case key.Matches(msg, s.keys.pauseProvider):
