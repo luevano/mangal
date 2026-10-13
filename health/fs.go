@@ -493,7 +493,7 @@ func markerFindings(s *snapshot) []Finding {
 		if what == "" {
 			continue
 		}
-		f := Finding{Severity: Warning, Subject: mangaSubject(m), Message: "its .libmangal.json " + what,
+		f := Finding{Severity: Warning, Subject: mangaSubject(m), Part: "marker", Message: "its .libmangal.json " + what,
 			Fix: Fix{
 				Commands: []string{fmt.Sprintf("mangal library mark %d", m.ID)},
 				Note:     "lists the .libmangal.json it would write from the library source (its other ids kept), --apply writes it",

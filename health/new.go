@@ -59,6 +59,7 @@ func New(ctx context.Context) (Checker, error) {
 			return client.LibraryStatuses(st.Library()).Update(ctx, mangas, bindings, fetch)
 		},
 		NewChapters:  listNewChapters,
+		Ignores:      storage.HealthIgnores{DB: st.Data}.List,
 		FS:           afs.Afero,
 		Mark:         library.MarkOptions{ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider},
 		ProviderName: template.Provider,

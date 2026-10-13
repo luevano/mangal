@@ -504,3 +504,43 @@ func TestMissingNumbers(t *testing.T) {
 		t.Errorf("ranges %q", got)
 	}
 }
+
+func TestDismiss(t *testing.T) {
+	c := newChecker(t)
+	c.Ignores = func() ([]storage.HealthIgnore, error) {
+		return []storage.HealthIgnore{{Check: "M3", Subject: "manga/3/al"}, {Check: "W10", Subject: "manga/5"}, {Check: "L6", Subject: "library/trash"}}, nil
+	}
+	report, err := c.Run(context.Background(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Dismissed != 3 {
+		t.Errorf("%d dismissed, want 3", report.Dismissed)
+	}
+	for _, f := range report.Findings {
+		switch {
+		case f.Key == "M3/manga/3/al" || f.Check == "L6":
+			t.Errorf("dismissed %s shown", f.Key)
+		case f.Check == "W10":
+			if !strings.HasSuffix(f.Message, "(1 dismissed)") || slices.ContainsFunc(f.Items, func(i Finding) bool { return i.Subject.ID == 5 }) {
+				t.Errorf("W10 %q, items %+v", f.Message, f.Items)
+			}
+		case f.Check == "M3" && f.Key != "M3/manga/3/pick-kt" && f.Key != "M3/manga/3/marker":
+			t.Errorf("M3 key %q", f.Key)
+		}
+	}
+	all, err := c.Run(context.Background(), Options{All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trash, ok := find(all, want{check: "L6", kind: "library"})
+	if !ok || !trash.Dismissed || trash.Key != "L6/library/trash" || all.Counts.Total() != report.Counts.Total() {
+		t.Errorf("with all: %+v, counts %+v vs %+v", trash, all.Counts, report.Counts)
+	}
+	if check, subject, err := SplitKey("m3/manga/3/al"); check != "M3" || subject != "manga/3/al" || err != nil {
+		t.Errorf("split: %s %s %v", check, subject, err)
+	}
+	if _, _, err := SplitKey("Z9/manga/3"); err == nil {
+		t.Error("unknown check split")
+	}
+}

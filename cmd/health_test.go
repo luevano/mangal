@@ -18,8 +18,8 @@ func TestPrintHealth(t *testing.T) {
 			{Check: "W10", Category: health.Watches, Severity: health.Info, Subject: health.Subject{Kind: "library", Name: "library"},
 				Message: "2 mangas aren't watched: 1 ongoing/unknown, 1 finished", Fix: health.Fix{Commands: []string{"mangal health --only W10"}},
 				Items: []health.Finding{
-					{Subject: health.Subject{Kind: "manga", ID: 3, Name: "Kingdom"}, Message: "ongoing, not watched", Fix: health.Fix{Commands: []string{"mangal watch add mango-mangadex mid:k"}}},
-					{Subject: health.Subject{Kind: "manga", ID: 5, Name: "Death Note"}, Message: "finished, not watched (fine)"},
+					{Check: "W10", Subject: health.Subject{Kind: "manga", ID: 3, Name: "Kingdom"}, Message: "ongoing, not watched", Fix: health.Fix{Commands: []string{"mangal watch add mango-mangadex mid:k"}}},
+					{Check: "W10", Subject: health.Subject{Kind: "manga", ID: 5, Name: "Death Note"}, Message: "finished, not watched (fine)"},
 				}},
 		},
 		Counts: health.Counts{Error: 1, Warning: 1, Info: 1},
@@ -27,14 +27,14 @@ func TestPrintHealth(t *testing.T) {
 	var b strings.Builder
 	printHealth(&b, report, nil)
 	want := `watches: 2 (1 error, 1 info)
-  [error] W1 watch 4 Dorohedoro (mango-mangadex): needs re-link
+  [error] W1/watch/4 Dorohedoro (mango-mangadex): needs re-link
       fix: mangal watch move 4
       (searches its title)
-  [info] W10 library: 2 mangas aren't watched: 1 ongoing/unknown, 1 finished
+  [info] W10/library: 2 mangas aren't watched: 1 ongoing/unknown, 1 finished
       fix: mangal health --only W10
 
 metadata: 1 (1 warning)
-  [warning] M6 manga 1 One-Punch Man: AniList 74347 is in 2 folders, keep 1
+  [warning] M6/manga/1 One-Punch Man: AniList 74347 is in 2 folders, keep 1
       keep 1  One-Punch Man
       fix: mangal library merge 1 2
 
@@ -48,11 +48,11 @@ metadata: 1 (1 warning)
 	b.Reset()
 	printHealth(&b, health.Report{Findings: report.Findings[2:], Counts: health.Counts{Info: 1}}, []string{"w10"})
 	want = `watches: 1 (1 info)
-  [info] W10 library: 2 mangas aren't watched: 1 ongoing/unknown, 1 finished
+  [info] W10/library: 2 mangas aren't watched: 1 ongoing/unknown, 1 finished
       fix: mangal health --only W10
-      manga 3 Kingdom: ongoing, not watched
+      W10/manga/3 Kingdom: ongoing, not watched
           fix: mangal watch add mango-mangadex mid:k
-      manga 5 Death Note: finished, not watched (fine)
+      W10/manga/5 Death Note: finished, not watched (fine)
 
 1 finding: 1 info
 `
@@ -63,5 +63,10 @@ metadata: 1 (1 warning)
 	printHealth(&b, health.Report{}, nil)
 	if b.String() != "no problems found\n" {
 		t.Errorf("empty: %q", b.String())
+	}
+	b.Reset()
+	printHealth(&b, health.Report{Dismissed: 2}, nil)
+	if b.String() != "no problems found (2 dismissed, --all shows them)\n" {
+		t.Errorf("dismissed: %q", b.String())
 	}
 }

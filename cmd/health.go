@@ -7,13 +7,18 @@ import (
 	"strings"
 
 	"github.com/luevano/mangal/v5/health"
+	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 )
 
 var healthArgs = struct {
-	JSON    bool
-	Network bool
-	Only    []string
+	JSON      bool
+	Network   bool
+	Only      []string
+	All       bool
+	Dismiss   []string
+	Undismiss []string
 }{}
 
 func init() {
@@ -21,6 +26,9 @@ func init() {
 	f := healthCmd.Flags()
 	f.BoolVar(&healthArgs.JSON, "json", false, "Print the report as JSON")
 	f.BoolVar(&healthArgs.Network, "network", false, "Also run the checks that make requests (W12) and look the publication statuses up on AniList")
+	f.BoolVar(&healthArgs.All, "all", false, "Also show the dismissed findings")
+	f.StringArrayVar(&healthArgs.Dismiss, "dismiss", nil, "Dismiss the finding with this key (fine as it is: hidden from then on), repeatable")
+	f.StringArrayVar(&healthArgs.Undismiss, "undismiss", nil, "Bring back the dismissed finding with this key, repeatable")
 	f.StringSliceVar(&healthArgs.Only, "only", nil, "Only these categories (watches, gaps, metadata, library, global) or checks (W1, G1, ...); a summary check named here (W10) lists its mangas")
 }
 
@@ -58,13 +66,21 @@ an installed source) have their providers' chapter lists checked for chapters ne
 the library's (W12, "watch it?"; one provider's mangas at a time, holding its lock, like a
 watch check; watch.parallel_providers at once).
 
+Each finding starts with its key, <check>/<subject> (W1/watch/4, M3/manga/5/al,
+L6/library/trash; a summary's items have theirs, listed by --only <check>): --dismiss
+<key> hides a finding that's fine as it is (not counted, "N dismissed" at the end, --all
+shows them), --undismiss <key> brings it back. Dismissing checks that the finding is
+there now.
+
 With "mangal serve" running the watches are its. The exit code is 1 when something is an
 error (a watch that isn't checked any more).`,
 	Example: `  mangal health
   mangal health --only watches,gaps
   mangal health --only M6 --json
   mangal health --only W10
-  mangal health --network --only watches`,
+  mangal health --network --only watches
+  mangal health --dismiss W10/manga/12 --dismiss L6/library/trash
+  mangal health --all --only library`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
@@ -74,7 +90,10 @@ error (a watch that isn't checked any more).`,
 			return err
 		}
 		checker.OnProgress = st.Set
-		report, err := checker.Run(st.Context(cmd.Context()), health.Options{Only: healthArgs.Only, Network: healthArgs.Network})
+		if len(healthArgs.Dismiss) != 0 || len(healthArgs.Undismiss) != 0 {
+			return dismissFindings(cmd, checker, st)
+		}
+		report, err := checker.Run(st.Context(cmd.Context()), health.Options{Only: healthArgs.Only, Network: healthArgs.Network, All: healthArgs.All})
 		st.Done()
 		if err != nil {
 			return err
@@ -94,6 +113,71 @@ error (a watch that isn't checked any more).`,
 		}
 		return nil
 	},
+}
+
+// dismissFindings dismisses (the findings must be there now) and undismisses findings by
+// key.
+func dismissFindings(cmd *cobra.Command, checker health.Checker, st *status) error {
+	st2, err := cache.Storage()
+	if err != nil {
+		return err
+	}
+	ignores := storage.HealthIgnores{DB: st2.Data}
+	for _, key := range healthArgs.Undismiss {
+		check, subject, err := health.SplitKey(key)
+		if err != nil {
+			return err
+		}
+		ok, err := ignores.Undismiss(check, subject)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("%s isn't dismissed", key)
+		}
+		cmd.Printf("undismissed %s\n", key)
+	}
+	if len(healthArgs.Dismiss) == 0 {
+		return nil
+	}
+	var only []string
+	for _, key := range healthArgs.Dismiss {
+		check, _, err := health.SplitKey(key)
+		if err != nil {
+			return err
+		}
+		only = append(only, check)
+	}
+	report, err := checker.Run(st.Context(cmd.Context()), health.Options{Only: only, Network: healthArgs.Network, All: true})
+	st.Done()
+	if err != nil {
+		return err
+	}
+	for _, key := range healthArgs.Dismiss {
+		check, subject, _ := health.SplitKey(key)
+		f, ok := findKey(report.Findings, check+"/"+subject)
+		if !ok {
+			return fmt.Errorf("no finding %s now (mangal health shows the keys; a network check's needs --network)", key)
+		}
+		if err := ignores.Dismiss(storage.HealthIgnore{Check: check, Subject: subject, Message: f.Message}); err != nil {
+			return err
+		}
+		cmd.Printf("dismissed %s: %s\n", f.Key, f.Message)
+	}
+	return nil
+}
+
+// findKey is the finding (or summary item) with the key.
+func findKey(findings []health.Finding, key string) (health.Finding, bool) {
+	for _, f := range findings {
+		if strings.EqualFold(f.Key, key) {
+			return f, true
+		}
+		if item, ok := findKey(f.Items, key); ok {
+			return item, true
+		}
+	}
+	return health.Finding{}, false
 }
 
 // printHealth prints the findings by category: a header with the counts, each finding
@@ -122,7 +206,11 @@ func printHealth(w io.Writer, report health.Report, only []string) {
 		}
 		fmt.Fprintf(w, "%s: %d (%s)\n", cat, len(of), severityCounts(counts))
 		for _, f := range of {
-			fmt.Fprintf(w, "  [%s] %s %s: %s\n", f.Severity, f.Check, f.Subject, f.Message)
+			sev := string(f.Severity)
+			if f.Dismissed {
+				sev += ", dismissed"
+			}
+			fmt.Fprintf(w, "  [%s] %s: %s\n", sev, findingTitle(f), f.Message)
 			for _, d := range f.Details {
 				fmt.Fprintf(w, "      %s\n", d)
 			}
@@ -136,7 +224,11 @@ func printHealth(w io.Writer, report health.Report, only []string) {
 				continue
 			}
 			for _, item := range f.Items {
-				fmt.Fprintf(w, "      %s: %s\n", item.Subject, item.Message)
+				dismissed := ""
+				if item.Dismissed {
+					dismissed = " (dismissed)"
+				}
+				fmt.Fprintf(w, "      %s: %s%s\n", findingTitle(item), item.Message, dismissed)
 				for _, c := range item.Fix.Commands {
 					fmt.Fprintf(w, "          fix: %s\n", c)
 				}
@@ -144,14 +236,38 @@ func printHealth(w io.Writer, report health.Report, only []string) {
 		}
 		fmt.Fprintln(w)
 	}
+	dismissed := ""
+	if report.Dismissed != 0 {
+		dismissed = fmt.Sprintf(" (%d dismissed", report.Dismissed)
+		if !slices.ContainsFunc(report.Findings, func(f health.Finding) bool { return f.Dismissed }) {
+			dismissed += ", --all shows them"
+		}
+		dismissed += ")"
+	}
 	if report.Counts.Total() == 0 {
-		fmt.Fprintln(w, "no problems found")
+		fmt.Fprintln(w, "no problems found"+dismissed)
 		return
 	}
-	fmt.Fprintf(w, "%s: %s\n", countNoun(report.Counts.Total(), "finding", "findings"), severityCounts(report.Counts))
+	fmt.Fprintf(w, "%s: %s%s\n", countNoun(report.Counts.Total(), "finding", "findings"), severityCounts(report.Counts), dismissed)
 	if slices.ContainsFunc(report.Findings, func(f health.Finding) bool { return slices.ContainsFunc(f.Fix.Commands, dryRunCommand) }) {
 		fmt.Fprintln(w, `"mangal library bind/merge/move/mark/rename", "library scan --mark" and "mangal migrate" only list what they'd do, --apply does it`)
 	}
+}
+
+// findingTitle is the finding's key, then the subject's name when the key doesn't say it.
+func findingTitle(f health.Finding) string {
+	key := f.Key
+	switch {
+	case key != "":
+	case f.Check == "":
+		key = f.Subject.Key()
+	default:
+		key = f.Check + "/" + f.Subject.Key()
+	}
+	if f.Subject.ID != 0 && f.Subject.Name != "" {
+		return key + " " + f.Subject.Name
+	}
+	return key
 }
 
 // dryRunCommand is a command that only lists what it would do without --apply.

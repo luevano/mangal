@@ -698,7 +698,7 @@ func checkDisagreements(s *snapshot) []Finding {
 		}
 		name, flag := linkNames[p.Source], linkFlags[p.Source]
 		var froms []string
-		f := Finding{Severity: Warning, Subject: mangaSubject(m), Fix: Fix{TUI: tuiLibrary + ": links (pick)"}}
+		f := Finding{Severity: Warning, Subject: mangaSubject(m), Part: "pick-" + string(p.Source), Fix: Fix{TUI: tuiLibrary + ": links (pick)"}}
 		for _, c := range p.Candidates {
 			froms = append(froms, fmt.Sprintf("%s (%s)", c.ID, c.FromName()))
 			f.Fix.Commands = append(f.Fix.Commands, fmt.Sprintf("mangal library bind %d %s %s --apply", m.ID, flag, c.ID))
@@ -721,7 +721,7 @@ func checkDisagreements(s *snapshot) []Finding {
 				continue
 			}
 			cur, flag, name := src.Current(), linkFlags[src.Code], linkNames[src.Code]
-			f := Finding{Severity: Warning, Subject: mangaSubject(m),
+			f := Finding{Severity: Warning, Subject: mangaSubject(m), Part: string(src.Code),
 				Message: fmt.Sprintf("%s links disagree: %s (%s)", name, cur, src.Where()),
 				Fix:     Fix{TUI: tuiLibrary + ": links"}}
 			tagOnly := len(dis) == 1 && src.Tag != "" && src.Tag != cur
@@ -847,7 +847,7 @@ func checkAccounts(s *snapshot) []Finding {
 			Fix: Fix{Commands: []string{l.Command}, TUI: "accounts: log in"}})
 	}
 	for _, err := range a.Skipped {
-		out = append(out, Finding{Severity: Warning, Subject: Subject{Kind: "account", Name: "Lua providers"},
+		out = append(out, Finding{Severity: Warning, Subject: Subject{Kind: "account", Name: "Lua providers"}, Part: err.Error(),
 			Message: "skipped " + err.Error(),
 			Fix:     Fix{Commands: []string{"mangal providers up"}, Note: "update the providers, or remove the broken one: mangal providers rm <dir>"}})
 	}
@@ -861,7 +861,7 @@ func checkAccounts(s *snapshot) []Finding {
 			}})
 	}
 	for _, n := range a.Notices {
-		out = append(out, Finding{Severity: Info, Subject: Subject{Kind: "account", Name: "storage"}, Message: n})
+		out = append(out, Finding{Severity: Info, Subject: Subject{Kind: "account", Name: "storage"}, Part: n, Message: n})
 	}
 	return out
 }

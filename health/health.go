@@ -138,6 +138,44 @@ type Finding struct {
 	Fix      Fix      `json:"fix"`
 	// Items are the subjects of a summary finding (W10's mangas), each with its fix.
 	Items []Finding `json:"items,omitempty"`
+	// Part tells apart the findings of a check on one subject (M3's link sources), in Key.
+	Part string `json:"part,omitempty"`
+	// Key is what dismisses it: check/subject (Subject.Key) and the part.
+	Key string `json:"key"`
+	// Dismissed is true when it was dismissed (only in a report with Options.All).
+	Dismissed bool `json:"dismissed,omitempty"`
+}
+
+// Key is what tells the subject apart in a finding's key: kind/id, kind/name, or just the
+// kind when the name is the kind (the whole library).
+func (s Subject) Key() string {
+	switch {
+	case s.ID != 0:
+		return fmt.Sprintf("%s/%d", s.Kind, s.ID)
+	case s.Name == s.Kind || s.Name == "":
+		return s.Kind
+	}
+	return s.Kind + "/" + s.Name
+}
+
+// subjectKey is the finding's subject key with its part.
+func (f Finding) subjectKey() string {
+	if f.Part == "" {
+		return f.Subject.Key()
+	}
+	return f.Subject.Key() + "/" + f.Part
+}
+
+// SplitKey is a finding key's check and subject key.
+func SplitKey(key string) (string, string, error) {
+	id, subject, ok := strings.Cut(strings.TrimSpace(key), "/")
+	if !ok || id == "" || subject == "" {
+		return "", "", fmt.Errorf("invalid finding key %q: it's <check>/<subject>, e.g. M3/manga/5/al (mangal health shows them)", key)
+	}
+	if !slices.ContainsFunc(checks, func(c check) bool { return strings.EqualFold(c.id, id) }) {
+		return "", "", fmt.Errorf("invalid finding key %q: no check %s", key, id)
+	}
+	return strings.ToUpper(id), subject, nil
 }
 
 // Counts are how many findings there are by severity and by category.
@@ -160,6 +198,9 @@ type Report struct {
 	Network bool `json:"network"`
 	// Errors are the checks that couldn't run (their data didn't load, they failed).
 	Errors []string `json:"errors,omitempty"`
+	// Dismissed is how many findings (and summary items) were dismissed: hidden and not
+	// counted, shown (Finding.Dismissed) with Options.All.
+	Dismissed int `json:"dismissed,omitempty"`
 }
 
 // Options of a run.
@@ -169,6 +210,8 @@ type Options struct {
 	Network bool
 	// Only runs these categories or checks (ids), all when empty.
 	Only []string
+	// All also has the dismissed findings.
+	All bool
 }
 
 // Login is a saved login that needs attention.
@@ -240,6 +283,8 @@ type Checker struct {
 	Now func() time.Time
 	// OnProgress is told what's loading, may be nil.
 	OnProgress func(string)
+	// Ignores are the dismissed findings, nil when none.
+	Ignores func() ([]storage.HealthIgnore, error)
 }
 
 // part is a piece of the snapshot some checks need.
@@ -366,8 +411,14 @@ func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 		}
 	}
 	report.Errors = append(report.Errors, s.errors[loadErrors:]...)
+	if err := c.dismiss(&report, opts.All); err != nil {
+		report.Errors = append(report.Errors, "dismissed findings: "+err.Error())
+	}
 	sortFindings(report.Findings)
 	for _, f := range report.Findings {
+		if f.Dismissed {
+			continue
+		}
 		switch f.Severity {
 		case Error:
 			report.Counts.Error++
@@ -379,6 +430,60 @@ func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 		report.Counts.ByCategory[f.Category]++
 	}
 	return report, nil
+}
+
+// dismiss sets the findings' keys and leaves out the dismissed ones (marks them with all);
+// a summary whose items are all dismissed is too.
+func (c Checker) dismiss(report *Report, all bool) error {
+	ignored := map[string]bool{}
+	var err error
+	if c.Ignores != nil {
+		var list []storage.HealthIgnore
+		if list, err = c.Ignores(); err == nil {
+			for _, i := range list {
+				ignored[i.Check+"/"+i.Subject] = true
+			}
+		}
+	}
+	keep := func(f *Finding) bool {
+		f.Key = f.Check + "/" + f.subjectKey()
+		if !ignored[f.Key] {
+			return true
+		}
+		report.Dismissed++
+		f.Dismissed = true
+		return all
+	}
+	var out []Finding
+	for _, f := range report.Findings {
+		if len(f.Items) != 0 {
+			var items []Finding
+			hidden := 0
+			for _, item := range f.Items {
+				if item.Check == "" {
+					item.Check = f.Check
+				}
+				if keep(&item) {
+					items = append(items, item)
+				}
+				if item.Dismissed {
+					hidden++
+				}
+			}
+			if hidden != 0 && hidden == len(f.Items) && !all {
+				continue
+			}
+			if hidden != 0 {
+				f.Message += fmt.Sprintf(" (%d dismissed)", hidden)
+			}
+			f.Items = items
+		}
+		if keep(&f) {
+			out = append(out, f)
+		}
+	}
+	report.Findings = out
+	return err
 }
 
 // runCheck runs the check, a panic is its error: one broken check doesn't stop the rest.
