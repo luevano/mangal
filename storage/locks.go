@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/luevano/mangal/v5/util/proc"
@@ -161,4 +162,39 @@ func (l *Lock) Unlock() error {
 		return fmt.Errorf("unlock %s: %w", l.Name, err)
 	}
 	return nil
+}
+
+// KeepAlive beats the lock every interval until the returned stop (which doesn't unlock
+// it). A lock taken over by someone else (ErrLockLost) stops beating and calls lost, other
+// heartbeat errors go to warn; either may be nil.
+func (l *Lock) KeepAlive(every time.Duration, lost, warn func(error)) (stop func()) {
+	done, stopped := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(every)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				err := l.Heartbeat()
+				switch {
+				case err == nil:
+				case errors.Is(err, ErrLockLost):
+					if lost != nil {
+						lost(err)
+					}
+					return
+				case warn != nil:
+					warn(err)
+				}
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() { close(done) })
+		<-stopped
+	}
 }

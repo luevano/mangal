@@ -108,34 +108,14 @@ func LockProvider(ctx context.Context, store storage.Watches, provider, purpose 
 	}
 }
 
-// keepAlive beats the lock until the returned unlock. A lost lock calls lost and stops
-// beating.
+// keepAlive beats the lock until the returned unlock. A lost lock calls lost.
 func keepAlive(lock *storage.Lock, lost func(error)) func() {
-	stop, stopped := make(chan struct{}), make(chan struct{})
-	go func() {
-		defer close(stopped)
-		ticker := time.NewTicker(providerLockBeat)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-ticker.C:
-				err := lock.Heartbeat()
-				if errors.Is(err, storage.ErrLockLost) {
-					log.Warn("%s: another mangal took it over", err)
-					lost(err)
-					return
-				}
-				if err != nil {
-					log.Warn("%s", err)
-				}
-			}
-		}
-	}()
+	stop := lock.KeepAlive(providerLockBeat, func(err error) {
+		log.Warn("%s: another mangal took it over", err)
+		lost(err)
+	}, func(err error) { log.Warn("%s", err) })
 	return func() {
-		close(stop)
-		<-stopped
+		stop()
 		if err := lock.Unlock(); err != nil {
 			log.Warn("%s", err)
 		}

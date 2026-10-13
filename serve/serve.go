@@ -215,33 +215,9 @@ var heartbeatEvery = lockStale / 4
 // heartbeat keeps the lock alive until stopped. A lost lock (another server took it
 // over) calls lost: two servers can't share a data db.
 func heartbeat(lock *storage.Lock, lg logger, lost func(error)) (stop func()) {
-	done := make(chan struct{})
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		ticker := time.NewTicker(heartbeatEvery)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				err := lock.Heartbeat()
-				switch {
-				case err == nil:
-				case errors.Is(err, storage.ErrLockLost):
-					lost(fmt.Errorf("%w: another mangal serve took over %s", err, watch.DataDB()))
-					return
-				default:
-					lg.Warnf("%s", err)
-				}
-			}
-		}
-	}()
-	return func() {
-		close(done)
-		<-stopped
-	}
+	return lock.KeepAlive(heartbeatEvery, func(err error) {
+		lost(fmt.Errorf("%w: another mangal serve took over %s", err, watch.DataDB()))
+	}, func(err error) { lg.Warnf("%s", err) })
 }
 
 // removeDiscovery removes the discovery file if it's still this process's.

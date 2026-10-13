@@ -88,3 +88,43 @@ func TestLockHolders(t *testing.T) {
 		t.Errorf("holders %+v", held)
 	}
 }
+
+func TestLockKeepAlive(t *testing.T) {
+	watches := Watches{DB: openData(t)}
+	lock, err := watches.Lock("beat", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := watches.DB.Exec(`UPDATE locks SET heartbeat = 0`); err != nil {
+		t.Fatal(err)
+	}
+	lost := make(chan error, 1)
+	stop := lock.KeepAlive(5*time.Millisecond, func(err error) { lost <- err }, nil)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, held, err := watches.Holder("beat", time.Minute); err != nil || held {
+			if err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no heartbeat")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if _, err := watches.DB.Exec(`UPDATE locks SET token = 'other'`); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-lost:
+		if !errors.Is(err, ErrLockLost) {
+			t.Errorf("lost: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("lost lock not seen")
+	}
+	stop()
+	stop()
+}

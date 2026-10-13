@@ -309,20 +309,23 @@ func (s *Service) lockStale() time.Duration {
 	return s.Options.LockStale
 }
 
-// providerLocks are the locks a check holds, kept alive until unlocked.
+// providerLocks are the locks a check holds, each kept alive until unlocked.
 type providerLocks struct {
-	s       *Service
-	mu      sync.Mutex
-	held    map[string]*storage.Lock
-	stop    chan struct{}
-	stopped chan struct{}
+	s    *Service
+	mu   sync.Mutex
+	held map[string]heldLock
+}
+
+type heldLock struct {
+	lock *storage.Lock
+	stop func()
 }
 
 // lockProviders takes the providers' locks, busy are the ones held by others. Every one
 // busy is ErrBusy.
 func (s *Service) lockProviders(providers []string) (*providerLocks, []string, error) {
 	stale := s.lockStale()
-	l := &providerLocks{s: s, held: map[string]*storage.Lock{}, stop: make(chan struct{}), stopped: make(chan struct{})}
+	l := &providerLocks{s: s, held: map[string]heldLock{}}
 	var busy []string
 	var busyErr error
 	for _, p := range providers {
@@ -333,38 +336,15 @@ func (s *Service) lockProviders(providers []string) (*providerLocks, []string, e
 			continue
 		}
 		if err != nil {
-			close(l.stopped)
 			l.unlockAll()
 			return nil, nil, err
 		}
-		l.held[p] = lock
+		l.held[p] = heldLock{lock: lock, stop: lock.KeepAlive(stale/5, s.warn, s.warn)}
 	}
 	if len(providers) > 0 && len(busy) == len(providers) {
-		close(l.stopped)
 		return nil, nil, fmt.Errorf("%w (%s): %w", ErrBusy, strings.Join(busy, ", "), busyErr)
 	}
-	go l.beat(stale / 5)
 	return l, busy, nil
-}
-
-func (l *providerLocks) beat(every time.Duration) {
-	defer close(l.stopped)
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-l.stop:
-			return
-		case <-ticker.C:
-			l.mu.Lock()
-			for _, lock := range l.held {
-				if err := lock.Heartbeat(); err != nil {
-					l.s.warn(err)
-				}
-			}
-			l.mu.Unlock()
-		}
-	}
 }
 
 // since is when the provider's lock was taken.
@@ -374,8 +354,8 @@ func (l *providerLocks) since(provider string) time.Time {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if lock, ok := l.held[provider]; ok {
-		return lock.Acquired
+	if h, ok := l.held[provider]; ok {
+		return h.lock.Acquired
 	}
 	return time.Time{}
 }
@@ -386,32 +366,29 @@ func (l *providerLocks) unlock(provider string) {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if lock, ok := l.held[provider]; ok {
+	if h, ok := l.held[provider]; ok {
 		delete(l.held, provider)
-		if err := lock.Unlock(); err != nil {
-			l.s.warn(err)
-		}
+		l.release(h)
 	}
 }
 
-// unlockAll releases what's still held and stops the heartbeat.
+// unlockAll releases what's still held.
 func (l *providerLocks) unlockAll() {
 	if l == nil {
 		return
 	}
-	select {
-	case <-l.stop:
-	default:
-		close(l.stop)
-	}
-	<-l.stopped
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	for p, lock := range l.held {
+	for p, h := range l.held {
 		delete(l.held, p)
-		if err := lock.Unlock(); err != nil {
-			l.s.warn(err)
-		}
+		l.release(h)
+	}
+}
+
+func (l *providerLocks) release(h heldLock) {
+	h.stop()
+	if err := h.lock.Unlock(); err != nil {
+		l.s.warn(err)
 	}
 }
 
