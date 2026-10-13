@@ -320,12 +320,7 @@ func (s *snapshot) oldDirOf(name string) (string, bool) {
 	}
 	for _, l := range s.loaders {
 		info := l.Info()
-		for _, alias := range info.History {
-			old := info
-			old.ID, old.Name, old.Website, old.History = alias.ID, alias.Name, alias.Website, nil
-			if old.Name == "" {
-				old.Name = info.Name
-			}
+		for _, old := range library.OldInfos(info) {
 			if s.providerName(old) == name && s.providerName(info) != name {
 				return info.Name, true
 			}

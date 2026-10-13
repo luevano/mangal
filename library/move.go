@@ -178,12 +178,7 @@ func (m Mover) providerDir(provider libmangal.ProviderInfo) (string, error) {
 	if exists, err := afero.DirExists(m.FS, dir); err != nil || exists {
 		return dir, err
 	}
-	for _, alias := range provider.History {
-		old := provider
-		old.ID, old.Name, old.Website, old.History = alias.ID, alias.Name, alias.Website, nil
-		if old.Name == "" {
-			old.Name = provider.Name
-		}
+	for _, old := range OldInfos(provider) {
 		oldDir := filepath.Join(m.Root, m.ProviderName(old))
 		if exists, err := afero.DirExists(m.FS, oldDir); err != nil || exists {
 			return oldDir, err

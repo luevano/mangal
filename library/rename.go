@@ -38,6 +38,21 @@ type Rename struct {
 	ProviderDir string
 }
 
+// OldInfos are the provider's infos under its old names (History), as the provider
+// name template sees them: an alias without a name keeps the current one.
+func OldInfos(info libmangal.ProviderInfo) []libmangal.ProviderInfo {
+	olds := make([]libmangal.ProviderInfo, len(info.History))
+	for i, alias := range info.History {
+		old := info
+		old.ID, old.Name, old.Website, old.History = alias.ID, alias.Name, alias.Website, nil
+		if old.Name == "" {
+			old.Name = info.Name
+		}
+		olds[i] = old
+	}
+	return olds
+}
+
 // ErrNotEmpty is a directory Apply leaves as it isn't empty (Rename.RemoveEmpty).
 var ErrNotEmpty = errors.New("not empty, left in place")
 
@@ -164,12 +179,7 @@ func (n Namer) Plan(ctx context.Context, dir string, providerDirs bool) ([]Renam
 		for _, loader := range n.Loaders {
 			info := loader.Info()
 			name := n.ProviderName(info)
-			for _, alias := range info.History {
-				old := info
-				old.ID, old.Name, old.Website, old.History = alias.ID, alias.Name, alias.Website, nil
-				if old.Name == "" {
-					old.Name = info.Name
-				}
+			for _, old := range OldInfos(info) {
 				from := filepath.Join(dir, n.ProviderName(old))
 				if filepath.Base(from) == name || slices.ContainsFunc(renames, func(r Rename) bool { return r.From == from }) {
 					continue
@@ -271,12 +281,7 @@ func (n Namer) otherProviders(name, id string) bool {
 		if n.ProviderName(info) == name {
 			return true
 		}
-		for _, alias := range info.History {
-			old := info
-			old.ID, old.Name, old.Website, old.History = alias.ID, alias.Name, alias.Website, nil
-			if old.Name == "" {
-				old.Name = info.Name
-			}
+		for _, old := range OldInfos(info) {
 			if n.ProviderName(old) == name {
 				return true
 			}

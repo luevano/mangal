@@ -157,12 +157,7 @@ func (f Files) dirProvider(m storage.Manga, opts MarkOptions) (string, bool) {
 	for _, loader := range opts.Loaders {
 		info := loader.Info()
 		names := []string{opts.ProviderName(info)}
-		for _, alias := range info.History {
-			old := info
-			old.ID, old.Name, old.Website, old.History = alias.ID, alias.Name, alias.Website, nil
-			if old.Name == "" {
-				old.Name = info.Name
-			}
+		for _, old := range OldInfos(info) {
 			names = append(names, opts.ProviderName(old))
 		}
 		if slices.Contains(names, name) {
