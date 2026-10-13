@@ -32,21 +32,21 @@ type KeyMap struct {
 
 // ShortHelp implements help.keyMap.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{
-		k.Back,
-		k.Copy,
-		k.Viewport.Up,
-		k.Viewport.Down,
+	return append(k.back(), k.Copy, k.Viewport.Up, k.Viewport.Down)
+}
+
+// back is Back, none when a screen's viewport leaves esc to the screen.
+func (k KeyMap) back() []key.Binding {
+	if !k.Back.Enabled() {
+		return nil
 	}
+	return []key.Binding{k.Back}
 }
 
 // FullHelp implements help.keyMap.
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{
-			k.Back,
-			k.Copy,
-		},
+		append(k.back(), k.Copy),
 		{
 			k.Viewport.Up,
 			k.Viewport.Down,

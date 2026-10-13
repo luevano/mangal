@@ -41,7 +41,10 @@ type migratedMsg struct{ relink int }
 
 // New lists what would be migrated, enter does it.
 func New() base.State {
-	return &state{plan: viewport.New(), keyMap: keyMap{apply: util.Bind("migrate", "enter")}}
+	plan := viewport.New()
+	// esc goes back
+	plan.KeyMap.Back.SetEnabled(false)
+	return &state{plan: plan, keyMap: keyMap{apply: util.Bind("migrate", "enter")}}
 }
 
 func (s *state) Key() string     { return "migrate" }
