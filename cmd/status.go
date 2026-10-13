@@ -110,6 +110,16 @@ func (s *status) Set(msg string) {
 	}
 }
 
+// Transient makes msg the status on a terminal only, not a --verbose line (e.g. a page
+// count).
+func (s *status) Transient(msg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.tty {
+		s.line = msg
+	}
+}
+
 // Progress makes the library's progress the status.
 func (s *status) Progress(p library.Progress) {
 	s.Set(p.String())

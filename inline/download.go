@@ -14,6 +14,7 @@ import (
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/util"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 func RunDownload(ctx context.Context, args Args) error {
@@ -86,7 +87,21 @@ func runDownload(ctx context.Context, args Args) (client.Results, error) {
 
 	var printErr error
 	results := client.Download(ctx, c, chapters, downloadOptions, func(e client.Event) {
-		args.print(func() { printErr = errors.Join(printErr, printEvent(e, args)) })
+		chapter := func() string {
+			return fmt.Sprintf("downloading chapter %s (%d/%d)", stringutil.FormatFloa32(e.Result.Chapter.Info().Number), e.Index+1, len(chapters))
+		}
+		switch e.Kind {
+		case client.EventStart:
+			args.status("%s", chapter())
+		case client.EventProgress:
+			args.transient("%s: %s", chapter(), e)
+		default:
+			if e.Kind == client.EventDone && args.Status != nil {
+				// the chapter's status is over
+				args.Status.Clear()
+			}
+			args.print(func() { printErr = errors.Join(printErr, printEvent(e, args)) })
+		}
 	})
 	if err := ctx.Err(); err != nil {
 		return nil, err

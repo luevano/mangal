@@ -46,13 +46,23 @@ type Args struct {
 type Status interface {
 	// Set makes msg the status.
 	Set(msg string)
+	// Transient makes msg the status only where it's rewritten in place (a terminal).
+	Transient(msg string)
 	// Print runs print (writing to stdout or stderr) with the status out of the way.
 	Print(print func())
+	// Clear removes the status until the next one.
+	Clear()
 }
 
 func (a Args) status(format string, v ...any) {
 	if a.Status != nil {
 		a.Status.Set(fmt.Sprintf(format, v...))
+	}
+}
+
+func (a Args) transient(format string, v ...any) {
+	if a.Status != nil {
+		a.Status.Transient(fmt.Sprintf(format, v...))
 	}
 }
 
