@@ -29,13 +29,21 @@ type RateLimited interface {
 	RetryAfterDuration() time.Duration
 }
 
-// RetryAfter returns how long to wait if err (or one it wraps) is RateLimited.
+// RetryAfter is whether err (or one it wraps) is a rate limit (libmangal.ErrRateLimited,
+// or RateLimited) and how long to wait: zero when the site didn't say.
 func RetryAfter(err error) (time.Duration, bool) {
 	var rateLimit RateLimited
 	if errors.As(err, &rateLimit) {
 		return rateLimit.RetryAfterDuration(), true
 	}
-	return 0, false
+	return 0, errors.Is(err, libmangal.ErrRateLimited)
+}
+
+// noDelay is a rate limit without a delay: it isn't retried and stops a Download (e.g.
+// mangoplus' 10522 locks the device out for minutes, retrying keeps it locked).
+func noDelay(err error) bool {
+	wait, limited := RetryAfter(err)
+	return limited && wait <= 0
 }
 
 // EventKind is what happened to a chapter of Download.
@@ -89,8 +97,8 @@ func (e Event) String() string {
 }
 
 // Download downloads the chapters one by one (see DownloadChapter), skipping the
-// unavailable ones. onEvent may be nil. A cancelled ctx stops it: the rest of the
-// chapters stay to download.
+// unavailable ones. onEvent may be nil. A cancelled ctx, or a rate limit without a
+// delay (that chapter fails), stops it: the rest of the chapters stay to download.
 //
 // The provider's lock (ProviderLockName) is held for the whole download, waiting
 // (EventBusy) while a watch check or another download has it.
@@ -163,6 +171,11 @@ func download(ctx context.Context, provider string, chapters []mangadata.Chapter
 			r.Err = nil
 			break
 		}
+		if noDelay(r.Err) {
+			r.Err = fmt.Errorf("%w (stopped: the site didn't say how long to wait)", r.Err)
+			onEvent(Event{Kind: EventDone, Index: i, Result: r})
+			break
+		}
 		onEvent(Event{Kind: EventDone, Index: i, Result: r})
 	}
 	return results
@@ -172,8 +185,8 @@ func download(ctx context.Context, provider string, chapters []mangadata.Chapter
 // the temp dir (read without download_on_read). The manga's default metadata binding (if
 // any, see WithoutBinding) is its metadata. A chapter that's already there (maybe
 // from another provider, see DownloadedChapter.Skipped) isn't downloaded again. A rate
-// limit is waited out up to 10 times (EventWait), the provider's lock too (EventBusy, see
-// Download); onEvent may be nil.
+// limit is waited out up to 10 times (EventWait), not one without a delay; the
+// provider's lock too (EventBusy, see Download). onEvent may be nil.
 func DownloadChapter(ctx context.Context, client *libmangal.Client, chapter mangadata.Chapter, options libmangal.DownloadOptions, onEvent func(Event)) (*metadata.DownloadedChapter, error) {
 	if onEvent == nil {
 		onEvent = func(Event) {}
@@ -208,13 +221,12 @@ func retry(ctx context.Context, chapter mangadata.Chapter, get getFunc, onWait f
 	for attempt := 1; ; attempt++ {
 		down, err := get(ctx, chapter)
 		wait, limited := RetryAfter(err)
-		if !limited || ctx.Err() != nil {
+		if !limited || wait <= 0 || ctx.Err() != nil {
 			return down, err
 		}
 		if attempt > maxRetries {
 			return nil, fmt.Errorf("rate limited %d times: %w", maxRetries, err)
 		}
-		// no hot loop when the provider doesn't say how long
 		wait = max(time.Second, min(maxWait, wait))
 		if onWait != nil {
 			onWait(attempt, wait)

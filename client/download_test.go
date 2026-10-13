@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 )
@@ -65,7 +66,7 @@ func TestDownloadRetry(t *testing.T) {
 		}
 		if limited[n] > 0 {
 			limited[n]--
-			return nil, rateLimitError{}
+			return nil, rateLimitError{wait: time.Millisecond}
 		}
 		if n == 4 {
 			return nil, errors.New("broken")
@@ -147,5 +148,40 @@ func TestRetryAfter(t *testing.T) {
 	}
 	if _, ok := RetryAfter(errors.New("some other error")); ok {
 		t.Error("other errors aren't rate limits")
+	}
+	if wait, ok := RetryAfter(fmt.Errorf("get pages: %w", libmangal.ErrRateLimited)); !ok || wait != 0 {
+		t.Errorf("the sentinel: %s, %v", wait, ok)
+	}
+}
+
+// a rate limit without a delay (mangoplus' 10522 device lockout) isn't retried, and stops
+// the download: retrying can't work and may keep the lockout
+func TestDownloadNoDelay(t *testing.T) {
+	chapters := []mangadata.Chapter{chapter{number: 1}, chapter{number: 2}, chapter{number: 3}}
+	tries := map[float32]int{}
+	get := func(_ context.Context, ch mangadata.Chapter) (*metadata.DownloadedChapter, error) {
+		n := ch.Info().Number
+		tries[n]++
+		if n == 2 {
+			return nil, fmt.Errorf("mangoplus: 10522: %w", libmangal.ErrRateLimited)
+		}
+		return &metadata.DownloadedChapter{}, nil
+	}
+	waits := 0
+	results := withInstantWaits(t, func() Results {
+		return download(context.Background(), "p", chapters, func(e Event) {
+			if e.Kind == EventWait {
+				waits++
+			}
+		}, noLock, get)
+	})
+	if waits != 0 || tries[2] != 1 {
+		t.Errorf("retried: %d waits, %d tries", waits, tries[2])
+	}
+	if !results[0].Succeed() || !results[1].Failed() || !errors.Is(results[1].Err, libmangal.ErrRateLimited) {
+		t.Errorf("results %+v %+v", results[0], results[1])
+	}
+	if tries[3] != 0 || !results[2].ToDownload() {
+		t.Errorf("chapter 3 tried %d times: %+v", tries[3], results[2])
 	}
 }

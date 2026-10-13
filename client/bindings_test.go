@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -31,6 +32,8 @@ type fakeMetaProvider struct {
 	src    MetadataSource
 	byID   map[int]string
 	logger *logger.Logger
+	// err is SearchByID's
+	err error
 
 	mu       sync.Mutex
 	ids      []int
@@ -48,6 +51,9 @@ func (p *fakeMetaProvider) SearchByID(_ context.Context, id int) (metadata.Metad
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.ids = append(p.ids, id)
+	if p.err != nil {
+		return nil, false, p.err
+	}
 	title, ok := p.byID[id]
 	if !ok {
 		return nil, false, nil
@@ -249,5 +255,17 @@ func TestReadSyncsBoundIDs(t *testing.T) {
 	bound, rest, err = boundSyncs(bindings, "p", other, libmangal.ReadOptions{SaveAnilist: true})
 	if err != nil || len(bound) != 0 || !rest.SaveAnilist {
 		t.Errorf("unbound: %+v, %+v, %v", bound, rest, err)
+	}
+}
+
+// a rate limited binding (the shared sentinel, no delay) stops: no fallback to the next
+func TestFirstBoundRateLimited(t *testing.T) {
+	failed.at = map[string]time.Time{}
+	ani := &fakeMetaProvider{src: srcAnilist, err: fmt.Errorf("anilist: %w", libmangal.ErrRateLimited)}
+	kitsu := &fakeMetaProvider{src: srcKitsu, byID: map[int]string{11: "One Piece (Kitsu)"}}
+	bindings := []storage.Binding{{Source: metadata.IDCodeAnilist, ID: "30013"}, {Source: metadata.IDCodeKitsu, ID: "11"}}
+	_, err := firstBound(context.Background(), newFakeMetaProviders(t, ani, kitsu), bindings, "One Piece")
+	if !errors.Is(err, libmangal.ErrRateLimited) || len(kitsu.ids) != 0 {
+		t.Errorf("%v, kitsu asked %v", err, kitsu.ids)
 	}
 }
