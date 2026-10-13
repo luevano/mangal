@@ -69,3 +69,25 @@ func TestFallbackOnExecuteError(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// a template's output is a file name, or the default one is used
+func TestNamesAreOneElement(t *testing.T) {
+	key := config.Download.Provider.NameTemplate
+	defer func() { _ = key.Set(key.Default) }()
+	provider := libmangal.ProviderInfo{ID: "p", Name: "Prov"}
+	want := defaults().ProviderName(provider)
+	for _, text := range []string{"../{{ .Name }}", "a/b", "", "{{ \"\" }}", ".", ".."} {
+		if err := key.Set(text); err != nil {
+			t.Fatal(err)
+		}
+		if got := Provider(provider); got != want {
+			t.Errorf("%q gave %q, want the default %q", text, got, want)
+		}
+	}
+	if err := key.Set("{{ .Name }} x"); err != nil {
+		t.Fatal(err)
+	}
+	if got := Provider(provider); got != "Prov x" {
+		t.Errorf("got %q", got)
+	}
+}

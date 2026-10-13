@@ -3,6 +3,7 @@ package template
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"text/template"
@@ -62,18 +63,33 @@ func Check(text string) error {
 // defaults are libmangal's names, used when a template fails
 var defaults = sync.OnceValue(libmangal.DefaultClientOptions)
 
-// execute runs the template of the config key, or returns fallback() if it fails.
+// execute runs the template of the config key, or returns fallback() if it fails or
+// what it gives isn't a file name.
 func execute(key, text string, data any, fallback func() string) string {
 	t, err := Parse(text)
 	if err == nil {
 		var sb strings.Builder
 		if err = t.Execute(&sb, data); err == nil {
-			return sb.String()
+			if err = fileName(sb.String()); err == nil {
+				return sb.String()
+			}
 		}
 	}
 	name := fallback()
 	log.Warn("%s: %s, using %q", key, err, name)
 	return name
+}
+
+// fileName is an error when name isn't one path element: the library joins it to a
+// folder, "../x" or "" would go elsewhere.
+func fileName(name string) error {
+	switch {
+	case name == "", name == ".", name == "..":
+		return fmt.Errorf("%q isn't a file name", name)
+	case strings.ContainsAny(name, "/\x00"+string(filepath.Separator)):
+		return fmt.Errorf("%q isn't a file name (it has a path separator)", name)
+	}
+	return nil
 }
 
 func Provider(provider libmangal.ProviderInfo) string {
