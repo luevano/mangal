@@ -38,13 +38,16 @@ type renameData struct {
 
 // loadFS reads the library mangas' folders and markers, the folders under the download
 // directory and the trash.
-func (c Checker) loadFS(s *snapshot) error {
+func (c Checker) loadFS(ctx context.Context, s *snapshot) error {
 	if c.FS == nil {
 		return errors.New("no filesystem")
 	}
 	d := &fsData{missing: map[int64]bool{}, markers: map[int64]*libmangal.MangaDirInfo{}, markerErrs: map[int64]error{}}
 	var missing []storage.Manga
 	for i, m := range s.mangas {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if i%20 == 0 {
 			c.progress(fmt.Sprintf("reading the folders: %d/%d", i, len(s.mangas)))
 		}

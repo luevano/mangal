@@ -35,9 +35,10 @@ func init() {
 var healthCmd = &cobra.Command{
 	Use:   "health",
 	Short: "Check the library and the watches for problems",
-	Long: `Check the library and the watches for problems and say how to fix each one. Only
-reads (the library and its folders), changes nothing, makes no requests unless
---network.
+	Long: `Check the library and the watches for problems and say how to fix each one. It
+fixes nothing and makes no requests unless --network; it only writes the publication
+statuses it works out (as "mangal library ls" does, they don't block an undo) and what
+--dismiss and --undismiss say.
 
 Watches: needing a re-link (W1), not in the library (W2), paused (W3), failing (W4), no new
 chapter for 90 days (W5), provider not installed (W6), old provider id (W8), invalid

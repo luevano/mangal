@@ -591,7 +591,7 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool) (
 	if needed[partFS] {
 		if failed[partLibrary] != nil {
 			failed[partFS] = errors.New("needs the library")
-		} else if err := c.loadFS(s); err != nil {
+		} else if err := c.loadFS(ctx, s); err != nil {
 			failed[partFS] = err
 		}
 	}
