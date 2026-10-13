@@ -253,6 +253,23 @@ func (s *Service) Subscribe(ctx context.Context) (<-chan LiveEvent, error) {
 	return s.Events.Subscribe(ctx), nil
 }
 
+// Live is the LiveEvent of the event (without its run), ok false for none.
+func (e Event) Live() (LiveEvent, bool) {
+	return liveEvent(0, e)
+}
+
+// Line is the event as a log line, with its manga (and provider when it's the found
+// chapters) first, e.g. "One Piece (mangadex): found 1124 chapters, 2 to download (1123, 1124)".
+func (e LiveEvent) Line() string {
+	switch {
+	case e.Title == "":
+		return e.Message
+	case e.Kind == LiveFound && e.Provider != "":
+		return fmt.Sprintf("%s (%s): %s", e.Title, e.Provider, e.Message)
+	}
+	return e.Title + ": " + e.Message
+}
+
 // liveEvent is the LiveEvent of a check's Event, ok false for none.
 func liveEvent(run int64, e Event) (LiveEvent, bool) {
 	le := LiveEvent{Run: run, Provider: e.Watch.Provider, Watch: e.Watch.ID, Title: e.Watch.Title}

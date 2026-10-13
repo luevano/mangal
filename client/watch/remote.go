@@ -198,6 +198,9 @@ func (r *Remote) Check(ctx context.Context, ids []int64, opts CheckOptions) (Rep
 	if err := r.do(ctx, http.MethodPost, "/api/check", req, &started); err != nil {
 		return Report{}, err
 	}
+	if opts.OnLive != nil {
+		defer r.follow(ctx, started.Run, opts.OnLive)()
+	}
 	run, err := r.wait(ctx, started.Run)
 	if ctx.Err() != nil {
 		// like a local check: cancelled, what was done is recorded and reported
@@ -215,6 +218,40 @@ func (r *Remote) Check(ctx context.Context, ids []int64, opts CheckOptions) (Rep
 	report := reportOf(run)
 	report.Busy = started.Busy
 	return report, nil
+}
+
+// follow passes the live events of the run to onLive (the server replays the ones that
+// came before), until the returned stop is called: it waits a moment for the run's last
+// events first.
+func (r *Remote) follow(ctx context.Context, run int64, onLive func(LiveEvent)) (stop func()) {
+	ctx, cancel := context.WithCancel(ctx)
+	ch, err := r.Subscribe(ctx)
+	if err != nil {
+		// an older server: only the results at the end
+		cancel()
+		return func() {}
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for e := range ch {
+			if e.Run != run {
+				continue
+			}
+			onLive(e)
+			if e.Kind == LiveRunDone {
+				return
+			}
+		}
+	}()
+	return func() {
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+		}
+		cancel()
+		<-done
+	}
 }
 
 // wait polls the check run until it's finished.

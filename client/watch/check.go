@@ -30,6 +30,9 @@ type CheckOptions struct {
 	Gaps bool
 	// OnEvent is told the progress, may be nil. It's never called concurrently.
 	OnEvent func(Event)
+	// OnLive is told the progress as LiveEvents, may be nil. It's never called
+	// concurrently. A Remote check streams them from the server (not on a dry run).
+	OnLive func(LiveEvent)
 	// OnRun is told the check run once it's recorded (it got the locks), may be nil. Not
 	// called on a dry run.
 	OnRun func(storage.CheckRun)
@@ -197,17 +200,18 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 
 	var eventMu sync.Mutex
 	onEvent := func(e Event) {
-		if hub != nil {
-			if le, ok := liveEvent(report.ID, e); ok {
-				hub.publish(le)
-			}
-		}
-		if opts.OnEvent == nil {
-			return
+		le, live := liveEvent(report.ID, e)
+		if hub != nil && live {
+			hub.publish(le)
 		}
 		eventMu.Lock()
 		defer eventMu.Unlock()
-		opts.OnEvent(e)
+		if opts.OnLive != nil && live {
+			opts.OnLive(le)
+		}
+		if opts.OnEvent != nil {
+			opts.OnEvent(e)
+		}
 	}
 
 	sem := make(chan struct{}, max(1, s.Options.ParallelProviders))
