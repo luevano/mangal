@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 
+	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/kitsu"
@@ -16,6 +16,7 @@ import (
 	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/template"
+	mango "github.com/luevano/mangoprovider"
 )
 
 // LibraryLinker links library mangas to metadata sources, with the configured name
@@ -99,16 +100,27 @@ func kitsuIDs(ctx context.Context, anilist []int) (map[int]int, error) {
 	return p.IDsFromContext(ctx, metadata.IDCodeAnilist, anilist)
 }
 
+// mangaDexID is the id of mangoprovider's MangaDex, its old ids are in its History.
+const mangaDexID = mango.BundleID + "-mangadex"
+
+// isMangaDex is true when the provider with the id (current or old) is MangaDex.
+func isMangaDex(loaders []libmangal.ProviderLoader, id string) (libmangal.ProviderLoader, bool) {
+	loader, _, ok := libmangal.FindLoader(loaders, id)
+	return loader, ok && loader.Info().ID == mangaDexID
+}
+
 // providerLinks are the metadata ids a MangaDex manga links to, none for other providers
 // (they have no such links) or a provider that isn't installed.
 func providerLinks(ctx context.Context, src storage.Source) ([]metadata.ID, error) {
-	if !strings.Contains(src.Provider, "mangadex") {
+	loaders, err := manager.Loaders()
+	if err != nil {
+		return nil, err
+	}
+	loader, ok := isMangaDex(loaders, src.Provider)
+	if !ok {
 		return nil, nil
 	}
-	c, _, err := AcquireByID(ctx, src.Provider)
-	if errors.Is(err, ErrProviderNotFound) {
-		return nil, nil
-	}
+	c, err := Acquire(ctx, loader)
 	if err != nil {
 		return nil, err
 	}

@@ -223,3 +223,28 @@ func TestReleaseIfAuthChanged(t *testing.T) {
 		t.Error("released a provider that wasn't loaded")
 	}
 }
+
+type historyLoader struct {
+	fakeLoader
+	history []string
+}
+
+func (l historyLoader) Info() libmangal.ProviderInfo {
+	info := l.fakeLoader.Info()
+	for _, id := range l.history {
+		info.History = append(info.History, libmangal.ProviderAlias{ID: id})
+	}
+	return info
+}
+
+func TestIsMangaDex(t *testing.T) {
+	loaders := []libmangal.ProviderLoader{
+		historyLoader{fakeLoader{mangaDexID}, []string{"mangadex-old"}},
+		fakeLoader{"lua-mangadex-mirror"},
+	}
+	for id, want := range map[string]bool{mangaDexID: true, "mangadex-old": true, "lua-mangadex-mirror": false, "mango-mangadex-gone": false} {
+		if _, got := isMangaDex(loaders, id); got != want {
+			t.Errorf("%s: %v", id, got)
+		}
+	}
+}
