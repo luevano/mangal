@@ -1,6 +1,7 @@
 package inline
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,10 @@ import (
 
 func RunDownload(ctx context.Context, args Args) error {
 	results, err := runDownload(ctx, args)
+	// stopped (ctrl+c): nothing to tell Discord, it couldn't be sent anyway
+	if ctx.Err() != nil {
+		return cmp.Or(err, ctx.Err())
+	}
 	if err != nil {
 		return notify.SendErrorContext(ctx, err)
 	}
