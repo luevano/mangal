@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,9 @@ var installed = manager.Loaders
 // Add clones the provider repository at url into dir (the providers dir), in a dir named
 // after the provider id. The git progress goes to progress.
 func Add(ctx context.Context, dir, url string, progress io.Writer) (_ info.Info, err error) {
+	if err := checkURL(url); err != nil {
+		return info.Info{}, err
+	}
 	// cloned next to the providers, so the rename doesn't cross filesystems; dot dirs
 	// aren't loaded as providers
 	tempDir, err := os.MkdirTemp(dir, ".add-")
@@ -43,7 +47,7 @@ func Add(ctx context.Context, dir, url string, progress io.Writer) (_ info.Info,
 		Progress: progress,
 	})
 	if err != nil {
-		return info.Info{}, fmt.Errorf("clone %s: %w", url, err)
+		return info.Info{}, redact(fmt.Errorf("clone %s: %w", url, err), url)
 	}
 
 	providerInfo, err := readInfo(tempDir)
@@ -77,6 +81,56 @@ func Add(ctx context.Context, dir, url string, progress io.Writer) (_ info.Info,
 	}
 	return providerInfo, nil
 }
+
+// checkURL refuses the git urls that aren't encrypted (http://, git://): a provider is
+// code mangal runs, a man in the middle could replace it. Paths and scp-like ssh urls
+// (git@host:path) pass.
+func checkURL(raw string) error {
+	scheme, _, found := strings.Cut(raw, "://")
+	if !found {
+		return nil
+	}
+	switch strings.ToLower(scheme) {
+	case "https", "ssh", "file":
+		return nil
+	}
+	return fmt.Errorf("%s: only https, ssh and file urls (or git@host:path), %s isn't encrypted", redactURL(raw), scheme)
+}
+
+// redactURL drops the user info (a token) from the url.
+func redactURL(raw string) string {
+	u, err := neturl.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	u.User = neturl.User("***")
+	return u.String()
+}
+
+// redact keeps the url's user info out of the error.
+func redact(err error, raw string) error {
+	u, perr := neturl.Parse(raw)
+	if perr != nil || u.User == nil {
+		return err
+	}
+	msg := strings.ReplaceAll(err.Error(), raw, redactURL(raw))
+	if userinfo := u.User.String(); strings.Contains(msg, userinfo) {
+		msg = strings.ReplaceAll(msg, userinfo, "***")
+	}
+	if p, ok := u.User.Password(); ok && p != "" {
+		msg = strings.ReplaceAll(msg, p, "***")
+	}
+	return &redactedError{msg: msg, err: err}
+}
+
+// redactedError has the message without the secrets and keeps the chain for errors.Is.
+type redactedError struct {
+	msg string
+	err error
+}
+
+func (e *redactedError) Error() string { return e.msg }
+func (e *redactedError) Unwrap() error { return e.err }
 
 // checkName errors if name isn't a plain dir name, so it can't point outside the providers dir.
 func checkName(name string) error {
@@ -138,19 +192,36 @@ func pull(ctx context.Context, dir string, progress io.Writer) error {
 		return err
 	}
 
+	remote, err := repo.Remote(git.DefaultRemoteName)
+	if errors.Is(err, git.ErrRemoteNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var url string
+	if urls := remote.Config().URLs; len(urls) > 0 {
+		url = urls[0]
+		if err := checkURL(url); err != nil {
+			return fmt.Errorf("%w: change the remote (git remote set-url origin https://...)", err)
+		}
+	}
+
 	worktree, err := repo.Worktree()
 	if err != nil {
 		return err
 	}
 
-	err = worktree.PullContext(ctx, &git.PullOptions{
-		Progress: progress,
-		Force:    true,
-	})
-	if errors.Is(err, git.NoErrAlreadyUpToDate) || errors.Is(err, git.ErrRemoteNotFound) {
+	err = worktree.PullContext(ctx, &git.PullOptions{Progress: progress})
+	switch {
+	case errors.Is(err, git.NoErrAlreadyUpToDate):
 		return nil
+	case errors.Is(err, git.ErrNonFastForwardUpdate):
+		return fmt.Errorf("%w: its history was rewritten upstream or it has local commits; remove it and add it again (mangal providers rm, add) to take the new one", err)
+	case err != nil:
+		return redact(err, url)
 	}
-	return err
+	return nil
 }
 
 // Remove removes the provider dir named tag from dir.

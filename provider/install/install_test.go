@@ -2,11 +2,13 @@ package install
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -237,5 +239,97 @@ func TestNew(t *testing.T) {
 	i.ID = "../y"
 	if err := New(dir, i); err == nil {
 		t.Error("created ../y")
+	}
+}
+
+func TestCheckURL(t *testing.T) {
+	for url, ok := range map[string]bool{
+		"https://github.com/luevano/saturno":   true,
+		"ssh://git@github.com/luevano/saturno": true,
+		"git@github.com:luevano/saturno.git":   true,
+		"file:///srv/git/x.git":                true,
+		"/srv/git/x.git":                       true,
+		`C:\git\x.git`:                         true,
+		"http://github.com/luevano/saturno":    false,
+		"git://github.com/luevano/saturno":     false,
+		"HTTP://github.com/luevano/saturno":    false,
+		"ftp://example.com/x.git":              false,
+		"http://user:t0ken@example.com/x.git":  false,
+	} {
+		err := checkURL(url)
+		if (err == nil) != ok {
+			t.Errorf("%s: %v", url, err)
+		}
+		if err != nil && strings.Contains(err.Error(), "t0ken") {
+			t.Errorf("%s: token in %v", url, err)
+		}
+	}
+	if _, err := Add(context.Background(), t.TempDir(), "http://example.invalid/x.git", io.Discard); err == nil {
+		t.Error("added over http")
+	}
+}
+
+func TestRedact(t *testing.T) {
+	const url = "https://user:t0ken@example.com/x.git"
+	err := redact(fmt.Errorf("clone %s: %w", url, context.Canceled), url)
+	if strings.Contains(err.Error(), "t0ken") || !errors.Is(err, context.Canceled) {
+		t.Errorf("%v", err)
+	}
+	if err := redact(errors.New("auth for ghp_abc failed"), "https://ghp_abc@github.com/x"); strings.Contains(err.Error(), "ghp_abc") {
+		t.Errorf("%v", err)
+	}
+}
+
+// TestUpdateNonFastForward: a rewritten upstream history isn't forced over the provider.
+func TestUpdateNonFastForward(t *testing.T) {
+	root := t.TempDir()
+	origin := filepath.Join(root, "origin.git")
+	if _, err := git.PlainInit(origin, true); err != nil {
+		t.Fatal(err)
+	}
+	workDir := filepath.Join(root, "work")
+	work, err := git.PlainInit(workDir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := work.CreateRemote(&gitconfig.RemoteConfig{Name: "origin", URLs: []string{origin}}); err != nil {
+		t.Fatal(err)
+	}
+	commit(t, work, workDir, "first")
+	providers := filepath.Join(root, "providers")
+	if _, err := git.PlainClone(filepath.Join(providers, "a"), false, &git.CloneOptions{URL: origin}); err != nil {
+		t.Fatal(err)
+	}
+
+	// another history, force-pushed
+	otherDir := filepath.Join(root, "other")
+	other, err := git.PlainInit(otherDir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.CreateRemote(&gitconfig.RemoteConfig{Name: "origin", URLs: []string{origin}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(otherDir, "rewritten"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tree, _ := other.Worktree()
+	if _, err := tree.Add("rewritten"); err != nil {
+		t.Fatal(err)
+	}
+	sig := &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
+	if _, err := tree.Commit("rewritten", &git.CommitOptions{Author: sig}); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Push(&git.PushOptions{RemoteName: "origin", Force: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	err = Update(context.Background(), providers, io.Discard)
+	if !errors.Is(err, git.ErrNonFastForwardUpdate) || !strings.Contains(err.Error(), "add it again") {
+		t.Errorf("update: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(providers, "a", "first")); err != nil {
+		t.Errorf("provider replaced: %v", err)
 	}
 }
