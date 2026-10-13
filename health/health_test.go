@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -495,6 +496,8 @@ func TestMissingNumbers(t *testing.T) {
 		{[]float32{0.5, 2.5}, -1, nil, []int{1, 2}, "from halves"},
 		{[]float32{1, 1.5, 3}, -1, nil, []int{2}, "a .5 isn't one"},
 		{[]float32{1, 6}, 3, []float32{5}, []int{4}, "from and skip"},
+		{[]float32{1, 3, 20231005}, -1, nil, []int{2}, "a date isn't a gap"},
+		{[]float32{float32(math.NaN()), 1, 3, float32(math.Inf(1))}, -1, nil, []int{2}, "nan and inf"},
 	} {
 		if got := missingNumbers(tt.have, tt.from, tt.skip); !slices.Equal(got, tt.want) {
 			t.Errorf("%s: got %v, want %v", tt.label, got, tt.want)

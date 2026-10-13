@@ -563,17 +563,25 @@ func checkGaps(s *snapshot) []Finding {
 	return out
 }
 
+// maxGapSpan is the most numbers between two chapters that count as missing: more is a
+// numbering outlier (a date as the chapter number), not a gap.
+const maxGapSpan = 1000
+
 // missingNumbers are the whole numbers strictly between the first and last of have
-// (sorted) that it doesn't have, above from and not in skip.
+// (sorted) that it doesn't have, above from and not in skip; not between two chapters
+// more than maxGapSpan apart.
 func missingNumbers(have []float32, from float32, skip []float32) []int {
-	first, last := have[0], have[len(have)-1]
 	var missing []int
-	for n := int(math.Floor(float64(first))) + 1; float32(n) < last; n++ {
-		f := float32(n)
-		if f <= from || slices.Contains(skip, f) {
+	for i := 1; i < len(have); i++ {
+		lo, hi := float64(have[i-1]), float64(have[i])
+		if math.IsNaN(lo) || math.IsInf(lo, 0) || math.IsInf(hi, 0) || hi-lo > maxGapSpan {
 			continue
 		}
-		if _, found := slices.BinarySearch(have, f); !found {
+		for n := int(math.Floor(lo)) + 1; float64(n) < hi; n++ {
+			f := float32(n)
+			if f <= from || slices.Contains(skip, f) {
+				continue
+			}
 			missing = append(missing, n)
 		}
 	}
