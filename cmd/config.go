@@ -38,6 +38,7 @@ func init() {
 var configInfoCmd = &cobra.Command{
 	Use:   "info",
 	Short: "Show configuration information",
+	Long:  "Show every config key with its value, default and description; secrets are masked (config get prints them).",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		type configEntry struct {
@@ -56,8 +57,8 @@ var configInfoCmd = &cobra.Command{
 			def, _ := config.Default(key)
 			description, _ := config.Description(key)
 			configEntries[key] = configEntry{
-				Value:       value,
-				Default:     def,
+				Value:       config.Masked(key, value),
+				Default:     config.Masked(key, def),
 				Description: description,
 			}
 		}
@@ -160,7 +161,10 @@ key changes, the rest of the file (comments, order) stays as it is.`,
 		if err := config.WriteKey(key, raw); err != nil {
 			return err
 		}
-		successf(cmd, "Successfully set %q to %v", key, raw)
+		successf(cmd, "Successfully set %q to %v", key, config.Masked(key, raw))
+		if mode, readable := config.ReadableByOthers(); readable && config.IsSecret(key) {
+			cmd.PrintErrf("warning: %s holds secrets but others can read it (mode %o): chmod 600 it\n", config.Path, mode)
+		}
 		return nil
 	},
 }

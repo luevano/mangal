@@ -182,6 +182,15 @@ func IsSecret(key string) bool {
 	return ok && f.secret()
 }
 
+// Masked is the value as shown to the user: "••••••" for a set secret (config get still
+// prints it).
+func Masked(key string, value any) any {
+	if IsSecret(key) && value != nil && fmt.Sprint(value) != "" {
+		return "••••••"
+	}
+	return value
+}
+
 // Set a value for the key for this run, it isn't written to the file (see WriteKey). The
 // value can be the raw one (as in the file), the typed one or a string.
 func Set(key string, value any) error {
@@ -364,14 +373,8 @@ func WriteKey(key string, value any) error {
 		if err := rewriteKey(key, raw); err != nil {
 			return fmt.Errorf("write config key %q: %w", key, err)
 		}
-	} else {
-		mode := fs.FileMode(0o644)
-		if info, err := afs.Afero.Stat(Path); err == nil {
-			mode = info.Mode().Perm()
-		}
-		if err := afs.Afero.WriteFile(Path, edited, mode); err != nil {
-			return fmt.Errorf("write config key %q: %w", key, err)
-		}
+	} else if err := writeFile(edited); err != nil {
+		return fmt.Errorf("write config key %q: %w", key, err)
 	}
 	viperSet(key, raw)
 	return nil
@@ -388,13 +391,73 @@ func rewriteKey(key string, raw any) error {
 	// through the settings map and not Set: viper would merge a map value with the file's
 	settings := file.AllSettings()
 	setNested(settings, strings.Split(key, "."), raw)
+	return writeSettings(settings)
+}
+
+// writeSettings re-serialises the settings into the file.
+func writeSettings(settings map[string]any) error {
 	out := viper.New()
-	out.SetFs(afs.Afero.Fs)
-	out.SetConfigFile(Path)
+	configType := strings.TrimPrefix(filepath.Ext(Path), ".")
+	if configType == "" {
+		configType = "toml"
+	}
+	out.SetConfigType(configType)
 	if err := out.MergeConfigMap(settings); err != nil {
 		return err
 	}
-	return out.WriteConfig()
+	var buf bytes.Buffer
+	if err := out.WriteConfigTo(&buf); err != nil {
+		return err
+	}
+	return writeFile(buf.Bytes())
+}
+
+// writeFile replaces the config file with data through a temporary file renamed over it,
+// so a crash never leaves it half-written. It keeps the file's mode; a new one is only
+// readable by the user (it can hold secrets), as is a new directory.
+func writeFile(data []byte) error {
+	path := Path
+	// a symlinked file (dotfiles) stays a symlink
+	if target, err := filepath.EvalSymlinks(path); err == nil {
+		path = target
+	}
+	mode := fs.FileMode(0o600)
+	if info, err := afs.Afero.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	dir := filepath.Dir(path)
+	if err := afs.Afero.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := afs.Afero.TempFile(dir, "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	defer afs.Afero.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := afs.Afero.Chmod(tmp.Name(), mode); err != nil {
+		return err
+	}
+	return afs.Afero.Rename(tmp.Name(), path)
+}
+
+// ReadableByOthers is true when the config file exists and its group or others can read it.
+func ReadableByOthers() (fs.FileMode, bool) {
+	info, err := afs.Afero.Stat(Path)
+	if err != nil {
+		return 0, false
+	}
+	return info.Mode().Perm(), info.Mode().Perm()&0o044 != 0
 }
 
 func setNested(m map[string]any, path []string, value any) {
@@ -414,10 +477,7 @@ func CreateFile() error {
 	if _, err := afs.Afero.Stat(Path); err == nil {
 		return nil
 	}
-	if err := afs.Afero.MkdirAll(filepath.Dir(Path), 0o755); err != nil {
-		return fmt.Errorf("create config file: %w", err)
-	}
-	if err := afs.Afero.WriteFile(Path, nil, 0o644); err != nil {
+	if err := writeFile(nil); err != nil {
 		return fmt.Errorf("create config file: %w", err)
 	}
 	return nil
@@ -430,11 +490,7 @@ func Write() error {
 	if data, err := afs.Afero.ReadFile(Path); err == nil {
 		edited, err := writeInPlace(data)
 		if err == nil {
-			mode := fs.FileMode(0o644)
-			if info, err := afs.Afero.Stat(Path); err == nil {
-				mode = info.Mode().Perm()
-			}
-			if err := afs.Afero.WriteFile(Path, edited, mode); err != nil {
+			if err := writeFile(edited); err != nil {
 				return fmt.Errorf("write config: %w", err)
 			}
 			return nil
@@ -497,16 +553,7 @@ func rewrite() error {
 			setNested(settings, strings.Split(key, "."), fields[key].defaultRaw())
 		}
 	}
-	out := viper.New()
-	out.SetFs(afs.Afero.Fs)
-	out.SetConfigFile(Path)
-	if err := out.MergeConfigMap(settings); err != nil {
-		return fmt.Errorf("write config: %w", err)
-	}
-	if err := afs.Afero.MkdirAll(filepath.Dir(Path), 0o755); err != nil {
-		return fmt.Errorf("write config: %w", err)
-	}
-	if err := out.WriteConfig(); err != nil {
+	if err := writeSettings(settings); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 	return nil

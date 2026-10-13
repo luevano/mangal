@@ -2,8 +2,10 @@ package config
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -297,6 +299,62 @@ func TestCreateFile(t *testing.T) {
 	}
 	if file := readConfig(t); strings.TrimSpace(file) != "icons = 'nerd'" {
 		t.Errorf("file:\n%s", file)
+	}
+}
+
+func TestFileModes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no unix modes")
+	}
+	reset(t)
+	Path = filepath.Join(dir, "sub", filename)
+	if err := CreateFile(); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(Path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("new file: %v %v", info.Mode(), err)
+	}
+	if info, err := os.Stat(filepath.Dir(Path)); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("new dir: %v %v", info.Mode(), err)
+	}
+
+	// an existing file keeps its mode, through a symlink too
+	if err := os.Chmod(Path, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.toml")
+	if err := os.Symlink(Path, link); err != nil {
+		t.Fatal(err)
+	}
+	target := Path
+	Path = link
+	if err := WriteKey(Icons.Key, "nerd"); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&fs.ModeSymlink == 0 {
+		t.Errorf("link replaced: %v", err)
+	}
+	if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0o640 {
+		t.Errorf("kept mode: %v %v", info.Mode(), err)
+	}
+	if _, readable := ReadableByOthers(); !readable {
+		t.Error("0640 isn't readable by others")
+	}
+	if err := Write(); err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := os.ReadDir(filepath.Dir(target))
+	if len(entries) != 1 {
+		t.Errorf("temporary files left: %v", entries)
+	}
+	if file := readConfig(t); !strings.Contains(file, "icons = 'nerd'") {
+		t.Errorf("file:\n%s", file)
+	}
+}
+
+func TestMasked(t *testing.T) {
+	if Masked(Serve.Token.Key, "s3cret") == "s3cret" || Masked(Serve.Token.Key, "") != "" || Masked(Icons.Key, "nerd") != "nerd" {
+		t.Error("masked wrong")
 	}
 }
 
