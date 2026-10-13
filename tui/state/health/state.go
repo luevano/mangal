@@ -61,6 +61,9 @@ func (i *item) Title() string {
 }
 
 func (i *item) Description() string {
+	if i.f.Dismissed {
+		return i.f.Message + "\n(dismissed: " + i.s.keys.dismiss.Help().Key + " brings it back)"
+	}
 	return i.f.Message + "\n" + i.s.hint(i.f)
 }
 
@@ -166,11 +169,13 @@ type state struct {
 	applied map[int64]bool
 	// fixing is the finding whose library fix was asked last
 	fixing *health.Finding
-	keys   keyMap
+	// all shows the dismissed findings too
+	all  bool
+	keys keyMap
 }
 
 type keyMap struct {
-	jump, apply, merge, info, network, refresh, next key.Binding
+	jump, apply, merge, info, network, refresh, next, dismiss, showAll key.Binding
 }
 
 // loadedMsg is a finished run.
@@ -231,6 +236,8 @@ func newState(summary *health.Finding) *state {
 			network: base.KeyNetwork,
 			refresh: base.KeyRefresh,
 			next:    base.KeyNext,
+			dismiss: base.KeyDismiss,
+			showAll: base.KeyShowDismissed,
 		},
 	}
 	s.Screen = list.NewScreen(list.New(3, 1, "finding", "findings", []*item{}, func(i *item) _list.DefaultItem { return i }), s.keyMap)
@@ -245,10 +252,10 @@ func newState(summary *health.Finding) *state {
 func (s *state) keyMap() help.KeyMap {
 	k := s.keys
 	if s.summary != nil {
-		return util.KeyMap{Short: []key.Binding{k.jump, k.apply, k.info}}
+		return util.KeyMap{Short: []key.Binding{k.jump, k.apply, k.info, k.dismiss}}
 	}
-	short := []key.Binding{k.jump, k.apply, k.merge, k.network, k.next}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.info, k.refresh)}}
+	short := []key.Binding{k.jump, k.apply, k.merge, k.network, k.next, k.dismiss}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.info, k.refresh, k.showAll)}}
 }
 
 func (s *state) KeyMap() help.KeyMap {
@@ -292,6 +299,13 @@ func (s *state) Status() string {
 	}
 	c := s.report.Counts
 	status := fmt.Sprintf("%s, %s, %d info", stringutil.Quantify(c.Error, "error", "errors"), stringutil.Quantify(c.Warning, "warning", "warnings"), c.Info)
+	if n := s.report.Dismissed; n > 0 {
+		verb := "shows"
+		if s.all {
+			verb = "hides"
+		}
+		status += fmt.Sprintf(" · %d dismissed (%s %s them)", n, s.keys.showAll.Help().Key, verb)
+	}
 	if n := len(s.report.Errors); n > 0 {
 		status += fmt.Sprintf(" · %d checks couldn't run (%s)", n, s.keys.info.Help().Key)
 	}
@@ -316,13 +330,14 @@ func (s *state) load(ctx context.Context, network bool) tea.Cmd {
 	if network {
 		label = "Checking (network)"
 	}
+	all := s.all
 	return base.LoadWithStatus(ctx, label, func(ctx context.Context, status func(string)) (loadedMsg, error) {
 		checker, err := health.New(ctx)
 		if err != nil {
 			return loadedMsg{}, err
 		}
 		checker.OnProgress = status
-		report, err := checker.Run(ctx, health.Options{Network: network})
+		report, err := checker.Run(ctx, health.Options{Network: network, All: all})
 		return loadedMsg{report: report, network: network}, err
 	}, func(msg loadedMsg) tea.Msg { return msg })
 }
@@ -351,6 +366,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return loadManga(ctx, msg.manga, func(m storage.Manga) (tea.Msg, error) {
 			return pushMsg{state: tuilibrary.NewLinks(m, library.Links{msg.code: msg.id})}, nil
 		})
+	case dismissedMsg:
+		return s.onDismissed(ctx, msg)
 	case changedMsg:
 		if msg.applied != 0 {
 			s.applied[msg.applied] = true
@@ -464,6 +481,12 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
 		case key.Matches(msg, s.keys.next):
 			s.category = s.nextCategory()
 			return s.setItems(), true
+		case key.Matches(msg, s.keys.showAll):
+			if base.Busy(ctx) {
+				return nil, true
+			}
+			s.all = !s.all
+			return s.load(ctx, s.network), true
 		}
 	}
 	it, ok := s.List.SelectedItem().(*item)
@@ -481,6 +504,8 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
 		return base.Viewport(f.Subject.String(), s.info(f), severityColor(f.Severity)), true
 	case key.Matches(msg, s.keys.apply):
 		return s.apply(ctx, f), true
+	case key.Matches(msg, s.keys.dismiss):
+		return s.dismiss(ctx, f), true
 	case key.Matches(msg, s.keys.merge):
 		if a := f.Fix.Action; a != nil && a.Kind == health.ActionMerge {
 			return s.merge(ctx, a), true

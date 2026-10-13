@@ -278,3 +278,53 @@ func applyRenames(renames []library.Rename, status func(string)) (string, error)
 	}
 	return notify + undoable, nil
 }
+
+// dismissedMsg is a finding dismissed (or brought back).
+type dismissedMsg struct {
+	key       string
+	dismissed bool
+}
+
+// dismiss dismisses the finding (fine as it is), or brings a dismissed one back.
+func (s *state) dismiss(ctx context.Context, f health.Finding) tea.Cmd {
+	if f.Key == "" {
+		return base.Notify("This finding can't be dismissed")
+	}
+	return base.Load(ctx, "", func(context.Context) (dismissedMsg, error) {
+		check, subject, err := health.SplitKey(f.Key)
+		if err != nil {
+			return dismissedMsg{}, err
+		}
+		st, err := cache.Storage()
+		if err != nil {
+			return dismissedMsg{}, err
+		}
+		ignores := storage.HealthIgnores{DB: st.Data}
+		if f.Dismissed {
+			_, err = ignores.Undismiss(check, subject)
+			return dismissedMsg{key: f.Key}, err
+		}
+		err = ignores.Dismiss(storage.HealthIgnore{Check: check, Subject: subject, Message: f.Message})
+		return dismissedMsg{key: f.Key, dismissed: true}, err
+	}, func(msg dismissedMsg) tea.Msg { return msg })
+}
+
+// onDismissed reloads (a summary updates its items), then notifies.
+func (s *state) onDismissed(ctx context.Context, msg dismissedMsg) tea.Cmd {
+	notify := "dismissed " + msg.key + " (" + s.keys.showAll.Help().Key + " shows the dismissed)"
+	if !msg.dismissed {
+		notify = "brought back " + msg.key
+	}
+	if s.summary == nil {
+		return tea.Batch(s.load(ctx, false), base.Notify(notify))
+	}
+	for i, f := range s.report.Findings {
+		if f.Key == msg.key {
+			s.report.Findings[i].Dismissed = msg.dismissed
+		}
+	}
+	if msg.dismissed {
+		s.report.Findings = slices.DeleteFunc(s.report.Findings, func(f health.Finding) bool { return f.Key == msg.key })
+	}
+	return tea.Batch(s.setItems(), base.Notify(notify))
+}

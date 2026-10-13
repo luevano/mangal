@@ -98,6 +98,9 @@ var (
 	// the health screen's: a and A are select all and bindings (old)
 	KeyApplyFix = util.Bind("apply fix", "x")
 	KeyNetwork  = util.Bind("network checks", "alt+n")
+	// dismiss (a finding that's fine), z and Z were free everywhere
+	KeyDismiss       = util.Bind("dismiss", "z")
+	KeyShowDismissed = util.Bind("show dismissed", "Z")
 )
 
 // keyConcepts are the keys with more than one help, each one concept: the helps they may
@@ -142,7 +145,7 @@ func Keys() (old, newer []key.Binding) {
 		KeyUndo, KeyDuplicates, KeyBackups, KeyCheck, KeyCheckDue, KeyCheckProvider, KeyFillGaps, KeyPause,
 		KeyPauseProvider, KeyStopWatching, KeyDeleteRun, KeyRelink, KeyLiveLog, KeyLiveChecks, KeyRuns,
 		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,
-		KeyNotInLibrary, KeyApplyFix, KeyNetwork,
+		KeyNotInLibrary, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
 	}
 }
 
