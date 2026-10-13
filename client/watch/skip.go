@@ -2,6 +2,7 @@ package watch
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,12 +15,25 @@ func ParseNumbers(s string) ([]float32, error) {
 	var ns []float32
 	for part := range strings.FieldsFuncSeq(s, func(r rune) bool { return r == ',' || r == ' ' }) {
 		n, err := strconv.ParseFloat(part, 32)
-		if err != nil || n < 0 {
+		if err != nil || !validNumber(n) {
 			return nil, fmt.Errorf("chapter number %q: not a number", part)
 		}
 		ns = append(ns, float32(n))
 	}
 	return ns, nil
+}
+
+// validNumber is a chapter number: not negative, NaN nor infinite.
+func validNumber(n float64) bool {
+	return n >= 0 && !math.IsInf(n, 0)
+}
+
+// checkFrom is an error for a From that isn't a chapter number.
+func checkFrom(from *float32) error {
+	if from != nil && !validNumber(float64(*from)) {
+		return fmt.Errorf("from %v: not a chapter number", *from)
+	}
+	return nil
 }
 
 // FormatNumbers is the chapter numbers separated by commas: "189.5, 190".

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -79,7 +80,7 @@ func parseIDs(args []string) ([]int64, error) {
 func parseSince(s string) (time.Duration, error) {
 	if days, ok := strings.CutSuffix(s, "d"); ok {
 		n, err := strconv.ParseFloat(days, 64)
-		if err != nil || n < 0 {
+		if err != nil || !(n >= 0) || math.IsInf(n, 0) {
 			return 0, fmt.Errorf("%q isn't a number of days", s)
 		}
 		return time.Duration(n * float64(24*time.Hour)), nil

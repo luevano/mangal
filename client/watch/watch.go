@@ -320,6 +320,9 @@ func (s *Service) Add(ctx context.Context, opts AddOptions) (Watch, error) {
 	if _, err := ParseSchedule(opts.Schedule); err != nil {
 		return Watch{}, err
 	}
+	if err := checkFrom(opts.From); err != nil {
+		return Watch{}, err
+	}
 	opts.Schedule = strings.TrimSpace(opts.Schedule)
 	if opts.Offline {
 		return s.addOffline(opts)
@@ -768,6 +771,9 @@ type UpdateOptions struct {
 
 // Update changes the watch's settings.
 func (s *Service) Update(ctx context.Context, id int64, opts UpdateOptions) (Watch, error) {
+	if err := checkFrom(opts.From); err != nil {
+		return Watch{}, err
+	}
 	if opts.Schedule != nil {
 		if _, err := ParseSchedule(*opts.Schedule); err != nil {
 			return Watch{}, err

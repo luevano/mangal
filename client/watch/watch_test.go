@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -1580,5 +1581,21 @@ func TestCheckOldAndCurrentID(t *testing.T) {
 		if r.Status != storage.StatusNew {
 			t.Errorf("%s: %s %s", r.Title, r.Status, r.Error)
 		}
+	}
+}
+
+func TestNumbersAreChapterNumbers(t *testing.T) {
+	for _, bad := range []string{"nan", "inf", "-inf", "-1", "1, NaN"} {
+		if ns, err := ParseNumbers(bad); err == nil {
+			t.Errorf("%q: %v", bad, ns)
+		}
+	}
+	if ns, err := ParseNumbers("189.5, 190"); err != nil || !slices.Equal(ns, []float32{189.5, 190}) {
+		t.Errorf("%v, %v", ns, err)
+	}
+	e := newEnv(t)
+	nan := float32(math.NaN())
+	if _, err := e.svc.Add(context.Background(), AddOptions{Offline: true, Provider: "p", MangaID: "m", From: &nan}); err == nil {
+		t.Error("added from nan")
 	}
 }
