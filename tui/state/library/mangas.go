@@ -194,7 +194,7 @@ func (s *mangasState) reload(ctx context.Context) tea.Cmd {
 // duplicates are the library mangas sharing a metadata id, the error is logged (a mark
 // isn't worth an error screen).
 func duplicates(lib storage.Library, mangas []storage.Manga, watched watches.Set) []library.Duplicate {
-	bindings, err := storage.Bindings{DB: lib.DB}.List("", "")
+	bindings, err := storage.Bindings(lib).List("", "")
 	if err != nil {
 		log.Warn("duplicates: %s", err)
 		return nil
