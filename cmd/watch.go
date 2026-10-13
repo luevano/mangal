@@ -232,7 +232,7 @@ var watchLsArgs = struct {
 
 func init() {
 	watchCmd.AddCommand(watchLsCmd)
-	watchLsCmd.Flags().BoolVar(&watchLsArgs.JSON, "json", false, "Print JSON")
+	watchLsCmd.Flags().BoolVarP(&watchLsArgs.JSON, "json", "j", false, "Print JSON")
 }
 
 var watchLsCmd = &cobra.Command{
@@ -694,7 +694,7 @@ func init() {
 	f := watchCheckCmd.Flags()
 	f.BoolVarP(&watchCheckArgs.DryRun, "dry-run", "n", false, "Only list what would be downloaded")
 	f.BoolVar(&watchCheckArgs.Gaps, "gaps", false, "Also download the missing chapters below the last downloaded one, for every watch checked")
-	f.BoolVar(&watchCheckArgs.JSON, "json", false, "Print the report as JSON at the end (instead of the lines)")
+	f.BoolVarP(&watchCheckArgs.JSON, "json", "j", false, "Print the report as JSON at the end (instead of the lines)")
 	f.StringVar(&watchCheckArgs.Provider, "provider", "", "Every enabled watch of this provider")
 	f.BoolVar(&watchCheckArgs.Due, "due", false, "Only the watches that are due")
 	_ = watchCheckCmd.RegisterFlagCompletionFunc("provider", completionProviderIDs)
@@ -853,7 +853,7 @@ func init() {
 	f.StringVar(&watchLogArgs.MangaID, "manga", "", "Only the checks of this manga id (with --provider)")
 	_ = watchLogCmd.RegisterFlagCompletionFunc("provider", completionProviderIDs)
 	f.IntVar(&watchLogArgs.Limit, "limit", 0, "Only the latest N check runs")
-	f.BoolVar(&watchLogArgs.JSON, "json", false, "Print JSON")
+	f.BoolVarP(&watchLogArgs.JSON, "json", "j", false, "Print JSON")
 	f.Int64SliceVar(&watchLogArgs.Remove, "rm", nil, "Delete these runs (the \"run N\" of a line) from the history")
 }
 
@@ -984,7 +984,7 @@ var watchStaleArgs = struct {
 func init() {
 	watchCmd.AddCommand(watchStaleCmd)
 	watchStaleCmd.Flags().StringVar(&watchStaleArgs.Since, "since", "90d", "No new chapter for this long (e.g. 90d)")
-	watchStaleCmd.Flags().BoolVar(&watchStaleArgs.JSON, "json", false, "Print JSON")
+	watchStaleCmd.Flags().BoolVarP(&watchStaleArgs.JSON, "json", "j", false, "Print JSON")
 }
 
 var watchStaleCmd = &cobra.Command{

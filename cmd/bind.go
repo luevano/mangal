@@ -23,10 +23,10 @@ func init() {
 	f.StringVar(&bindArgs.Default, "default", "", "")
 	_ = f.MarkHidden("default")
 	f.StringSliceVar(&bindArgs.Remove, "remove", nil, "Remove the binding of these sources (anilist|kitsu|mal)")
-	f.BoolVar(&bindArgs.JSON, "json", false, "Print JSON")
+	f.BoolVarP(&bindArgs.JSON, "json", "j", false, "Print JSON")
 
 	bindCmd.AddCommand(bindLsCmd)
-	bindLsCmd.Flags().BoolVar(&bindArgs.JSON, "json", false, "Print JSON")
+	bindLsCmd.Flags().BoolVarP(&bindArgs.JSON, "json", "j", false, "Print JSON")
 }
 
 var bindArgs = struct {

@@ -93,7 +93,10 @@ func init() {
 	inlineCmd.AddCommand(inlineDownloadCmd)
 
 	f := inlineDownloadCmd.Flags()
-	f.BoolVar(&inlineArgs.JSONOutput, "json-output", false, "JSON format for individual chapter download output")
+	f.BoolVarP(&inlineArgs.JSONOutput, "json", "j", false, "JSON format for individual chapter download output")
+	// its old name
+	f.BoolVar(&inlineArgs.JSONOutput, "json-output", false, "")
+	_ = f.MarkHidden("json-output")
 	f.StringP("format", "f", "", fmt.Sprintf("Download format (%s)", strings.Join(libmangal.FormatStrings(), "|")))
 	configKeyFlag(f, "format", config.Download.Format.Key)
 	f.StringP("directory", "d", "", "Download directory")

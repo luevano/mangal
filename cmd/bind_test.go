@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/spf13/cobra"
 )
 
 func TestBindFlags(t *testing.T) {
@@ -35,5 +36,22 @@ func TestFormatBindings(t *testing.T) {
 	got := formatBindings([]storage.Binding{{Source: "kt", ID: "11", Default: true}, {Source: "al", ID: "30013"}, {Source: "mu", ID: "5"}})
 	if want := "Kitsu 11 (default), AniList 30013 (backup), mu 5 (backup)"; got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// every --json is -j too
+func TestJSONFlags(t *testing.T) {
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if f := c.Flags().Lookup("json"); f != nil && f.Shorthand != "j" {
+			t.Errorf("%s: --json without -j", c.CommandPath())
+		}
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(rootCmd)
+	if f := inlineDownloadCmd.Flags().Lookup("json-output"); f == nil || !f.Hidden {
+		t.Errorf("inline download --json-output: %+v", f)
 	}
 }

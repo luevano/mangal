@@ -24,7 +24,7 @@ var healthArgs = struct {
 func init() {
 	rootCmd.AddCommand(healthCmd)
 	f := healthCmd.Flags()
-	f.BoolVar(&healthArgs.JSON, "json", false, "Print the report as JSON")
+	f.BoolVarP(&healthArgs.JSON, "json", "j", false, "Print the report as JSON")
 	f.BoolVar(&healthArgs.Network, "network", false, "Also run the checks that make requests (W12) and look the publication statuses up on AniList")
 	f.BoolVar(&healthArgs.All, "all", false, "Also show the dismissed findings")
 	f.StringArrayVar(&healthArgs.Dismiss, "dismiss", nil, "Dismiss the finding with this key (fine as it is: hidden from then on), repeatable")
