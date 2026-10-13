@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -40,6 +42,26 @@ func completionConfigKeys(_ *cobra.Command, _ []string, toComplete string) ([]st
 	})
 
 	return filtered, cobra.ShellCompDirectiveDefault
+}
+
+// readSecret reads a line from in, without echo when cmd's input is a terminal. An empty
+// input is "".
+func readSecret(cmd *cobra.Command, in *bufio.Reader, label string) (string, error) {
+	fmt.Fprint(cmd.ErrOrStderr(), label)
+	f, ok := cmd.InOrStdin().(*os.File)
+	if !ok || !term.IsTerminal(int(f.Fd())) {
+		line, err := in.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return "", fmt.Errorf("read %s: %w", strings.TrimSuffix(strings.TrimSpace(label), ":"), err)
+		}
+		return strings.TrimSpace(line), nil
+	}
+	secret, err := term.ReadPassword(int(f.Fd()))
+	fmt.Fprintln(cmd.ErrOrStderr())
+	if err != nil {
+		return "", fmt.Errorf("read the secret: %w", err)
+	}
+	return strings.TrimSpace(string(secret)), nil
 }
 
 // confirm asks a yes/no question in the terminal, no (without asking) if it isn't one.

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/luevano/mangal/v5/auth/oauth"
 	"github.com/luevano/mangal/v5/client/myanimelist"
@@ -93,8 +92,8 @@ Both are asked, the secret without echo, or read from stdin a line each.
 		if id == "" {
 			return errors.New("empty client id, --clear removes the saved one")
 		}
-		secret, err := promptSecret(cmd, in, "Client secret (empty for none): ")
-		if err != nil && !errors.Is(err, io.EOF) {
+		secret, err := readSecret(cmd, in, "Client secret (empty for none): ")
+		if err != nil {
 			return err
 		}
 		if err := myanimelist.SetClient(id, secret); err != nil {

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/luevano/mangal/v5/auth/oauth"
@@ -13,7 +12,6 @@ import (
 	anilistViewer "github.com/luevano/mangal/v5/tui/model/anilist"
 	"github.com/skratchdot/open-golang/open"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 var anilistLoginArgs = struct {
@@ -73,7 +71,7 @@ won't load, paste its address (it has the token after #access_token=, or the cod
 				if id == savedID && savedSecret != "" {
 					label = `Client secret (enter for the saved one, "-" for an implicit grant): `
 				}
-				if secret, err = promptSecret(cmd, in, label); err != nil {
+				if secret, err = readSecret(cmd, in, label); err != nil {
 					return err
 				}
 				switch {
@@ -135,19 +133,4 @@ func prompt(cmd *cobra.Command, in *bufio.Reader, label string) (string, error) 
 		return "", fmt.Errorf("read %s: %w", strings.TrimSuffix(strings.TrimSpace(label), ":"), err)
 	}
 	return strings.TrimSpace(line), nil
-}
-
-// promptSecret doesn't echo the secret in a terminal.
-func promptSecret(cmd *cobra.Command, in *bufio.Reader, label string) (string, error) {
-	f, ok := cmd.InOrStdin().(*os.File)
-	if !ok || !term.IsTerminal(int(f.Fd())) {
-		return prompt(cmd, in, label)
-	}
-	fmt.Fprint(cmd.ErrOrStderr(), label)
-	secret, err := term.ReadPassword(int(f.Fd()))
-	fmt.Fprintln(cmd.ErrOrStderr())
-	if err != nil {
-		return "", fmt.Errorf("read the secret: %w", err)
-	}
-	return strings.TrimSpace(string(secret)), nil
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -98,7 +99,7 @@ none is saved. The token is read from the terminal without echo, or from stdin.`
 			token = hex.EncodeToString(b)
 		default:
 			var err error
-			if token, err = readSecret(cmd, "Serve token: "); err != nil {
+			if token, err = readSecret(cmd, bufio.NewReader(cmd.InOrStdin()), "Serve token: "); err != nil {
 				return err
 			}
 			if token == "" {

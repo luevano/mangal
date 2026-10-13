@@ -3,14 +3,10 @@ package cmd
 import (
 	"bufio"
 	"errors"
-	"io"
-	"os"
-	"strings"
 
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 func init() {
@@ -45,7 +41,7 @@ The url is read from the terminal without echo, or from stdin.`,
 			successf(cmd, "removed the saved Discord webhook")
 			return nil
 		}
-		url, err := readSecret(cmd, "Discord webhook URL: ")
+		url, err := readSecret(cmd, bufio.NewReader(cmd.InOrStdin()), "Discord webhook URL: ")
 		if err != nil {
 			return err
 		}
@@ -61,19 +57,4 @@ The url is read from the terminal without echo, or from stdin.`,
 		successf(cmd, "saved the Discord webhook")
 		return nil
 	},
-}
-
-// readSecret reads a line without echo from the terminal, or from stdin when it isn't one.
-func readSecret(cmd *cobra.Command, prompt string) (string, error) {
-	if fd := int(os.Stdin.Fd()); term.IsTerminal(fd) {
-		cmd.PrintErr(prompt)
-		b, err := term.ReadPassword(fd)
-		cmd.PrintErrln()
-		return strings.TrimSpace(string(b)), err
-	}
-	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", err
-	}
-	return strings.TrimSpace(line), nil
 }
