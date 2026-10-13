@@ -125,3 +125,37 @@ func TestLoginNewSavesClient(t *testing.T) {
 		t.Errorf("saved client %q %q, %v", id, secret, err)
 	}
 }
+
+// TestResetLoginDropsTheSession: a logout elsewhere (a TUI while serve runs) logs this
+// process out on the next EnsureLogin.
+func TestResetLoginDropsTheSession(t *testing.T) {
+	token := &oauth2.Token{AccessToken: "x", Expiry: time.Now().Add(time.Hour)}
+	if err := cache.SetAnilistAuthData("me", token); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateUsers(func(h *cache.UserHistory) { h.Add("me") }); err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.SetAnilistLoggedOut(false); err != nil {
+		t.Fatal(err)
+	}
+	ResetLogin()
+	if err := EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ani, _ := Anilist()
+	if !ani.Authenticated() {
+		t.Fatal("not logged in")
+	}
+
+	if err := cache.SetAnilistLoggedOut(true); err != nil {
+		t.Fatal(err)
+	}
+	ResetLogin()
+	if err := EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if ani.Authenticated() {
+		t.Error("still logged in after the logout elsewhere")
+	}
+}

@@ -64,18 +64,24 @@ func Configured() bool {
 // MyAnimeList is the MyAnimeList metadata provider shared by every client, ErrNotConfigured
 // without a client id. It makes no request: EnsureLogin logs in with the saved user.
 func MyAnimeList() (*metadata.ProviderWithCache, error) {
+	_, p, err := current()
+	return p, err
+}
+
+// current is the client and the provider made with the saved client id.
+func current() (*myanimelist.MyAnimeList, *metadata.ProviderWithCache, error) {
 	malLock.Lock()
 	defer malLock.Unlock()
 	// the client id can change during the run (the TUI, another process for mangal serve)
 	id, _, err := cache.MyAnimeListClient()
 	if err != nil {
-		return nil, fmt.Errorf("get the myanimelist client: %w", err)
+		return nil, nil, fmt.Errorf("get the myanimelist client: %w", err)
 	}
 	if provider != nil && id == providerID {
-		return provider, nil
+		return mal, provider, nil
 	}
 	if id == "" {
-		return nil, ErrNotConfigured
+		return nil, nil, ErrNotConfigured
 	}
 
 	opts := myanimelist.DefaultOptions()
@@ -83,7 +89,7 @@ func MyAnimeList() (*metadata.ProviderWithCache, error) {
 	opts.HTTPClient = httpClient()
 	m, err := myanimelist.NewMAL(opts)
 	if err != nil {
-		return nil, fmt.Errorf("create myanimelist: %w", err)
+		return nil, nil, fmt.Errorf("create myanimelist: %w", err)
 	}
 
 	cacheOpts := metadata.DefaultProviderWithCacheOptions()
@@ -91,12 +97,12 @@ func MyAnimeList() (*metadata.ProviderWithCache, error) {
 	cacheOpts.CacheStore = cache.CacheStore
 	p, err := metadata.NewProviderWithCache(cacheOpts)
 	if err != nil {
-		return nil, fmt.Errorf("create myanimelist: %w", err)
+		return nil, nil, fmt.Errorf("create myanimelist: %w", err)
 	}
 	// logged before any client sets its logger too (e.g. library commands)
 	p.Logger().SetOnLog(mlog.ProviderHook("myanimelist"))
 	mal, provider, providerID = m, p, id
-	return provider, nil
+	return mal, provider, nil
 }
 
 // guarded stops searching once MyAnimeList refused the client id: the first search says so,
@@ -119,10 +125,8 @@ func (g *guarded) Search(ctx context.Context, query string) ([]metadata.Metadata
 }
 
 func client() (*myanimelist.MyAnimeList, error) {
-	if _, err := MyAnimeList(); err != nil {
-		return nil, err
-	}
-	return mal, nil
+	m, _, err := current()
+	return m, err
 }
 
 // oauthContext makes the oauth requests use mangal's http client.
@@ -290,12 +294,15 @@ func refresh(ctx context.Context, user string, token *oauth2.Token) error {
 	return nil
 }
 
-// ResetLogin makes the next EnsureLogin log in again with the saved login (it changed, e.g.
-// from a TUI while `mangal serve` runs).
+// ResetLogin logs out of this process's session and makes the next EnsureLogin log in again
+// with the saved login (it changed, e.g. from a TUI while `mangal serve` runs).
 func ResetLogin() {
 	loginSem <- struct{}{}
 	defer func() { <-loginSem }()
 	loginTried = false
+	if m, err := client(); err == nil && m.Authenticated() {
+		_ = m.Logout()
+	}
 }
 
 // SetClient saves the MyAnimeList API client, an empty id removes it. The next MyAnimeList

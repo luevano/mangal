@@ -183,10 +183,13 @@ func LoginNotice() string {
 	return ""
 }
 
-// ResetLogin makes the next EnsureLogin log in again with the saved login (it changed, e.g.
-// from a TUI while `mangal serve` runs).
+// ResetLogin logs out of this process's session and makes the next EnsureLogin log in again
+// with the saved login (it changed, e.g. from a TUI while `mangal serve` runs).
 func ResetLogin() {
 	loginSem <- struct{}{}
 	defer func() { <-loginSem }()
 	loginTried = false
+	if ani, err := Anilist(); err == nil && ani.Authenticated() {
+		_ = ani.Logout()
+	}
 }

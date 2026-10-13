@@ -253,3 +253,29 @@ func TestLogoutSticks(t *testing.T) {
 		t.Fatalf("saved login after logging in again: %v, %v", found, err)
 	}
 }
+
+// TestResetLoginDropsTheSession: a logout elsewhere (a TUI while serve runs) logs this
+// process out on the next EnsureLogin.
+func TestResetLoginDropsTheSession(t *testing.T) {
+	start(t)
+	fake.reset("", []string{"x"}, nil)
+	save(t, kitsu.Token{AccessToken: "x", RefreshToken: "r", ExpiresIn: 30 * 24 * 3600, CreatedAt: time.Now().Unix()})
+	if err := EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	k, _ := client()
+	if !k.Authenticated() {
+		t.Fatal("not logged in")
+	}
+
+	if err := cache.SetKitsuLoggedOut(true); err != nil {
+		t.Fatal(err)
+	}
+	ResetLogin()
+	if err := EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if k.Authenticated() {
+		t.Error("still logged in after the logout elsewhere")
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -375,4 +376,51 @@ func TestSavedClientChangeRebuilds(t *testing.T) {
 	if second == first || providerID != "other-id" {
 		t.Errorf("provider not rebuilt for the new client id (%q)", providerID)
 	}
+}
+
+// TestResetLoginDropsTheSession: a logout elsewhere (a TUI while serve runs) logs this
+// process out on the next EnsureLogin.
+func TestResetLoginDropsTheSession(t *testing.T) {
+	start(t)
+	fake.reset([]string{"x"}, nil)
+	save(t, oauth2.Token{AccessToken: "x", RefreshToken: "r", Expiry: time.Now().Add(30 * 24 * time.Hour)})
+	if err := EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := client()
+	if !m.Authenticated() {
+		t.Fatal("not logged in")
+	}
+
+	if err := cache.SetMyAnimeListLoggedOut(true); err != nil {
+		t.Fatal(err)
+	}
+	ResetLogin()
+	if err := EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if m.Authenticated() {
+		t.Error("still logged in after the logout elsewhere")
+	}
+}
+
+// TestClientChangeRace: the provider is rebuilt for a new client id while others use it.
+func TestClientChangeRace(t *testing.T) {
+	defer func() { _ = cache.SetMyAnimeListClient("test-id", "") }()
+	var wg sync.WaitGroup
+	for i := range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range 20 {
+				if i == 0 {
+					_ = cache.SetMyAnimeListClient(fmt.Sprintf("id-%d", j), "")
+				}
+				if _, err := client(); err != nil {
+					t.Error(err)
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
