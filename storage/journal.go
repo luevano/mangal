@@ -44,10 +44,11 @@ CREATE TABLE journal_steps (
 ) WITHOUT ROWID`
 
 // keptTables aren't restored from a snapshot: no library operation changes them, and
-// logins or searches made since are worth more than the old ones.
+// logins, searches or dismissed health findings made since are worth more than the old
+// ones.
 var keptTables = []string{
 	TableTitleBindings, TableAuthTokens, TableAuthHistory, TableSearchHistory,
-	"locks", "journal", "journal_steps",
+	"locks", "journal", "journal_steps", "health_ignores",
 }
 
 // StepKind is what a journal step did.
