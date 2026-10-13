@@ -351,6 +351,9 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 	if !ok {
 		return nil, false
 	}
+	if key.Matches(msg, s.keys.delete) && base.Busy(ctx) {
+		return base.Notify(busyNotice), true
+	}
 	files := s.files
 	switch {
 	case key.Matches(msg, s.keys.confirm):

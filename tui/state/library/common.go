@@ -40,7 +40,14 @@ type reloadMsg struct {
 	merged bool
 }
 
+// busyNotice refuses a change while the screen's work (a scan, another change) runs: it
+// would change the library under it.
+const busyNotice = "Wait for the running library work, then try again"
+
 func (msg actionMsg) run(ctx context.Context) tea.Cmd {
+	if base.Busy(ctx) {
+		return base.Notify(busyNotice)
+	}
 	return base.LoadWithStatus(ctx, msg.label, func(_ context.Context, status func(string)) (reloadMsg, error) {
 		return msg.do(status)
 	}, func(msg reloadMsg) tea.Msg { return msg })

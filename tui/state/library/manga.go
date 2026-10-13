@@ -291,6 +291,9 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			if !ok {
 				break
 			}
+			if base.Busy(ctx) {
+				return base.Notify(busyNotice)
+			}
 			files, manga, dl, title := s.files, s.manga, item.download, item.Title()
 			message := fmt.Sprintf("Delete chapter %s (%s)? The file goes to the trash.", title, dl.Format)
 			s.confirm.AskDelete("Delete", message, s.View(), action("Deleting chapter "+title, func() (string, error) {

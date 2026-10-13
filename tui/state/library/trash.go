@@ -97,6 +97,9 @@ func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if len(s.List.Items()) == 0 {
 			return base.Notify("the trash is empty")
 		}
+		if base.Busy(ctx) {
+			return base.Notify(busyNotice)
+		}
 		files := s.files
 		s.confirm.AskDelete("Empty the trash", "Delete everything in the trash? It can't be undone.", s.View(), action("Emptying the trash", func() (string, error) {
 			if _, err := client.Snapshot("empty-trash"); err != nil {
