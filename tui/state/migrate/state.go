@@ -58,9 +58,12 @@ func (s *state) Subtitle() string {
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	root := path.Downloads()
 	providerDirs := config.Download.Provider.CreateDir.Get()
 	return base.LoadWithStatus(ctx, "Looking for old provider ids", func(_ context.Context, status func(string)) (plannedMsg, error) {
+		root, err := path.ExistingDownloads()
+		if err != nil {
+			return plannedMsg{}, err
+		}
 		loaders, err := manager.Loaders()
 		if err != nil {
 			return plannedMsg{}, err

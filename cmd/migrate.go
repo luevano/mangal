@@ -49,7 +49,7 @@ Only lists what would change unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		root, err := path.Ensure(path.Downloads())
+		root, err := path.ExistingDownloads()
 		if err != nil {
 			return err
 		}
