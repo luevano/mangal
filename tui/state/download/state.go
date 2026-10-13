@@ -20,9 +20,11 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/notify"
+	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/viewport"
 	"github.com/luevano/mangal/v5/tui/util"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -36,6 +38,7 @@ type state struct {
 	spinner  spinner.Model
 	timer    timer.Model
 	viewport *viewport.Model
+	confirm  *confirm.Dialog
 	client   *libmangal.Client
 	options  libmangal.DownloadOptions
 
@@ -46,6 +49,8 @@ type state struct {
 	// run counts the downloads, the events of an older one are dropped
 	run         int
 	downloading bool
+	// leaving is the download stopped by leaving the screen, it can go
+	leaving bool
 	// current is the chapter (in batch) being downloaded, done how many finished
 	current, done int
 	// attempt is the rate limit retry of the current chapter, 0 if not waiting
@@ -62,8 +67,12 @@ type state struct {
 	styles styles
 
 	open,
-	retry key.Binding
+	retry,
+	stop key.Binding
 }
+
+// leaveMsg is leaving the screen confirmed, the download stops.
+type leaveMsg struct{}
 
 // eventMsg is an event of the run's download, with a copy of the chapter's result.
 type eventMsg struct {
@@ -100,6 +109,7 @@ func New(c *libmangal.Client, chapters []mangadata.Chapter, options libmangal.Do
 			spinner.WithStyle(style.Normal.Accent),
 		),
 		viewport: viewport.New(),
+		confirm:  confirm.NewDialog(40, color.Warning),
 		client:   c,
 		results:  client.NewResults(chapters),
 		options:  options,
@@ -108,16 +118,33 @@ func New(c *libmangal.Client, chapters []mangadata.Chapter, options libmangal.Do
 		styles:   _styles,
 		open:     base.KeyOpenDir,
 		retry:    base.KeyRetry,
+		stop:     util.Bind("stop", "esc"),
 	}
 }
 
-func (s *state) Backable() bool    { return true }
-func (s *state) Inputting() bool   { return false }
+// running is a download going on that leaving the screen would stop.
+func (s *state) running() bool { return s.downloading && !s.leaving }
+
+// Backable is false while downloading: esc asks to stop it.
+func (s *state) Backable() bool    { return !s.running() && !s.confirm.Active() }
+func (s *state) Inputting() bool   { return s.confirm.Active() }
 func (s *state) Title() base.Title { return base.Title{Text: "Download"} }
 func (s *state) Status() string    { return "" }
 
+// Keeping implements base.Keeper: the download stops when the screen is left.
+func (s *state) Keeping() string {
+	if !s.running() {
+		return ""
+	}
+	return "A download is running, " + s.stop.Help().Key + " stops it"
+}
+
 func (s *state) KeyMap() help.KeyMap {
-	return base.CombinedKeyMap(util.KeyMap{Short: []key.Binding{s.open, s.retry}}, s.viewport.KeyMap)
+	if s.confirm.Active() {
+		return s.confirm.KeyMap()
+	}
+	s.stop.SetEnabled(s.running())
+	return base.CombinedKeyMap(util.KeyMap{Short: []key.Binding{s.stop, s.open, s.retry}}, s.viewport.KeyMap)
 }
 
 func (s *state) Subtitle() string {
@@ -137,6 +164,7 @@ func (s *state) Subtitle() string {
 
 func (s *state) Resize(size base.Size) tea.Cmd {
 	s.size = size
+	s.confirm.Resize(size)
 	s.progress.Width = s.size.Width
 	h := 0
 	if s.downloading {
@@ -204,9 +232,19 @@ func listen(run int, events <-chan eventMsg) tea.Cmd {
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
+	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
+		return s.confirm.Update(msg)
+	}
 	switch msg := msg.(type) {
+	case leaveMsg:
+		// the pop cancels ctx, the download with it
+		s.leaving = true
+		return base.Back
 	case tea.KeyMsg:
 		switch {
+		case key.Matches(msg, s.stop) && s.running():
+			s.confirm.AskWith([]string{"y"}, "Stop", "Stop the download and leave? The chapters downloaded stay.", s.View(), func() tea.Msg { return leaveMsg{} })
+			return nil
 		case key.Matches(msg, s.open):
 			return s.openCmd()
 		case key.Matches(msg, s.retry):
@@ -296,6 +334,9 @@ func (s *state) openCmd() tea.Cmd {
 }
 
 func (s *state) View() string {
+	if s.confirm.Active() {
+		return s.confirm.View()
+	}
 	if s.downloading {
 		return s.viewDownloading() + "\n" + s.viewport.View()
 	}
@@ -313,7 +354,14 @@ func notifyCmd(ctx context.Context, batch client.Results) tea.Cmd {
 		c := *r
 		results[i] = &c
 	}
+	// it goes out even if the screen is left meanwhile, quitting waits for it
+	ctx = base.Background(ctx)
 	return func() tea.Msg {
+		release, ok := base.Track(ctx)
+		if !ok {
+			return nil
+		}
+		defer release()
 		if err := notify.SendContext(ctx, results); err != nil {
 			return fmt.Errorf("send the notification: %w", err)
 		}

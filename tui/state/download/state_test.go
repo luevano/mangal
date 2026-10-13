@@ -8,11 +8,13 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/tui/base"
 )
 
 type fakeChapter struct {
@@ -92,5 +94,41 @@ func TestOpenWithoutDownloads(t *testing.T) {
 	s.results[0].Err = errors.New("boom")
 	if s.openCmd() != nil {
 		t.Error("open without a downloaded chapter")
+	}
+}
+
+func TestLeaveAsks(t *testing.T) {
+	chapters := []mangadata.Chapter{fakeChapter{1}}
+	s := New(nil, chapters, libmangal.DownloadOptions{}).(*state)
+	ctx := context.Background()
+	s.start(ctx, s.results.ToDownload())
+	if s.Backable() || s.Keeping() == "" {
+		t.Fatal("a running download can be left")
+	}
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEsc})
+	if !s.confirm.Active() {
+		t.Fatal("esc didn't ask")
+	}
+	// no
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEsc})
+	if s.confirm.Active() || s.Keeping() == "" {
+		t.Fatal("no didn't keep it")
+	}
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEsc})
+	cmd := s.Update(ctx, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	if cmd == nil {
+		t.Fatal("yes did nothing")
+	}
+	back := s.Update(ctx, cmd())
+	if s.Keeping() != "" || !s.Backable() {
+		t.Error("still kept after yes")
+	}
+	if _, ok := back().(base.BackMsg); !ok {
+		t.Error("yes didn't go back")
+	}
+
+	s.Update(ctx, finishedMsg{run: s.run})
+	if s.Keeping() != "" {
+		t.Error("a finished download kept")
 	}
 }
