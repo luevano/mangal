@@ -221,6 +221,15 @@ func firstBound(ctx context.Context, c metadataProvider, bindings []storage.Bind
 	return nil, errors.Join(errs...)
 }
 
+// FirstBound is the metadata of the first of the manga's bindings (by priority) that can be
+// fetched, see ApplyBinding.
+func FirstBound(ctx context.Context, c *libmangal.Client, bindings []storage.Binding, manga string) (metadata.Metadata, error) {
+	for _, b := range bindings {
+		ensureLogin(ctx, b.Source)
+	}
+	return firstBound(ctx, c, bindings, manga)
+}
+
 // SearchMetadata is the metadata of the manga's default binding (or the next that can be
 // fetched, see ApplyBinding), else libmangal's search (title bindings, the closest match of
 // each metadata provider).

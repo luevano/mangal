@@ -305,6 +305,13 @@ A more advanced use that fetches just some chapters with anilist output:
 mangal inline json -p mango-mangapill -q "Tengoku Daimakyou" -m exact -c 10-15 --chapter-populate
 ```
 
+Each result has the manga's `metadata` and its `metadata_source` (`anilist`, `kitsu`, `mal` or
+`provider`; absent when `metadata` is `null`): the provider's own with `--prefer-provider-metadata`
+when it's valid, the AniList manga of `-a`, the manga's binding (`mangal bind`), else the closest
+match on AniList, then Kitsu and MyAnimeList when configured. `anilist` (and `anilist_bad_match`,
+the closest AniList manga when it's too unlike) are kept for older scripts: AniList only.
+`--anilist-disable` skips the metadata search.
+
 For more, use the `-h` flag.
 
 ##### Download

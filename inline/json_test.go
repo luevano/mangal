@@ -124,7 +124,7 @@ func TestJSONShape(t *testing.T) {
 		t.Fatalf("%d results", len(results))
 	}
 	result := results[0].(map[string]any)
-	if keys := mapKeys(result); !slices.Equal(keys, []string{"anilist", "chapters", "index", "manga"}) {
+	if keys := mapKeys(result); !slices.Equal(keys, []string{"anilist", "chapters", "index", "manga", "metadata"}) {
 		t.Errorf("result keys %q", keys)
 	}
 	if result["index"] != 0.0 || result["anilist"] != nil {

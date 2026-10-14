@@ -71,7 +71,7 @@ func init() {
 
 	f := inlineJSONCmd.Flags()
 	f.BoolVar(&inlineArgs.ChapterPopulate, "chapter-populate", false, "Populate chapter metadata")
-	f.BoolVar(&inlineArgs.AnilistDisable, "anilist-disable", false, "Disable anilist search")
+	f.BoolVar(&inlineArgs.AnilistDisable, "anilist-disable", false, "No metadata search (AniList, Kitsu, MyAnimeList), only the preferred provider metadata")
 
 	inlineJSONCmd.MarkFlagsMutuallyExclusive("anilist-id", "anilist-disable")
 }

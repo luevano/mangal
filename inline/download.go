@@ -19,6 +19,9 @@ import (
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
+// download is client.Download, swapped in tests.
+var download = client.Download
+
 func RunDownload(ctx context.Context, args Args) error {
 	results, err := runDownload(ctx, args)
 	// stopped (ctrl+c): nothing to tell Discord, it couldn't be sent anyway
@@ -48,13 +51,15 @@ func runDownload(ctx context.Context, args Args) (client.Results, error) {
 	}
 
 	manga := mangaResults[0].Manga
+	// first, scrapers read the manga's metadata from its page with the volumes
+	chapters, err := chapters(ctx, c, args, manga)
+	if err != nil {
+		return nil, err
+	}
+
 	useMangaMetadata := false
 	if args.PreferProviderMetadata {
-		if err = metadata.Validate(manga.Metadata()); err != nil {
-			log.Warn("provider metadata is preferred but it's not valid: %s", err)
-		} else {
-			useMangaMetadata = true
-		}
+		_, useMangaMetadata = providerMetadata(manga)
 	}
 
 	// Take the download options from the config and apply necessary changes
@@ -89,13 +94,8 @@ func runDownload(ctx context.Context, args Args) (client.Results, error) {
 		manga.SetMetadata(meta)
 	}
 
-	chapters, err := chapters(ctx, c, args, manga)
-	if err != nil {
-		return nil, err
-	}
-
 	var printErr error
-	results := client.Download(ctx, c, chapters, downloadOptions, func(e client.Event) {
+	results := download(ctx, c, chapters, downloadOptions, func(e client.Event) {
 		chapter := func() string {
 			return fmt.Sprintf("downloading chapter %s (%d/%d)", stringutil.FormatFloa32(e.Result.Chapter.Info().Number), e.Index+1, len(chapters))
 		}

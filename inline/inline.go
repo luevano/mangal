@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/metadata"
 	lmanilist "github.com/luevano/libmangal/metadata/anilist"
 )
 
@@ -12,12 +13,16 @@ type QueryResult struct {
 	Results     []MangaResult `json:"results"`
 }
 
-// TODO: change Anilist to Metadata in general
+// MangaResult is a search result. Metadata is the manga's metadata from any source
+// (MetadataSource: anilist, kitsu, mal or provider); Anilist is kept for older scripts: the
+// AniList metadata only (the manga's AniList binding, or the AniList match).
 type MangaResult struct {
-	Index    int                  `json:"index"`
-	Manga    mangadata.Manga      `json:"manga"`
-	Chapters *[]mangadata.Chapter `json:"chapters"`
-	Anilist  *lmanilist.Manga     `json:"anilist"`
+	Index          int                  `json:"index"`
+	Manga          mangadata.Manga      `json:"manga"`
+	Chapters       *[]mangadata.Chapter `json:"chapters"`
+	Metadata       metadata.Metadata    `json:"metadata"`
+	MetadataSource string               `json:"metadata_source,omitempty"`
+	Anilist        *lmanilist.Manga     `json:"anilist"`
 	// AnilistBadMatch is the closest Anilist manga when it's too unlike the manga
 	// to be used as its Anilist (then Anilist is null).
 	AnilistBadMatch *BadMatch `json:"anilist_bad_match,omitempty"`
