@@ -247,3 +247,29 @@ func savedLogins() []Login {
 	}
 	return logins
 }
+
+// NewFixer is the Fixer over mangal's library and the watches of m.
+func NewFixer(m watch.Manager) (Fixer, error) {
+	linker, err := client.LibraryLinker()
+	if err != nil {
+		return Fixer{}, err
+	}
+	mark, err := client.LibraryMarkOptions()
+	if err != nil {
+		return Fixer{}, err
+	}
+	return Fixer{
+		Watches:   m,
+		Linker:    linker,
+		Operation: client.Operation,
+		Mark:      mark,
+		Renames: func(ctx context.Context) ([]library.Rename, error) {
+			namer, err := client.LibraryNamer(linker.Library, anilist.MetadataByIDsCached)
+			if err != nil {
+				return nil, err
+			}
+			namer.NeedMetadata = true
+			return namer.Plan(ctx, path.Downloads(), config.Download.Provider.CreateDir.Get())
+		},
+	}, nil
+}

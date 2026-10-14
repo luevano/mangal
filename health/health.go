@@ -364,6 +364,17 @@ func selected(only []string, network bool) ([]check, error) {
 	return out, nil
 }
 
+// Validate checks the options' names (Run's error for them).
+func Validate(opts Options) error {
+	_, err := selected(opts.Only, opts.Network)
+	return err
+}
+
+// IsNetwork is true for a check that makes requests (only runs with Options.Network).
+func IsNetwork(id string) bool {
+	return slices.ContainsFunc(checks, func(c check) bool { return c.network && strings.EqualFold(c.id, id) })
+}
+
 func categoryList() string {
 	names := make([]string, len(Categories))
 	for i, c := range Categories {

@@ -163,7 +163,7 @@ func dismissFindings(cmd *cobra.Command, checker health.Checker, st *status) err
 	}
 	for _, key := range healthArgs.Dismiss {
 		check, subject, _ := health.SplitKey(key)
-		f, ok := findKey(report.Findings, check+"/"+subject)
+		f, ok := report.Find(check + "/" + subject)
 		if !ok {
 			return fmt.Errorf("no finding %s now (mangal health shows the keys; a network check's needs --network)", key)
 		}
@@ -173,19 +173,6 @@ func dismissFindings(cmd *cobra.Command, checker health.Checker, st *status) err
 		cmd.Printf("dismissed %s: %s\n", f.Key, f.Message)
 	}
 	return nil
-}
-
-// findKey is the finding (or summary item) with the key.
-func findKey(findings []health.Finding, key string) (health.Finding, bool) {
-	for _, f := range findings {
-		if strings.EqualFold(f.Key, key) {
-			return f, true
-		}
-		if item, ok := findKey(f.Items, key); ok {
-			return item, true
-		}
-	}
-	return health.Finding{}, false
 }
 
 // printHealth prints the findings by category: a header with the counts, each finding

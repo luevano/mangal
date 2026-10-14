@@ -43,6 +43,12 @@ const (
 	LiveProviderDone = "provider_done"
 	// LiveRunDone is a check run that finished.
 	LiveRunDone = "run_done"
+	// LiveHealthStart, LiveHealthStatus and LiveHealthDone are a health job of mangal serve
+	// (Job is set): started, what it's doing, finished (Message has the counts or the
+	// error).
+	LiveHealthStart  = "health_start"
+	LiveHealthStatus = "health_status"
+	LiveHealthDone   = "health_done"
 )
 
 // LiveEvent is the progress of a check as it happens, see Manager.Subscribe. It's what
@@ -51,8 +57,9 @@ type LiveEvent struct {
 	// Seq orders the events of one process (server), from 1.
 	Seq  uint64    `json:"seq"`
 	Time time.Time `json:"time"`
-	// Run is the check run.
+	// Run is the check run, Job the health job (GET /api/health?network=1) instead.
 	Run      int64    `json:"run"`
+	Job      int64    `json:"job,omitempty"`
 	Kind     string   `json:"kind"`
 	Provider string   `json:"provider,omitempty"`
 	Watch    int64    `json:"watch,omitempty"`
@@ -187,6 +194,9 @@ func (h *Hub) end(provider string) {
 	delete(h.active, provider)
 }
 
+// Publish sends an event that isn't a check's (a health job's) to the subscribers.
+func (h *Hub) Publish(e LiveEvent) { h.publish(e) }
+
 // publish sends the event to the subscribers.
 func (h *Hub) publish(e LiveEvent) {
 	h.mu.Lock()
@@ -197,16 +207,21 @@ func (h *Hub) publish(e LiveEvent) {
 		e.Time = time.Now()
 	}
 	h.track(e)
+	// a job's events are kept apart from the runs'
+	key := e.Run
+	if e.Job != 0 {
+		key = -e.Job
+	}
 	// one per page would push the rest out
 	if e.Kind != LiveProgress {
-		events := append(h.recent[e.Run], e)
+		events := append(h.recent[key], e)
 		if len(events) > recentPerRun {
 			events = slices.Delete(events, 0, len(events)-recentPerRun)
 		}
-		h.recent[e.Run] = events
+		h.recent[key] = events
 	}
-	if e.Kind == LiveRunDone {
-		h.finished = append(h.finished, e.Run)
+	if e.Kind == LiveRunDone || e.Kind == LiveHealthDone {
+		h.finished = append(h.finished, key)
 		if len(h.finished) > keepFinished {
 			delete(h.recent, h.finished[0])
 			h.finished = h.finished[1:]

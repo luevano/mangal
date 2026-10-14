@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/storage"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
@@ -84,6 +85,12 @@ type API struct {
 	Changed func()
 	Log     logger
 	Runs    *runs
+	// Health and Fixer make the health checker and fixer over the watches of a manager,
+	// health.NewWith and health.NewFixer when nil.
+	Health func(watch.Manager) (health.Checker, error)
+	Fixer  func(watch.Manager) (health.Fixer, error)
+
+	healthJobs healthJobs
 
 	// ctx is the server's, the checks asked through the API run until it's cancelled
 	ctx    context.Context
@@ -135,6 +142,7 @@ func (a *API) Register(mux *http.ServeMux) {
 	handle("POST /api/runs/{id}/cancel", a.cancel)
 	handle("DELETE /api/watch-runs/{id}", a.removeRun)
 	handle("GET /api/events", a.events)
+	a.registerHealth(handle)
 }
 
 func (a *API) auth(next http.Handler) http.Handler {
