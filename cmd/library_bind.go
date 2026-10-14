@@ -176,7 +176,7 @@ differs is only replaced when you say so (with --apply). Every change can be und
 			summary := fmt.Sprintf("link %d %q", manga.ID, manga.Title)
 			snapshot, err := client.Operation("link", summary, func(j library.Journal) error {
 				linker.Journal = j
-				return linker.ApplyLinks(plan, opts)
+				return linker.ApplyLinksContext(ctx, plan, opts)
 			})
 			st.Done()
 			undoHint(cmd, snapshot, err)
@@ -348,7 +348,7 @@ func libraryBackups(cmd *cobra.Command, st *status, linker library.Linker, manga
 				if err != nil {
 					return err
 				}
-				if err := linker.ApplyLinks(plan, library.LinkOptions{}); err != nil {
+				if err := linker.ApplyLinksContext(ctx, plan, library.LinkOptions{}); err != nil {
 					return err
 				}
 			}

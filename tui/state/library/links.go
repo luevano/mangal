@@ -363,12 +363,20 @@ func askLinks(d *confirm.Dialog, behind string, msg linkPlannedMsg) tea.Cmd {
 	message := strings.Join(append(plan.Lines(), plan.ImpliedLines(nil)...), "\n")
 	run := func(opts library.LinkOptions) tea.Cmd {
 		linker, m := msg.linker, plan.Manga()
-		return action("Linking "+m.Title, func() (string, error) {
-			return journaled("link", fmt.Sprintf("link %d %q", m.ID, m.Title), "linked "+m.Title, func(j library.Journal) error {
-				linker.Journal = j
-				return linker.ApplyLinks(plan, opts)
-			})
-		})
+		label := "Linking " + m.Title
+		if opts.Rename {
+			label = "Linking and renaming " + m.Title
+		}
+		// with the screen's ctx: a rename across drives reports its progress, esc stops it
+		return func() tea.Msg {
+			return actionMsg{label: label, do: func(ctx context.Context, _ func(string)) (reloadMsg, error) {
+				notify, err := journaled("link", fmt.Sprintf("link %d %q", m.ID, m.Title), "linked "+m.Title, func(j library.Journal) error {
+					linker.Journal = j
+					return linker.ApplyLinksContext(ctx, plan, opts)
+				})
+				return reloadMsg{notify: notify}, err
+			}}
+		}
 	}
 	if !plan.Implied() {
 		d.Ask("Link", message, behind, run(library.LinkOptions{}))
@@ -443,7 +451,7 @@ func askBackups(d *confirm.Dialog, behind string, msg backupsFoundMsg) tea.Cmd {
 						if err != nil {
 							return err
 						}
-						if err := linker.ApplyLinks(plan, library.LinkOptions{}); err != nil {
+						if err := linker.ApplyLinksContext(ctx, plan, library.LinkOptions{}); err != nil {
 							return err
 						}
 						n++

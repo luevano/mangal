@@ -605,6 +605,12 @@ func (p LinkPlan) ImpliedLines(how map[string]string) []string {
 // ApplyLinks does the plan (and the implied changes opts asks for): the .libmangal.json
 // first, then the rename, then the library and the bindings in one transaction.
 func (f Files) ApplyLinks(plan LinkPlan, opts LinkOptions) error {
+	return f.ApplyLinksContext(context.Background(), plan, opts)
+}
+
+// ApplyLinksContext is ApplyLinks, a rename across drives reporting its progress to ctx
+// and stopped when it's done.
+func (f Files) ApplyLinksContext(ctx context.Context, plan LinkPlan, opts LinkOptions) error {
 	m := plan.Manga()
 	fail := func(err error) error { return fmt.Errorf("link %q: %w", m.Title, err) }
 	// what was done goes back when a later step fails
@@ -645,7 +651,7 @@ func (f Files) ApplyLinks(plan LinkPlan, opts LinkOptions) error {
 		}
 	}
 	if opts.Rename && plan.Rename != nil && plan.Rename.Skip == "" {
-		if err := applyRename(context.Background(), f.FS, f.Journal, *plan.Rename, f.Modes); err != nil {
+		if err := applyRename(ctx, f.FS, f.Journal, *plan.Rename, f.Modes); err != nil {
 			return rollback(err)
 		}
 		change.From, change.To = plan.Rename.From, plan.Rename.To

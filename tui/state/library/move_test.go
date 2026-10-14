@@ -202,3 +202,67 @@ func TestMoveProgress(t *testing.T) {
 		t.Error("not moved")
 	}
 }
+
+// the link's folder rename runs with the screen's ctx: across drives it reports the copy's
+// progress, esc (the ctx cancelled) stops it
+func TestLinksProgress(t *testing.T) {
+	root := t.TempDir()
+	db, err := storage.OpenData(filepath.Join(t.TempDir(), storage.FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	lib := storage.Library{DB: db}
+	dir := filepath.Join(root, "Berserk")
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "1.cbz"), make([]byte, 1<<20), 0o644)
+	if err := lib.RecordDownload(root, "Berserk", storage.Download{Path: filepath.Join(dir, "1.cbz"), Provider: "mango-asurascans", MangaID: "berserk", MangaTitle: "Berserk", Chapter: 1, Format: "CBZ"}); err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ := lib.MangaBySource("mango-asurascans", "berserk")
+	to := filepath.Join(root, "Berserk (1989) [alid-30002]")
+	linker := library.Linker{Files: library.Files{FS: xdevFs{afero.NewOsFs()}, Library: lib, Root: root, Modes: library.DefaultModes}}
+	plan := library.LinkPlan{
+		Info:    library.LinkInfo{Manga: m},
+		Links:   library.Links{"al": "30002"},
+		Changes: []library.LinkChange{{Code: "al", New: "30002"}},
+		Rename:  &library.Rename{From: dir, To: to},
+		Root:    root,
+	}
+	d := newDialog()
+	d.Resize(base.Size{Width: 120, Height: 40})
+	if cmd := askLinks(d, "", linkPlannedMsg{linker: linker, plan: plan}); cmd != nil || !d.Active() {
+		t.Fatal("no choice dialog")
+	}
+	act, ok := d.Update(press("r"))().(actionMsg)
+	if !ok {
+		t.Fatal("r isn't the link")
+	}
+	if !strings.Contains(act.label, "renaming") {
+		t.Errorf("label %q", act.label)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := act.do(ctx, func(string) {}); !errors.Is(err, context.Canceled) {
+		t.Errorf("cancelled: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "1.cbz")); err != nil {
+		t.Fatal("cancelled, still renamed")
+	}
+	if _, err := os.Stat(to); err == nil {
+		t.Error("cancelled, the copy is left")
+	}
+
+	var reports []string
+	ctx = progress.WithReporter(context.Background(), func(s progress.Status) { reports = append(reports, s.String()) })
+	if _, err := act.do(ctx, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if len(reports) == 0 {
+		t.Error("the copy didn't report its progress")
+	}
+	if _, err := os.Stat(filepath.Join(to, "1.cbz")); err != nil {
+		t.Error("not renamed")
+	}
+}
