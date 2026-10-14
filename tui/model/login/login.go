@@ -36,6 +36,9 @@ type Input struct {
 	Secret bool
 	// Required can't be empty
 	Required bool
+	// RequiredUnsaved can't be empty while no API client is saved (Client): emptied, it
+	// removes the saved one
+	RequiredUnsaved bool
 	// Clear empties it once used (a password)
 	Clear bool
 }
@@ -361,6 +364,12 @@ func (s *Screen) openClient(values []string) tea.Cmd {
 		f.Input.SetValue(v)
 		f.Input.CursorEnd()
 		f.Err = ""
+		if in := s.svc.Client.Fields[i]; in.RequiredUnsaved {
+			f.Validate = nil
+			if !s.configured {
+				f.Validate = required
+			}
+		}
 	}
 	return s.client.Focus(0)
 }

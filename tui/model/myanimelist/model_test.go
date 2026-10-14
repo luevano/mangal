@@ -74,3 +74,31 @@ func TestSetupSavesClient(t *testing.T) {
 		t.Errorf("after removing: %q %q, %v", id, secret, err)
 	}
 }
+
+// without a saved client the ID is required: enter on an empty form doesn't "remove" a
+// client (and reset the login)
+func TestSetupRequiresID(t *testing.T) {
+	ctx := context.Background()
+	if err := myanimelist.SetClient("", ""); err != nil {
+		t.Fatal(err)
+	}
+	s := New()
+	st, err := status(ctx)
+	if err != nil || !st.NoClient {
+		t.Fatalf("status without a client: %+v, %v", st, err)
+	}
+	s.Update(ctx, st)
+	var msgs []tea.Msg
+	for _, m := range base.Drain(s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter})) {
+		msgs = append(msgs, m)
+		msgs = append(msgs, base.Drain(s.Update(ctx, m))...)
+	}
+	for _, m := range msgs {
+		if n, ok := m.(base.NotificationMsg); ok && strings.Contains(n.Message, "Removed") {
+			t.Errorf("notified %q", n.Message)
+		}
+	}
+	if !s.Inputting() || !strings.Contains(s.View(), "required") {
+		t.Errorf("want the form with the ID required:\n%s", s.View())
+	}
+}

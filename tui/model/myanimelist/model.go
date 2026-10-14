@@ -41,7 +41,7 @@ var service = login.Service{
 	Forget:   myanimelist.Forget,
 	Client: &login.Client{
 		Fields: []login.Input{
-			{Label: "Client ID"},
+			{Label: "Client ID", RequiredUnsaved: true},
 			{Label: "Client secret", Placeholder: `(only for App Types other than "other")`, Secret: true},
 		},
 		Intro: []string{
