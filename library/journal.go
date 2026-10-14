@@ -1,8 +1,10 @@
 package library
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"path/filepath"
 
@@ -15,6 +17,8 @@ import (
 // undone (a *storage.Op). A nil Journal records nothing.
 type Journal interface {
 	Record(storage.Step) error
+	// Unrecord drops the last step recorded: it failed without changing anything.
+	Unrecord() error
 }
 
 func logStep(j Journal, s storage.Step) error {
@@ -22,6 +26,18 @@ func logStep(j Journal, s storage.Step) error {
 		return nil
 	}
 	return j.Record(s)
+}
+
+// unlogStep drops the step just logged, whose change failed (err) without changing
+// anything: left in, it could block the undo.
+func unlogStep(j Journal, err error) error {
+	if j == nil {
+		return err
+	}
+	if unErr := j.Unrecord(); unErr != nil {
+		return fmt.Errorf("%w (and %w)", err, unErr)
+	}
+	return err
 }
 
 // mkdirAll creates dir and its missing parents, recording each one created.
@@ -45,7 +61,18 @@ func mkdirAll(fsys afero.Fs, j Journal, dir string, mode fs.FileMode) error {
 			return err
 		}
 	}
-	return fsys.MkdirAll(dir, mode)
+	err := fsys.MkdirAll(dir, mode)
+	if err == nil {
+		return nil
+	}
+	// created top-down: the ones not made are the last logged
+	for _, d := range missing {
+		if exists, exErr := afero.Exists(fsys, d); exErr != nil || exists {
+			break
+		}
+		err = unlogStep(j, err)
+	}
+	return err
 }
 
 // removeDir removes an empty folder.
@@ -53,7 +80,13 @@ func removeDir(fsys afero.Fs, j Journal, dir string) error {
 	if err := logStep(j, storage.Step{Kind: storage.StepRmdir, Path: dir}); err != nil {
 		return err
 	}
-	return fsys.Remove(dir)
+	if err := fsys.Remove(dir); err != nil {
+		if exists, exErr := afero.Exists(fsys, dir); exErr == nil && exists {
+			return unlogStep(j, err)
+		}
+		return err
+	}
+	return nil
 }
 
 // writeDirInfo writes the folder's libmangal.MangaDirInfo, recording what it had.
@@ -72,6 +105,13 @@ func writeDirInfo(fsys afero.Fs, j Journal, dir string, info libmangal.MangaDirI
 		if err := j.Record(storage.Step{Kind: storage.StepWrite, Path: path, Old: old, New: data}); err != nil {
 			return err
 		}
+		if err := libmangal.WriteMangaDirInfo(fsys, dir, info, mode); err != nil {
+			if cur, readErr := readIfExists(fsys, path); readErr == nil && bytes.Equal(cur, old) && (cur == nil) == (old == nil) {
+				return unlogStep(j, err)
+			}
+			return err
+		}
+		return nil
 	}
 	return libmangal.WriteMangaDirInfo(fsys, dir, info, mode)
 }

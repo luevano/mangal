@@ -146,8 +146,8 @@ func (j Journal) BeginAfter(mark Mark, kind, summary, snapshot string) (*Op, err
 	return op, nil
 }
 
-// Record adds the step, before it's made: a step that never happened is told apart when
-// undoing (its target isn't there), one made but not recorded couldn't be undone.
+// Record adds the step, before it's made: one made but not recorded couldn't be undone.
+// A step that then fails is dropped with Unrecord.
 func (o *Op) Record(s Step) error {
 	o.seq++
 	_, err := o.db.Exec(`INSERT INTO journal_steps (op, seq, kind, path, dest, had_old, old, new) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -156,6 +156,20 @@ func (o *Op) Record(s Step) error {
 		return fmt.Errorf("journal %s %s: %w", s.Kind, s.Path, err)
 	}
 	o.Steps++
+	return nil
+}
+
+// Unrecord drops the last step recorded: it failed, nothing was changed. Left in, it
+// could block the undo (e.g. a move whose source was gone is neither here nor there).
+func (o *Op) Unrecord() error {
+	if o.seq == 0 {
+		return nil
+	}
+	if _, err := o.db.Exec(`DELETE FROM journal_steps WHERE op = ? AND seq = ?`, o.ID, o.seq); err != nil {
+		return fmt.Errorf("journal %s: drop step %d: %w", o.Kind, o.seq, err)
+	}
+	o.seq--
+	o.Steps--
 	return nil
 }
 

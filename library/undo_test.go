@@ -126,6 +126,61 @@ func TestUndoNeverOverwrites(t *testing.T) {
 	}
 }
 
+// a rename whose source is gone fails without a step left behind: its undo, and the
+// undo of the operation before it, aren't blocked.
+func TestUndoFailedRename(t *testing.T) {
+	root := t.TempDir()
+	fsys := afero.NewOsFs()
+	db, err := storage.OpenData(filepath.Join(t.TempDir(), storage.FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	j := storage.Journal{DB: db}
+	backups := t.TempDir()
+	run := func(renames []Rename) error {
+		t.Helper()
+		snap, err := db.Snapshot(backups, "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		op, err := j.Begin("rename", "a test", snap)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ApplyEach(fsys, op, renames, nil, func(_ int, err error) error { return err })
+		if err := op.Finish(err); err != nil {
+			t.Fatal(err)
+		}
+		return err
+	}
+	touch(t, filepath.Join(root, "A", "1.cbz"))
+	if err := run([]Rename{{From: filepath.Join(root, "A"), To: filepath.Join(root, "B")}}); err != nil {
+		t.Fatal(err)
+	}
+	gone := []Rename{{From: filepath.Join(root, "Gone"), To: filepath.Join(root, "New", "Gone")}}
+	if err := run(gone); err == nil {
+		t.Fatal("renamed what isn't there")
+	}
+
+	u := Undoer{FS: fsys, Journal: j, Modes: DefaultModes}
+	for _, want := range []string{"failed", "earlier"} {
+		plan, err := u.Plan(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := plan.Refusal(false); err != nil {
+			t.Fatalf("%s op refused: %v\n%s", want, err, strings.Join(plan.Lines(func(s string) string { return s }), "\n"))
+		}
+		if _, err := u.Apply(plan, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !exists(filepath.Join(root, "A", "1.cbz")) || exists(filepath.Join(root, "B")) || exists(filepath.Join(root, "New")) {
+		t.Error("not undone")
+	}
+}
+
 func TestUndoMarker(t *testing.T) {
 	dir := t.TempDir()
 	fsys := afero.NewOsFs()

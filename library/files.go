@@ -56,16 +56,22 @@ func moveFile(ctx context.Context, fsys afero.Fs, j Journal, from, to string, mo
 		return err
 	}
 	err := fsys.Rename(from, to)
+	if err == nil {
+		return nil
+	}
 	if !crossDevice(err) {
-		return err
+		return unlogStep(j, err)
 	}
 	created, err := copyAll(ctx, fsys, from, to)
 	if err != nil {
 		if created {
 			// only what the copy made: something there before is never removed
-			_ = fsys.RemoveAll(to)
+			if rmErr := fsys.RemoveAll(to); rmErr != nil {
+				// a partial copy stays: the step too, its undo is blocked
+				return err
+			}
 		}
-		return err
+		return unlogStep(j, err)
 	}
 	return fsys.RemoveAll(from)
 }
@@ -91,13 +97,13 @@ func renameCase(fsys afero.Fs, j Journal, from, to string) error {
 	}
 	tmp := from + ".mangal-rename"
 	if err := fsys.Rename(from, tmp); err != nil {
-		return err
+		return unlogStep(j, err)
 	}
 	if err := fsys.Rename(tmp, to); err != nil {
 		if backErr := fsys.Rename(tmp, from); backErr != nil {
 			return fmt.Errorf("%w (and renaming %s back: %w)", err, tmp, backErr)
 		}
-		return err
+		return unlogStep(j, err)
 	}
 	return nil
 }
