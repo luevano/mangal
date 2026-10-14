@@ -92,7 +92,7 @@ Only lists what would happen unless --apply is set.`,
 		st := newStatus(cmd)
 		defer st.Done()
 		undoer.OnProgress = st.Progress
-		res, snapshot, err := client.UndoContext(cmd.Context(), undoer, plan, libraryUndoArgs.Force)
+		res, snapshot, err := client.UndoContext(st.Context(cmd.Context()), undoer, plan, libraryUndoArgs.Force)
 		st.Done()
 		if snapshot != "" {
 			cmd.PrintErrf("database snapshot before the undo: %s\n", snapshot)

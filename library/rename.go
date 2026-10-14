@@ -453,7 +453,7 @@ func ApplyEachContext(ctx context.Context, fsys afero.Fs, modes Modes, j Journal
 			return err
 		}
 		report(onProgress, Progress{Phase: "renaming", Done: i + 1, Total: len(renames), Item: filepath.Base(r.From)})
-		if err := done(i, applyRename(fsys, j, r, modes)); err != nil {
+		if err := done(i, applyRename(ctx, fsys, j, r, modes)); err != nil {
 			return err
 		}
 	}
@@ -488,7 +488,7 @@ func ApplyRenamesContext(ctx context.Context, fsys afero.Fs, modes Modes, lib st
 	})
 }
 
-func applyRename(fsys afero.Fs, j Journal, r Rename, modes Modes) error {
+func applyRename(ctx context.Context, fsys afero.Fs, j Journal, r Rename, modes Modes) error {
 	if r.Skip != "" {
 		return errors.New(r.Skip)
 	}
@@ -514,7 +514,7 @@ func applyRename(fsys afero.Fs, j Journal, r Rename, modes Modes) error {
 			}
 		}
 	}
-	return moveDir(fsys, j, r.From, r.To, modes)
+	return moveDir(ctx, fsys, j, r.From, r.To, modes)
 }
 
 func sameFile(fsys afero.Fs, a, b string) bool {

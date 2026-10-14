@@ -1,6 +1,7 @@
 package library
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/progress"
 	"github.com/spf13/afero"
 )
 
@@ -26,7 +28,7 @@ func TestMoveFileOtherDrive(t *testing.T) {
 	dir := t.TempDir()
 	fsys := otherDrive{Fs: afero.NewOsFs()}
 	touch(t, filepath.Join(dir, "a", "Vol. 1", "x.cbz"))
-	if err := moveFile(fsys, nil, filepath.Join(dir, "a"), filepath.Join(dir, "b", "a"), DefaultModes); err != nil {
+	if err := moveFile(context.Background(), fsys, nil, filepath.Join(dir, "a"), filepath.Join(dir, "b", "a"), DefaultModes); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "b", "a", "Vol. 1", "x.cbz")); err != nil {
@@ -34,6 +36,32 @@ func TestMoveFileOtherDrive(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "a")); !os.IsNotExist(err) {
 		t.Errorf("original left: %v", err)
+	}
+}
+
+// a copy across drives reports the files and bytes copied
+func TestMoveFileOtherDriveProgress(t *testing.T) {
+	dir := t.TempDir()
+	fsys := otherDrive{Fs: afero.NewOsFs()}
+	for name, data := range map[string]string{"1.cbz": "abc", "Vol. 1/2.cbz": "defgh"} {
+		path := filepath.Join(dir, "a", name)
+		touch(t, path)
+		if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var got []string
+	ctx := progress.WithReporter(context.Background(), func(s progress.Status) { got = append(got, s.String()) })
+	if err := moveFile(ctx, fsys, nil, filepath.Join(dir, "a"), filepath.Join(dir, "b", "a"), DefaultModes); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) == 0 || got[0] != "copying a to the other drive: 0/2 files, 0 B of 8 B" || got[len(got)-1] != "copying a to the other drive: 2/2 files, 8 B of 8 B" {
+		t.Errorf("reported %q", got)
+	}
+	// a rename on the same drive reports nothing
+	got = nil
+	if err := moveFile(ctx, afero.NewOsFs(), nil, filepath.Join(dir, "b", "a"), filepath.Join(dir, "c"), DefaultModes); err != nil || len(got) != 0 {
+		t.Errorf("same drive: %v, reported %q", err, got)
 	}
 }
 
@@ -52,7 +80,7 @@ func TestTrashNeverOverwrites(t *testing.T) {
 		if err := os.WriteFile(path, []byte{byte('0' + i)}, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := moveToTrash(fsys, nil, root, "batch", path, DefaultModes); err != nil {
+		if err := moveToTrash(context.Background(), fsys, nil, root, "batch", path, DefaultModes); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -144,7 +144,7 @@ func (f Files) ApplyMergeContext(ctx context.Context, plan MergePlan) error {
 		if err := step(path); err != nil {
 			return fail(err)
 		}
-		if err := moveToTrash(f.FS, f.Journal, f.Root, batch, path, f.Modes); err != nil {
+		if err := moveToTrash(ctx, f.FS, f.Journal, f.Root, batch, path, f.Modes); err != nil {
 			return fail(fmt.Errorf("trash %s: %w", path, err))
 		}
 		started = true
@@ -156,7 +156,7 @@ func (f Files) ApplyMergeContext(ctx context.Context, plan MergePlan) error {
 		if err := step(m.From); err != nil {
 			return fail(err)
 		}
-		if err := moveFile(f.FS, f.Journal, m.From, m.To, f.Modes); err != nil {
+		if err := moveFile(ctx, f.FS, f.Journal, m.From, m.To, f.Modes); err != nil {
 			return fail(fmt.Errorf("move %s: %w", m.From, err))
 		}
 		started = true
@@ -187,7 +187,7 @@ func (f Files) ApplyMergeContext(ctx context.Context, plan MergePlan) error {
 	}
 	for _, e := range entries {
 		path := filepath.Join(plan.Other.Path(), e.Name())
-		if err := moveToTrash(f.FS, f.Journal, f.Root, batch, path, f.Modes); err != nil {
+		if err := moveToTrash(ctx, f.FS, f.Journal, f.Root, batch, path, f.Modes); err != nil {
 			return fail(fmt.Errorf("trash %s: %w", path, err))
 		}
 	}

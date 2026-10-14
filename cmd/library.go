@@ -194,7 +194,7 @@ the year and the id tags) and is listed as a warning; --fallback renames it anyw
 			if op, ok := j.(interface{ SetSummary(string) }); ok {
 				defer func() { op.SetSummary(renameSummary(folders, files)) }()
 			}
-			return library.ApplyRenamesContext(cmd.Context(), afs.Afero, client.LibraryModes(), index, j, renames, st.Progress, func(i int, err error) {
+			return library.ApplyRenamesContext(st.Context(cmd.Context()), afs.Afero, client.LibraryModes(), index, j, renames, st.Progress, func(i int, err error) {
 				r := renames[i]
 				switch {
 				case errors.Is(err, library.ErrNotEmpty):
@@ -755,7 +755,7 @@ Only lists what would happen unless --apply is set.`,
 		}
 		snapshot, err := client.Operation("merge", fmt.Sprintf("merge %d %q into %d %q", plan.Other.ID, plan.Other.Title, plan.Keep.ID, plan.Keep.Title), func(j library.Journal) error {
 			files.Journal = j
-			return files.ApplyMergeContext(cmd.Context(), plan)
+			return files.ApplyMergeContext(st.Context(cmd.Context()), plan)
 		})
 		st.Done()
 		undoHint(cmd, snapshot, err)
@@ -853,7 +853,7 @@ Only lists what would happen unless --apply is set.`,
 		}
 		snapshot, err := client.Operation("move", fmt.Sprintf("move %d %q to %s %s", plan.Manga.ID, plan.Manga.Title, plan.Provider.ID, plan.To.ID), func(j library.Journal) error {
 			mover.Journal = j
-			return mover.ApplyMove(plan)
+			return mover.ApplyMoveContext(ctx, plan)
 		})
 		undoHint(cmd, snapshot, err)
 		if err != nil {

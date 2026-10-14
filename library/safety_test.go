@@ -34,7 +34,7 @@ func TestMoveFileNeverReplaces(t *testing.T) {
 		} else if err := os.WriteFile(to, []byte("keep"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := moveFile(fsys, nil, from, to, DefaultModes); !errors.Is(err, fs.ErrExist) {
+		if err := moveFile(context.Background(), fsys, nil, from, to, DefaultModes); !errors.Is(err, fs.ErrExist) {
 			t.Errorf("%s: %v", target, err)
 		}
 		if _, err := os.Stat(from); err != nil {
@@ -52,11 +52,11 @@ func TestCopyAllKeepsExistingTarget(t *testing.T) {
 	fsys := afero.NewOsFs()
 	touch(t, filepath.Join(dir, "a", "1.cbz"))
 	touch(t, filepath.Join(dir, "b", "mine.cbz"))
-	created, err := copyAll(fsys, filepath.Join(dir, "a"), filepath.Join(dir, "b"))
+	created, err := copyAll(context.Background(), fsys, filepath.Join(dir, "a"), filepath.Join(dir, "b"))
 	if err == nil || created {
 		t.Fatalf("copied into an existing folder: %t, %v", created, err)
 	}
-	created, err = copyAll(fsys, filepath.Join(dir, "a", "1.cbz"), filepath.Join(dir, "b", "mine.cbz"))
+	created, err = copyAll(context.Background(), fsys, filepath.Join(dir, "a", "1.cbz"), filepath.Join(dir, "b", "mine.cbz"))
 	if err == nil || created {
 		t.Fatalf("copied onto an existing file: %t, %v", created, err)
 	}

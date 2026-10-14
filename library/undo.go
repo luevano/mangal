@@ -400,7 +400,7 @@ func (u Undoer) ApplyContext(ctx context.Context, plan UndoPlan, force bool) (Un
 			res.Skipped = append(res.Skipped, UndoStep{Step: s, Action: action, Reason: reason})
 			continue
 		case UndoMoveBack:
-			err = moveDir(u.FS, nil, s.Dest, s.Path, u.Modes)
+			err = moveDir(ctx, u.FS, nil, s.Dest, s.Path, u.Modes)
 		case UndoRemoveDir:
 			if empty, emptyErr := afero.IsEmpty(u.FS, s.Path); emptyErr != nil || !empty {
 				res.Kept = append(res.Kept, s.Path)

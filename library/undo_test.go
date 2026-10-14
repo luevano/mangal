@@ -1,6 +1,7 @@
 package library
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,7 +103,7 @@ func TestUndoNeverOverwrites(t *testing.T) {
 	fsys := afero.NewOsFs()
 	from, to := filepath.Join(root, "A"), filepath.Join(root, "B")
 	touch(t, filepath.Join(from, "1.cbz"))
-	u := journaled(t, func(j Journal) error { return moveFile(fsys, j, from, to, DefaultModes) })
+	u := journaled(t, func(j Journal) error { return moveFile(context.Background(), fsys, j, from, to, DefaultModes) })
 	// something new where it was
 	touch(t, filepath.Join(from, "new.cbz"))
 
@@ -173,10 +174,10 @@ func TestUndoTrash(t *testing.T) {
 	touch(t, filepath.Join(root, "M", "Vol. 1", "b.cbz"))
 	u := journaled(t, func(j Journal) error {
 		// the folder joins its chapter already in the batch
-		if err := moveToTrash(fsys, j, root, "batch", filepath.Join(root, "M", "Vol. 1", "a.cbz"), DefaultModes); err != nil {
+		if err := moveToTrash(context.Background(), fsys, j, root, "batch", filepath.Join(root, "M", "Vol. 1", "a.cbz"), DefaultModes); err != nil {
 			return err
 		}
-		return moveToTrash(fsys, j, root, "batch", filepath.Join(root, "M", "Vol. 1"), DefaultModes)
+		return moveToTrash(context.Background(), fsys, j, root, "batch", filepath.Join(root, "M", "Vol. 1"), DefaultModes)
 	})
 	plan, err := u.Plan(0)
 	if err != nil {
@@ -198,7 +199,7 @@ func TestNeedTrash(t *testing.T) {
 	fsys := afero.NewOsFs()
 	touch(t, filepath.Join(root, "M", "a.cbz"))
 	u := journaled(t, func(j Journal) error {
-		return moveToTrash(fsys, j, root, "batch", filepath.Join(root, "M", "a.cbz"), DefaultModes)
+		return moveToTrash(context.Background(), fsys, j, root, "batch", filepath.Join(root, "M", "a.cbz"), DefaultModes)
 	})
 	need, err := u.NeedTrash(root)
 	if err != nil || len(need) != 1 || need[0].Kind != "test" {

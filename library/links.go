@@ -645,11 +645,11 @@ func (f Files) ApplyLinks(plan LinkPlan, opts LinkOptions) error {
 		}
 	}
 	if opts.Rename && plan.Rename != nil && plan.Rename.Skip == "" {
-		if err := applyRename(f.FS, f.Journal, *plan.Rename, f.Modes); err != nil {
+		if err := applyRename(context.Background(), f.FS, f.Journal, *plan.Rename, f.Modes); err != nil {
 			return rollback(err)
 		}
 		change.From, change.To = plan.Rename.From, plan.Rename.To
-		undo = append(undo, func() error { return moveDir(f.FS, nil, change.To, change.From, f.Modes) })
+		undo = append(undo, func() error { return moveDir(context.Background(), f.FS, nil, change.To, change.From, f.Modes) })
 	}
 	if err := f.Library.SetLinks(change); err != nil {
 		return rollback(err)

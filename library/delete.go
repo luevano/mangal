@@ -1,6 +1,7 @@
 package library
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
@@ -52,7 +53,7 @@ func (f Files) trashIfExists(batch, path string) error {
 	if err != nil || !exists {
 		return err
 	}
-	if err := moveToTrash(f.FS, f.Journal, f.Root, batch, path, f.Modes); err != nil {
+	if err := moveToTrash(context.Background(), f.FS, f.Journal, f.Root, batch, path, f.Modes); err != nil {
 		return fmt.Errorf("trash %s: %w", path, err)
 	}
 	return nil

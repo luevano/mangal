@@ -359,12 +359,17 @@ func (p MovePlan) FolderLines() []string {
 // folder goes back (that rollback isn't journaled), see ApplyMerge for the many-files
 // operations.
 func (f Files) ApplyMove(plan MovePlan) error {
+	return f.ApplyMoveContext(context.Background(), plan)
+}
+
+// ApplyMoveContext is ApplyMove, a copy across drives reporting its progress to ctx.
+func (f Files) ApplyMoveContext(ctx context.Context, plan MovePlan) error {
 	fail := func(err error) error {
 		return fmt.Errorf("move %q to %s: %w", plan.Manga.Title, plan.Provider.ID, err)
 	}
 	moved := plan.Dir != plan.From
 	if moved {
-		if err := moveDir(f.FS, f.Journal, plan.From, plan.Dir, f.Modes); err != nil {
+		if err := moveDir(ctx, f.FS, f.Journal, plan.From, plan.Dir, f.Modes); err != nil {
 			return fail(err)
 		}
 	}
@@ -382,7 +387,7 @@ func (f Files) ApplyMove(plan MovePlan) error {
 			}
 		}
 		if moved {
-			if undoErr := moveDir(f.FS, nil, plan.Dir, plan.From, f.Modes); undoErr != nil {
+			if undoErr := moveDir(ctx, f.FS, nil, plan.Dir, plan.From, f.Modes); undoErr != nil {
 				return fail(fmt.Errorf("%w (and moving the folder back: %w)", err, undoErr))
 			}
 		}
@@ -414,7 +419,7 @@ func (f Files) ApplyMove(plan MovePlan) error {
 // moveDir moves a folder (or a file), through a temporary name when only the case changes
 // (on a case-insensitive filesystem), copied when it's on another drive (the copy goes
 // when that fails). Something else at to is an error.
-func moveDir(fsys afero.Fs, j Journal, from, to string, modes Modes) error {
+func moveDir(ctx context.Context, fsys afero.Fs, j Journal, from, to string, modes Modes) error {
 	exists, err := afero.Exists(fsys, to)
 	switch {
 	case err != nil:
@@ -424,5 +429,5 @@ func moveDir(fsys afero.Fs, j Journal, from, to string, modes Modes) error {
 	case exists:
 		return fmt.Errorf("%s already exists", to)
 	}
-	return moveFile(fsys, j, from, to, modes)
+	return moveFile(ctx, fsys, j, from, to, modes)
 }

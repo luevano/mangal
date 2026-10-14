@@ -1,6 +1,7 @@
 package library
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,8 +10,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"syscall"
+	"time"
 
+	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/storage"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/spf13/afero"
 )
 
@@ -37,9 +41,9 @@ type Files struct {
 }
 
 // moveFile renames a file or folder, copying it (and removing the original) when it's on
-// another drive. It never replaces what's at to (a rename would replace a file or an
-// empty folder): that's an fs.ErrExist.
-func moveFile(fsys afero.Fs, j Journal, from, to string, modes Modes) error {
+// another drive, the copy's progress reported to ctx. It never replaces what's at to (a
+// rename would replace a file or an empty folder): that's an fs.ErrExist.
+func moveFile(ctx context.Context, fsys afero.Fs, j Journal, from, to string, modes Modes) error {
 	if err := mkdirAll(fsys, j, filepath.Dir(to), modes.Dir); err != nil {
 		return err
 	}
@@ -55,7 +59,7 @@ func moveFile(fsys afero.Fs, j Journal, from, to string, modes Modes) error {
 	if !crossDevice(err) {
 		return err
 	}
-	created, err := copyAll(fsys, from, to)
+	created, err := copyAll(ctx, fsys, from, to)
 	if err != nil {
 		if created {
 			// only what the copy made: something there before is never removed
@@ -107,9 +111,18 @@ func crossDevice(err error) bool {
 	return errno == syscall.EXDEV || runtime.GOOS == "windows" && errno == 17
 }
 
-// copyAll copies a file or folder, keeping the permissions. created is true once it
-// made to (it fails when to exists).
-func copyAll(fsys afero.Fs, from, to string) (created bool, err error) {
+// copyAll copies a file or folder, keeping the permissions, its progress (files and
+// bytes) reported to ctx. created is true once it made to (it fails when to exists).
+func copyAll(ctx context.Context, fsys afero.Fs, from, to string) (created bool, err error) {
+	c := copyProgress{ctx: ctx, name: filepath.Base(from)}
+	_ = afero.Walk(fsys, from, func(_ string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			c.files++
+			c.bytes += info.Size()
+		}
+		return nil
+	})
+	c.report(true)
 	err = afero.Walk(fsys, from, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -129,16 +142,50 @@ func copyAll(fsys afero.Fs, from, to string) (created bool, err error) {
 		case info.IsDir():
 			return fsys.MkdirAll(target, info.Mode().Perm())
 		}
-		err = copyFile(fsys, path, target, info.Mode().Perm())
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err = copyFile(fsys, path, target, info.Mode().Perm(), &c)
 		if rel == "." && err == nil {
 			created = true
 		}
+		c.filesDone++
+		c.report(true)
 		return err
 	})
 	return created, err
 }
 
-func copyFile(fsys afero.Fs, from, to string, mode fs.FileMode) error {
+// copyReportEvery is how often a copy's progress is reported within a file.
+const copyReportEvery = 250 * time.Millisecond
+
+// copyProgress is where a copy across drives is.
+type copyProgress struct {
+	ctx              context.Context
+	name             string
+	files, filesDone int
+	bytes, bytesDone int64
+	last             time.Time
+}
+
+// Write counts the bytes copied.
+func (c *copyProgress) Write(p []byte) (int, error) {
+	c.bytesDone += int64(len(p))
+	c.report(false)
+	return len(p), nil
+}
+
+// report reports the progress, within a file not more than every copyReportEvery.
+func (c *copyProgress) report(always bool) {
+	if c == nil || !always && time.Since(c.last) < copyReportEvery {
+		return
+	}
+	c.last = time.Now()
+	progress.Report(c.ctx, progress.Status{Source: "library", Message: fmt.Sprintf("copying %s to the other drive: %d/%d files, %s of %s",
+		c.name, c.filesDone, c.files, stringutil.HumanSize(c.bytesDone), stringutil.HumanSize(c.bytes))})
+}
+
+func copyFile(fsys afero.Fs, from, to string, mode fs.FileMode, c *copyProgress) error {
 	src, err := fsys.Open(from)
 	if err != nil {
 		return err
@@ -148,7 +195,11 @@ func copyFile(fsys afero.Fs, from, to string, mode fs.FileMode) error {
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(dst, src)
+	var w io.Writer = dst
+	if c != nil {
+		w = io.MultiWriter(dst, c)
+	}
+	_, err = io.Copy(w, src)
 	if closeErr := dst.Close(); err == nil {
 		err = closeErr
 	}
