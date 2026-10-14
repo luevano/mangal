@@ -3,15 +3,18 @@ package config
 import (
 	"fmt"
 	"io/fs"
+	"math"
 	"net/url"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/adrg/xdg"
+	"github.com/dustin/go-humanize"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/theme/icon"
@@ -133,6 +136,49 @@ func intEntry(key string, def, minimum, maximum int, description string) *entry[
 		},
 		Marshal: func(i int) (int64, error) { return int64(i), nil },
 	})
+}
+
+// sizeEntry is a size in bytes written like 10MB or 512KiB, 0 for none.
+func sizeEntry(key, def, description string) *entry[string, int64] {
+	return reg(entry[string, int64]{
+		Key:         key,
+		Default:     mustParseSize(def),
+		Description: description,
+		Unmarshal:   parseSize,
+		Marshal:     func(n int64) (string, error) { return formatSize(n), nil },
+	})
+}
+
+func parseSize(s string) (int64, error) {
+	n, err := humanize.ParseBytes(s)
+	if err != nil {
+		return 0, fmt.Errorf("%q isn't a size like 10MB or 512KiB", s)
+	}
+	if n > math.MaxInt64 {
+		return 0, fmt.Errorf("%q is too big", s)
+	}
+	return int64(n), nil
+}
+
+func mustParseSize(s string) int64 {
+	n, err := parseSize(s)
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
+
+// formatSize writes the size back without losing bytes: 10MB, 512KiB, 1234B.
+func formatSize(n int64) string {
+	for _, u := range []struct {
+		name string
+		size int64
+	}{{"GiB", 1 << 30}, {"GB", 1e9}, {"MiB", 1 << 20}, {"MB", 1e6}, {"KiB", 1 << 10}, {"KB", 1e3}} {
+		if n != 0 && n%u.size == 0 {
+			return strconv.FormatInt(n/u.size, 10) + u.name
+		}
+	}
+	return strconv.FormatInt(n, 10)
 }
 
 func modeEntry(key string, def fs.FileMode, description string) *entry[int64, fs.FileMode] {
@@ -475,8 +521,19 @@ var Serve = configServe{
 }
 
 var Log = configLog{
+	Rotate: oneOfEntry("log.rotate", "daily",
+		"How often a new log file starts (in $XDG_STATE_HOME/mangal/logs, named after its period: 2026-10-13T15.log, 2026-10-13.log, 2026-W42.log, 2026-10.log); a long `mangal serve` moves to the next one by itself. Every mangal process (serve, CLI, TUI) appends to the same files.",
+		"hourly", "daily", "weekly", "monthly"),
+	MaxSize: sizeEntry("log.max_size", "10MB",
+		"A log file this big starts the next file of its period (2026-10-13.1.log, .2...), roughly (a line or two over). A size like 10MB, 512KiB; 0 for no limit."),
 	KeepDays: intEntry("log.keep_days", 14, 0, 100000,
-		"How many days of log files are kept (a file per day in $XDG_STATE_HOME/mangal/logs, today's included; a long `mangal serve` starts a new one each day). Older ones are deleted when a file is opened. 0 keeps them all."),
+		"How many days of log files are kept (today's included): the files of older periods are deleted when a process opens a new file. 0 keeps them all (as far as log.max_files and log.max_total_size allow)."),
+	MaxFiles: intEntry("log.max_files", 0, 0, 1000000,
+		"Most log files kept, the oldest are deleted beyond it (only the ones no process writes to anymore). 0 for no limit."),
+	MaxTotalSize: sizeEntry("log.max_total_size", "500MB",
+		"Most space the log files take, the oldest are deleted beyond it (only the ones no process writes to anymore). 0 for no limit."),
+	Compress: boolEntry("log.compress", false,
+		"Gzip the log files no process writes to anymore (.log.gz; `mangal logs` and the TUI's logs read them)."),
 }
 
 var Web = configWeb{

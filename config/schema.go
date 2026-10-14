@@ -174,7 +174,12 @@ type configWatch struct {
 }
 
 type configLog struct {
-	KeepDays *entry[int64, int]
+	Rotate       *entry[string, string]
+	MaxSize      *entry[string, int64]
+	KeepDays     *entry[int64, int]
+	MaxFiles     *entry[int64, int]
+	MaxTotalSize *entry[string, int64]
+	Compress     *entry[bool, bool]
 }
 
 type configWeb struct {

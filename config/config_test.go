@@ -525,3 +525,31 @@ func TestFormatAndLanguageValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestSizeEntry(t *testing.T) {
+	reset(t)
+	if got := Log.MaxSize.Get(); got != 10_000_000 {
+		t.Errorf("default %d", got)
+	}
+	writeConfig(t, "[log]\nmax_size = '512KiB'\nmax_total_size = 0\n")
+	if err := Load(Path); err != nil {
+		t.Fatal(err)
+	}
+	if got := Log.MaxSize.Get(); got != 512<<10 {
+		t.Errorf("max_size %d", got)
+	}
+	if got := Log.MaxTotalSize.Get(); got != 0 {
+		t.Errorf("max_total_size %d", got)
+	}
+	if _, err := Parse(Log.MaxSize.Key, "lots"); err == nil {
+		t.Error("parse lots: no error")
+	}
+	for n, want := range map[int64]string{0: "0", 1234: "1234", 10_000_000: "10MB", 3 << 20: "3MiB", 1 << 30: "1GiB"} {
+		if got := formatSize(n); got != want {
+			t.Errorf("formatSize(%d) = %q, want %q", n, got, want)
+		}
+		if back, err := parseSize(formatSize(n)); err != nil || back != n {
+			t.Errorf("parseSize(formatSize(%d)) = %d, %v", n, back, err)
+		}
+	}
+}
