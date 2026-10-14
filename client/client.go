@@ -197,6 +197,19 @@ func HoldByID(ctx context.Context, id string) (_ *libmangal.Client, warnings []s
 	return client, warnings, release, nil
 }
 
+// CurrentProviderID is the current id of the installed provider with the id, an old one
+// too (libmangal.ProviderInfo.History); the id as is when none has it.
+func CurrentProviderID(id string) string {
+	loaders, _, err := manager.Load()
+	if err != nil {
+		return id
+	}
+	if loader, _, ok := libmangal.FindLoader(loaders, id); ok {
+		return loader.Info().ID
+	}
+	return id
+}
+
 func loaderByID(id string) (libmangal.ProviderLoader, []string, error) {
 	loaders, problems, err := manager.Load()
 	if err != nil {

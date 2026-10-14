@@ -188,8 +188,23 @@ func ChapterKey(c mangadata.Chapter) string {
 	return fmt.Sprintf("%g\x00%s", info.Number, info.Title)
 }
 
-// Add queues the job, it starts at once if its providers are free.
+// resolveProvider is a provider's current id (client.CurrentProviderID), swapped in tests.
+var resolveProvider = client.CurrentProviderID
+
+// currentIDs are the providers' current ids, so an old id's job queues behind the
+// current one's.
+func currentIDs(providers []string) []string {
+	ids := make([]string, len(providers))
+	for i, p := range providers {
+		ids[i] = resolveProvider(p)
+	}
+	return slices.Compact(slices.Sorted(slices.Values(ids)))
+}
+
+// Add queues the job, it starts at once if its providers are free. Its providers are
+// known by their current ids (an old id is resolved).
 func (m *Manager) Add(spec Spec) Job {
+	providers := currentIDs(spec.Providers)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ids++
@@ -199,7 +214,7 @@ func (m *Manager) Add(spec Spec) Job {
 			ID:        m.ids,
 			Kind:      spec.Kind,
 			Title:     spec.Title,
-			Providers: slices.Compact(slices.Sorted(slices.Values(spec.Providers))),
+			Providers: providers,
 			MangaID:   spec.MangaID,
 			Origin:    spec.Origin,
 			Read:      spec.Read,

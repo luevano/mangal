@@ -466,3 +466,32 @@ func TestShutdown(t *testing.T) {
 		t.Errorf("a job added after the shutdown is %s", j.Status)
 	}
 }
+
+// TestOldProviderIDQueues: a job under a provider's old id queues behind the current id's.
+func TestOldProviderIDQueues(t *testing.T) {
+	old := resolveProvider
+	t.Cleanup(func() { resolveProvider = old })
+	resolveProvider = func(id string) string {
+		if id == "mango-mangasee" {
+			return "mango-weebcentral"
+		}
+		return id
+	}
+	m := newManager(t)
+	first := newGated()
+	a := m.Add(first.spec("current", "mango-weebcentral"))
+	<-first.started
+	second := newGated()
+	b := m.Add(second.spec("old", "mango-mangasee"))
+	if !slices.Equal(b.Providers, []string{"mango-weebcentral"}) {
+		t.Errorf("providers %q, want the current id", b.Providers)
+	}
+	if j, _ := m.Get(b.ID); j.Status != Queued {
+		t.Fatalf("old id's job %s, want queued behind the current id's", j.Status)
+	}
+	close(first.gate)
+	waitFor(t, m, a.ID, "done", func(j Job) bool { return j.Status == Done })
+	<-second.started
+	close(second.gate)
+	waitFor(t, m, b.ID, "done", func(j Job) bool { return j.Status == Done })
+}

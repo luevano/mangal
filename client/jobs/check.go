@@ -17,6 +17,8 @@ var pollBusy = 2 * time.Second
 // CheckSpec is a check of the watches with the ids (of providers) through m, as a job
 // of those providers. summary words its report for the job's last message.
 func CheckSpec(m watch.Manager, ids []int64, providers []string, opts watch.CheckOptions, title, origin string, summary func(watch.Report) string) Spec {
+	// the locks are the current ids'
+	providers = currentIDs(providers)
 	return Spec{
 		Kind:      KindCheck,
 		Title:     title,
