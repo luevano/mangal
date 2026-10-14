@@ -7,13 +7,16 @@ import (
 	"time"
 
 	"github.com/itchyny/gojq"
-	json "github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 	luadoc "github.com/luevano/gopher-luadoc"
 	"github.com/luevano/mangal/v5/script/lib/util"
 	lua "github.com/yuin/gopher-lua"
 )
 
 const libName = "json"
+
+// sorted object keys, like encoding/json: lua tables iterate in random order
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func Lib() *luadoc.Lib {
 	return &luadoc.Lib{
