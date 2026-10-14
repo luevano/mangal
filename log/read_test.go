@@ -165,6 +165,28 @@ func TestTail(t *testing.T) {
 }
 
 // Follow stops with ctx.
+func TestTailAt(t *testing.T) {
+	dir := t.TempDir()
+	writeLog(t, dir, "2026-10-12.log", day12)
+	writeLog(t, dir, "2026-10-13.log", day13)
+	files, err := Files(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tail := NewTailAt(dir, files[0])
+	var got []string
+	if err := tail.Next(Filter{Level: LevelWarn}, func(e Entry) error {
+		got = append(got, e.File+": "+e.Message)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := "2026-10-12.log: get manga \"x\": not found\n  caused by: 404|2026-10-13.log: rate limited"
+	if strings.Join(got, "|") != want || tail.Following() != "2026-10-13.log" {
+		t.Errorf("got %q, following %s", got, tail.Following())
+	}
+}
+
 func TestFollow(t *testing.T) {
 	dir := t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())

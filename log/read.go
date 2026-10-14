@@ -230,6 +230,11 @@ func NewTail(dir string) (*Tail, error) {
 	return t, nil
 }
 
+// NewTailAt tails dir from the start of f (one of its Files), then the newer files.
+func NewTailAt(dir string, f File) *Tail {
+	return &Tail{dir: dir, file: f}
+}
+
 // Next calls fn with the entries the filter picks appended since the last call.
 func (t *Tail) Next(filter Filter, fn func(Entry) error) error {
 	for {
