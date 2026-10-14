@@ -31,6 +31,7 @@ require (
 	github.com/philippgille/gokv v0.7.0
 	github.com/philippgille/gokv/encoding v0.7.0
 	github.com/philippgille/gokv/util v0.7.0
+	github.com/sahilm/fuzzy v0.1.1
 	github.com/samber/lo v1.53.0
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/spf13/afero v1.15.0
@@ -124,7 +125,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/robertkrimen/otto v0.5.1 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
-	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/sasha-s/go-csync v0.0.0-20240107134140-fcbab37b09ad // indirect
 	github.com/segmentio/fasthash v1.0.3 // indirect

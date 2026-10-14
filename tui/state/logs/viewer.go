@@ -3,7 +3,6 @@ package logs
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -23,7 +22,7 @@ import (
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
-// maxEntries is how many entries a viewer keeps, the latest.
+// maxEntries is about how many entries a viewer keeps, the latest.
 const maxEntries = 50000
 
 // followEvery is how often a followed log is read again.
@@ -46,8 +45,8 @@ const (
 )
 
 type viewerKeys struct {
-	up, down, pageUp, pageDown, top, bottom, find, next, prev, level, copy, clear key.Binding
-	files, prevPeriod, nextPeriod                                                 key.Binding
+	up, down, pageUp, pageDown, top, bottom, find, next, prev, narrow, level, copy, clear key.Binding
+	files, prevPeriod, nextPeriod                                                         key.Binding
 }
 
 var _ base.State = (*viewer)(nil)
@@ -84,9 +83,13 @@ type viewer struct {
 
 	level   log.Level
 	find    *search.Model
-	pattern *regexp.Regexp
-	// shown are the indexes of the entries at the level, matches the ones of shown that
-	// match the pattern, current the shown match (-1 for none)
+	matcher *matcher
+	// hits are whether each entry matches (matched once, when it comes); narrow: only
+	// those are shown
+	hits   []bool
+	narrow bool
+	// shown are the indexes of the entries at the level (and matching, narrowed), matches
+	// the ones of shown that match, current the shown match (-1 for none)
 	shown, matches []int
 	current        int
 
@@ -104,7 +107,7 @@ func newViewer(k kind) *viewer {
 	v := &viewer{
 		kind:    k,
 		current: -1,
-		find:    search.New("Find (regexp)...", "", 64, 0),
+		find:    search.New("Find (fuzzy, re: for a regexp)...", "", 64, 0),
 		keys: viewerKeys{
 			up:         util.BindNamedKey("↑/k", "up", "up", "k"),
 			down:       util.BindNamedKey("↓/j", "down", "down", "j"),
@@ -115,6 +118,7 @@ func newViewer(k kind) *viewer {
 			find:       util.Bind("find", "/"),
 			next:       base.KeyNextMatch,
 			prev:       base.KeyPrevMatch,
+			narrow:     base.KeyNarrow,
 			level:      base.KeyLevel,
 			copy:       base.KeyCopy,
 			clear:      util.Bind("clear find", "esc"),
@@ -150,7 +154,7 @@ func newPeriod(dir, period string) *viewer {
 func newSearch(dir, query string) *viewer {
 	v := newViewer(kindSearch)
 	v.dir, v.query = dir, query
-	v.pattern = log.Pattern(query, false)
+	v.matcher = newMatcher(query)
 	return v
 }
 
@@ -210,7 +214,7 @@ func (v *viewer) Subtitle() string {
 	if v.level != log.LevelDebug {
 		parts = append(parts, strings.ToLower(v.level.String())+" and up")
 	}
-	if v.pattern != nil {
+	if v.matcher != nil {
 		switch {
 		case len(v.matches) == 0:
 			parts = append(parts, "no match")
@@ -218,6 +222,11 @@ func (v *viewer) Subtitle() string {
 			parts = append(parts, stringutil.Quantify(len(v.matches), "match", "matches"))
 		default:
 			parts = append(parts, fmt.Sprintf("match %d/%d", v.current+1, len(v.matches)))
+		}
+		if v.narrow {
+			parts = append(parts, "narrowed")
+		} else {
+			parts = append(parts, "all lines")
 		}
 	}
 	switch {
@@ -237,16 +246,17 @@ func (v *viewer) Status() string { return "" }
 func (v *viewer) Inputting() bool { return v.find.Searching() }
 
 // Backable: esc stops finding first.
-func (v *viewer) Backable() bool { return !v.find.Searching() && v.pattern == nil }
+func (v *viewer) Backable() bool { return !v.find.Searching() && v.matcher == nil }
 
 func (v *viewer) KeyMap() help.KeyMap {
 	if v.find.Searching() {
 		return inputKeys("find")
 	}
 	k := v.keys
-	k.clear.SetEnabled(v.pattern != nil)
+	k.clear.SetEnabled(v.matcher != nil)
 	k.next.SetEnabled(len(v.matches) > 0)
 	k.prev.SetEnabled(len(v.matches) > 0)
+	k.narrow.SetEnabled(v.matcher != nil)
 	k.copy.SetEnabled(len(v.shown) > 0)
 	end := k.bottom
 	if v.followable {
@@ -254,9 +264,9 @@ func (v *viewer) KeyMap() help.KeyMap {
 	}
 	if !v.main {
 		return util.KeyMap{
-			Short: []key.Binding{k.find, k.next, k.level, end, k.clear},
+			Short: []key.Binding{k.find, k.next, k.narrow, k.level, end, k.clear},
 			Full: [][]key.Binding{
-				{k.find, k.next, k.prev, k.clear},
+				{k.find, k.next, k.prev, k.narrow, k.clear},
 				{k.level, k.copy},
 				{k.up, k.down, k.pageUp, k.pageDown},
 				{k.top, end},
@@ -268,9 +278,9 @@ func (v *viewer) KeyMap() help.KeyMap {
 	_, ok = v.stepPeriod(1)
 	k.nextPeriod.SetEnabled(ok)
 	return util.KeyMap{
-		Short: []key.Binding{k.find, k.next, k.level, end, k.files, k.prevPeriod, k.nextPeriod, k.clear},
+		Short: []key.Binding{k.find, k.next, k.narrow, k.level, end, k.files, k.prevPeriod, k.nextPeriod, k.clear},
 		Full: [][]key.Binding{
-			{k.find, k.next, k.prev, k.clear},
+			{k.find, k.next, k.prev, k.narrow, k.clear},
 			{k.level, k.copy},
 			{k.files, k.prevPeriod, k.nextPeriod},
 			{k.up, k.down, k.pageUp, k.pageDown},
@@ -305,7 +315,8 @@ func (v *viewer) stepPeriod(d int) (string, bool) {
 	}
 }
 
-// showPeriod shows another period ("" the current one), keeping the level and the find.
+// showPeriod shows another period ("" the current one), keeping the level and the find
+// (narrowed or not).
 func (v *viewer) showPeriod(ctx context.Context, period string) tea.Cmd {
 	v.period = period
 	v.followable, v.follow = period == "", period == ""
@@ -387,19 +398,24 @@ func (v *viewer) start(ctx context.Context) tea.Cmd {
 	if v.followable {
 		v.tail, v.tailMu = log.NewTailAt(v.dir, v.file), &sync.Mutex{}
 	}
-	tail, file, dir, pattern := v.tail, v.file, v.dir, v.pattern
+	tail, file, dir, m, search := v.tail, v.file, v.dir, v.matcher, v.kind == kindSearch
 	return base.Load(ctx, label, func(ctx context.Context) ([]log.Entry, error) {
 		var entries []log.Entry
 		add := keepLast(&entries)
 		switch {
 		case tail != nil:
 			return entries, tail.Next(log.Filter{}, add)
-		case pattern != nil:
+		case search:
 			files, err := log.Files(dir)
-			if err != nil {
+			if err != nil || m == nil {
 				return nil, err
 			}
-			return entries, log.Scan(ctx, files, log.Filter{Pattern: pattern}, add)
+			return entries, log.Scan(ctx, files, log.Filter{}, func(e log.Entry) error {
+				if !m.match(e.Message) {
+					return nil
+				}
+				return add(e)
+			})
 		default:
 			return entries, log.Scan(ctx, []log.File{file}, log.Filter{}, add)
 		}
@@ -556,7 +572,7 @@ func (v *viewer) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		return v.tick(ctx)
 	case search.SearchMsg:
-		v.setPattern(log.Pattern(string(msg), false))
+		v.setMatcher(newMatcher(string(msg)))
 		return nil
 	case search.SearchCancelMsg:
 		v.layout()
@@ -591,8 +607,11 @@ func (v *viewer) key(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 		cmd := v.find.Focus()
 		v.layout()
 		return cmd
-	case key.Matches(msg, k.clear) && v.pattern != nil:
-		v.setPattern(nil)
+	case key.Matches(msg, k.clear) && v.matcher != nil:
+		v.setMatcher(nil)
+	case key.Matches(msg, k.narrow) && v.matcher != nil:
+		v.narrow = !v.narrow
+		v.filter()
 	case key.Matches(msg, k.next):
 		v.step(1)
 	case key.Matches(msg, k.prev):
@@ -631,21 +650,65 @@ func (v *viewer) key(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// setEntries replaces the entries, or adds them.
+// setEntries replaces the entries, or adds them: only the added ones are matched, and
+// shown and measured unless the first ones were dropped.
 func (v *viewer) setEntries(entries []log.Entry, replace bool) {
+	from := len(v.entries)
 	if replace {
-		v.entries, v.dropped = nil, 0
+		v.entries, v.hits, v.dropped, from = nil, nil, 0, 0
 	}
 	v.entries = append(v.entries, entries...)
-	if n := len(v.entries) - maxEntries; n > 0 {
+	v.hits = append(v.hits, v.matchAll(entries)...)
+	whole := replace
+	// a tenth more first: all is shown again once some go
+	if n := len(v.entries) - maxEntries; n > maxEntries/10 {
 		v.entries = append(v.entries[:0], v.entries[n:]...)
+		v.hits = append(v.hits[:0], v.hits[n:]...)
 		v.dropped += n
+		whole = true
 	}
 	if len(v.entries) > 0 {
 		first, last := v.entries[0].Time, v.entries[len(v.entries)-1].Time
-		v.dated = first.Format(time.DateOnly) != last.Format(time.DateOnly)
+		dated := first.Format(time.DateOnly) != last.Format(time.DateOnly)
+		// the stamps' width changes
+		whole = whole || dated != v.dated
+		v.dated = dated
 	}
-	v.filter()
+	if whole {
+		v.filter()
+		return
+	}
+	n := len(v.shown)
+	v.pick(from)
+	v.measure(n)
+	if v.follow {
+		v.top = v.maxTop()
+	}
+}
+
+// matchAll is whether each entry matches, all false without a find.
+func (v *viewer) matchAll(entries []log.Entry) []bool {
+	hits := make([]bool, len(entries))
+	if v.matcher != nil {
+		for i, e := range entries {
+			hits[i] = v.matcher.match(e.Message)
+		}
+	}
+	return hits
+}
+
+// pick adds the entries from the index on to the shown ones (and their matches).
+func (v *viewer) pick(from int) {
+	narrowed := v.narrow && v.matcher != nil
+	for i := from; i < len(v.entries); i++ {
+		if v.entries[i].Level < v.level || (narrowed && !v.hits[i]) {
+			continue
+		}
+		if v.matcher != nil && v.hits[i] {
+			v.matches = append(v.matches, len(v.shown))
+		}
+		v.shown = append(v.shown, i)
+	}
 }
 
 // filter picks the shown entries and their matches, keeping the current match (or the
@@ -657,15 +720,10 @@ func (v *viewer) filter() {
 	} else if i := v.entryAt(v.top); i >= 0 {
 		keep = v.shown[i]
 	}
-	v.shown = v.shown[:0]
-	for i, e := range v.entries {
-		if e.Level >= v.level {
-			v.shown = append(v.shown, i)
-		}
-	}
-	v.match()
+	v.shown, v.matches = v.shown[:0], v.matches[:0]
+	v.pick(0)
 	v.current = -1
-	if v.pattern != nil && keep >= 0 {
+	if v.matcher != nil && keep >= 0 {
 		for m, i := range v.matches {
 			if v.shown[i] == keep {
 				v.current = m
@@ -688,34 +746,28 @@ func (v *viewer) filter() {
 	}
 }
 
-func (v *viewer) match() {
-	v.matches = v.matches[:0]
-	if v.pattern == nil {
-		return
+// setMatcher finds the query's matcher (nil for none, which also stops narrowing): the
+// current match is the first one from the top shown.
+func (v *viewer) setMatcher(m *matcher) {
+	from := -1
+	if i := v.entryAt(v.top); i >= 0 {
+		from = v.shown[i]
 	}
-	for i, e := range v.shown {
-		if v.pattern.MatchString(v.entries[e].Message) {
-			v.matches = append(v.matches, i)
-		}
+	v.matcher = m
+	if m == nil {
+		v.narrow = false
 	}
-}
-
-// setPattern finds the pattern (nil for none): the current match is the first one from
-// the top shown.
-func (v *viewer) setPattern(p *regexp.Regexp) {
-	v.pattern = p
-	v.match()
+	v.hits = v.matchAll(v.entries)
 	v.current = -1
-	v.layout()
-	if p == nil || len(v.matches) == 0 {
+	v.filter()
+	if m == nil || len(v.matches) == 0 {
 		return
 	}
-	from := v.entryAt(v.top)
-	m := sort.SearchInts(v.matches, max(0, from))
-	if v.follow || m == len(v.matches) {
-		m = len(v.matches) - 1
+	i := sort.Search(len(v.matches), func(i int) bool { return v.shown[v.matches[i]] >= from })
+	if v.follow || i == len(v.matches) {
+		i = len(v.matches) - 1
 	}
-	v.goTo(m)
+	v.goTo(i)
 }
 
 // step goes to the next (1) or previous (-1) match, around.
@@ -760,10 +812,17 @@ func (v *viewer) entryAt(row int) int {
 // layout measures the shown entries at the width.
 func (v *viewer) layout() {
 	v.width = max(1, v.size.Width)
-	v.heights = v.heights[:0]
-	v.starts = v.starts[:0]
-	v.rows = 0
-	for i := range v.shown {
+	v.heights, v.starts, v.rows = v.heights[:0], v.starts[:0], 0
+	v.measure(0)
+	if v.follow {
+		v.top = v.maxTop()
+	}
+	v.top = min(v.top, v.maxTop())
+}
+
+// measure adds the rows of the shown entries from the index on.
+func (v *viewer) measure(from int) {
+	for i := from; i < len(v.shown); i++ {
 		h := 0
 		if v.header(i) != "" {
 			h++
@@ -775,10 +834,6 @@ func (v *viewer) layout() {
 		v.starts = append(v.starts, v.rows)
 		v.rows += h
 	}
-	if v.follow {
-		v.top = v.maxTop()
-	}
-	v.top = min(v.top, v.maxTop())
 }
 
 // header is the file of a search's shown entry when it's another than the previous one's.
@@ -814,7 +869,8 @@ func (v *viewer) plain(i int) string {
 func (v *viewer) render(i int) []string {
 	e := v.entries[v.shown[i]]
 	stamp := style.Normal.Secondary.Render(v.stamp(e))
-	if v.current >= 0 && v.matches[v.current] == i {
+	current := v.current >= 0 && v.matches[v.current] == i
+	if current {
 		stamp = lipgloss.NewStyle().Reverse(true).Render(v.stamp(e))
 	}
 	level := levelName(e.Level)
@@ -827,8 +883,13 @@ func (v *viewer) render(i int) []string {
 		level = style.Bold.Error.Render(level)
 	}
 	msg := e.Message
-	if v.pattern != nil {
-		msg = highlight(v.pattern, msg)
+	// every match is highlighted, only the visible ones are looked for
+	if v.matcher != nil && v.hits[v.shown[i]] {
+		st := matchStyle
+		if current {
+			st = currentMatchStyle
+		}
+		msg = highlight(msg, v.matcher.spans(msg), st)
 	}
 	var rows []string
 	if h := v.header(i); h != "" {
@@ -836,27 +897,6 @@ func (v *viewer) render(i int) []string {
 	}
 	text := ansi.Hardwrap(stamp+" "+level+" "+msg, v.width, true)
 	return append(rows, strings.Split(text, "\n")...)
-}
-
-var matchStyle = lipgloss.NewStyle().Reverse(true).Foreground(lipgloss.Color("#EBCA89"))
-
-func highlight(p *regexp.Regexp, s string) string {
-	locs := p.FindAllStringIndex(s, -1)
-	if locs == nil {
-		return s
-	}
-	var sb strings.Builder
-	last := 0
-	for _, l := range locs {
-		if l[1] == l[0] {
-			continue
-		}
-		sb.WriteString(s[last:l[0]])
-		sb.WriteString(matchStyle.Render(s[l[0]:l[1]]))
-		last = l[1]
-	}
-	sb.WriteString(s[last:])
-	return sb.String()
 }
 
 func (v *viewer) View() string {

@@ -102,6 +102,8 @@ var (
 	KeyNextMatch = util.Bind("next match", "ctrl+n")
 	KeyPrevMatch = util.Bind("previous match", "ctrl+p")
 	KeyLevel     = util.Bind("level", "tab")
+	// only the matching lines, as less's &; free everywhere
+	KeyNarrow = util.Bind("narrow", "&")
 	// Logs (the current log): the files are its past ones, like V's check runs; [ and ]
 	// step through the periods (h/l page)
 	KeyLogFiles   = util.Bind("every log file", "V")
@@ -167,7 +169,7 @@ func Keys() (old, newer []key.Binding) {
 		KeyUndo, KeyDuplicates, KeyBackups, KeyCheck, KeyCheckDue, KeyCheckProvider, KeyFillGaps, KeyPause,
 		KeyPauseProvider, KeyStopWatching, KeyDeleteRun, KeyRelink, KeyLiveLog, KeyLiveChecks, KeyRuns,
 		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,
-		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel,
+		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel, KeyNarrow,
 		KeyLogFiles, KeyPrevPeriod, KeyNextPeriod, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
 	}
 }

@@ -124,10 +124,10 @@ func TestFiles(t *testing.T) {
 	if !s.Inputting() || s.Backable() {
 		t.Fatal("not searching")
 	}
-	typeIn(s, "not found|timeout")
+	typeIn(s, "re:not found|timeout")
 	msgs = run(s, s.Update(ctx, press("enter")))
 	v, ok = msgs[0].(*viewer)
-	if !ok || v.Key() != "logs-search/not found|timeout" {
+	if !ok || v.Key() != "logs-search/re:not found|timeout" {
 		t.Fatalf("search: %#v", msgs)
 	}
 	v.Resize(base.Size{Width: 80, Height: 20})
@@ -210,8 +210,8 @@ func TestViewerFindAndLevel(t *testing.T) {
 
 	// esc clears the find, then goes back
 	run(v, v.Update(ctx, press("esc")))
-	if v.pattern != nil || !v.Backable() {
-		t.Errorf("esc: pattern %v", v.pattern)
+	if v.matcher != nil || !v.Backable() {
+		t.Errorf("esc: matcher %v", v.matcher)
 	}
 }
 
@@ -283,7 +283,7 @@ func TestKeys(t *testing.T) {
 		t.Errorf("files: %v", bad)
 	}
 	for _, v := range []*viewer{newViewer(kindFile), newPeriod(t.TempDir(), "")} {
-		v.pattern = log.Pattern("x", false)
+		v.matcher = newMatcher("x")
 		var all []key.Binding
 		for _, b := range util.Bindings(v.KeyMap()) {
 			// esc clears the find while there's one: back is off then (Backable)
@@ -297,7 +297,7 @@ func TestKeys(t *testing.T) {
 	}
 	// the main viewer's own keys are base's
 	v := newPeriod(t.TempDir(), "")
-	k := util.KeyMap{Short: []key.Binding{v.keys.files, v.keys.prevPeriod, v.keys.nextPeriod, v.keys.level, v.keys.next, v.keys.prev, v.keys.copy}}
+	k := util.KeyMap{Short: []key.Binding{v.keys.files, v.keys.prevPeriod, v.keys.nextPeriod, v.keys.level, v.keys.next, v.keys.prev, v.keys.narrow, v.keys.copy}}
 	if bad := base.KeyInconsistencies(k); len(bad) != 0 {
 		t.Errorf("main viewer: %v", bad)
 	}
@@ -385,7 +385,7 @@ func TestPeriods(t *testing.T) {
 	if v.Title().Text != "Logs · 2026-10-12" || v.Key() != "logs" || v.follow || v.followable {
 		t.Errorf("title %q, key %q, follow %v", v.Title().Text, v.Key(), v.follow)
 	}
-	if !strings.Contains(got, "not found") || strings.Contains(got, "page 1") || v.pattern == nil {
+	if !strings.Contains(got, "not found") || strings.Contains(got, "page 1") || v.matcher == nil {
 		t.Errorf("[:\n%s", got)
 	}
 	run(v, v.Update(ctx, press("[")))
