@@ -183,8 +183,8 @@ func (s *historyState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			s.provider = nextProvider(s.providers, s.provider)
 			return s.reload(ctx, "Loading the history of "+providerName(s.provider))
 		case key.Matches(msg, s.check) && s.provider != "":
-			// a busy provider is refused by the check itself
-			return checkProviderCmd(ctx, s.manager, s.provider)
+			// a busy provider waits in its queue
+			return checkProviderCmd(ctx, s.manager, s.provider, s.Key())
 		}
 		// no provider history key, it's this screen
 		if cmd, ok := runItemKey(ctx, msg, s.List, s.manager, s.open, s.library, key.Binding{}); ok {

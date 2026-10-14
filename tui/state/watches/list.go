@@ -224,17 +224,6 @@ func (s *listState) liveOf(w watch.Watch) (liveWatch, bool) {
 	return liveWatch{}, false
 }
 
-// busy says the provider is being checked, so it can't be checked now.
-func (s *listState) busy(provider string) (string, bool) {
-	if ps, ok := s.status.Provider(provider); ok {
-		return fmt.Sprintf("%s is being checked (since %s), try again when it's done", provider, ago(ps.Since, s.now())), true
-	}
-	if s.liveProviders[provider] {
-		return provider + " is being checked, try again when it's done", true
-	}
-	return "", false
-}
-
 // onEvent keeps what the watches being checked do.
 func (s *listState) onEvent(e watch.LiveEvent) {
 	switch e.Kind {

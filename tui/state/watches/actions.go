@@ -2,15 +2,14 @@ package watches
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/tui/base"
+	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
@@ -45,26 +44,20 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		return func() tea.Msg { return newLiveState(m, nil) }, true
 	case key.Matches(msg, s.keys.checkDue):
 		var due []int64
-		busy := 0
+		var providers []string
 		now := s.now()
 		for _, i := range s.List.Items() {
 			w := i.(*item).w
 			if !w.Scheduled() || w.NextCheck.After(now) {
 				continue
 			}
-			if _, ok := s.busy(w.Provider); ok {
-				busy++
-				continue
-			}
 			due = append(due, w.ID)
+			providers = append(providers, w.Provider)
 		}
-		switch {
-		case len(due) == 0 && busy > 0:
-			return base.Notify("The providers of the due watches are being checked, try again when they're done"), true
-		case len(due) == 0:
+		if len(due) == 0 {
 			return base.Notify("No watch is due"), true
 		}
-		return s.check(ctx, due, watch.CheckOptions{}, stringutil.Quantify(len(due), "due watch", "due watches")), true
+		return s.check(due, providers, watch.CheckOptions{}, stringutil.Quantify(len(due), "due watch", "due watches")), true
 	}
 	i, ok := s.List.SelectedItem().(*item)
 	if !ok {
@@ -85,21 +78,16 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, boo
 		return func() tea.Msg { return newHistoryState(m, w.Provider) }, true
 	case key.Matches(msg, s.keys.live):
 		return func() tea.Msg { return newLiveState(m, &w) }, true
-	case key.Matches(msg, s.keys.check), key.Matches(msg, s.keys.gaps), key.Matches(msg, s.keys.checkProvider):
-		if busy, ok := s.busy(w.Provider); ok {
-			return base.Notify(busy), true
-		}
-		switch {
-		case key.Matches(msg, s.keys.check):
-			return s.check(ctx, []int64{w.ID}, watch.CheckOptions{}, w.Title), true
-		case key.Matches(msg, s.keys.gaps):
-			return s.check(ctx, []int64{w.ID}, watch.CheckOptions{Gaps: true, Kind: watch.KindGaps}, w.Title+" (gaps)"), true
-		}
+	case key.Matches(msg, s.keys.check):
+		return s.check([]int64{w.ID}, []string{w.Provider}, watch.CheckOptions{}, w.Title), true
+	case key.Matches(msg, s.keys.gaps):
+		return s.check([]int64{w.ID}, []string{w.Provider}, watch.CheckOptions{Gaps: true, Kind: watch.KindGaps}, w.Title+" (gaps)"), true
+	case key.Matches(msg, s.keys.checkProvider):
 		s.started = s.now()
 		// a new poll loop: the spinner's goes with the old one
 		s.gen++
 		s.spinning = false
-		return tea.Batch(checkProviderCmd(ctx, m, w.Provider), s.tick(pollChecking), s.spin()), true
+		return tea.Batch(checkProviderCmd(ctx, m, w.Provider, s.Key()), s.tick(pollChecking), s.spin()), true
 	case key.Matches(msg, s.keys.pause):
 		return pauseCmd(m, w), true
 	case key.Matches(msg, s.keys.pauseProvider):
@@ -160,53 +148,28 @@ func pauseProviderCmd(m watch.Manager, w watch.Watch) tea.Cmd {
 	}
 }
 
-// check starts a check of the watches. It keeps running on other screens (until the TUI
-// quits), its summary is a notification wherever the user is.
-func (s *listState) check(ctx context.Context, ids []int64, opts watch.CheckOptions, what string) tea.Cmd {
+// check queues a check of the watches (of the providers) as a background job (tui/jobs):
+// it waits for the jobs and other mangals that have its providers, keeps running on other
+// screens, its summary is a notification wherever the user is.
+func (s *listState) check(ids []int64, providers []string, opts watch.CheckOptions, what string) tea.Cmd {
 	s.started = s.now()
 	// polls faster from now, the loop in place could be waiting its slow tick
 	s.gen++
 	s.spinning = false
-	return tea.Batch(base.Notify("Checking "+what), checkCmd(base.Background(ctx), s.manager, ids, opts), s.tick(pollChecking), s.spin())
+	queueCheck(s.manager, ids, providers, opts, what, s.Key())
+	return tea.Batch(s.tick(pollChecking), s.spin())
 }
 
-// busyMessage is a check refused because another check or a download has its providers.
-const busyMessage = "Another check or a download has those providers, try again when it's done"
-
-func checkCmd(ctx context.Context, m watch.Manager, ids []int64, opts watch.CheckOptions) tea.Cmd {
-	return func() tea.Msg {
-		release, ok := base.Track(ctx)
-		if !ok {
-			return nil
-		}
-		defer release()
-		return checkResult(m.Check(ctx, ids, opts))
-	}
+func queueCheck(m watch.Manager, ids []int64, providers []string, opts watch.CheckOptions, what, origin string) {
+	tuijobs.Check(m, ids, providers, opts, what, origin, summary)
 }
 
-func checkResult(report watch.Report, err error) tea.Msg {
-	switch {
-	case errors.Is(err, watch.ErrBusy):
-		return base.NotificationMsg{Message: busyMessage}
-	case err != nil:
-		return fmt.Errorf("check watches: %w", err)
-	}
-	return base.NotificationWithDurationMsg{NotificationMsg: base.NotificationMsg{Message: summary(report)}, Duration: 5 * time.Second}
-}
-
-// checkProviderCmd checks every enabled watch of the provider now, in the background (it
-// outlives the screen).
-func checkProviderCmd(ctx context.Context, m watch.Manager, provider string) tea.Cmd {
-	ctx = base.Background(ctx)
-	return tea.Batch(base.Notify("Checking every watch of "+provider), func() tea.Msg {
-		release, ok := base.Track(ctx)
-		if !ok {
-			return nil
-		}
-		defer release()
+// checkProviderCmd queues a check of every enabled watch of the provider.
+func checkProviderCmd(ctx context.Context, m watch.Manager, provider, origin string) tea.Cmd {
+	return base.Load(ctx, "Listing the watches of "+provider, func(ctx context.Context) (tea.Msg, error) {
 		all, err := m.List(ctx)
 		if err != nil {
-			return fmt.Errorf("check %s: %w", provider, err)
+			return nil, fmt.Errorf("check %s: %w", provider, err)
 		}
 		var ids []int64
 		for _, w := range all {
@@ -215,10 +178,11 @@ func checkProviderCmd(ctx context.Context, m watch.Manager, provider string) tea
 			}
 		}
 		if len(ids) == 0 {
-			return base.NotificationMsg{Message: provider + " has no enabled watches"}
+			return base.NotificationMsg{Message: provider + " has no enabled watches"}, nil
 		}
-		return checkResult(m.Check(ctx, ids, watch.CheckOptions{}))
-	})
+		queueCheck(m, ids, []string{provider}, watch.CheckOptions{}, "every watch of "+provider, origin)
+		return nil, nil
+	}, func(msg tea.Msg) tea.Msg { return msg })
 }
 
 // summary is a check's report in one line.

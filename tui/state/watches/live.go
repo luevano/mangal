@@ -38,6 +38,12 @@ type liveMsg struct {
 // screens still poll the status, it's only logged.
 func subscribe(ctx context.Context, m watch.Manager) tea.Cmd {
 	return base.Load(ctx, "", func(ctx context.Context) (*feed, error) {
+		if m == nil {
+			var err error
+			if m, err = Connect(ctx); err != nil {
+				return nil, err
+			}
+		}
 		ch, err := m.Subscribe(ctx)
 		if err != nil {
 			log.Warn("watch: live events: %s", err)
@@ -126,6 +132,11 @@ type liveState struct {
 	size   base.Size
 
 	up, down, pageUp, pageDown, follow key.Binding
+}
+
+// NewLiveLog is the live log of every running check (of the checks' manager).
+func NewLiveLog() base.State {
+	return newLiveState(nil, nil)
 }
 
 func newLiveState(m watch.Manager, w *watch.Watch) *liveState {

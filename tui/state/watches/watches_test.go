@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,9 +19,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
+	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
 	"github.com/luevano/mangal/v5/tui/state/pick"
 	"github.com/luevano/mangal/v5/tui/util"
 )
@@ -32,6 +35,7 @@ type fakeManager struct {
 	checkErr error
 
 	enabled  map[int64]bool
+	mu       sync.Mutex
 	checked  [][]int64
 	relinked map[int64]watch.RelinkOptions
 	// removedRuns are the watch runs RemoveRun was given
@@ -78,8 +82,17 @@ func (f *fakeManager) Relink(ctx context.Context, id int64, opts watch.RelinkOpt
 	return f.Get(ctx, id)
 }
 func (f *fakeManager) Check(ctx context.Context, ids []int64, opts watch.CheckOptions) (watch.Report, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.checked = append(f.checked, ids)
 	return watch.Report{CheckRun: storage.CheckRun{Watches: len(ids), NewChapters: 3}}, f.checkErr
+}
+
+// checks are the ids of each Check (they run in the background).
+func (f *fakeManager) checks() [][]int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.checked)
 }
 func (f *fakeManager) Stale(ctx context.Context, since time.Duration) ([]watch.Watch, error) {
 	return nil, nil
@@ -218,41 +231,57 @@ func TestPauseToggles(t *testing.T) {
 	}
 }
 
-func TestCheckBusy(t *testing.T) {
+// withJobs runs the checks' jobs in a manager of the test.
+func withJobs(t *testing.T) *jobs.Manager {
+	t.Helper()
+	m := jobs.New(context.Background())
+	tuijobs.SetManager(m)
+	t.Cleanup(func() {
+		m.Shutdown(time.Second)
+		tuijobs.SetManager(nil)
+	})
+	return m
+}
+
+// jobsOver waits for every job and returns them.
+func jobsOver(t *testing.T, m *jobs.Manager) []jobs.Job {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		changed := m.Changed()
+		if len(m.Active()) == 0 {
+			return m.Jobs()
+		}
+		select {
+		case <-changed:
+		case <-deadline:
+			t.Fatalf("jobs still running: %v", m.Active())
+		}
+	}
+}
+
+// A check of a provider being checked is queued, not refused.
+func TestCheckQueuesBusy(t *testing.T) {
 	m := testManager()
 	m.status = watch.Status{Checking: true, Since: now.Add(-3 * time.Minute),
 		Providers: []watch.ProviderStatus{{Provider: "mango-mangapill", Since: now.Add(-3 * time.Minute)}}}
+	jm := withJobs(t)
 	s := loaded(t, m)
 	ctx := context.Background()
-
-	// Berserk's provider is being checked
-	cmd := s.Update(ctx, press("u"))
-	msg, ok := cmd().(base.NotificationMsg)
-	if !ok || !strings.Contains(msg.Message, "mango-mangapill is being checked (since 3m ago)") {
-		t.Errorf("u while its provider is checked: got %#v", cmd())
-	}
-	if len(m.checked) != 0 {
-		t.Error("checked while busy")
-	}
 	if !strings.Contains(s.Subtitle(), "1 provider checking") {
 		t.Errorf("subtitle %q", s.Subtitle())
 	}
-	// another provider's watch goes
-	s.List.Select(2)
-	if cmd := s.Update(ctx, press("u")); cmd == nil {
-		t.Fatal("u on another provider")
-	} else {
-		runBatch(cmd)
-	}
-	if len(m.checked) != 1 || m.checked[0][0] != 3 {
-		t.Errorf("checked %v", m.checked)
-	}
 
-	// another process took the lock meanwhile
-	m.checkErr = watch.ErrBusy
-	got := checkCmd(ctx, m, []int64{1}, watch.CheckOptions{})()
-	if n, ok := got.(base.NotificationMsg); !ok || n.Message != busyMessage {
-		t.Errorf("busy check: got %#v", got)
+	s.Update(ctx, press("u"))
+	list := jobsOver(t, jm)
+	if len(list) != 1 || list[0].Kind != jobs.KindCheck || !slices.Equal(list[0].Providers, []string{"mango-mangapill"}) || list[0].Origin != "watches" {
+		t.Fatalf("jobs %+v", list)
+	}
+	if list[0].Status != jobs.Done || !strings.Contains(list[0].Message, "Checked 1 watch") {
+		t.Errorf("job %s %q", list[0].Status, list[0].Message)
+	}
+	if len(m.checks()) != 1 {
+		t.Errorf("checked %v", m.checks())
 	}
 }
 
@@ -281,21 +310,15 @@ func runBatch(cmd tea.Cmd) []tea.Msg {
 
 func TestCheckProvider(t *testing.T) {
 	m := testManager()
+	jm := withJobs(t)
 	s := loaded(t, m)
 	s.List.Select(2)
-	var summary string
-	for _, msg := range runBatch(s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c"), Alt: true})) {
-		if batch, ok := msg.(tea.BatchMsg); ok {
-			for _, c := range batch {
-				if n, ok := c().(base.NotificationWithDurationMsg); ok {
-					summary = n.Message
-				}
-			}
-		}
-	}
+	base.Drain(s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c"), Alt: true}))
+	list := jobsOver(t, jm)
 	// the enabled watches of mangaplus: Frieren, not the paused Dandadan
-	if len(m.checked) != 1 || !slices.Equal(m.checked[0], []int64{3}) || !strings.Contains(summary, "Checked 1 watch") {
-		t.Errorf("checked %v, summary %q", m.checked, summary)
+	checked := m.checks()
+	if len(checked) != 1 || !slices.Equal(checked[0], []int64{3}) || len(list) != 1 || !strings.Contains(list[0].Message, "Checked 1 watch") {
+		t.Errorf("checked %v, jobs %+v", checked, list)
 	}
 }
 
@@ -396,20 +419,16 @@ func TestLiveLog(t *testing.T) {
 
 func TestCheckDue(t *testing.T) {
 	m := testManager()
+	jm := withJobs(t)
 	s := loaded(t, m)
-	cmd := s.Update(context.Background(), press("C"))
-	batch, ok := cmd().(tea.BatchMsg)
-	if !ok {
-		t.Fatalf("C: got %#v", cmd())
-	}
-	for _, c := range batch {
-		if msg, ok := c().(base.NotificationWithDurationMsg); ok && !strings.Contains(msg.Message, "3 new chapters") {
-			t.Errorf("summary %q", msg.Message)
-		}
+	s.Update(context.Background(), press("C"))
+	list := jobsOver(t, jm)
+	if len(list) != 1 || !strings.Contains(list[0].Message, "3 new chapters") {
+		t.Errorf("jobs %+v", list)
 	}
 	// the paused one is due but not checked
-	if len(m.checked) != 1 || len(m.checked[0]) != 1 || m.checked[0][0] != 3 {
-		t.Errorf("checked %v, want [[3]]", m.checked)
+	if checked := m.checks(); len(checked) != 1 || len(checked[0]) != 1 || checked[0][0] != 3 {
+		t.Errorf("checked %v, want [[3]]", checked)
 	}
 	if !s.checking() {
 		t.Error("a check just started doesn't count as running")
@@ -530,9 +549,12 @@ func TestSet(t *testing.T) {
 }
 
 func TestCheckError(t *testing.T) {
+	jm := withJobs(t)
 	m := &fakeManager{checkErr: errors.New("db gone")}
-	if _, ok := checkCmd(context.Background(), m, nil, watch.CheckOptions{})().(error); !ok {
-		t.Error("a failed check isn't an error msg")
+	queueCheck(m, []int64{1}, []string{"p"}, watch.CheckOptions{}, "1 watch", "watches")
+	list := jobsOver(t, jm)
+	if len(list) != 1 || list[0].Status != jobs.Failed || list[0].Err == nil || !strings.Contains(list[0].Err.Error(), "db gone") {
+		t.Errorf("a failed check isn't a failed job: %+v", list)
 	}
 }
 
