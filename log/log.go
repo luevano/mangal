@@ -128,6 +128,14 @@ func Dir() string {
 	return options.Dir
 }
 
+// FileError is why the log file isn't written (it couldn't be opened), nil if it is or
+// will be at the next line.
+func FileError() error {
+	mu.Lock()
+	defer mu.Unlock()
+	return fileErr
+}
+
 // Current is the path of the file this process writes, empty if none yet.
 func Current() string {
 	mu.Lock()

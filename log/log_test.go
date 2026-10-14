@@ -59,6 +59,22 @@ func TestNoFileBeforeInit(t *testing.T) {
 	}
 }
 
+func TestFileError(t *testing.T) {
+	// a dir under a file can't be made
+	notDir := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(notDir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reset(t, Options{Dir: filepath.Join(notDir, "logs"), Level: LevelInfo})
+	if err := FileError(); err != nil {
+		t.Fatalf("before a line: %v", err)
+	}
+	Info("x")
+	if FileError() == nil {
+		t.Error("no error")
+	}
+}
+
 func TestRing(t *testing.T) {
 	reset(t, Options{Level: LevelInfo})
 	for i := range maxLines + 10 {
