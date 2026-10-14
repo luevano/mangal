@@ -2,6 +2,7 @@ package home
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -89,12 +90,12 @@ func (s *state) checkHealth(ctx context.Context) tea.Cmd {
 	return base.Load(ctx, "", func(ctx context.Context) (healthMsg, error) {
 		checker, err := health.New(ctx)
 		if err != nil {
-			log.Warn("health: %s", err)
+			warnHealth(err)
 			return healthMsg{}, nil
 		}
 		report, err := checker.Run(ctx, health.Options{})
 		if err != nil {
-			log.Warn("health: %s", err)
+			warnHealth(err)
 			return healthMsg{}, nil
 		}
 		return healthMsg{line: healthLine(report, key)}, nil
@@ -187,4 +188,11 @@ func (s *state) View() string {
 		view = lipgloss.JoinVertical(lipgloss.Center, view, "\n"+st.Render(s.health))
 	}
 	return view
+}
+
+// warnHealth logs a failed summary check; leaving home (skip_home) cancels it, that's no warning.
+func warnHealth(err error) {
+	if !errors.Is(err, context.Canceled) {
+		log.Warn("health: %s", err)
+	}
 }
