@@ -20,6 +20,7 @@ import (
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/proc"
 )
@@ -57,22 +58,7 @@ func WriteDiscovery(file string, d Discovery) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
-		return fmt.Errorf("write %s: %w", file, err)
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(file), ".serve-*.json")
-	if err != nil {
-		return fmt.Errorf("write %s: %w", file, err)
-	}
-	_, err = tmp.Write(append(b, '\n'))
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Rename(tmp.Name(), file)
-	}
-	if err != nil {
-		_ = os.Remove(tmp.Name())
+	if err := afs.WriteFileAtomic(file, append(b, '\n'), 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", file, err)
 	}
 	return nil

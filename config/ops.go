@@ -412,43 +412,10 @@ func writeSettings(settings map[string]any) error {
 	return writeFile(buf.Bytes())
 }
 
-// writeFile replaces the config file with data through a temporary file renamed over it,
-// so a crash never leaves it half-written. It keeps the file's mode; a new one is only
-// readable by the user (it can hold secrets), as is a new directory.
+// writeFile replaces the config file atomically; a new one is only readable by the user
+// (it can hold secrets).
 func writeFile(data []byte) error {
-	path := Path
-	// a symlinked file (dotfiles) stays a symlink
-	if target, err := filepath.EvalSymlinks(path); err == nil {
-		path = target
-	}
-	mode := fs.FileMode(0o600)
-	if info, err := afs.Afero.Stat(path); err == nil {
-		mode = info.Mode().Perm()
-	}
-	dir := filepath.Dir(path)
-	if err := afs.Afero.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	tmp, err := afs.Afero.TempFile(dir, "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	defer afs.Afero.Remove(tmp.Name())
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := afs.Afero.Chmod(tmp.Name(), mode); err != nil {
-		return err
-	}
-	return afs.Afero.Rename(tmp.Name(), path)
+	return afs.WriteFileAtomic(Path, data, 0o600)
 }
 
 // ReadableByOthers is true when the config file exists and its group or others can read it.
