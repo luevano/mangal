@@ -244,6 +244,9 @@ func (x Fixer) mark(ctx context.Context, a *Action, apply bool, res *FixResult) 
 		return err
 	}
 	res.Message = fmt.Sprintf("marked %s", plural(len(mangas), "folder"))
+	if len(mangas) == 1 {
+		res.Message = "marked " + mangas[0].Title
+	}
 	return nil
 }
 
@@ -282,11 +285,11 @@ func (x Fixer) rename(ctx context.Context, a *Action, apply bool, res *FixResult
 		renames = append(renames, r)
 		switch {
 		case r.Skip != "":
-			res.Plan = append(res.Plan, fmt.Sprintf("skip %s: %s", r.From, r.Skip))
+			res.Plan = append(res.Plan, fmt.Sprintf("skip %s: %s", x.rel(r.From), r.Skip))
 		case r.RemoveEmpty:
-			res.Plan = append(res.Plan, fmt.Sprintf("remove %s once empty", r.From))
+			res.Plan = append(res.Plan, fmt.Sprintf("remove %s once empty", x.rel(r.From)))
 		default:
-			res.Plan = append(res.Plan, fmt.Sprintf("%s -> %s", r.From, r.To))
+			res.Plan = append(res.Plan, fmt.Sprintf("%s -> %s", x.rel(r.From), x.rel(r.To)))
 		}
 	}
 	if !slices.ContainsFunc(renames, func(r library.Rename) bool { return r.Skip == "" }) {
@@ -299,6 +302,10 @@ func (x Fixer) rename(ctx context.Context, a *Action, apply bool, res *FixResult
 	files := x.Linker.Files
 	done, skipped := 0, 0
 	res.Snapshot, err = x.Operation("rename", fmt.Sprintf("rename %d folders", len(renames)), func(j library.Journal) error {
+		// the journal says what was renamed, not what was planned
+		if op, ok := j.(interface{ SetSummary(string) }); ok {
+			defer func() { op.SetSummary(fmt.Sprintf("rename %d folders", done)) }()
+		}
 		return library.ApplyRenamesContext(ctx, files.FS, files.Modes, files.Library, j, renames, func(p library.Progress) { x.progress(p.String()) }, func(i int, err error) {
 			switch {
 			case errors.Is(err, library.ErrNotEmpty):
@@ -317,6 +324,16 @@ func (x Fixer) rename(ctx context.Context, a *Action, apply bool, res *FixResult
 		res.Message += fmt.Sprintf(", %d skipped (mangal library rename says why)", skipped)
 	}
 	return nil
+}
+
+// rel is p relative to the library's root, as library rename lists it.
+func (x Fixer) rel(p string) string {
+	if root := x.Linker.Files.Root; root != "" {
+		if r, err := filepath.Rel(root, p); err == nil {
+			return r
+		}
+	}
+	return p
 }
 
 // Find is the finding (or summary item) with the key.

@@ -16,7 +16,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
-	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
@@ -194,15 +193,6 @@ type changedMsg struct {
 	lib bool
 }
 
-// runMsg is a confirmed change to the watches, run with Load by the State (a msg and not
-// the dialog's cmd: a Load counts as busy from when it's made, the dialog's cmd may never
-// run).
-type runMsg struct {
-	label   string
-	applied int64
-	do      func(context.Context, watch.Manager) (string, error)
-}
-
 // linkMsg opens the links screen of the library manga, planning the link.
 type linkMsg struct {
 	manga int64
@@ -352,11 +342,11 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		// offline: the network findings stay while their manga isn't watched
 		return s.load(ctx, false)
-	case runMsg:
-		return s.run(ctx, msg)
+	case fixMsg:
+		return s.runFix(ctx, msg)
 	case libMsg:
 		return s.runLib(ctx, msg)
-	case renamePlannedMsg:
+	case fixPlannedMsg:
 		return s.askRename(msg)
 	case trashCheckedMsg:
 		return s.askEmptyTrash(msg)
@@ -610,18 +600,10 @@ func (s *state) apply(ctx context.Context, f health.Finding) tea.Cmd {
 	}
 	switch a.Kind {
 	case health.ActionResume:
-		id := a.Watch
-		s.Confirm.Ask("Resume", fmt.Sprintf("Resume watch %d (%s)?", id, f.Subject.Name), s.View(), change("Resuming", 0, func(ctx context.Context, m watch.Manager) (string, error) {
-			w, err := m.SetEnabled(ctx, id, true)
-			return "resumed " + w.Title, err
-		}))
+		s.Confirm.Ask("Resume", fmt.Sprintf("Resume watch %d (%s)?", a.Watch, f.Subject.Name), s.View(), fix("Resuming", f, true, 0))
 	case health.ActionWatch:
-		title, opts := f.Subject.Name, watch.AddOptions{Provider: a.Provider, MangaID: a.MangaID}
-		message := fmt.Sprintf("Watch %q on %s? Its first check downloads the chapters after the library's last.", title, a.Provider)
-		s.Confirm.Ask("Watch", message, s.View(), change("Adding the watch", f.Subject.ID, func(ctx context.Context, m watch.Manager) (string, error) {
-			w, err := m.Add(ctx, opts)
-			return fmt.Sprintf("watching %s on %s", w.Title, w.Provider), err
-		}))
+		message := fmt.Sprintf("Watch %q on %s? Its first check downloads the chapters after the library's last.", f.Subject.Name, a.Provider)
+		s.Confirm.Ask("Watch", message, s.View(), fix("Adding the watch", f, true, f.Subject.ID))
 	case health.ActionLink:
 		manga, code := a.Manga, a.Source
 		if len(a.IDs) == 1 {
@@ -652,23 +634,6 @@ func (s *state) apply(ctx context.Context, f health.Finding) tea.Cmd {
 		return cmd
 	}
 	return nil
-}
-
-// change is the cmd of a confirmed change to the watches (runMsg).
-func change(label string, applied int64, do func(context.Context, watch.Manager) (string, error)) tea.Cmd {
-	return func() tea.Msg { return runMsg{label: label, applied: applied, do: do} }
-}
-
-// run makes the change, changedMsg after it.
-func (s *state) run(ctx context.Context, msg runMsg) tea.Cmd {
-	return base.Load(ctx, msg.label, func(ctx context.Context) (changedMsg, error) {
-		m, err := watches.Connect(ctx)
-		if err != nil {
-			return changedMsg{}, err
-		}
-		notify, err := msg.do(ctx, m)
-		return changedMsg{notify: notify, applied: msg.applied}, err
-	}, func(msg changedMsg) tea.Msg { return msg })
 }
 
 // merge asks which of the duplicates to keep (the suggested one first), then opens the

@@ -2,24 +2,21 @@ package health
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/client"
-	"github.com/luevano/mangal/v5/client/anilist"
+	watchpkg "github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/health"
-	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	tuilibrary "github.com/luevano/mangal/v5/tui/state/library"
-	"github.com/luevano/mangal/v5/util/afs"
+	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
@@ -40,47 +37,93 @@ func (s *state) runLib(ctx context.Context, msg libMsg) tea.Cmd {
 	}, func(msg changedMsg) tea.Msg { return msg })
 }
 
-// renamePlannedMsg is the renames of a finding, planned again, to confirm.
-type renamePlannedMsg struct {
-	renames []library.Rename
-	lines   []string
-}
-
 // undoable ends the notification of a journaled change.
 var undoable = " (" + base.KeyUndo.Help().Key + " in the library undoes it)"
 
+// newFixer is the Fixer of the fixes (the serve API's), over the watches of m (nil for
+// the library fixes). Swapped in tests.
+var newFixer = health.NewFixer
+
+// fixMsg is a confirmed fix, applied by the Fixer with Load by the State (as runMsg).
+// watch is a fix of the watches (resume, watch it), applied the library manga a watch
+// is added for.
+type fixMsg struct {
+	label   string
+	f       health.Finding
+	watch   bool
+	applied int64
+}
+
+func fix(label string, f health.Finding, watch bool, applied int64) tea.Cmd {
+	return func() tea.Msg { return fixMsg{label: label, f: f, watch: watch, applied: applied} }
+}
+
+// fixFinding plans the finding's fix with the Fixer, applies it with apply.
+func fixFinding(ctx context.Context, f health.Finding, watch, apply bool, status func(string)) (health.FixResult, error) {
+	var m watchpkg.Manager
+	if watch {
+		var err error
+		if m, err = watches.Connect(ctx); err != nil {
+			return health.FixResult{}, err
+		}
+	}
+	x, err := newFixer(m)
+	if err != nil {
+		return health.FixResult{}, err
+	}
+	x.OnProgress = status
+	return x.Fix(ctx, f, "", apply)
+}
+
+// runFix applies the fix, changedMsg after it.
+func (s *state) runFix(ctx context.Context, msg fixMsg) tea.Cmd {
+	return base.LoadWithStatus(ctx, msg.label, func(ctx context.Context, status func(string)) (changedMsg, error) {
+		res, err := fixFinding(ctx, msg.f, msg.watch, true, status)
+		if err != nil {
+			return changedMsg{}, err
+		}
+		notify := res.Message
+		if res.Snapshot != "" {
+			notify += undoable
+		}
+		return changedMsg{notify: notify, applied: msg.applied, lib: !msg.watch}, nil
+	}, func(msg changedMsg) tea.Msg { return msg })
+}
+
+// fixPlannedMsg is a finding's fix planned again, to confirm.
+type fixPlannedMsg struct {
+	f   health.Finding
+	res health.FixResult
+}
+
 // applyLibrary asks to apply a library fix (mark, forget, scan, rename, empty the trash),
-// false when the action isn't one.
+// false when the action isn't one. The Fixer applies them but the scan and emptying the
+// trash, it refuses those.
 func (s *state) applyLibrary(ctx context.Context, f health.Finding) (tea.Cmd, bool) {
 	a := f.Fix.Action
 	switch a.Kind {
 	case health.ActionMark:
-		ids := a.Mangas
+		n := len(a.Mangas)
 		if a.Manga != 0 {
-			ids = []int64{a.Manga}
+			n = 1
 		}
 		message := fmt.Sprintf("Write the .libmangal.json of %q from the library?", f.Subject.Name)
-		if len(ids) != 1 {
-			message = fmt.Sprintf("Write the .libmangal.json of the %d folders from the library (what \"mangal library scan --mark --apply\" writes)?", len(ids))
+		if n != 1 {
+			message = fmt.Sprintf("Write the .libmangal.json of the %d folders from the library (what \"mangal library scan --mark --apply\" writes)?", n)
 		}
-		s.Confirm.Ask("Mark", message, s.View(), libChange("Marking", func(ctx context.Context, status func(string)) (string, error) {
-			return markMangas(ctx, ids, status)
-		}))
+		s.Confirm.Ask("Mark", message, s.View(), fix("Marking", f, false, 0))
 	case health.ActionForget:
-		id, name := a.Manga, f.Subject.Name
 		s.Confirm.Choose("Library manga", fmt.Sprintf("%s: %s\n\nScan the library (it finds folders that moved), or forget the manga?", f.Subject, f.Message), s.View(),
 			confirm.Choice{Key: "u", Label: "scan the library", Cmd: libChange("Scanning the library", scanLibrary)},
-			confirm.Choice{Key: "d", Label: "forget it", Cmd: libChange("Forgetting "+name, func(context.Context, func(string)) (string, error) {
-				return forget(id)
-			})})
+			confirm.Choice{Key: "d", Label: "forget it", Cmd: fix("Forgetting "+f.Subject.Name, f, false, 0)})
 	case health.ActionScan:
 		s.Confirm.Ask("Scan", "Scan the library? It adds the folders it doesn't have and finds the ones that moved.", s.View(),
 			libChange("Scanning the library", scanLibrary))
 	case health.ActionRename:
-		paths := a.Paths
-		return base.Load(ctx, "Planning the renames", func(ctx context.Context) (tea.Msg, error) {
-			return planRenames(ctx, paths)
-		}, func(msg tea.Msg) tea.Msg { return msg }), true
+		return base.Load(ctx, "Planning the renames", func(ctx context.Context) (fixPlannedMsg, error) {
+			res, err := fixFinding(ctx, f, false, false, nil)
+			return fixPlannedMsg{f: f, res: res}, err
+		}, func(msg fixPlannedMsg) tea.Msg { return msg }), true
 	case health.ActionEmptyTrash:
 		message := f.Message
 		return base.Load(ctx, "Checking the undos", func(context.Context) (trashCheckedMsg, error) {
@@ -114,83 +157,19 @@ func (s *state) askEmptyTrash(msg trashCheckedMsg) tea.Cmd {
 }
 
 // askRename asks to do the planned renames.
-func (s *state) askRename(msg renamePlannedMsg) tea.Cmd {
-	if len(msg.renames) == 0 {
-		return base.Notify("Nothing to rename any more")
+func (s *state) askRename(msg fixPlannedMsg) tea.Cmd {
+	if msg.res.Nothing {
+		return base.Notify(capitalize(msg.res.Message))
 	}
-	renames := msg.renames
-	s.Confirm.Ask("Rename", strings.Join(append(msg.lines, "", "Rename?"), "\n"), s.View(), libChange("Renaming", func(ctx context.Context, status func(string)) (string, error) {
-		return applyRenames(ctx, renames, status)
-	}))
+	s.Confirm.Ask("Rename", strings.Join(append(msg.res.Plan, "", "Rename?"), "\n"), s.View(), fix("Renaming", msg.f, false, 0))
 	return nil
 }
 
-// markMangas writes the .libmangal.json of the library mangas, as one operation.
-func markMangas(ctx context.Context, ids []int64, status func(string)) (string, error) {
-	files, err := client.LibraryFiles()
-	if err != nil {
-		return "", err
+func capitalize(s string) string {
+	if s == "" {
+		return s
 	}
-	opts, err := client.LibraryMarkOptions()
-	if err != nil {
-		return "", err
-	}
-	var mangas []storage.Manga
-	for _, id := range ids {
-		m, ok, err := files.Library.MangaByID(id)
-		if err != nil {
-			return "", err
-		}
-		if !ok {
-			continue
-		}
-		dry := opts
-		dry.DryRun = true
-		if _, do, err := files.MarkManga(m, dry); err != nil {
-			return "", err
-		} else if do {
-			mangas = append(mangas, m)
-		}
-	}
-	if len(mangas) == 0 {
-		return "nothing to mark any more", nil
-	}
-	_, err = client.Operation("mark", fmt.Sprintf("mark %d folders", len(mangas)), func(j library.Journal) error {
-		files.Journal = j
-		for i, m := range mangas {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			status(fmt.Sprintf("marking: %d/%d (%s)", i+1, len(mangas), m.Title))
-			if _, _, err := files.MarkManga(m, opts); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-	if len(mangas) == 1 {
-		return "marked " + mangas[0].Title + undoable, nil
-	}
-	return fmt.Sprintf("marked %d folders%s", len(mangas), undoable), nil
-}
-
-// forget removes the library manga from the library (not its files), as an operation.
-func forget(id int64) (string, error) {
-	lib, err := cache.Library()
-	if err != nil {
-		return "", err
-	}
-	m, ok, err := lib.MangaByID(id)
-	if err != nil || !ok {
-		return "it's gone already", err
-	}
-	if _, err := client.RemoveMissing(lib, []storage.Manga{m}); err != nil {
-		return "", err
-	}
-	return "forgot " + m.Title + undoable, nil
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // scanLibrary scans the library, the notification says what it found.
@@ -212,81 +191,6 @@ func scanLibrary(ctx context.Context, status func(string)) (string, error) {
 		}
 	}
 	return notify, nil
-}
-
-// planRenames plans library rename (cached metadata, as the finding) and keeps the
-// renames of paths: manga folders, provider directories.
-func planRenames(ctx context.Context, paths []string) (tea.Msg, error) {
-	lib, err := cache.Library()
-	if err != nil {
-		return nil, err
-	}
-	namer, err := client.LibraryNamer(lib, anilist.MetadataByIDsCached)
-	if err != nil {
-		return nil, err
-	}
-	namer.NeedMetadata = true
-	root := path.Downloads()
-	all, err := namer.Plan(ctx, root, config.Download.Provider.CreateDir.Get())
-	if err != nil {
-		return nil, err
-	}
-	var msg renamePlannedMsg
-	rel := func(p string) string {
-		if r, err := filepath.Rel(root, p); err == nil {
-			return r
-		}
-		return p
-	}
-	for _, r := range all {
-		if !slices.Contains(paths, r.From) && !slices.Contains(paths, r.ProviderDir) {
-			continue
-		}
-		msg.renames = append(msg.renames, r)
-		switch {
-		case r.Skip != "":
-			msg.lines = append(msg.lines, fmt.Sprintf("skip %s: %s", rel(r.From), r.Skip))
-		case r.RemoveEmpty:
-			msg.lines = append(msg.lines, fmt.Sprintf("remove %s once empty", rel(r.From)))
-		default:
-			msg.lines = append(msg.lines, fmt.Sprintf("%s -> %s", rel(r.From), rel(r.To)))
-		}
-	}
-	if !slices.ContainsFunc(msg.renames, func(r library.Rename) bool { return r.Skip == "" }) {
-		msg.renames = nil
-	}
-	return msg, nil
-}
-
-// applyRenames does the renames as one operation.
-func applyRenames(ctx context.Context, renames []library.Rename, status func(string)) (string, error) {
-	lib, err := cache.Library()
-	if err != nil {
-		return "", err
-	}
-	done, skipped := 0, 0
-	_, err = client.Operation("rename", fmt.Sprintf("rename %d folders", len(renames)), func(j library.Journal) error {
-		if op, ok := j.(interface{ SetSummary(string) }); ok {
-			defer func() { op.SetSummary(fmt.Sprintf("rename %d folders", done)) }()
-		}
-		return library.ApplyRenamesContext(ctx, afs.Afero, client.LibraryModes(), lib, j, renames, func(p library.Progress) { status(p.String()) }, func(i int, err error) {
-			switch {
-			case errors.Is(err, library.ErrNotEmpty):
-			case err != nil:
-				skipped++
-			case !renames[i].RemoveEmpty:
-				done++
-			}
-		})
-	})
-	if err != nil {
-		return "", err
-	}
-	notify := fmt.Sprintf("renamed %d folders", done)
-	if skipped != 0 {
-		notify += fmt.Sprintf(", %d skipped (mangal library rename says why)", skipped)
-	}
-	return notify + undoable, nil
 }
 
 // dismissedMsg is a finding dismissed (or brought back).

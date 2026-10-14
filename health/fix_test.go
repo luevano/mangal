@@ -11,6 +11,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/spf13/afero"
 )
 
 type fixManager struct {
@@ -114,5 +115,41 @@ func TestFixForgetAndMark(t *testing.T) {
 	}
 	if want := []string{"mark: mark 1 folders", `remove: remove missing 4 "Vagabond"`}; !slices.Equal(*ops, want) {
 		t.Errorf("ops %q", *ops)
+	}
+}
+
+func TestFixRename(t *testing.T) {
+	x, _, ops := newFixer(t)
+	from, to := "/dl/mango-mangadex/Berserk", "/dl/mango-mangadex/Berserk (1989)"
+	if err := x.Linker.Files.FS.MkdirAll(from, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	x.Renames = func(context.Context) ([]library.Rename, error) {
+		return []library.Rename{{From: from, To: to}, {From: "/dl/Vagabond", To: "/dl/Vagabond (1998)"}}, nil
+	}
+	f := Finding{Key: "L5/manga/1", Fix: Fix{Action: &Action{Kind: ActionRename, Paths: []string{from}}}}
+	plan, err := x.Fix(context.Background(), f, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the finding's only, relative to the library as library rename lists them
+	if want := []string{"mango-mangadex/Berserk -> mango-mangadex/Berserk (1989)"}; !slices.Equal(plan.Plan, want) || plan.Applied {
+		t.Fatalf("plan %+v", plan)
+	}
+	res, err := x.Fix(context.Background(), f, "", true)
+	if err != nil || !res.Applied || res.Message != "renamed 1 folder" {
+		t.Fatalf("apply %+v %v", res, err)
+	}
+	if ok, _ := afero.DirExists(x.Linker.Files.FS, to); !ok {
+		t.Error("not renamed")
+	}
+	if want := []string{"rename: rename 1 folders"}; !slices.Equal(*ops, want) {
+		t.Errorf("ops %q", *ops)
+	}
+	// the Fixer without renames refuses
+	x.Renames = nil
+	var nf *NotFixableError
+	if _, err := x.Fix(context.Background(), f, "", false); !errors.As(err, &nf) {
+		t.Errorf("no renames: %v", err)
 	}
 }
