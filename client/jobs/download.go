@@ -56,7 +56,7 @@ func RunDownload(ctx context.Context, p *Progress, download func(context.Context
 		if i < 0 || i >= len(batch) {
 			return ""
 		}
-		return "chapter " + stringutil.FormatFloa32(batch[i].Chapter.Info().Number)
+		return "chapter " + stringutil.FormatFloat32(batch[i].Chapter.Info().Number)
 	}
 	ctx = lmprogress.WithReporter(ctx, func(s lmprogress.Status) { p.Note(s.String()) })
 	download(ctx, chapters, func(e client.Event) {

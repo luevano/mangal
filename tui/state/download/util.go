@@ -130,7 +130,7 @@ func (s *state) viewChapterList(header string, headerStyle lipgloss.Style, chaps
 
 // renderChapter is the chapter with its download status and file.
 func renderChapter(c *client.Result, normal, toDownload, succeed, failed, warning lipgloss.Style) string {
-	str := stringutil.FormatFloa32(c.Chapter.Info().Number) + " - " + c.Chapter.Info().Title
+	str := stringutil.FormatFloat32(c.Chapter.Info().Number) + " - " + c.Chapter.Info().Title
 	if c.Unavailable != "" {
 		return toDownload.Render(str + " - " + c.Unavailable)
 	}

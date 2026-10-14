@@ -592,7 +592,7 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 		case res.Err != nil:
 			r.Failed++
 			r.Retry = append(r.Retry, res.Chapter.Info().Number)
-			errs = append(errs, fmt.Sprintf("chapter %s: %s", stringutil.FormatFloa32(res.Chapter.Info().Number), res.Err))
+			errs = append(errs, fmt.Sprintf("chapter %s: %s", stringutil.FormatFloat32(res.Chapter.Info().Number), res.Err))
 		case res.Unavailable != "":
 			r.Unavailable++
 		case res.Down == nil:

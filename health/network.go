@@ -322,7 +322,7 @@ func checkNewChapters(s *snapshot) []Finding {
 		case len(r.New) != 0:
 			newest := slices.MaxFunc(r.New, cmp.Compare[float32])
 			out = append(out, Finding{Severity: Warning, Subject: mangaSubject(m), Network: true,
-				Message: fmt.Sprintf("%s on %s (up to %s): watch it?", plural(len(r.New), "new chapter"), r.provider, stringutil.FormatFloa32(newest)),
+				Message: fmt.Sprintf("%s on %s (up to %s): watch it?", plural(len(r.New), "new chapter"), r.provider, stringutil.FormatFloat32(newest)),
 				Fix: Fix{
 					Commands: []string{fmt.Sprintf("mangal watch add %s mid:%s", r.provider, quote(r.mangaID))},
 					Note:     "its first check downloads them",

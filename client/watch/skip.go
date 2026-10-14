@@ -40,7 +40,7 @@ func checkFrom(from *float32) error {
 func FormatNumbers(ns []float32) string {
 	parts := make([]string, len(ns))
 	for i, n := range ns {
-		parts[i] = stringutil.FormatFloa32(n)
+		parts[i] = stringutil.FormatFloat32(n)
 	}
 	return strings.Join(parts, ", ")
 }

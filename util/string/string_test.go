@@ -38,10 +38,10 @@ func TestQuantify(t *testing.T) {
 	}
 }
 
-func TestFormatFloa32(t *testing.T) {
+func TestFormatFloat32(t *testing.T) {
 	for n, want := range map[float32]string{10.1: "10.1", 1.5: "1.5", 3: "3", 0.25: "0.25"} {
-		if got := FormatFloa32(n); got != want {
-			t.Errorf("FormatFloa32(%v) = %q, want %q", n, got, want)
+		if got := FormatFloat32(n); got != want {
+			t.Errorf("FormatFloat32(%v) = %q, want %q", n, got, want)
 		}
 	}
 }

@@ -17,7 +17,7 @@ func Describe(r Result, dryRun bool) string {
 	}
 	what := "Downloading all chapters"
 	if r.From != nil {
-		what = fmt.Sprintf("Checking for new chapters [%s-]", stringutil.FormatFloa32(*r.From))
+		what = fmt.Sprintf("Checking for new chapters [%s-]", stringutil.FormatFloat32(*r.From))
 	}
 	if r.Gaps {
 		what += " and gaps"
@@ -38,7 +38,7 @@ func outcome(r Result, dryRun bool) string {
 	case dryRun:
 		numbers := make([]string, n)
 		for i, ch := range r.Chapters {
-			numbers[i] = stringutil.FormatFloa32(ch.Number)
+			numbers[i] = stringutil.FormatFloat32(ch.Number)
 		}
 		outcome = fmt.Sprintf("would download %d (%s)", n, strings.Join(numbers, ", "))
 	case r.From != nil && *r.Newest() < *r.From:
@@ -63,7 +63,7 @@ func formatNumber(n *float32) string {
 	if n == nil {
 		return "-"
 	}
-	return stringutil.FormatFloa32(*n)
+	return stringutil.FormatFloat32(*n)
 }
 
 // FormatNext is when a check is due, for people: "due" once it's past, else how long

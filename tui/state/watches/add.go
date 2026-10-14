@@ -75,9 +75,9 @@ func highestNumber(chapters []mangadata.Chapter) *float32 {
 func defaultFrom(libraryLast, latest *float32) string {
 	switch {
 	case libraryLast != nil:
-		return stringutil.FormatFloa32(*libraryLast)
+		return stringutil.FormatFloat32(*libraryLast)
 	case latest != nil:
-		return stringutil.FormatFloa32(*latest)
+		return stringutil.FormatFloat32(*latest)
 	}
 	return fromAll
 }
@@ -86,10 +86,10 @@ func defaultFrom(libraryLast, latest *float32) string {
 func fromHint(libraryLast, latest *float32) string {
 	var known []string
 	if libraryLast != nil {
-		known = append(known, "the library has up to "+stringutil.FormatFloa32(*libraryLast))
+		known = append(known, "the library has up to "+stringutil.FormatFloat32(*libraryLast))
 	}
 	if latest != nil {
-		known = append(known, "the latest is "+stringutil.FormatFloa32(*latest))
+		known = append(known, "the latest is "+stringutil.FormatFloat32(*latest))
 	}
 	hint := `chapters up to it count as done, "all" downloads every missing one`
 	if len(known) != 0 {

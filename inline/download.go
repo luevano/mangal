@@ -97,7 +97,7 @@ func runDownload(ctx context.Context, args Args) (client.Results, error) {
 	var printErr error
 	results := download(ctx, c, chapters, downloadOptions, func(e client.Event) {
 		chapter := func() string {
-			return fmt.Sprintf("downloading chapter %s (%d/%d)", stringutil.FormatFloa32(e.Result.Chapter.Info().Number), e.Index+1, len(chapters))
+			return fmt.Sprintf("downloading chapter %s (%d/%d)", stringutil.FormatFloat32(e.Result.Chapter.Info().Number), e.Index+1, len(chapters))
 		}
 		switch e.Kind {
 		case client.EventStart:

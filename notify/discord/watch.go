@@ -18,10 +18,10 @@ func watchSummary(r watch.Result) string {
 		return "no new chapters"
 	}
 	if r.From == nil {
-		return fmt.Sprintf("chapters → %s: %d new (first check)", stringutil.FormatFloa32(*newest), len(r.Chapters))
+		return fmt.Sprintf("chapters → %s: %d new (first check)", stringutil.FormatFloat32(*newest), len(r.Chapters))
 	}
-	from := stringutil.FormatFloa32(*r.From)
-	return fmt.Sprintf("chapters %s → %s: %d new (from %s)", from, stringutil.FormatFloa32(*newest), len(r.Chapters), from)
+	from := stringutil.FormatFloat32(*r.From)
+	return fmt.Sprintf("chapters %s → %s: %d new (from %s)", from, stringutil.FormatFloat32(*newest), len(r.Chapters), from)
 }
 
 // watchEmbed is the message of a watch that downloaded chapters.
@@ -33,7 +33,7 @@ func watchEmbed(r watch.Result, includeDirs bool) discord.Embed {
 			lastDir = dir
 			lines = append(lines, dir+":")
 		}
-		line := "> " + stringutil.FormatFloa32(ch.Number)
+		line := "> " + stringutil.FormatFloat32(ch.Number)
 		if ch.Title != "" {
 			line += " - " + ch.Title
 		}

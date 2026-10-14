@@ -20,11 +20,11 @@ func Quantify(n int, singular, plural string) string {
 	return fmt.Sprint(n, " ", form)
 }
 
-// FormatFloa32 returns the string representation with
+// FormatFloat32 returns the string representation with
 // all of the insignificant digits removed.
 //
 // For example, "001.500" becomes "1.5".
-func FormatFloa32(n float32) string {
+func FormatFloat32(n float32) string {
 	return strconv.FormatFloat(float64(n), 'f', -1, 32)
 }
 

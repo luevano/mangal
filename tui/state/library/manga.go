@@ -33,7 +33,7 @@ func (i *downloadItem) FilterValue() string { return i.download.ChapterTitle }
 func (i *downloadItem) ItemKey() string     { return i.download.Path }
 
 func (i *downloadItem) Title() string {
-	title := stringutil.FormatFloa32(i.download.Chapter)
+	title := stringutil.FormatFloat32(i.download.Chapter)
 	if i.download.ChapterTitle != "" {
 		title += " - " + i.download.ChapterTitle
 	}

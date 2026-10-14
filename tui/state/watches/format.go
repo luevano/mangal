@@ -51,7 +51,7 @@ func formatNumber(n *float32) string {
 	if n == nil {
 		return "-"
 	}
-	return stringutil.FormatFloa32(*n)
+	return stringutil.FormatFloat32(*n)
 }
 
 // nextCheck is when the watch is checked next: paused, backing off (too many failures in
@@ -101,7 +101,7 @@ func result(r storage.WatchRun) string {
 func chapterNumbers(r storage.WatchRun) string {
 	numbers := make([]string, len(r.Chapters))
 	for i, ch := range r.Chapters {
-		numbers[i] = stringutil.FormatFloa32(ch.Number)
+		numbers[i] = stringutil.FormatFloat32(ch.Number)
 	}
 	return strings.Join(numbers, ", ")
 }
@@ -130,7 +130,7 @@ func runReport(r storage.WatchRun) string {
 		fmt.Fprintf(&b, "\n%s:\n", stringutil.Quantify(len(r.Chapters), "chapter", "chapters"))
 	}
 	for _, ch := range r.Chapters {
-		line := "  " + stringutil.FormatFloa32(ch.Number)
+		line := "  " + stringutil.FormatFloat32(ch.Number)
 		if ch.Title != "" {
 			line += " - " + ch.Title
 		}

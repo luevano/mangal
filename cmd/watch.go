@@ -111,7 +111,7 @@ func formatLast(n *float32) string {
 	if n == nil {
 		return "-"
 	}
-	return stringutil.FormatFloa32(*n)
+	return stringutil.FormatFloat32(*n)
 }
 
 var watchAddArgs = struct {
@@ -952,7 +952,7 @@ func printRun(cmd *cobra.Command, run watch.CheckRun) {
 	for _, r := range run.Results {
 		from := "all"
 		if r.From != nil {
-			from = stringutil.FormatFloa32(*r.From) + "-"
+			from = stringutil.FormatFloat32(*r.From) + "-"
 		}
 		line := fmt.Sprintf("  run %d  %s (%s) [%s]: ", r.ID, r.Title, r.Provider, from)
 		switch r.Status {
@@ -971,7 +971,7 @@ func printRun(cmd *cobra.Command, run watch.CheckRun) {
 		}
 		cmd.Println(line)
 		for _, ch := range r.Chapters {
-			cmd.Printf("    %s  %s\n", stringutil.FormatFloa32(ch.Number), ch.Path)
+			cmd.Printf("    %s  %s\n", stringutil.FormatFloat32(ch.Number), ch.Path)
 		}
 	}
 }

@@ -300,7 +300,7 @@ func liveEvent(run int64, e Event) (LiveEvent, bool) {
 		c := e.Chapter
 		n := c.Result.Chapter.Info().Number
 		le.Chapter = &n
-		num := stringutil.FormatFloa32(n)
+		num := stringutil.FormatFloat32(n)
 		switch c.Kind {
 		case client.EventStart:
 			le.Kind, le.Message = LiveChapter, "downloading chapter "+num
@@ -366,7 +366,7 @@ func describeFound(f Found) string {
 	s := "found " + stringutil.Quantify(f.Chapters, "chapter", "chapters")
 	from := ""
 	if f.From != nil {
-		from = " from " + stringutil.FormatFloa32(*f.From)
+		from = " from " + stringutil.FormatFloat32(*f.From)
 	}
 	switch n := len(f.Picked); {
 	case n == 0:
@@ -374,11 +374,11 @@ func describeFound(f Found) string {
 	case n <= 5:
 		numbers := make([]string, n)
 		for i, p := range f.Picked {
-			numbers[i] = stringutil.FormatFloa32(p)
+			numbers[i] = stringutil.FormatFloat32(p)
 		}
 		s += fmt.Sprintf(", %d to download (%s)", n, strings.Join(numbers, ", "))
 	default:
-		s += fmt.Sprintf(", %d to download (%s → %s)", n, stringutil.FormatFloa32(f.Picked[0]), stringutil.FormatFloa32(f.Picked[n-1]))
+		s += fmt.Sprintf(", %d to download (%s → %s)", n, stringutil.FormatFloat32(f.Picked[0]), stringutil.FormatFloat32(f.Picked[n-1]))
 	}
 	if f.Unavailable > 0 {
 		s += fmt.Sprintf(", %d unavailable", f.Unavailable)

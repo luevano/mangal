@@ -107,7 +107,7 @@ func silenced(id int64) bool {
 
 func chaptersTitle(chapters []mangadata.Chapter) string {
 	if len(chapters) == 1 {
-		return "chapter " + stringutil.FormatFloa32(chapters[0].Info().Number)
+		return "chapter " + stringutil.FormatFloat32(chapters[0].Info().Number)
 	}
 	return stringutil.Quantify(len(chapters), "chapter", "chapters")
 }

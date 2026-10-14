@@ -55,7 +55,7 @@ func chaptersToList(chapters client.Results, opts listOptions) string {
 			line += status(ch.Down.ChapterStatus) + " "
 		}
 		info := ch.Chapter.Info()
-		line += stringutil.FormatFloa32(info.Number) + " - " + info.Title
+		line += stringutil.FormatFloat32(info.Number) + " - " + info.Title
 		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n")

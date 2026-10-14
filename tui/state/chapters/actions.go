@@ -68,7 +68,7 @@ func (s *state) askDownload(hovered *item) tea.Cmd {
 	if reason := i.unavailable(); reason != "" {
 		return base.Notify("Chapter unavailable: " + reason)
 	}
-	msg := "Download chapter " + stringutil.FormatFloa32(i.chapter.Info().Number) + ` ("` + i.chapter.Info().Title + `")?`
+	msg := "Download chapter " + stringutil.FormatFloat32(i.chapter.Info().Number) + ` ("` + i.chapter.Info().Title + `")?`
 	s.Confirm.Ask("Download", msg, s.View(), func() tea.Msg { return downloadMsg{item: i} })
 	return nil
 }
@@ -88,7 +88,7 @@ func (s *state) askRead(ctx context.Context, hovered *item) tea.Cmd {
 		log.Debug("read format of %q already downloaded", i.chapter)
 		return s.readCmd(ctx, i.readPath, i.chapter)
 	}
-	msg := "Download chapter " + stringutil.FormatFloa32(i.chapter.Info().Number) + ` ("` + i.chapter.Info().Title + `") for reading?`
+	msg := "Download chapter " + stringutil.FormatFloat32(i.chapter.Info().Number) + ` ("` + i.chapter.Info().Title + `") for reading?`
 	s.Confirm.Ask("Download", msg, s.View(), func() tea.Msg { return downloadMsg{item: i, read: true} })
 	return nil
 }
