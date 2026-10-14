@@ -390,16 +390,16 @@ func TestRunNetwork(t *testing.T) {
 		fetched = fetch
 		return nil
 	}
-	c.NewChapters = func(_ context.Context, provider string, mangas []ProviderManga, _ func(string), done func(int, []float32, error)) error {
+	c.Chapters = func(_ context.Context, provider string, mangas []ProviderManga, _ func(string), done func(int, ProviderChapters, error)) error {
 		for i, m := range mangas {
 			asked = append(asked, fmt.Sprintf("%s %s %v", provider, m.MangaID, m.Have))
 			switch m.MangaID {
 			case "kagura":
-				done(i, []float32{3, 4, 5}, nil)
+				done(i, ProviderChapters{New: []float32{3, 4, 5}}, nil)
 			case "gone":
-				done(i, nil, fmt.Errorf("manga %q: %w", m.MangaID, watch.ErrMangaNotFound))
+				done(i, ProviderChapters{}, fmt.Errorf("manga %q: %w", m.MangaID, watch.ErrMangaNotFound))
 			default:
-				done(i, nil, nil)
+				done(i, ProviderChapters{}, nil)
 			}
 		}
 		return nil
@@ -547,3 +547,129 @@ func TestDismiss(t *testing.T) {
 		t.Error("unknown check split")
 	}
 }
+
+type idMeta struct {
+	metadata.Metadata
+	id, title string
+}
+
+func (m idMeta) Title() string   { return m.title }
+func (m idMeta) ID() metadata.ID { return al(m.id) }
+
+// networkChecker is newChecker with fakes for the network checks: MangaDex answers
+// (One-Punch Man has chapter 3, lists 4 as unavailable), Weeb Central is behind a
+// Cloudflare challenge, AniList finds Vagabond and nothing good for the rest.
+func networkChecker(t *testing.T) (Checker, *[]string) {
+	c := newChecker(t)
+	var asked []string
+	c.Chapters = func(_ context.Context, provider string, mangas []ProviderManga, _ func(string), done func(int, ProviderChapters, error)) error {
+		for i, m := range mangas {
+			asked = append(asked, "chapters "+provider+" "+m.MangaID)
+			if m.MangaID == "opm" {
+				done(i, ProviderChapters{Listed: []float32{1, 2, 3, 5, 5.5, 7}, Unavailable: []float32{4}}, nil)
+			} else {
+				done(i, ProviderChapters{}, nil)
+			}
+		}
+		return nil
+	}
+	c.Probe = func(_ context.Context, provider string, m ProviderManga) Probe {
+		asked = append(asked, "probe "+provider+" "+m.MangaID)
+		if provider == "mango-weebcentral" {
+			return Probe{Err: errors.New("site down: cloudflare challenge, enable flaresolverr"), Took: time.Second}
+		}
+		return Probe{Took: 1234 * time.Millisecond, Statuses: []string{"cloudflare challenge on mangadex.org, solving with flaresolverr"}, Account: "free device"}
+	}
+	c.SearchAnilist = func(_ context.Context, queries []metadata.Query) ([]metadata.Match, []bool, error) {
+		matches := make([]metadata.Match, len(queries))
+		found := make([]bool, len(queries))
+		for i, q := range queries {
+			asked = append(asked, "anilist "+q.Titles[0])
+			found[i] = true
+			if q.Titles[0] == "Vagabond" {
+				matches[i] = metadata.Match{Metadata: idMeta{id: "656", title: "Vagabond"}, Score: 1}
+			} else {
+				matches[i] = metadata.Match{Metadata: idMeta{id: "1", title: "Something Else"}, Score: 0.3}
+			}
+		}
+		return matches, found, nil
+	}
+	return c, &asked
+}
+
+func TestRunNetworkChecks(t *testing.T) {
+	c, asked := networkChecker(t)
+	report, err := c.Run(context.Background(), Options{Network: true, Only: []string{"G2", "A2", "M1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g2, ok := find(report, want{check: "G2", kind: "manga", id: 1})
+	if !ok || g2.Severity != Warning || g2.Message != "1 of 2 missing chapters on mango-mangadex, downloadable: 3" ||
+		!slices.Equal(g2.Details, []string{"listed as unavailable: 4"}) ||
+		!slices.Equal(g2.Fix.Commands, []string{"mangal watch check 1 --gaps", "mangal watch set 1 --skip 4"}) || !g2.Network || g2.Key != "G2/manga/1" {
+		t.Errorf("G2 %+v", g2)
+	}
+	// the challenged provider isn't asked for chapters
+	for _, a := range *asked {
+		if strings.HasPrefix(a, "chapters mango-weebcentral") {
+			t.Errorf("asked %s", a)
+		}
+	}
+	wc, ok := find(report, want{check: "A2", kind: "provider", message: "Cloudflare"})
+	if !ok || wc.Subject.Name != "mango-weebcentral" || wc.Severity != Warning || wc.Fix.Commands[0] != "mangal config set providers.headless.use_flaresolverr true" || wc.Key != "A2/provider/mango-weebcentral" {
+		t.Errorf("A2 weebcentral %+v", wc)
+	}
+	sum, ok := find(report, want{check: "A2", kind: "providers"})
+	if !ok || sum.Message != "1 of 2 providers answered" || len(sum.Items) != 1 ||
+		sum.Items[0].Message != "answered in 1.2s, through a Cloudflare challenge; account: free device" || sum.Items[0].Key != "A2/provider/mango-mangadex" {
+		t.Errorf("A2 summary %+v", sum)
+	}
+	vag, ok := find(report, want{check: "M1", kind: "manga", id: 4})
+	if !ok || vag.Fix.Action == nil || !slices.Equal(vag.Fix.Action.IDs, []string{"656"}) || vag.Fix.Commands[0] != "mangal library bind 4 --anilist 656" ||
+		!strings.Contains(vag.Details[0], `an AniList search found 656 "Vagabond"`) {
+		t.Errorf("M1 Vagabond %+v", vag)
+	}
+	bad, ok := find(report, want{check: "M1", kind: "manga", id: 9})
+	if !ok || bad.Fix.Action != nil || !strings.Contains(bad.Details[0], "not a good match") {
+		t.Errorf("M1 bad match %+v", bad)
+	}
+	// manga 2 is linked through its folder tag, not searched
+	if slices.Contains(*asked, "anilist Onepunch-Man") {
+		t.Errorf("asked %q", *asked)
+	}
+
+	// offline: nothing asked, the network findings kept while they hold
+	*asked = nil
+	offline, err := c.Run(context.Background(), Options{})
+	if err != nil || len(*asked) != 0 {
+		t.Fatalf("offline: %v, asked %q", err, *asked)
+	}
+	kept := KeepNetwork(report, offline)
+	for _, w := range []want{{check: "G2", kind: "manga", id: 1}, {check: "A2", kind: "providers"}, {check: "A2", kind: "provider", message: "Cloudflare"}} {
+		if _, ok := find(kept, w); !ok {
+			t.Errorf("not kept: %+v", w)
+		}
+	}
+	if f, _ := find(kept, want{check: "M1", kind: "manga", id: 4}); f.Fix.Action == nil {
+		t.Errorf("M1's match not kept: %+v", f)
+	}
+	if !kept.Network || kept.Counts.Total() != len(kept.Findings) {
+		t.Errorf("kept counts %+v", kept.Counts)
+	}
+}
+
+func TestChaptersOf(t *testing.T) {
+	ch := func(n float32, unavailable string) mangadata.Chapter {
+		return chapter{mangadata.ChapterInfo{Number: n, Unavailable: unavailable}}
+	}
+	got := ChaptersOf([]mangadata.Chapter{ch(1, ""), ch(2, "expired"), ch(3, ""), ch(3, "expired"), ch(4, ""), ch(4.5, ""), ch(6, "paid")}, []float32{1, 3})
+	if !slices.Equal(got.New, []float32{4, 4.5}) || !slices.Equal(got.Listed, []float32{1, 3, 4, 4.5}) || !slices.Equal(got.Unavailable, []float32{2, 6}) {
+		t.Errorf("%+v", got)
+	}
+}
+
+type chapter struct{ info mangadata.ChapterInfo }
+
+func (c chapter) String() string              { return "" }
+func (c chapter) Info() mangadata.ChapterInfo { return c.info }
+func (c chapter) Volume() mangadata.Volume    { return nil }

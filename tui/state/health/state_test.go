@@ -71,7 +71,7 @@ func TestCategoriesAndNetworkKept(t *testing.T) {
 	for _, f := range s.report.Findings {
 		checks = append(checks, f.Check)
 	}
-	if len(checks) != 3 || checks[2] != "W12" || s.report.Findings[2].Subject.ID != 5 || !s.network {
+	if len(checks) != 3 || checks[1] != "W12" || s.report.Findings[1].Subject.ID != 5 || !s.network {
 		t.Errorf("findings %v (network %v)", checks, s.network)
 	}
 	for _, want := range []health.Category{health.Watches, health.Gaps, ""} {

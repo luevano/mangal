@@ -395,30 +395,11 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return s.List.Update(msg)
 }
 
-// onLoaded keeps the run, with the network findings of the last network run when this one
-// is offline (those whose manga still isn't watched).
+// onLoaded keeps the run, with the network findings of the last network run that still
+// hold when this one is offline (health.KeepNetwork).
 func (s *state) onLoaded(msg loadedMsg) {
 	if !msg.network && s.network {
-		unwatched := map[int64]bool{}
-		for _, f := range msg.report.Findings {
-			for _, i := range f.Items {
-				unwatched[i.Subject.ID] = true
-			}
-		}
-		for _, f := range s.report.Findings {
-			if f.Check == "W12" && unwatched[f.Subject.ID] {
-				msg.report.Findings = append(msg.report.Findings, f)
-				msg.report.Counts.ByCategory[f.Category]++
-				switch f.Severity {
-				case health.Error:
-					msg.report.Counts.Error++
-				case health.Warning:
-					msg.report.Counts.Warning++
-				default:
-					msg.report.Counts.Info++
-				}
-			}
-		}
+		msg.report = health.KeepNetwork(s.report, msg.report)
 		msg.network = true
 	}
 	s.report, s.network, s.loaded = msg.report, msg.network, true

@@ -86,7 +86,7 @@ func (c IDChecker) Check(ctx context.Context, mangas []storage.Manga) ([]IDCheck
 			continue
 		}
 		if len(m.MetadataIDs) == 0 {
-			if len(query(m).Titles) != 0 {
+			if len(MangaQuery(m).Titles) != 0 {
 				noIDs = append(noIDs, m)
 			}
 			continue
@@ -124,7 +124,7 @@ func (c IDChecker) Check(ctx context.Context, mangas []storage.Manga) ([]IDCheck
 				checks = append(checks, IDCheck{Manga: ch.manga, Issue: IDNotFound, ID: ch.id, Provider: name})
 				continue
 			}
-			if score := metadata.Score(query(ch.manga), meta); score < metadata.GoodMatchScore {
+			if score := metadata.Score(MangaQuery(ch.manga), meta); score < metadata.GoodMatchScore {
 				checks = append(checks, IDCheck{Manga: ch.manga, Issue: IDMismatch, ID: ch.id, Metadata: meta, Score: score, Provider: name})
 			}
 		}
@@ -135,7 +135,7 @@ func (c IDChecker) Check(ctx context.Context, mangas []storage.Manga) ([]IDCheck
 	}
 	queries := make([]metadata.Query, len(noIDs))
 	for i, m := range noIDs {
-		queries[i] = query(m)
+		queries[i] = MangaQuery(m)
 	}
 	name := c.Suggest.Info().Name
 	report(c.OnProgress, Progress{Phase: "looking for ids on " + name})
@@ -167,8 +167,9 @@ func (c IDChecker) adopted(m storage.Manga) bool {
 	return err == nil && !marked
 }
 
-// query is the manga's library title and its folder name without tags.
-func query(m storage.Manga) metadata.Query {
+// MangaQuery is the manga's library title and its folder name without tags, what a
+// metadata search for it looks for.
+func MangaQuery(m storage.Manga) metadata.Query {
 	var titles []string
 	for _, t := range []string{m.Title, titleFromName(m.Dir)} {
 		if t = strings.TrimSpace(t); t != "" && !slices.Contains(titles, t) {

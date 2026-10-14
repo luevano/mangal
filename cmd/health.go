@@ -25,7 +25,7 @@ func init() {
 	rootCmd.AddCommand(healthCmd)
 	f := healthCmd.Flags()
 	f.BoolVarP(&healthArgs.JSON, "json", "j", false, "Print the report as JSON")
-	f.BoolVar(&healthArgs.Network, "network", false, "Also run the checks that make requests (W12) and look the publication statuses up on AniList")
+	f.BoolVar(&healthArgs.Network, "network", false, "Also run the checks that make requests (W12, G2, A2, M1's AniList search) and look the publication statuses up on AniList")
 	f.BoolVar(&healthArgs.All, "all", false, "Also show the dismissed findings")
 	f.StringArrayVar(&healthArgs.Dismiss, "dismiss", nil, "Dismiss the finding with this key (fine as it is: hidden from then on), repeatable")
 	f.StringArrayVar(&healthArgs.Undismiss, "undismiss", nil, "Bring back the dismissed finding with this key, repeatable")
@@ -47,8 +47,10 @@ W10" lists them), watched on two providers (W11), unwatched mangas with new chap
 their source (W12, --network), manga ids of a provider's old site (W13: the downloads'
 chapter URLs are all on it, e.g. MangaSee slugs on Weeb Central).
 Gaps: chapters missing between the first and last downloaded (G1, whole numbers only, not
-up to a watch's --from or in its skip list), chapters to retry (G3).
-Metadata: no AniList link (M1, with the folder tag's id), links that disagree (M3, also
+up to a watch's --from or in its skip list), which of them the provider has (G2,
+--network), chapters to retry (G3).
+Metadata: no AniList link (M1, with the folder tag's id; with --network AniList's closest
+match to its title), links that disagree (M3, also
 a .libmangal.json whose provider manga isn't one of the library's sources), broken
 .libmangal.json files (M4), mangas sharing a metadata id (M6, with the one to keep).
 Library: folders that are gone (L1), folders without a .libmangal.json (L2: what
@@ -59,13 +61,18 @@ rest up; "--only L5" lists them), the trash (L6), mangas whose providers are all
 (L7), mangas without chapters (L8), folders not in the library (L9), sources with a manga
 id of the provider's old site (L10, as W13).
 Global: expired logins, Lua providers that didn't load, notifications without a Discord
-webhook (A1).
+webhook (A1); the providers the library and the watches use, each asked for one of its
+mangas (A2, --network: answered, Cloudflare challenge, site down, rate limited, account;
+MangaPlus isn't asked when a paid secret is set; "--only A2" lists them).
 
 --network: the publication statuses come from AniList (batched; else from the cached
 metadata), and the unwatched mangas that may still get chapters (ongoing or unknown, with
 an installed source) have their providers' chapter lists checked for chapters newer than
 the library's (W12, "watch it?"; one provider's mangas at a time, holding its lock, like a
-watch check; watch.parallel_providers at once).
+watch check; watch.parallel_providers at once), and the gaps' mangas too (G2). A provider
+that didn't answer A2 isn't asked for chapters. The mangas without an AniList link or
+suggestion are searched on AniList by title (batched): a good match is a fix to apply
+("mangal library bind <id> --anilist N --apply", x in the TUI).
 
 Each finding starts with its key, <check>/<subject> (W1/watch/4, M3/manga/5/al,
 L6/library/trash; a summary's items have theirs, listed by --only <check>): --dismiss

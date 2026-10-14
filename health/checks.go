@@ -27,11 +27,12 @@ var checks = []check{
 	{id: "W9", category: Watches, needs: []part{partWatches}, run: checkSchedule},
 	{id: "W10", category: Watches, needs: []part{partWatches, partLibrary}, run: checkNotWatched},
 	{id: "W11", category: Watches, needs: []part{partWatches, partLibrary}, run: checkWatchedTwice},
-	{id: "W12", category: Watches, needs: []part{partWatches, partLibrary, partNetwork}, run: checkNewChapters, network: true},
+	{id: "W12", category: Watches, needs: []part{partWatches, partLibrary, partChapters}, run: checkNewChapters, network: true},
 	{id: "W13", category: Watches, needs: []part{partWatches, partLibrary}, run: checkOldSiteWatches},
 	{id: "G1", category: Gaps, needs: []part{partLibrary, partWatches}, run: checkGaps},
+	{id: "G2", category: Gaps, needs: []part{partLibrary, partWatches, partChapters}, run: checkGapsConfirmed, network: true},
 	{id: "G3", category: Gaps, needs: []part{partWatches}, run: checkRetry},
-	{id: "M1", category: Metadata, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkNoAnilist},
+	{id: "M1", category: Metadata, needs: []part{partLibrary}, wants: []part{partWatches, partSearch}, run: checkNoAnilist},
 	{id: "M3", category: Metadata, needs: []part{partLibrary}, wants: []part{partFS}, run: checkDisagreements},
 	{id: "M4", category: Metadata, needs: []part{partLibrary, partFS}, run: checkBrokenMarkers},
 	{id: "M6", category: Metadata, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkDuplicates},
@@ -46,6 +47,7 @@ var checks = []check{
 	{id: "L9", category: Library, needs: []part{partLibrary, partFS}, run: checkUntracked},
 	{id: "L10", category: Library, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkOldSiteSources},
 	{id: "A1", category: Global, needs: []part{partAccounts}, wants: []part{partWatches}, run: checkAccounts},
+	{id: "A2", category: Global, needs: []part{partLibrary, partProbes}, wants: []part{partWatches}, run: checkProviders, network: true},
 }
 
 // TUI hints name the screen and the action, not the key: the keys are the TUI's
@@ -507,27 +509,42 @@ func checkWatchedTwice(s *snapshot) []Finding {
 	return out
 }
 
-// G1: chapter numbers missing between the first and last downloaded ones: whole numbers
-// only (a .5 is never missing), not up to a watch's from, not in a watch's skip list.
+// gaps are a library manga's missing chapters (G1) and its watches.
+type gaps struct {
+	missing []int
+	watches []watch.Watch
+	// filling is true when an enabled watch fills its gaps
+	filling bool
+}
+
+// gapsOf are the manga's missing chapters: whole numbers between the first and last
+// downloaded ones (a .5 is never missing), not up to a watch's from, not in a watch's
+// skip list.
+func (s *snapshot) gapsOf(m storage.Manga) gaps {
+	have := s.numbers[m.ID]
+	if len(have) < 2 {
+		return gaps{}
+	}
+	g := gaps{watches: s.watchesOf(m)}
+	var from float32 = -1
+	var skip []float32
+	for _, w := range g.watches {
+		if w.From != nil && *w.From > from {
+			from = *w.From
+		}
+		skip = append(skip, w.Skip...)
+		g.filling = g.filling || w.Gaps && w.Enabled
+	}
+	g.missing = missingNumbers(have, from, skip)
+	return g
+}
+
+// G1: chapter numbers missing (gapsOf).
 func checkGaps(s *snapshot) []Finding {
 	var out []Finding
 	for _, m := range s.mangas {
-		have := s.numbers[m.ID]
-		if len(have) < 2 {
-			continue
-		}
-		ws := s.watchesOf(m)
-		var from float32 = -1
-		var skip []float32
-		gaps := false
-		for _, w := range ws {
-			if w.From != nil && *w.From > from {
-				from = *w.From
-			}
-			skip = append(skip, w.Skip...)
-			gaps = gaps || w.Gaps && w.Enabled
-		}
-		missing := missingNumbers(have, from, skip)
+		g := s.gapsOf(m)
+		missing, ws := g.missing, g.watches
 		if len(missing) == 0 {
 			continue
 		}
@@ -547,7 +564,7 @@ func checkGaps(s *snapshot) []Finding {
 					break
 				}
 			}
-			if gaps {
+			if g.filling {
 				f.Severity = Info
 				f.Message += " (gap filling is on)"
 			}
@@ -557,6 +574,9 @@ func checkGaps(s *snapshot) []Finding {
 				f.Fix.Note += fmt.Sprintf("; chapters that don't exist: mangal watch set %d --skip %s", w.ID, joinInts(missing, ","))
 			}
 			f.Fix.TUI = tuiWatches + ": fill gaps"
+		}
+		if s.network && s.running["G2"] {
+			f.Fix.Note += "; G2 says which ones the provider has"
 		}
 		out = append(out, f)
 	}
@@ -647,15 +667,35 @@ var linkNames = map[metadata.IDCode]string{
 	metadata.IDCodeMyAnimeList: "MyAnimeList",
 }
 
-// M1: library mangas without an AniList link, with the id the folder or a watch has.
+// anilistSuggestion is the AniList id to link the manga to (the folder tag's, else a
+// watch's binding) and where it's from; linked is true when it has an AniList link.
+func (s *snapshot) anilistSuggestion(m storage.Manga) (linked bool, suggest, from string) {
+	info := library.LinkInfoOf(m, s.sourceBindings(m), nil)
+	al := info.Source(metadata.IDCodeAnilist)
+	if al.Linked() {
+		return true, "", ""
+	}
+	if suggest := al.Suggested(); suggest != "" {
+		return false, suggest, "the folder name says"
+	}
+	for _, w := range s.watchesOf(m) {
+		if w.AnilistID != 0 {
+			return false, strconv.Itoa(w.AnilistID), fmt.Sprintf("watch %d is bound to", w.ID)
+		}
+	}
+	return false, "", ""
+}
+
+// M1: library mangas without an AniList link, with the id the folder or a watch has; with
+// the network checks AniList's closest match to its title for the others.
 func checkNoAnilist(s *snapshot) []Finding {
 	var out []Finding
 	for _, m := range s.mangas {
-		info := library.LinkInfoOf(m, s.sourceBindings(m), nil)
-		al := info.Source(metadata.IDCodeAnilist)
-		if al.Linked() {
+		linked, suggest, from := s.anilistSuggestion(m)
+		if linked {
 			continue
 		}
+		info := library.LinkInfoOf(m, s.sourceBindings(m), nil)
 		f := Finding{Severity: Warning, Subject: mangaSubject(m), Message: "no AniList link",
 			Fix: Fix{TUI: tuiLibrary + ": links (AniList search)"}}
 		var others []string
@@ -668,22 +708,32 @@ func checkNoAnilist(s *snapshot) []Finding {
 			f.Severity = Info
 			f.Message += " (linked to " + strings.Join(others, ", ") + ")"
 		}
-		suggest, from := al.Suggested(), "the folder name says"
-		if suggest == "" {
-			for _, w := range s.watchesOf(m) {
-				if w.AnilistID != 0 {
-					suggest, from = strconv.Itoa(w.AnilistID), fmt.Sprintf("watch %d is bound to", w.ID)
-					break
-				}
-			}
+		match, searched := s.anilist[m.ID]
+		switch {
+		case suggest != "":
+			f.Details = []string{fmt.Sprintf("%s AniList %s", from, suggest)}
+		case searched && !match.Bad():
+			suggest = match.Metadata.ID().Raw
+			f.Network = true
+			f.Details = []string{fmt.Sprintf("an AniList search found %s %q (score %.2f)", suggest, match.Metadata.Title(), match.Score)}
+		case searched:
+			f.Network = true
+			f.Details = []string{fmt.Sprintf("AniList's closest is %s %q (score %.2f), not a good match", match.Metadata.ID().Raw, match.Metadata.Title(), match.Score)}
+			f.Fix.Commands = []string{fmt.Sprintf("mangal library bind %d --anilist %s", m.ID, match.Metadata.ID().Raw)}
+			f.Fix.Note = "check it on AniList first, or search it in the TUI's links screen"
+			out = append(out, f)
+			continue
 		}
 		if suggest != "" {
-			f.Details = []string{fmt.Sprintf("%s AniList %s", from, suggest)}
 			f.Fix.Commands = []string{fmt.Sprintf("mangal library bind %d --anilist %s", m.ID, suggest)}
 			f.Fix.Action = &Action{Kind: ActionLink, Manga: m.ID, Source: metadata.IDCodeAnilist, IDs: []string{suggest}}
 		} else {
 			f.Fix.Commands = []string{"mangal library scan --check", fmt.Sprintf("mangal library bind %d --anilist <id>", m.ID)}
 			f.Fix.Note = "the check suggests AniList ids for folders without one (network)"
+			if s.network {
+				f.Fix.Commands = f.Fix.Commands[1:]
+				f.Fix.Note = "an AniList search found nothing: search it in the TUI's links screen"
+			}
 		}
 		out = append(out, f)
 	}

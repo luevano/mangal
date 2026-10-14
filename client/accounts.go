@@ -87,6 +87,21 @@ func DiscordAccount() AccountEntry {
 	return entry
 }
 
+// CachedAccount is the provider's account as Accounts last fetched it, without a request:
+// ok is false when it wasn't fetched in the last accountsTTL.
+func CachedAccount(provider string) (_ libmangal.Account, checked time.Time, ok bool, _ error) {
+	accounts, err := cache.AccountsStore(accountsTTL)
+	if err != nil {
+		return libmangal.Account{}, time.Time{}, false, err
+	}
+	var cached cachedAccount
+	found, err := accounts.Get(provider, &cached)
+	if err != nil || !found {
+		return libmangal.Account{}, time.Time{}, false, err
+	}
+	return cached.Account, cached.Checked, true, nil
+}
+
 // metadataAccounts are the metadata providers' logins, by priority.
 func metadataAccounts(ctx context.Context, refresh bool) []AccountEntry {
 	return []AccountEntry{anilistAccount(ctx, refresh), kitsuAccount(ctx, refresh), myAnimeListAccount(ctx, refresh)}

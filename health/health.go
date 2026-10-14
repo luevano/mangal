@@ -145,6 +145,8 @@ type Finding struct {
 	Key string `json:"key"`
 	// Dismissed is true when it was dismissed (only in a report with Options.All).
 	Dismissed bool `json:"dismissed,omitempty"`
+	// Network is true when it comes from what the network checks found.
+	Network bool `json:"network,omitempty"`
 }
 
 // Key is what tells the subject apart in a finding's key: kind/id, kind/name, or just the
@@ -206,8 +208,8 @@ type Report struct {
 
 // Options of a run.
 type Options struct {
-	// Network also runs the checks that make requests (W12) and fetches the publication
-	// statuses.
+	// Network also runs the checks that make requests (W12, G2, A2, M1's AniList search)
+	// and fetches the publication statuses.
 	Network bool
 	// Only runs these categories or checks (ids), all when empty.
 	Only []string
@@ -264,10 +266,15 @@ type Checker struct {
 	// metadata, fetching from AniList with fetch (the network checks); nil leaves them as
 	// stored.
 	Statuses func(ctx context.Context, mangas []storage.Manga, bindings []storage.Binding, fetch bool) error
-	// NewChapters lists the chapters newer than Have of each of the provider's mangas
-	// (watch.NewChapters), holding the provider's lock (wait is told when it waits for
-	// it); done is told each one. Nil skips W12.
-	NewChapters func(ctx context.Context, provider string, mangas []ProviderManga, wait func(string), done func(i int, numbers []float32, err error)) error
+	// Chapters lists the chapters of each of the provider's mangas (ChaptersOf), holding
+	// the provider's lock (wait is told when it waits for it); done is told each one. Nil
+	// skips W12 and G2.
+	Chapters func(ctx context.Context, provider string, mangas []ProviderManga, wait func(string), done func(i int, chapters ProviderChapters, err error)) error
+	// Probe asks the provider for the manga (A2), within ProbeTimeout; nil skips A2.
+	Probe func(ctx context.Context, provider string, manga ProviderManga) Probe
+	// SearchAnilist is AniList's closest match to each query (FindClosestManyContext),
+	// M1's suggestions with the network checks; nil skips them.
+	SearchAnilist func(ctx context.Context, queries []metadata.Query) ([]metadata.Match, []bool, error)
 	// Parallel is how many providers the network checks ask at once, 1 when 0.
 	Parallel int
 	// FS is the download directory's filesystem (Root), nil skips the fs checks.
@@ -299,12 +306,16 @@ const (
 	// partFS is the folders and markers, partRenames what library rename would do
 	partFS
 	partRenames
-	// partNetwork is the providers' chapters (network checks only)
-	partNetwork
+	// partProbes is what the providers answered, partChapters their chapters, partSearch
+	// AniList's matches (network checks only: partSearch isn't loaded without them)
+	partProbes
+	partChapters
+	partSearch
 )
 
 var partNames = map[part]string{partLibrary: "the library", partWatches: "the watches", partOldIDs: "the old provider ids",
-	partAccounts: "the accounts", partFS: "the folders", partRenames: "the rename plan", partNetwork: "the providers' chapters"}
+	partAccounts: "the accounts", partFS: "the folders", partRenames: "the rename plan", partProbes: "the providers' answers",
+	partChapters: "the providers' chapters", partSearch: "the AniList search"}
 
 // check is one check over the snapshot.
 type check struct {
@@ -371,18 +382,20 @@ func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 		return report, err
 	}
 	needed := map[part]bool{}
+	running := map[string]bool{}
 	for _, ch := range run {
+		running[ch.id] = true
 		for _, p := range slices.Concat(ch.needs, ch.wants) {
 			needed[p] = true
 		}
 	}
-	s, failed := c.load(ctx, needed, opts.Network)
+	s, failed := c.load(ctx, needed, opts.Network, running)
 	if err := ctx.Err(); err != nil {
 		return report, err
 	}
 	report.Errors = append(report.Errors, s.errors...)
 	loadErrors := len(s.errors)
-	for p := partLibrary; p <= partNetwork; p++ {
+	for p := partLibrary; p <= partSearch; p++ {
 		if err := failed[p]; err != nil {
 			report.Errors = append(report.Errors, fmt.Sprintf("load %s: %s", partNames[p], err))
 		}
@@ -416,21 +429,83 @@ func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 		report.Errors = append(report.Errors, "dismissed findings: "+err.Error())
 	}
 	sortFindings(report.Findings)
-	for _, f := range report.Findings {
+	report.recount()
+	return report, nil
+}
+
+// recount works the counts out from the findings.
+func (r *Report) recount() {
+	r.Counts = Counts{ByCategory: map[Category]int{}}
+	for _, f := range r.Findings {
 		if f.Dismissed {
 			continue
 		}
 		switch f.Severity {
 		case Error:
-			report.Counts.Error++
+			r.Counts.Error++
 		case Warning:
-			report.Counts.Warning++
+			r.Counts.Warning++
 		default:
-			report.Counts.Info++
+			r.Counts.Info++
 		}
-		report.Counts.ByCategory[f.Category]++
+		r.Counts.ByCategory[f.Category]++
 	}
-	return report, nil
+}
+
+// KeepNetwork is the offline report next with the findings of the network run last (the
+// caller knows it was one) that still hold: W12 while its manga is still unwatched (a W10 item), G2 while its manga
+// still has the gaps G1 found, A2, and M1's AniList matches while the manga still has
+// no AniList link.
+func KeepNetwork(last, next Report) Report {
+	if next.Network {
+		return next
+	}
+	network := map[string]bool{}
+	for _, c := range checks {
+		network[c.id] = c.network
+	}
+	has := func(check string, subject Subject, items bool) (int, bool) {
+		for i, f := range next.Findings {
+			if f.Check == check && f.Subject == subject {
+				return i, true
+			}
+			if items && slices.ContainsFunc(f.Items, func(item Finding) bool { return item.Subject == subject }) {
+				return i, true
+			}
+		}
+		return 0, false
+	}
+	for _, f := range last.Findings {
+		if !f.Network && !network[f.Check] {
+			continue
+		}
+		switch f.Check {
+		case "W12":
+			if _, ok := has("W10", f.Subject, true); !ok {
+				continue
+			}
+		case "G2":
+			if _, ok := has("G1", f.Subject, false); !ok {
+				continue
+			}
+		case "M1":
+			i, ok := has("M1", f.Subject, false)
+			if ok && next.Findings[i].Fix.Action == nil {
+				next.Findings[i] = f
+			}
+			continue
+		case "A2":
+		default:
+			continue
+		}
+		if _, ok := has(f.Check, f.Subject, false); !ok {
+			next.Findings = append(next.Findings, f)
+		}
+	}
+	next.Network = true
+	sortFindings(next.Findings)
+	next.recount()
+	return next
 }
 
 // dismiss sets the findings' keys and leaves out the dismissed ones (marks them with all);
@@ -532,7 +607,7 @@ func (c Checker) now() time.Time {
 }
 
 // load reads the parts of the snapshot, the ones that failed with their errors.
-func (c Checker) load(ctx context.Context, needed map[part]bool, network bool) (*snapshot, map[part]error) {
+func (c Checker) load(ctx context.Context, needed map[part]bool, network bool, running map[string]bool) (*snapshot, map[part]error) {
 	staleAfter := c.StaleAfter
 	if staleAfter <= 0 {
 		staleAfter = DefaultStaleAfter
@@ -540,7 +615,8 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool) (
 	mark := c.Mark
 	mark.Loaders = c.Loaders
 	s := &snapshot{now: c.now(), root: c.Root, providerDirs: c.ProviderDirs, staleAfter: staleAfter, backoff: c.Backoff,
-		loaders: c.Loaders, fsys: c.FS, mark: mark, providerName: c.ProviderName, bindings: map[[2]string][]storage.Binding{}, newChapters: map[int64]newChapters{}, network: network}
+		loaders: c.Loaders, fsys: c.FS, mark: mark, providerName: c.ProviderName, bindings: map[[2]string][]storage.Binding{}, network: network, running: running,
+		probes: map[string]Probe{}, probed: map[string]ProviderManga{}, chapters: map[int64]chapterResult{}, anilist: map[int64]metadata.Match{}}
 	failed := map[part]error{}
 	if needed[partLibrary] {
 		c.progress("loading the library")
@@ -603,14 +679,26 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool) (
 			failed[partRenames] = err
 		}
 	}
-	if needed[partNetwork] {
+	if needed[partProbes] {
+		if failed[partLibrary] != nil {
+			failed[partProbes] = errors.New("needs the library")
+		} else if err := c.loadProbes(ctx, s); err != nil {
+			failed[partProbes] = err
+		}
+	}
+	if needed[partChapters] {
 		switch {
 		case failed[partLibrary] != nil || failed[partWatches] != nil:
-			failed[partNetwork] = errors.New("needs the library and the watches")
+			failed[partChapters] = errors.New("needs the library and the watches")
 		default:
-			if err := c.loadNetwork(ctx, s); err != nil {
-				failed[partNetwork] = err
+			if err := c.loadChapters(ctx, s); err != nil {
+				failed[partChapters] = err
 			}
+		}
+	}
+	if needed[partSearch] && network && failed[partLibrary] == nil {
+		if err := c.loadSearch(ctx, s); err != nil {
+			s.errors = append(s.errors, "M1: AniList search: "+err.Error())
 		}
 	}
 	return s, failed

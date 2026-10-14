@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
@@ -50,10 +51,17 @@ type snapshot struct {
 	mark         library.MarkOptions
 	providerName func(libmangal.ProviderInfo) string
 
-	// network is true when the network checks run, newChapters are the unwatched mangas'
-	// new chapters on their source
-	network     bool
-	newChapters map[int64]newChapters
+	// network is true when the network checks run, running are the checks that run
+	network bool
+	running map[string]bool
+	// probes are what each provider answered (A2) in probeOrder, probed the manga asked
+	// for; chapters what the providers list of the library mangas (W12, G2), anilist
+	// AniList's closest match to the mangas M1 has nothing for
+	probes     map[string]Probe
+	probeOrder []string
+	probed     map[string]ProviderManga
+	chapters   map[int64]chapterResult
+	anilist    map[int64]metadata.Match
 
 	// errors are what didn't load without skipping a check, and what a check couldn't do
 	errors []string
