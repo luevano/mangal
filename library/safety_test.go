@@ -225,3 +225,30 @@ func TestRenameModeDir(t *testing.T) {
 		t.Errorf("%v, %v", info.Mode(), err)
 	}
 }
+
+// a copy across drives keeps a symlink a symlink (as a rename does), never copies what it
+// points to
+func TestCopyAllKeepsSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, filepath.Join(dir, "outside", "secret.txt"))
+	touch(t, filepath.Join(dir, "a", "1.cbz"))
+	if err := os.Symlink(filepath.Join(dir, "outside", "secret.txt"), filepath.Join(dir, "a", "link.cbz")); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	for _, fsys := range []afero.Fs{afero.NewOsFs(), afero.Afero{Fs: afero.NewOsFs()}} {
+		to := filepath.Join(t.TempDir(), "b")
+		if _, err := copyAll(context.Background(), fsys, filepath.Join(dir, "a"), to); err != nil {
+			t.Fatalf("%T: %v", fsys, err)
+		}
+		info, err := os.Lstat(filepath.Join(to, "link.cbz"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("%T: the link was followed, copied as a %s", fsys, info.Mode())
+		}
+		if target, _ := os.Readlink(filepath.Join(to, "link.cbz")); target != filepath.Join(dir, "outside", "secret.txt") {
+			t.Errorf("%T: link to %q", fsys, target)
+		}
+	}
+}

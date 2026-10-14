@@ -114,6 +114,10 @@ func crossDevice(err error) bool {
 // copyAll copies a file or folder, keeping the permissions, its progress (files and
 // bytes) reported to ctx. created is true once it made to (it fails when to exists).
 func copyAll(ctx context.Context, fsys afero.Fs, from, to string) (created bool, err error) {
+	// afero.Afero hides its Fs' Lstat, the walk would follow links
+	if a, ok := fsys.(afero.Afero); ok {
+		fsys = a.Fs
+	}
 	c := copyProgress{ctx: ctx, name: filepath.Base(from)}
 	_ = afero.Walk(fsys, from, func(_ string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
@@ -145,7 +149,12 @@ func copyAll(ctx context.Context, fsys afero.Fs, from, to string) (created bool,
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		err = copyFile(fsys, path, target, info.Mode().Perm(), &c)
+		if info.Mode()&fs.ModeSymlink != 0 {
+			// a link stays a link, as a rename keeps it: never what it points to
+			err = copySymlink(fsys, path, target)
+		} else {
+			err = copyFile(fsys, path, target, info.Mode().Perm(), &c)
+		}
 		if rel == "." && err == nil {
 			created = true
 		}
@@ -183,6 +192,19 @@ func (c *copyProgress) report(always bool) {
 	c.last = time.Now()
 	progress.Report(c.ctx, progress.Status{Source: "library", Message: fmt.Sprintf("copying %s to the other drive: %d/%d files, %s of %s",
 		c.name, c.filesDone, c.files, stringutil.HumanSize(c.bytesDone), stringutil.HumanSize(c.bytes))})
+}
+
+// copySymlink makes to a link to what from links to.
+func copySymlink(fsys afero.Fs, from, to string) error {
+	links, ok := fsys.(afero.Symlinker)
+	if !ok {
+		return fmt.Errorf("%s is a symlink, it can't be copied here", from)
+	}
+	target, err := links.ReadlinkIfPossible(from)
+	if err != nil {
+		return err
+	}
+	return links.SymlinkIfPossible(target, to)
 }
 
 func copyFile(fsys afero.Fs, from, to string, mode fs.FileMode, c *copyProgress) error {
