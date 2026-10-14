@@ -9,6 +9,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/logger"
+	"github.com/luevano/libmangal/progress"
 )
 
 type fakeLoader struct{ id string }
@@ -246,5 +247,20 @@ func TestIsMangaDex(t *testing.T) {
 		if _, got := isMangaDex(loaders, id); got != want {
 			t.Errorf("%s: %v", id, got)
 		}
+	}
+}
+
+// loading a provider is reported (once: the next acquire takes the loaded client)
+func TestAcquireReportsLoading(t *testing.T) {
+	fakeRegistry(t, nil)
+	var got []string
+	ctx := progress.WithReporter(context.Background(), func(s progress.Status) { got = append(got, s.Source+": "+s.String()) })
+	for range 2 {
+		if _, err := Acquire(ctx, fakeLoader{"a"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(got) != 1 || got[0] != "a: loading a" {
+		t.Errorf("reported %q", got)
 	}
 }

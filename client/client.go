@@ -8,6 +8,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/client/myanimelist"
@@ -134,6 +135,8 @@ func acquire(ctx context.Context, loader libmangal.ProviderLoader) (*entry, erro
 		if !ok {
 			// created outside the lock, the others wait on done
 			e.auth, _ = authFingerprint()
+			// loading may take a while (a FlareSolverr probe, rod's launch)
+			progress.Report(ctx, progress.Status{Source: id, Message: "loading " + loader.Info().Name})
 			e.client, e.err = create(ctx, loader)
 			if e.err != nil {
 				clientsMu.Lock()
