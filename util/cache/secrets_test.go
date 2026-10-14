@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/storage"
 	"golang.org/x/oauth2"
 )
 
@@ -111,5 +112,29 @@ func TestAPIClientsBesideLogins(t *testing.T) {
 	}
 	if secret, err := getString(authOwnerMyAnimeListClient, keyClientSecret); err != nil || secret != "" {
 		t.Errorf("secret kept after clearing: %q, %v", secret, err)
+	}
+}
+
+// a database error says which secret it was saving or reading
+func TestSecretErrorsWrapped(t *testing.T) {
+	if err := Open(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := storage.OpenData(filepath.Join(t.TempDir(), storage.FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = data.Close()
+	old := st
+	st = storage.Storage{Cache: old.Cache, Data: data}
+	t.Cleanup(func() { st = old })
+	if err := SetDiscordWebhook("https://discord.test/hook"); err == nil || !strings.Contains(err.Error(), "save the discord webhook: ") {
+		t.Errorf("save: %v", err)
+	}
+	if err := SetServeToken(""); err == nil || !strings.Contains(err.Error(), "remove the serve token: ") {
+		t.Errorf("remove: %v", err)
+	}
+	if _, err := MangaPlusSecret(); err == nil || !strings.Contains(err.Error(), "read the mangaplus secret: ") {
+		t.Errorf("read: %v", err)
 	}
 }

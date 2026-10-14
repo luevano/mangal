@@ -21,8 +21,10 @@ func getString(owner, key string) (string, error) {
 		return "", err
 	}
 	var value string
-	_, err = st.AuthStore(owner, keyring).Get(key, &value)
-	return value, err
+	if _, err := st.AuthStore(owner, keyring).Get(key, &value); err != nil {
+		return "", fmt.Errorf("read the %s %s: %w", owner, key, err)
+	}
+	return value, nil
 }
 
 func setString(owner, key, value string) error {
@@ -32,9 +34,15 @@ func setString(owner, key, value string) error {
 	}
 	kv := st.AuthStore(owner, keyring)
 	if value == "" {
-		return kv.Delete(key)
+		if err := kv.Delete(key); err != nil {
+			return fmt.Errorf("remove the %s %s: %w", owner, key, err)
+		}
+		return nil
 	}
-	return kv.Set(key, value)
+	if err := kv.Set(key, value); err != nil {
+		return fmt.Errorf("save the %s %s: %w", owner, key, err)
+	}
+	return nil
 }
 
 // MangaPlusSecret is the device secret of the official app (subscription), empty if not set.
