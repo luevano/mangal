@@ -33,11 +33,10 @@ var metadataDBs = []string{"anilist", "myanimelist", "kitsu", "mangaupdates", "a
 
 // knownBuckets are every bucket the old cache files had, besides a bucket named after the
 // file (luaprovider's http cache, mangal 5.10's anilist stores).
-var knownBuckets = []string{
-	mango.CacheBucketNameMangas, mango.CacheBucketNameVolumes, mango.CacheBucketNameChapters, mango.CacheBucketNameMirrors,
+var knownBuckets = append(slices.Clone(mango.LegacyCacheBucketNames),
 	metadata.CacheBucketNameTitleToID, metadata.CacheBucketNameQueryToIDs, metadata.CacheBucketNameIDToManga,
 	storage.BucketSearchHistory, storage.BucketAuthHistory, BucketAnilistAuth, BucketMyAnimeListAuth, "access-token",
-}
+)
 
 // counts are what a conversion kept.
 type counts struct {
