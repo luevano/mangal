@@ -43,6 +43,9 @@ const (
 	LiveProviderDone = "provider_done"
 	// LiveRunDone is a check run that finished.
 	LiveRunDone = "run_done"
+	// LiveQueued is a scheduled check (mangal serve) waiting for a provider someone else
+	// has (Message says who), it runs once the provider is free. No run yet.
+	LiveQueued = "queued"
 	// LiveHealthStart, LiveHealthStatus and LiveHealthDone are a health job of mangal serve
 	// (Job is set): started, what it's doing, finished (Message has the counts or the
 	// error).

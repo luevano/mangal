@@ -34,8 +34,8 @@ whenever the server started: checks only start on ticks, nothing runs at start (
 watch, or one whose tick passed while the server was down, waits for its next tick). The
 gaps are filled at the
 ticks of watch.gap_schedule (off by default). Each provider has its own run
-(watch.parallel_providers at once; a "mangal watch check" of a provider running elsewhere
-postpones that provider). The watch.* settings are re-read from the config file every
+(watch.parallel_providers at once; a provider busy elsewhere, e.g. a "mangal watch
+check" or a download, is checked once it's free). The watch.* settings are re-read from the config file every
 minute. Logs go to stderr and the log file; GET /api/events streams the live progress.
 
 The JSON API (serve.host:serve.port, 127.0.0.1 by default) is what the TUI and the "mangal

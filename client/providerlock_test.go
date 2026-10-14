@@ -247,3 +247,42 @@ func TestLostLockStopsTheDownload(t *testing.T) {
 		t.Fatal("still downloading without the lock")
 	}
 }
+
+// TestWaitProviderFree: it waits while the lock is held, without taking it.
+func TestWaitProviderFree(t *testing.T) {
+	store, _ := withLockStore(t)
+	lock, err := store.LockAs(ProviderLockName("p"), LockForDownload, ProviderLockStale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var told []ProviderBusy
+	done := make(chan error, 1)
+	go func() {
+		done <- WaitProviderFree(context.Background(), store, "p", func(b ProviderBusy) { told = append(told, b) })
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("returned while held: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := lock.Unlock(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if len(told) != 1 || told[0].Provider != "p" {
+		t.Errorf("told %+v", told)
+	}
+	if _, held, _ := store.Holder(ProviderLockName("p"), ProviderLockStale); held {
+		t.Error("it took the lock")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := store.LockAs(ProviderLockName("p"), LockForDownload, ProviderLockStale); err != nil {
+		t.Fatal(err)
+	}
+	if err := WaitProviderFree(ctx, store, "p", nil); !errors.Is(err, context.Canceled) {
+		t.Errorf("cancelled: %v", err)
+	}
+}

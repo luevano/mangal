@@ -108,6 +108,32 @@ func LockProvider(ctx context.Context, store storage.Watches, provider, purpose 
 	}
 }
 
+// WaitProviderFree waits while someone holds the provider's lock (polling like
+// LockProvider; onWait, which may be nil, is told once), without taking it. A cancelled
+// ctx stops the wait.
+func WaitProviderFree(ctx context.Context, store storage.Watches, provider string, onWait func(ProviderBusy)) error {
+	waited := false
+	for {
+		holder, held, err := store.Holder(ProviderLockName(provider), ProviderLockStale)
+		if err != nil || !held {
+			return err
+		}
+		if !waited {
+			waited = true
+			if onWait != nil {
+				onWait(ProviderBusy{Provider: provider, Holder: holder, Watch: holder.Purpose == LockForWatch})
+			}
+		}
+		timer := time.NewTimer(providerLockPoll)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
 // keepAlive beats the lock until the returned unlock. A lost lock calls lost.
 func keepAlive(lock *storage.Lock, lost func(error)) func() {
 	stop := lock.KeepAlive(providerLockBeat, func(err error) {

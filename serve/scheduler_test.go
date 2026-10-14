@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal/progress"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
@@ -24,11 +25,15 @@ type checkCall struct {
 }
 
 type fakeChecker struct {
-	mu       sync.Mutex
-	now      time.Time
-	watches  []watch.Watch
-	gapsDue  map[int64]bool
-	busy     bool
+	mu      sync.Mutex
+	now     time.Time
+	watches []watch.Watch
+	gapsDue map[int64]bool
+	busy    bool
+	// free, when busy, is what WaitFree waits for (then the provider isn't busy anymore),
+	// waits counts the WaitFree calls
+	free     chan struct{}
+	waits    int
 	parallel int
 	// block makes Check wait for it (or the ctx), started is told each check that starts
 	block    chan struct{}
@@ -66,6 +71,28 @@ func (f *fakeChecker) NextGapCheckSince(w storage.Watch, _ time.Time) time.Time 
 		return f.now
 	}
 	return time.Time{}
+}
+
+func (f *fakeChecker) WaitFree(ctx context.Context, provider string, onWait func(client.ProviderBusy)) error {
+	f.mu.Lock()
+	f.waits++
+	busy, free := f.busy, f.free
+	f.mu.Unlock()
+	if !busy {
+		return nil
+	}
+	onWait(client.ProviderBusy{Provider: provider, Holder: storage.LockHolder{PID: 42, Host: "h", Purpose: client.LockForDownload}})
+	if free != nil {
+		select {
+		case <-free:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	f.mu.Lock()
+	f.busy = false
+	f.mu.Unlock()
+	return nil
 }
 
 func (f *fakeChecker) Parallel() int {
@@ -222,21 +249,110 @@ func TestSchedulerParallel(t *testing.T) {
 	}
 }
 
+// TestSchedulerBusy: a scheduled check of a provider another mangal has waits for it (one
+// pending run per provider), then checks what's still due at once.
 func TestSchedulerBusy(t *testing.T) {
 	now := time.Unix(1_000_000, 0)
-	f := &fakeChecker{now: now, busy: true, watches: []watch.Watch{testWatch(1, now.Add(-time.Hour), true)}}
+	f := &fakeChecker{now: now, busy: true, free: make(chan struct{}), watches: []watch.Watch{testWatch(1, now.Add(-time.Hour), true)}}
 	s := newTestScheduler(f)
-	cycle(s)
-	f.busy = false
-	// tried again after MaxSleep
-	if sleep := cycle(s); sleep != time.Minute || len(f.callList()) != 1 {
-		t.Errorf("busy provider retried at once: %s %+v", sleep, f.callList())
+	s.cycle(context.Background())
+	// waiting: another cycle doesn't start a second run of the provider
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		f.mu.Lock()
+		waits := f.waits
+		f.mu.Unlock()
+		if waits == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the busy provider's check doesn't wait")
+		}
+		time.Sleep(time.Millisecond)
 	}
-	f.now = f.now.Add(time.Minute)
+	s.cycle(context.Background())
+	if calls := f.callList(); len(calls) != 1 {
+		t.Errorf("checked again while waiting: %+v", calls)
+	}
+	close(f.free)
+	s.wg.Wait()
+	// free: checked at once, no MaxSleep
 	cycle(s)
 	if calls := f.callList(); len(calls) != 2 || !slices.Equal(calls[1].ids, []int64{1}) {
-		t.Errorf("not retried: %+v", calls)
+		t.Errorf("not checked once free: %+v", calls)
 	}
+}
+
+// TestSchedulerBusyFreesSlot: a provider waiting for another mangal doesn't keep the others
+// from being checked.
+func TestSchedulerBusyFreesSlot(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	f := &fakeChecker{now: now, parallel: 1, free: make(chan struct{}), watches: []watch.Watch{providerWatch("p", 1, now.Add(-time.Hour), true)}}
+	busyP := &busyOnce{fakeChecker: f, provider: "p"}
+	s := newScheduler(func() checker { return busyP }, newLogger(io.Discard), &runs{})
+	s.AuthChanged, s.AuthFingerprint = nil, nil
+	s.Now = func() time.Time { return now }
+	s.cycle(context.Background())
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		s.mu.Lock()
+		waiting := s.waiting["p"]
+		s.mu.Unlock()
+		if waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("p doesn't wait")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	f.mu.Lock()
+	f.watches = append(f.watches, providerWatch("q", 2, now.Add(-time.Hour), true))
+	f.mu.Unlock()
+	s.cycle(context.Background())
+	deadline = time.Now().Add(5 * time.Second)
+	for !slices.ContainsFunc(f.callList(), func(c checkCall) bool { return c.ids[0] == 2 }) {
+		if time.Now().After(deadline) {
+			t.Fatalf("q not checked while p waits: %+v", f.callList())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(f.free)
+	s.wg.Wait()
+}
+
+// busyOnce is a checker whose provider is busy until free is closed, the others aren't.
+type busyOnce struct {
+	*fakeChecker
+	provider string
+	freed    bool
+}
+
+func (b *busyOnce) Check(ctx context.Context, ids []int64, opts watch.CheckOptions) (watch.Report, error) {
+	b.mu.Lock()
+	busy := false
+	for _, w := range b.watches {
+		if w.ID == ids[0] && w.Provider == b.provider && !b.freed {
+			busy = true
+		}
+	}
+	b.mu.Unlock()
+	if busy {
+		return watch.Report{}, watch.ErrBusy
+	}
+	return b.fakeChecker.Check(ctx, ids, opts)
+}
+
+func (b *busyOnce) WaitFree(ctx context.Context, provider string, onWait func(client.ProviderBusy)) error {
+	select {
+	case <-b.free:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	b.mu.Lock()
+	b.freed = true
+	b.mu.Unlock()
+	return nil
 }
 
 func TestSchedulerGaps(t *testing.T) {

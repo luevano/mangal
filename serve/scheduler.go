@@ -26,6 +26,8 @@ type checker interface {
 	Check(ctx context.Context, ids []int64, opts watch.CheckOptions) (watch.Report, error)
 	// Parallel is how many providers are checked at once (watch.parallel_providers).
 	Parallel() int
+	// WaitFree waits while someone holds the provider's lock, onWait is told once.
+	WaitFree(ctx context.Context, provider string, onWait func(client.ProviderBusy)) error
 }
 
 // serviceChecker is the checker of a watch.Service.
@@ -33,13 +35,24 @@ type serviceChecker struct{ *watch.Service }
 
 func (c serviceChecker) Parallel() int { return c.Options.ParallelProviders }
 
+func (c serviceChecker) WaitFree(ctx context.Context, provider string, onWait func(client.ProviderBusy)) error {
+	return client.WaitProviderFree(ctx, c.Watches, provider, func(b client.ProviderBusy) {
+		if c.Events != nil {
+			c.Events.Publish(watch.LiveEvent{Kind: watch.LiveQueued, Provider: provider, Message: "scheduled check queued: " + b.Message()})
+		}
+		onWait(b)
+	})
+}
+
 // Scheduler checks the watches when they're due, each provider on its own: every cycle
 // (at most MaxSleep apart, at the next tick of a watch's schedule, or when a provider's
 // run ends)
 // each provider with due watches gets a scheduled run of them, then a gaps run of the
-// ones whose gap filling is due, up to Parallel providers at once. A provider another
-// check has (ErrBusy, e.g. `mangal watch check` or an API check) or whose run failed is
-// tried again after MaxSleep.
+// ones whose gap filling is due, up to Parallel providers at once. A provider someone else
+// has (ErrBusy: `mangal watch check`, an API check, a download in another mangal) is
+// queued behind it: its run waits for the lock to be free (still one run per provider, not
+// taking a Parallel slot meanwhile), then the next cycle checks what's still due. A provider whose run
+// failed is tried again after MaxSleep.
 type Scheduler struct {
 	// Checker is the watch service to use for a cycle (its options may change between
 	// cycles).
@@ -66,8 +79,10 @@ type Scheduler struct {
 	AuthFingerprint func() (string, error)
 
 	mu sync.Mutex
-	// running are the providers being checked by the scheduler
+	// running are the providers being checked by the scheduler, waiting the ones of them
+	// queued behind another holder (they don't take a Parallel slot)
 	running map[string]bool
+	waiting map[string]bool
 	// retry are the providers not to check again before then
 	retry map[string]time.Time
 	wg    sync.WaitGroup
@@ -89,6 +104,7 @@ func newScheduler(c func() checker, log logger, r *runs) *Scheduler {
 		AuthChanged:     client.ReleaseIfAuthChanged,
 		AuthFingerprint: cache.AuthFingerprint,
 		running:         map[string]bool{},
+		waiting:         map[string]bool{},
 		retry:           map[string]time.Time{},
 	}
 }
@@ -164,7 +180,7 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 	defer s.mu.Unlock()
 	parallel := max(1, c.Parallel())
 	for _, p := range providers {
-		if ctx.Err() != nil || len(s.running) >= parallel {
+		if ctx.Err() != nil || s.activeLocked() >= parallel {
 			break
 		}
 		if s.running[p] || now.Before(s.retry[p]) {
@@ -180,7 +196,7 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 
 	// until the next tick of a watch (or its gaps) of a provider that can start; a running
 	// provider, or one waiting for a free slot, wakes it when its run ends
-	full := len(s.running) >= parallel
+	full := s.activeLocked() >= parallel
 	sleep := s.MaxSleep
 	for _, w := range all {
 		if !w.Scheduled() || s.running[w.Provider] || (full && !next[w.ID].After(now)) {
@@ -200,6 +216,9 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 	}
 	return max(sleep, minSleep)
 }
+
+// activeLocked is how many providers are being checked, not counting the waiting ones.
+func (s *Scheduler) activeLocked() int { return len(s.running) - len(s.waiting) }
 
 // resetLogins makes the metadata providers log in again when the saved logins changed (a
 // login from a TUI while serve runs).
@@ -230,27 +249,55 @@ func (s *Scheduler) runProvider(ctx context.Context, c checker, provider string,
 			s.Log.Infof("logins or secrets changed, %s reloads with them", provider)
 		}
 	}
-	ok := true
+	result := checkDone
 	if len(w.due) > 0 {
-		ok = s.check(ctx, c, provider, w.due, watch.CheckOptions{Kind: watch.KindScheduled})
+		result = s.check(ctx, c, provider, w.due, watch.CheckOptions{Kind: watch.KindScheduled})
 	}
-	if len(w.gaps) > 0 && ctx.Err() == nil {
-		ok = s.check(ctx, c, provider, w.gaps, watch.CheckOptions{Kind: watch.KindGaps, Gaps: true}) && ok
+	if len(w.gaps) > 0 && ctx.Err() == nil && result != checkBusy {
+		result = max(result, s.check(ctx, c, provider, w.gaps, watch.CheckOptions{Kind: watch.KindGaps, Gaps: true}))
+	}
+	wait := minSleep
+	switch result {
+	case checkFailed:
+		// broken: the due watches stay due
+		wait = s.MaxSleep
+	case checkBusy:
+		// queued behind the holder, then what's still due (it may have checked some) at once
+		s.mu.Lock()
+		s.waiting[provider] = true
+		s.mu.Unlock()
+		// its slot is free for another provider meanwhile
+		s.Wake()
+		err := c.WaitFree(ctx, provider, func(b client.ProviderBusy) {
+			s.Log.Infof("scheduled check of %s queued: %s", provider, b.Message())
+		})
+		switch {
+		case err == nil:
+			wait = 0
+		case ctx.Err() == nil:
+			s.Log.Errorf("wait for %s: %s", provider, err)
+			wait = s.MaxSleep
+		}
 	}
 	s.mu.Lock()
 	delete(s.running, provider)
-	wait := minSleep
-	if !ok {
-		// busy or broken: the due watches stay due
-		wait = s.MaxSleep
-	}
+	delete(s.waiting, provider)
 	s.retry[provider] = s.Now().Add(wait)
 	s.mu.Unlock()
 	s.Wake()
 }
 
-// check runs one check, logging it, false when it couldn't run.
-func (s *Scheduler) check(ctx context.Context, c checker, provider string, ids []int64, opts watch.CheckOptions) bool {
+// checkResult is how a check went, worst last.
+type checkResult int
+
+const (
+	checkDone checkResult = iota
+	checkFailed
+	checkBusy
+)
+
+// check runs one check, logging it.
+func (s *Scheduler) check(ctx context.Context, c checker, provider string, ids []int64, opts watch.CheckOptions) checkResult {
 	opts.OnRun = func(run storage.CheckRun) {
 		s.Runs.start(run.ID, nil)
 		s.Log.Infof("%s check %d of %s: %s", run.Kind, run.ID, provider, stringutil.Quantify(len(ids), "watch", "watches"))
@@ -262,14 +309,13 @@ func (s *Scheduler) check(ctx context.Context, c checker, provider string, ids [
 	}
 	switch {
 	case errors.Is(err, watch.ErrBusy):
-		s.Log.Infof("%s check of %s postponed: %s", opts.Kind, provider, err)
+		return checkBusy
 	case err != nil:
 		s.Log.Errorf("%s check of %s: %s", opts.Kind, provider, err)
-	default:
-		logReport(s.Log, report)
-		return true
+		return checkFailed
 	}
-	return false
+	logReport(s.Log, report)
+	return checkDone
 }
 
 // logEvents logs each watch's chapters found and downloaded, its result, the rate limits
