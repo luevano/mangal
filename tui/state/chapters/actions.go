@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
@@ -17,7 +18,7 @@ import (
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/tui/base"
 	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
-	"github.com/luevano/mangal/v5/tui/state/download"
+	"github.com/luevano/mangal/v5/tui/state/downloads"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/skratchdot/open-golang/open"
 )
@@ -125,7 +126,8 @@ func checkMetadata(manga mangadata.Manga, options libmangal.DownloadOptions) err
 }
 
 // download queues the download as a job (tui/jobs), it goes on in the background. A batch
-// opens its view; reading opens the reader when it's done, if this screen is shown.
+// stays here with a notice of how to see it; reading opens the reader when it's done, if
+// this screen is shown.
 func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
 	options := downloadOptions(msg.read)
 	if err := checkMetadata(s.manga, options); err != nil {
@@ -152,17 +154,31 @@ func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
 	case len(fresh) == 0:
 		return base.Notify("Those chapters are already being downloaded")
 	}
-	job := tuijobs.Download(s.client, s.manga, fresh, options, msg.read, s.Key())
+	batch := msg.item == nil && !msg.read
+	job := tuijobs.Download(s.client, s.manga, fresh, options, msg.read, s.Key(), batch)
 	if msg.read {
 		s.reading = job.ID
 		return nil
 	}
-	if msg.item == nil {
+	if batch {
 		// they're queued, the marks show them
 		s.unselectAll()
-		return func() tea.Msg { return download.New(job.ID) }
+		return base.NotifyWithDuration(batchNotice(job), batchNoticeDuration)
 	}
 	return nil
+}
+
+// batchNoticeDuration is long enough to read the hint.
+const batchNoticeDuration = 4 * time.Second
+
+// batchNotice says the batch is queued and how to open its view: the Downloads screen
+// selects the job just added.
+func batchNotice(job jobs.Job) string {
+	what := "Queued " + stringutil.Quantify(job.Total, "chapter", "chapters")
+	if job.Status == jobs.Queued && job.Behind != "" {
+		what += " behind " + job.Behind
+	}
+	return fmt.Sprintf("%s (%s downloads, %s opens it)", what, base.KeyDownloads.Help().Key, downloads.KeyOpen.Help().Key)
 }
 
 // onJobs refreshes the marks when a download of the manga is over, and opens the chapter

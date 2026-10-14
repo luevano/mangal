@@ -27,6 +27,12 @@ import (
 var (
 	mu      sync.Mutex
 	manager *jobs.Manager
+
+	// quiet are the jobs whose screen told the user they were added, the activity skips
+	// their added notice. quietMu is held across the Add, so the activity can't see the
+	// event before the id is here.
+	quietMu sync.Mutex
+	quiet   = map[int64]bool{}
 )
 
 // Start makes the process's manager, its jobs run with ctx; it's the TUI's base.Activity.
@@ -56,8 +62,9 @@ func SetManager(m *jobs.Manager) {
 }
 
 // Download adds the download of the chapters of the manga as a job: origin is the window
-// key of the screen that starts it. A desktop notification goes when it ends (notification.tui).
-func Download(c *libmangal.Client, manga mangadata.Manga, chapters []mangadata.Chapter, options libmangal.DownloadOptions, read bool, origin string) jobs.Job {
+// key of the screen that starts it, silent if it tells the user itself (no "downloading"
+// notice). A desktop notification goes when it ends (notification.tui).
+func Download(c *libmangal.Client, manga mangadata.Manga, chapters []mangadata.Chapter, options libmangal.DownloadOptions, read bool, origin string, silent bool) jobs.Job {
 	title := manga.String() + ": " + chaptersTitle(chapters)
 	spec := jobs.DownloadSpec(c, manga, chapters, options, title, origin)
 	spec.Read = read
@@ -78,7 +85,24 @@ func Download(c *libmangal.Client, manga mangadata.Manga, chapters []mangadata.C
 			log.Warn("send the notification: %s", err)
 		}
 	}
-	return Manager().Add(spec)
+	if !silent {
+		return Manager().Add(spec)
+	}
+	m := Manager()
+	quietMu.Lock()
+	defer quietMu.Unlock()
+	job := m.Add(spec)
+	quiet[job.ID] = true
+	return job
+}
+
+// silenced is whether the job's added notice is skipped (once).
+func silenced(id int64) bool {
+	quietMu.Lock()
+	defer quietMu.Unlock()
+	ok := quiet[id]
+	delete(quiet, id)
+	return ok
 }
 
 func chaptersTitle(chapters []mangadata.Chapter) string {
@@ -138,6 +162,9 @@ func (a *activity) Wait(ctx context.Context) tea.Msg {
 	for _, e := range events {
 		if e.Kind == jobs.EventFinished {
 			msg.Finished = append(msg.Finished, e.Job)
+		}
+		if e.Kind == jobs.EventAdded && silenced(e.Job.ID) {
+			continue
 		}
 		if n := Notice(e); n != "" {
 			notices = append(notices, n)

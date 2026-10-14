@@ -228,8 +228,9 @@ func (p *fakeProvider) String() string               { return "Fake" }
 func (p *fakeProvider) SetLogger(*logger.Logger)     {}
 func (p *fakeProvider) Close() error                 { return nil }
 
-// A download goes to the provider's queue (behind a job that has it): the batch opens its
-// view, the chapters are marked queued, a second download of them is refused.
+// A download goes to the provider's queue (behind a job that has it): the batch stays on
+// the chapters with a notice of how to open its view, the chapters are marked queued, a
+// second download of them is refused.
 func TestDownloadQueues(t *testing.T) {
 	m := jobs.New(context.Background())
 	tuijobs.SetManager(m)
@@ -261,12 +262,13 @@ func TestDownloadQueues(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = config.Download.Metadata.Strict.Set(old) })
 
-	cmd := s.Update(ctx, downloadMsg{chapters: list[:2]})
-	if cmd == nil {
-		t.Fatal("the batch didn't open its view")
+	got := base.Drain(s.Update(ctx, downloadMsg{chapters: list[:2]}))
+	if len(got) != 1 {
+		t.Fatalf("the batch sent %v, want a notice", got)
 	}
-	if view, ok := cmd().(base.Keyed); !ok || !strings.HasPrefix(view.Key(), "download/") {
-		t.Errorf("opened %#v, want the job's view", view)
+	want := "Queued 2 chapters behind check (" + base.KeyDownloads.Help().Key + " downloads, enter opens it)"
+	if n, ok := got[0].(base.NotificationWithDurationMsg); !ok || n.Message != want {
+		t.Errorf("the batch sent %#v, want the notice %q", got[0], want)
 	}
 	var job jobs.Job
 	for _, j := range m.Jobs() {
@@ -281,7 +283,7 @@ func TestDownloadQueues(t *testing.T) {
 	if !strings.Contains(items[0].Title(), icon.Queued.Colored()) || strings.Contains(items[2].Title(), icon.Queued.Colored()) {
 		t.Errorf("marks: %q, %q", items[0].Title(), items[2].Title())
 	}
-	got := base.Drain(s.Update(ctx, downloadMsg{item: items[0]}))
+	got = base.Drain(s.Update(ctx, downloadMsg{item: items[0]}))
 	if len(got) != 1 || !strings.Contains(fmt.Sprint(got[0]), "already being downloaded") {
 		t.Errorf("downloading it again: %v", got)
 	}

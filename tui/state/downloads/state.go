@@ -91,7 +91,13 @@ func ago(t time.Time) string {
 type state struct {
 	list.Screen
 	keys keyMap
+	// seen is the newest active job listed while shown: a newer one is selected when it's
+	// shown (again), it's the one the user just started
+	seen int64
 }
+
+// KeyOpen opens the selected job's view.
+var KeyOpen = util.Bind("open", "enter")
 
 type keyMap struct {
 	// cancel is the remove key on a finished job (the same key)
@@ -101,7 +107,7 @@ type keyMap struct {
 // New is the Downloads screen.
 func New() base.State {
 	s := &state{keys: keyMap{
-		open:        util.Bind("open", "enter"),
+		open:        KeyOpen,
 		origin:      base.KeyOrigin,
 		cancel:      base.KeyCancel,
 		retry:       base.KeyRetry,
@@ -111,7 +117,7 @@ func New() base.State {
 	}}
 	s.Screen = list.NewScreen(list.New(2, 1, "job", "jobs", []*item{}, func(i *item) _list.DefaultItem { return i }), s.keyMap)
 	s.Confirm = confirm.NewDialog(40, color.Warning)
-	s.setItems()
+	s.setItems(true)
 	return s
 }
 
@@ -148,13 +154,13 @@ func (s *state) Subtitle() string {
 }
 
 func (s *state) Init(context.Context) tea.Cmd {
-	return s.setItems()
+	return s.setItems(true)
 }
 
 // setItems lists the jobs: the active ones by queue (providers, in the order their first
 // job came; the running one first, then the queue in order), then the finished ones, the
-// latest first.
-func (s *state) setItems() tea.Cmd {
+// latest first. selectNew selects the newest active job if it's newer than the ones seen.
+func (s *state) setItems(selectNew bool) tea.Cmd {
 	all := tuijobs.Manager().Jobs()
 	order := map[string]int{}
 	var active, finished []*item
@@ -181,8 +187,19 @@ func (s *state) setItems() tea.Cmd {
 	for _, i := range append(active, finished...) {
 		items = append(items, i)
 	}
+	cmd := s.List.SetItemsKeep(items)
+	var newest int64
+	for _, j := range all {
+		if j.Status.Active() {
+			newest = max(newest, j.ID)
+		}
+	}
+	if selectNew && newest > s.seen {
+		s.List.SelectFunc(func(i _list.Item) bool { return i.(*item).job.ID == newest })
+	}
+	s.seen = max(s.seen, newest)
 	s.updateKeys()
-	return s.List.SetItemsKeep(items)
+	return cmd
 }
 
 // queuedRank puts the running (and waiting) job before the queued ones.
@@ -224,8 +241,10 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	}
 	m := tuijobs.Manager()
 	switch msg := msg.(type) {
-	case tuijobs.ChangedMsg, base.RestoredMsg:
-		return s.setItems()
+	case tuijobs.ChangedMsg:
+		return s.setItems(false)
+	case base.RestoredMsg:
+		return s.setItems(true)
 	case cancelAllMsg:
 		n := m.CancelAll()
 		return base.Notify("Cancelled " + stringutil.Quantify(n, "job", "jobs"))
@@ -259,7 +278,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return base.JumpTo(j.Origin)
 		case key.Matches(msg, k.cancel) && !j.Status.Active():
 			m.Remove(j.ID)
-			return s.setItems()
+			return s.setItems(false)
 		case key.Matches(msg, k.cancel):
 			if m.Cancel(j.ID) {
 				return base.Notify("Cancelling " + j.Title)
@@ -269,7 +288,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			if _, err := m.Retry(j.ID); err != nil {
 				return func() tea.Msg { return err }
 			}
-			return s.setItems()
+			return s.setItems(false)
 		case key.Matches(msg, k.clearQueue):
 			var cleared int
 			for _, p := range j.Providers {

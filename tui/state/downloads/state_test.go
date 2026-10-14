@@ -80,6 +80,10 @@ func TestGroupedByQueue(t *testing.T) {
 	ctx := context.Background()
 	s.Init(ctx)
 	s.Resize(base.Size{Width: 120, Height: 40})
+	if j, _ := s.selected(); j.Title != "D" {
+		t.Errorf("selected %q, want the newest active job", j.Title)
+	}
+	s.Update(ctx, press("g"))
 	want := []string{"A", "C", "B", "D", "old"}
 	if got := titles(s); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("order %q, want %q", got, want)
@@ -159,5 +163,33 @@ func TestKeys(t *testing.T) {
 		if c := base.KeyCollisions(s.keyMap(), s.List.KeyMap.Browsing()...); len(c) != 0 {
 			t.Errorf("finished %v: %q", finished, c)
 		}
+	}
+}
+
+// A job added while the screen isn't shown is selected when it's shown again: the batch the
+// user just started (the chapters' notice says Q, enter).
+func TestSelectsTheNewJob(t *testing.T) {
+	m := withManager(t)
+	m.Add(blocked(t, "A", "", "p"))
+	s := New().(*state)
+	ctx := context.Background()
+	s.Init(ctx)
+	m.Add(blocked(t, "B", "", "p"))
+	// shown: the cursor stays
+	s.Update(ctx, tuijobs.ChangedMsg{})
+	if j, _ := s.selected(); j.Title != "A" {
+		t.Errorf("selected %q while shown, want A", j.Title)
+	}
+	m.Add(blocked(t, "C", "", "q"))
+	s.Update(ctx, base.RestoredMsg{})
+	if j, _ := s.selected(); j.Title != "C" {
+		t.Errorf("selected %q, want the new job C", j.Title)
+	}
+	cmd := s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter did nothing")
+	}
+	if v, ok := cmd().(base.Keyed); !ok || !strings.HasPrefix(v.Key(), "download/") {
+		t.Errorf("enter opened %#v", v)
 	}
 }
