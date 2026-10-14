@@ -49,28 +49,13 @@ func newHistoryState(m watch.Manager, provider string) *historyState {
 		check:    base.KeyCheckProvider,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
-	s.remove = newRunRemover()
+	s.remove = newRunRemover(&s.Screen)
 	return s
 }
 
 func (s *historyState) keyMap() help.KeyMap {
 	s.check.SetEnabled(s.provider != "")
 	return util.KeyMap{Short: []key.Binding{s.open, s.next, s.check, s.library, s.refresh, s.remove.key}}
-}
-
-func (s *historyState) KeyMap() help.KeyMap { return s.remove.keyMap(s.Screen.KeyMap()) }
-func (s *historyState) Backable() bool      { return s.Screen.Backable() && !s.remove.confirm.Active() }
-func (s *historyState) Inputting() bool     { return s.Screen.Inputting() || s.remove.confirm.Active() }
-func (s *historyState) Resize(size base.Size) tea.Cmd {
-	s.remove.confirm.Resize(size)
-	return s.Screen.Resize(size)
-}
-
-func (s *historyState) View() string {
-	if s.remove.confirm.Active() {
-		return s.remove.confirm.View()
-	}
-	return s.List.View()
 }
 
 func (s *historyState) Key() string       { return "watch-history" }

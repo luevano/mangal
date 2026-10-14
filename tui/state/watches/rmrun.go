@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/client/watch"
@@ -16,14 +15,17 @@ import (
 )
 
 // runRemover deletes the selected check of a list of checks from the history: d then d
-// (or y), after a snapshot of the data db (U in the library undoes it).
+// (or y), after a snapshot of the data db (U in the library undoes it). It asks with the
+// list screen's Confirm.
 type runRemover struct {
 	confirm *confirm.Dialog
 	key     key.Binding
 }
 
-func newRunRemover() *runRemover {
-	return &runRemover{confirm: confirm.NewDialog(50, color.Warning), key: base.KeyDeleteRun}
+// newRunRemover sets the screen's Confirm, the remover asks with it.
+func newRunRemover(s *list.Screen) *runRemover {
+	s.Confirm = confirm.NewDialog(50, color.Warning)
+	return &runRemover{confirm: s.Confirm, key: base.KeyDeleteRun}
 }
 
 type (
@@ -34,14 +36,6 @@ type (
 		checkRunGone bool
 	}
 )
-
-// keyMap is the dialog's while it's up, else keys.
-func (rr *runRemover) keyMap(keys help.KeyMap) help.KeyMap {
-	if rr.confirm.Active() {
-		return rr.confirm.KeyMap()
-	}
-	return keys
-}
 
 // update handles the dialog's keys, d on the selected check and the removal; reload is
 // the screen's after it. Not handled: false.

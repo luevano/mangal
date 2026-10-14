@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,8 +92,11 @@ func TestMove(t *testing.T) {
 		t.Fatalf("a: %+v", chosen)
 	}
 	ms.Update(ctx, chosen)
-	if !ms.confirm.Active() || !strings.Contains(ms.View(), "title:") {
+	if !ms.Confirm.Active() || !strings.Contains(ms.View(), "title:") {
 		t.Fatalf("no confirmation of the full move:\n%s", ms.View())
+	}
+	if ms.Backable() || !ms.Inputting() || !strings.Contains(fmt.Sprint(ms.KeyMap().ShortHelp()), "no") {
+		t.Error("asking: esc, the keys and the help aren't the dialog's")
 	}
 	ms.Update(ctx, press("n"))
 
@@ -104,7 +108,7 @@ func TestMove(t *testing.T) {
 		t.Error("same title, still asked")
 	}
 	ms.Update(ctx, planned)
-	if !ms.confirm.Active() || !strings.Contains(ms.View(), "Weeb Central/Berserk") {
+	if !ms.Confirm.Active() || !strings.Contains(ms.View(), "Weeb Central/Berserk") {
 		t.Fatalf("no confirmation:\n%s", ms.View())
 	}
 	act, ok := ms.Update(ctx, press("y"))().(actionMsg)

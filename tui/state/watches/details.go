@@ -60,7 +60,7 @@ func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState 
 		relink:  base.KeyRelink,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
-	s.remove = newRunRemover()
+	s.remove = newRunRemover(&s.Screen)
 	return s
 }
 
@@ -68,10 +68,6 @@ func (s *detailsState) keyMap() help.KeyMap {
 	short := []key.Binding{s.open, s.live, s.edit, s.pause, s.library, s.history}
 	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, s.relink, s.refresh, s.remove.key)}}
 }
-
-func (s *detailsState) KeyMap() help.KeyMap { return s.remove.keyMap(s.Screen.KeyMap()) }
-func (s *detailsState) Backable() bool      { return s.Screen.Backable() && !s.remove.confirm.Active() }
-func (s *detailsState) Inputting() bool     { return s.Screen.Inputting() || s.remove.confirm.Active() }
 
 func (s *detailsState) Key() string       { return fmt.Sprintf("watch/%d", s.w.ID) }
 func (s *detailsState) Title() base.Title { return base.Title{Text: s.w.Title} }
@@ -93,10 +89,12 @@ func (s *detailsState) header() string {
 }
 
 func (s *detailsState) Resize(size base.Size) tea.Cmd {
-	s.remove.confirm.Resize(size)
 	s.size = size
 	size.Height = max(1, size.Height-lipgloss.Height(s.header())-1)
-	return s.Screen.Resize(size)
+	cmd := s.Screen.Resize(size)
+	// the dialog is over the whole screen, the header too
+	s.Confirm.Resize(s.size)
+	return cmd
 }
 
 func (s *detailsState) Init(ctx context.Context) tea.Cmd { return s.reload(ctx, "Loading the checks") }
@@ -183,8 +181,5 @@ func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 }
 
 func (s *detailsState) View() string {
-	if s.remove.confirm.Active() {
-		return s.remove.confirm.View()
-	}
-	return strings.Join([]string{s.header(), s.List.View()}, "\n")
+	return s.Host.View(func() string { return strings.Join([]string{s.header(), s.List.View()}, "\n") })
 }

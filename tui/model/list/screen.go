@@ -38,8 +38,8 @@ import (
 // Override any method that needs more (e.g. Inputting with a form open).
 type Screen struct {
 	List *Model
-	// Confirm is the screen's dialog, nil for none
-	Confirm *confirm.Dialog
+	// Host holds the screen's Confirm, nil for none
+	confirm.Host
 	// keys are the State's keys, shown before the list's
 	keys func() help.KeyMap
 }
@@ -49,33 +49,18 @@ func NewScreen(list *Model, keys func() help.KeyMap) Screen {
 	return Screen{List: list, keys: keys}
 }
 
-// Asking is true while the Confirm is shown.
-func (s *Screen) Asking() bool { return s.Confirm != nil && s.Confirm.Active() }
-
-// Answer gives a key msg to the Confirm while it's asking, ok is false when it isn't (the
-// msg is the State's).
-func (s *Screen) Answer(msg tea.Msg) (cmd tea.Cmd, ok bool) {
-	if msg, isKey := msg.(tea.KeyMsg); isKey && s.Asking() {
-		return s.Confirm.Update(msg), true
-	}
-	return nil, false
-}
-
 // Backable implements base.State: esc stops filtering first, or answers the Confirm.
-func (s *Screen) Backable() bool { return s.List.Unfiltered() && !s.Asking() }
+func (s *Screen) Backable() bool { return s.Host.Backable(s.List.Unfiltered()) }
 
 // Inputting implements base.State.
-func (s *Screen) Inputting() bool { return s.List.Filtering() || s.Asking() }
+func (s *Screen) Inputting() bool { return s.Host.Inputting(s.List.Filtering()) }
 
 // KeyMap implements base.State.
 func (s *Screen) KeyMap() help.KeyMap {
-	if s.Asking() {
-		return s.Confirm.KeyMap()
-	}
 	if s.keys == nil {
-		return s.List.KeyMap
+		return s.Host.KeyMap(s.List.KeyMap)
 	}
-	return base.CombinedKeyMap(s.keys(), s.List.KeyMap)
+	return s.Host.KeyMap(base.CombinedKeyMap(s.keys(), s.List.KeyMap))
 }
 
 // Subtitle implements base.State.
@@ -85,20 +70,10 @@ func (s *Screen) Subtitle() string { return s.List.Subtitle() }
 func (s *Screen) Status() string { return s.List.Status() }
 
 // Resize implements base.State.
-func (s *Screen) Resize(size base.Size) tea.Cmd {
-	if s.Confirm != nil {
-		s.Confirm.Resize(size)
-	}
-	return s.List.Resize(size)
-}
+func (s *Screen) Resize(size base.Size) tea.Cmd { return s.Host.Resize(size, s.List.Resize) }
 
 // Init implements base.State.
 func (s *Screen) Init(context.Context) tea.Cmd { return nil }
 
 // View implements base.State.
-func (s *Screen) View() string {
-	if s.Asking() {
-		return s.Confirm.View()
-	}
-	return s.List.View()
-}
+func (s *Screen) View() string { return s.Host.View(s.List.View) }

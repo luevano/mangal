@@ -202,7 +202,7 @@ func TestMirrors(t *testing.T) {
 
 	// the cursor is on mango-b, remove mango-a: d asks first (MT-B1)
 	press(s, "k", "d")
-	if !s.confirm.Active() || len(mconfig.Providers.Mirrors.Get()) != 2 {
+	if !s.Confirm.Active() || len(mconfig.Providers.Mirrors.Get()) != 2 {
 		t.Fatal("d removed without asking")
 	}
 	yes := s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})

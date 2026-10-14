@@ -198,27 +198,12 @@ func newRunState(m watch.Manager, id int64) *runState {
 		library: base.KeyLibraryManga,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "watch", "watches", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
-	s.remove = newRunRemover()
+	s.remove = newRunRemover(&s.Screen)
 	return s
 }
 
 func (s *runState) keyMap() help.KeyMap {
 	return util.KeyMap{Short: []key.Binding{s.open, s.library, s.history, s.remove.key}}
-}
-
-func (s *runState) KeyMap() help.KeyMap { return s.remove.keyMap(s.Screen.KeyMap()) }
-func (s *runState) Backable() bool      { return s.Screen.Backable() && !s.remove.confirm.Active() }
-func (s *runState) Inputting() bool     { return s.Screen.Inputting() || s.remove.confirm.Active() }
-func (s *runState) Resize(size base.Size) tea.Cmd {
-	s.remove.confirm.Resize(size)
-	return s.Screen.Resize(size)
-}
-
-func (s *runState) View() string {
-	if s.remove.confirm.Active() {
-		return s.remove.confirm.View()
-	}
-	return s.List.View()
 }
 
 func (s *runState) Key() string { return fmt.Sprintf("watch-run/%d", s.id) }

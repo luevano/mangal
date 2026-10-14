@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -50,8 +51,8 @@ var _ base.State = (*moveState)(nil)
 // what the move does, yes does it and goes back to the library.
 type moveState struct {
 	*pick.Manga
-	manga   storage.Manga
-	confirm *confirm.Dialog
+	confirm.Host
+	manga storage.Manga
 }
 
 // movePlannedMsg is the planned move, and the full one (adopting the new title) when the
@@ -70,7 +71,7 @@ type moveChosenMsg struct {
 }
 
 func newMoveState(m storage.Manga, provider string) *moveState {
-	s := &moveState{manga: m, confirm: confirm.NewDialog(72, color.Warning)}
+	s := &moveState{manga: m, Host: confirm.NewHost(72, color.Warning)}
 	s.Manga = pick.NewManga(pick.MangaOptions{
 		Title:    "Move " + m.Title,
 		Provider: provider,
@@ -98,17 +99,15 @@ func newMoveState(m storage.Manga, provider string) *moveState {
 
 func (s *moveState) Key() string { return fmt.Sprintf("library-move/%d", s.manga.ID) }
 
-func (s *moveState) Backable() bool  { return s.Manga.Backable() && !s.confirm.Active() }
-func (s *moveState) Inputting() bool { return s.Manga.Inputting() || s.confirm.Active() }
-
-func (s *moveState) Resize(size base.Size) tea.Cmd {
-	s.confirm.Resize(size)
-	return s.Manga.Resize(size)
-}
+func (s *moveState) Backable() bool                { return s.Host.Backable(s.Manga.Backable()) }
+func (s *moveState) Inputting() bool               { return s.Host.Inputting(s.Manga.Inputting()) }
+func (s *moveState) KeyMap() help.KeyMap           { return s.Host.KeyMap(s.Manga.KeyMap()) }
+func (s *moveState) Resize(size base.Size) tea.Cmd { return s.Host.Resize(size, s.Manga.Resize) }
+func (s *moveState) View() string                  { return s.Host.View(s.Manga.View) }
 
 func (s *moveState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && s.confirm.Active() {
-		return s.confirm.Update(msg)
+	if cmd, ok := s.Answer(msg); ok {
+		return cmd
 	}
 	switch msg := msg.(type) {
 	case movePlannedMsg:
@@ -195,22 +194,15 @@ func (s *moveState) askTitle(msg movePlannedMsg) {
 	} else {
 		lines = append(lines, "can't adopt it: "+msg.fullErr.Error())
 	}
-	s.confirm.Choose("Library title", strings.Join(lines, "\n"), s.View(), choices...)
+	s.Confirm.Choose("Library title", strings.Join(lines, "\n"), s.View(), choices...)
 }
 
 func (s *moveState) askMove(mover library.Mover, plan library.MovePlan) {
-	s.confirm.Ask("Move", strings.Join(plan.Lines(), "\n"), s.View(), action("Moving "+plan.Manga.Title, func() (string, error) {
+	s.Confirm.Ask("Move", strings.Join(plan.Lines(), "\n"), s.View(), action("Moving "+plan.Manga.Title, func() (string, error) {
 		summary := fmt.Sprintf("move %d %q to %s %s", plan.Manga.ID, plan.Manga.Title, plan.Provider.ID, plan.To.ID)
 		return journaled("move", summary, fmt.Sprintf("moved %s to %s (%s)", plan.Manga.Title, plan.Provider.ID, plan.To.Title), func(j library.Journal) error {
 			mover.Journal = j
 			return mover.ApplyMove(plan)
 		})
 	}))
-}
-
-func (s *moveState) View() string {
-	if s.confirm.Active() {
-		return s.confirm.View()
-	}
-	return s.Manga.View()
 }
