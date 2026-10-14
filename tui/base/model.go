@@ -32,6 +32,9 @@ type model struct {
 	forward []State
 	// switcher is the window switcher while it's open
 	switcher *switcher
+	// aheadAsk is the new window waiting for the windows ahead to be closed, nil when not
+	// asking
+	aheadAsk State
 	// quitAsk is what quitting would cancel while it asks, nil when it doesn't
 	quitAsk []string
 	// activity is the background work (downloads, checks), nil without
@@ -114,6 +117,10 @@ func (m *model) newCtx() {
 // background work to stop.
 func (m *model) shutdown(timeout time.Duration) {
 	m.rootCancel()
+	if m.aheadAsk != nil {
+		destroy(m.aheadAsk)
+		m.aheadAsk = nil
+	}
 	m.dropForward()
 	destroy(m.state)
 	for m.history.Size() > 0 {

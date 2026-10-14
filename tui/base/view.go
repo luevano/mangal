@@ -124,6 +124,8 @@ func (m *model) viewState() string {
 	switch {
 	case m.quitAsk != nil:
 		return m.viewQuitAsk(view)
+	case m.aheadAsk != nil:
+		return m.viewAheadAsk(view)
 	case m.switcher != nil:
 		return m.viewSwitcher(view)
 	}
@@ -134,6 +136,8 @@ func (m *model) viewFooter() string {
 	switch {
 	case m.quitAsk != nil:
 		return m.styles.footer.Render(m.help.View(util.KeyMap{Short: []key.Binding{quitYes, quitNo}}))
+	case m.aheadAsk != nil:
+		return m.styles.footer.Render(m.help.View(util.KeyMap{Short: []key.Binding{aheadYes, aheadNo}}))
 	case m.switcher != nil:
 		return m.styles.footer.Render(m.help.View(m.switcherKeyMap()))
 	}

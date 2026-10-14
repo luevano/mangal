@@ -164,3 +164,31 @@ func (m *model) viewSwitcher(behind string) string {
 	}
 	return m.dialog(b.String(), color.Accent, behind)
 }
+
+var (
+	aheadYes = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "close them"))
+	aheadNo  = key.NewBinding(key.WithKeys("n", "esc"), key.WithHelp("n/esc", "cancel"))
+)
+
+func (m *model) answerAhead(msg tea.KeyMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, m.keyMap.quit):
+		return m.quit()
+	case key.Matches(msg, aheadYes):
+		state := m.aheadAsk
+		m.aheadAsk = nil
+		return m.pushNew(state)
+	case key.Matches(msg, aheadNo):
+		destroy(m.aheadAsk)
+		m.aheadAsk = nil
+	}
+	return nil
+}
+
+func (m *model) viewAheadAsk(behind string) string {
+	n := len(m.forward)
+	text := style.Bold.Accent.Render("Close "+stringutil.Quantify(n, "window", "windows")+" ahead?") +
+		"\n" + m.aheadAsk.Title().Text + " opens over " + m.state.Title().Text +
+		"\n\n" + aheadYes.Help().Key + " close them and open it · " + aheadNo.Help().Key + " cancel"
+	return m.dialog(text, color.Warning, behind)
+}

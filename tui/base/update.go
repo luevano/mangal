@@ -114,6 +114,9 @@ func (m *model) updateKey(msg tea.KeyMsg) tea.Cmd {
 	if m.quitAsk != nil {
 		return m.answerQuit(msg)
 	}
+	if m.aheadAsk != nil {
+		return m.answerAhead(msg)
+	}
 	if m.switcher != nil {
 		return m.updateSwitcher(msg)
 	}
@@ -215,7 +218,8 @@ func (m *model) restore(request State) tea.Cmd {
 
 // pushState shows state, the shown one goes to the history. The same window (Keyed, or
 // the same instance) open anywhere (history, shown, ahead) is shown instead, with state as
-// the request: no window is open twice. A new window drops the windows ahead.
+// the request: no window is open twice. A new window while there are windows ahead asks
+// first (aheadAsk): yes closes them and shows it, no drops it.
 func (m *model) pushState(state State) tea.Cmd {
 	key := keyOf(state)
 	for i, s := range m.windows() {
@@ -223,7 +227,21 @@ func (m *model) pushState(state State) tea.Cmd {
 			return m.jump(i, state)
 		}
 	}
+	if len(m.forward) > 0 {
+		if m.aheadAsk != nil && m.aheadAsk != state {
+			destroy(m.aheadAsk)
+		}
+		m.aheadAsk = state
+		if m.inViewport {
+			return m.hideViewport()
+		}
+		return nil
+	}
+	return m.pushNew(state)
+}
 
+// pushNew shows state, a new window, the windows ahead are closed.
+func (m *model) pushNew(state State) tea.Cmd {
 	log.Debug("tui: show %q", state.Title().Text)
 	var notice tea.Cmd
 	if n := m.dropForward(); n > 0 {

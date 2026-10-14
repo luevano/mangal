@@ -96,18 +96,72 @@ func TestPushOfWindowAheadJumpsForward(t *testing.T) {
 	}
 }
 
-func TestNewWindowDropsWindowsAhead(t *testing.T) {
+func TestNewWindowAsksToCloseWindowsAhead(t *testing.T) {
 	m, w := chain(t)
 	m.Update(JumpTo("library")())
 	checkTitles(t, m, "Home", "Library")
-	_, cmd := m.Update(State(keyed("Trash", "trash")))
+	trash := keyed("Trash", "trash")
+	if _, cmd := m.Update(State(trash)); cmd != nil || m.aheadAsk == nil {
+		t.Fatal("a new window opened without asking")
+	}
+	checkTitles(t, m, "Home", "Library")
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "Close 2 windows ahead?") {
+		t.Errorf("no question:\n%s", view)
+	}
+	// other keys don't reach the state
+	press(m, keyMsg("x"))
+	if w[1].received(keyMsg("x")) {
+		t.Error("a key went to the state while asking")
+	}
+
+	// no: nothing changes, the new window is dropped
+	press(m, keyMsg("n"))
+	checkTitles(t, m, "Home", "Library")
+	if m.aheadAsk != nil || len(m.forward) != 2 || w[2].destroyed || w[3].destroyed {
+		t.Error("no didn't keep the windows ahead")
+	}
+	if !trash.destroyed || trash.ctx != nil {
+		t.Error("the cancelled window was shown or kept")
+	}
+
+	// esc cancels too
+	m.Update(State(keyed("Trash", "trash")))
+	press(m, tea.KeyMsg{Type: tea.KeyEsc})
+	checkTitles(t, m, "Home", "Library")
+	if m.aheadAsk != nil || len(m.forward) != 2 {
+		t.Error("esc didn't cancel")
+	}
+
+	// yes: they're closed and the new one opens
+	trash = keyed("Trash", "trash")
+	m.Update(State(trash))
+	cmd := press(m, keyMsg("y"))
 	checkTitles(t, m, "Home", "Library", "Trash")
-	if !w[2].destroyed || !w[3].destroyed || len(m.forward) != 0 {
+	if !w[2].destroyed || !w[3].destroyed || len(m.forward) != 0 || m.aheadAsk != nil {
 		t.Error("the windows ahead weren't closed")
+	}
+	if trash.ctx == nil {
+		t.Error("the new window wasn't initialized")
 	}
 	if !containsNotification(cmd, "Closed 2 windows ahead") {
 		t.Error("no notice of the closed windows")
 	}
+
+	// nothing ahead: no question
+	if m.Update(State(keyed("Watches", "watches"))); m.aheadAsk != nil {
+		t.Error("asked without windows ahead")
+	}
+	checkTitles(t, m, "Home", "Library", "Trash", "Watches")
+}
+
+func TestOpenWindowAheadDoesntAsk(t *testing.T) {
+	m, _ := chain(t)
+	m.Update(JumpTo("library")())
+	m.Update(State(keyed("Chapters again", "chapters/p/1")))
+	if m.aheadAsk != nil {
+		t.Error("asked for a window that's open")
+	}
+	checkTitles(t, m, "Home", "Library", "Manga", "Chapters")
 }
 
 func TestBackClosesWindowsAhead(t *testing.T) {
