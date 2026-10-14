@@ -9,6 +9,7 @@ import (
 	configwindow "github.com/luevano/mangal/v5/tui/state/config"
 	"github.com/luevano/mangal/v5/tui/state/downloads"
 	"github.com/luevano/mangal/v5/tui/state/home"
+	"github.com/luevano/mangal/v5/tui/state/logs"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
@@ -20,6 +21,7 @@ func Run(ctx context.Context) error {
 	}
 	base.NewConfigWindow = configwindow.New
 	base.NewDownloads = downloads.New
+	base.NewLogs = logs.New
 	base.CurrentActivity = jobs.Start(ctx)
 	return base.Run(ctx, home.New(), notices...)
 }

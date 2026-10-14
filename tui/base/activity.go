@@ -38,6 +38,9 @@ var CurrentActivity Activity
 // NewDownloads makes the Downloads screen (set by the tui package), nil disables its key.
 var NewDownloads func() State
 
+// NewLogs makes the Logs screen (set by the tui package), nil shows the recent lines.
+var NewLogs func() State
+
 // noticeDuration is how long an Activity notice is shown.
 const noticeDuration = 4 * time.Second
 

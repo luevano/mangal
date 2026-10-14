@@ -98,6 +98,10 @@ var (
 	KeyGroupByProvider = util.Bind("group by provider", "alt+o")
 	KeyNeedsRelink     = util.Bind("needs re-link only", "N")
 	KeyNotInLibrary    = util.Bind("not in library only", "I")
+	// the log viewer's: n and N are taken (new login, needs re-link)
+	KeyNextMatch = util.Bind("next match", "ctrl+n")
+	KeyPrevMatch = util.Bind("previous match", "ctrl+p")
+	KeyLevel     = util.Bind("level", "tab")
 
 	// the health screen's: a and A are select all and bindings (old)
 	KeyApplyFix = util.Bind("apply fix", "x")
@@ -132,7 +136,7 @@ var keyConcepts = map[string][]string{
 	// clear
 	"backspace": {"close all", "unselect all", "reset to default", "clear its queue"},
 	" ":         {"toggle", "change", "on/off"},
-	"tab":       {"next provider", "provider", "next"},
+	"tab":       {"next provider", "provider", "next", "level"},
 	"n":         {"new login", "add"},
 	"e":         {"edit", "API client"},
 	// look for new chapters: on the provider (a watch), in the folders (the library)
@@ -156,7 +160,7 @@ func Keys() (old, newer []key.Binding) {
 		KeyUndo, KeyDuplicates, KeyBackups, KeyCheck, KeyCheckDue, KeyCheckProvider, KeyFillGaps, KeyPause,
 		KeyPauseProvider, KeyStopWatching, KeyDeleteRun, KeyRelink, KeyLiveLog, KeyLiveChecks, KeyRuns,
 		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,
-		KeyNotInLibrary, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
+		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
 	}
 }
 

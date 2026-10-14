@@ -310,3 +310,15 @@ func TestDownloadsKey(t *testing.T) {
 	press(m, ctrlW(), keyMsg("k"), tea.KeyMsg{Type: tea.KeyEnter}, keyMsg("Q"))
 	checkTitles(t, m, "Home", "Library", "Manga", "Chapters", "Downloads")
 }
+
+func TestLogsKey(t *testing.T) {
+	old := NewLogs
+	NewLogs = func() State { return keyed("Logs", "logs") }
+	t.Cleanup(func() { NewLogs = old })
+	m, _ := chain(t)
+	press(m, tea.KeyMsg{Type: tea.KeyCtrlL})
+	checkTitles(t, m, "Home", "Library", "Manga", "Chapters", "Logs")
+	if m.inViewport {
+		t.Error("ctrl+l shows the recent lines")
+	}
+}

@@ -142,7 +142,10 @@ func (m *model) updateKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keyMap.home):
 		return BackToHome
 	case key.Matches(msg, m.keyMap.log):
-		return Viewport("Logs", log.Lines(), color.Viewport)
+		if NewLogs == nil || m.standalone {
+			return Viewport("Logs", log.Lines(), color.Viewport)
+		}
+		return m.pushState(NewLogs())
 	case key.Matches(msg, m.keyMap.windows):
 		m.openSwitcher()
 		return nil

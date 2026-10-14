@@ -18,7 +18,7 @@ func newKeyMap() *keyMap {
 		back:      util.Bind("back", "esc"),
 		home:      util.Bind("home", "H"),
 		help:      util.Bind("help", "?"),
-		log:       util.Bind("log", "ctrl+l"),
+		log:       util.Bind("logs", "ctrl+l"),
 		config:    util.Bind("config", ","),
 		configFix: util.Bind("change it", "e"),
 		downloads: KeyDownloads,
