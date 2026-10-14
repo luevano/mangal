@@ -12,6 +12,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/disgoorg/disgo v0.19.6
+	github.com/dustin/go-humanize v1.0.1
 	github.com/getkin/kin-openapi v0.150.0
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/itchyny/gojq v0.12.19
@@ -73,7 +74,6 @@ require (
 	github.com/disgoorg/snowflake/v2 v2.0.3 // indirect
 	github.com/dmarkham/enumer v1.7.2 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fatih/color v1.18.0 // indirect
