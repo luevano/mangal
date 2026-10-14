@@ -6,8 +6,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/luevano/libmangal"
+	"github.com/luevano/luaprovider"
+	luahttp "github.com/luevano/luaprovider/lib/http"
 )
 
 func TestWithBundleID(t *testing.T) {
@@ -72,5 +75,28 @@ func TestGetLoaderBundlesSkipsBroken(t *testing.T) {
 
 	if _, _, err := getLoaderBundles("", filepath.Join(dir, "missing")); err == nil {
 		t.Error("no error for a missing dir")
+	}
+}
+
+func TestLuaRateLimits(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "mangal.toml"), []byte("type = \"lua\"\nid = \"limited\"\nname = \"Limited\"\nversion = \"0.1.0\"\nrate_limits = [{ rate = \"1/2s\", match = \"site.example\" }]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte("function SearchMangas(q) return {} end"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var got []luahttp.RateLimit
+	old := newLuaLoader
+	t.Cleanup(func() { newLuaLoader = old })
+	newLuaLoader = func(script []byte, info libmangal.ProviderInfo, options luaprovider.Options) (libmangal.ProviderLoader, error) {
+		got = options.RateLimits
+		return old(script, info, options)
+	}
+	if _, _, err := getLoaders("", dir); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Permits != 1 || got[0].Period != 2*time.Second || got[0].Match != "site.example" {
+		t.Errorf("rate limits %+v", got)
 	}
 }

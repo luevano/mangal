@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/luevano/libmangal"
 )
@@ -148,5 +149,49 @@ func TestEncode(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestNewRateLimits(t *testing.T) {
+	toml := `
+type = "lua"
+id = "weebcentral"
+rate_limits = [
+	{ rate = "1/2s", match = "weebcentral.com", burst = 2 },
+	{ rate = "5/s" },
+]
+`
+	got, err := New(strings.NewReader(toml))
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits, err := got.LuaRateLimits()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(limits) != 2 || limits[0].Permits != 1 || limits[0].Period != 2*time.Second || limits[0].Match != "weebcentral.com" || limits[0].Burst != 2 ||
+		limits[1].Permits != 5 || limits[1].Period != time.Second || limits[1].Match != "" {
+		t.Errorf("limits %+v", limits)
+	}
+
+	var sb strings.Builder
+	if err := got.Encode(&sb); err != nil {
+		t.Fatal(err)
+	}
+	again, err := New(strings.NewReader(sb.String()))
+	if err != nil || !reflect.DeepEqual(again.RateLimits, got.RateLimits) {
+		t.Errorf("round trip %+v %v:\n%s", again.RateLimits, err, sb.String())
+	}
+
+	for _, bad := range []string{
+		"type = \"lua\"\nid = \"x\"\nrate_limits = [{ rate = \"often\" }]\n",
+		"type = \"lua\"\nid = \"x\"\nrate_limits = [{ rate = \"1/s\", burst = -1 }]\n",
+		"type = \"lua\"\nid = \"x\"\nrate_limits = [{ rate = \"1/s\", match = \"/api\" }]\n",
+		"type = \"lua\"\nid = \"x\"\nrate_limits = [{ rate = \"1/s\", typo = 1 }]\n",
+		"type = \"bundle\"\nid = \"x\"\nrate_limits = [{ rate = \"1/s\" }]\n",
+	} {
+		if _, err := New(strings.NewReader(bad)); err == nil {
+			t.Errorf("no error for\n%s", bad)
+		}
 	}
 }

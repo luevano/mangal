@@ -9,12 +9,16 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/luaprovider"
+	luahttp "github.com/luevano/luaprovider/lib/http"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/info"
 	"github.com/luevano/mangal/v5/util/afs"
 )
 
 const mainLua = "main.lua"
+
+// newLuaLoader is luaprovider.NewLoader, swapped in tests.
+var newLuaLoader = luaprovider.NewLoader
 
 // LuaLoaders are the Lua providers in the providers dir. A provider that can't be loaded
 // is skipped, its error is in problems.
@@ -87,7 +91,11 @@ func getLoaders(bundleID, dir string) ([]libmangal.ProviderLoader, []error, erro
 
 	switch providerInfo.Type {
 	case info.TypeLua:
-		loader, err := newLoader(providerInfo.ProviderInfo, dir)
+		limits, err := providerInfo.LuaRateLimits()
+		if err != nil {
+			return nil, nil, err
+		}
+		loader, err := newLoader(providerInfo.ProviderInfo, dir, limits)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -99,7 +107,7 @@ func getLoaders(bundleID, dir string) ([]libmangal.ProviderLoader, []error, erro
 	}
 }
 
-func newLoader(info libmangal.ProviderInfo, dir string) (libmangal.ProviderLoader, error) {
+func newLoader(info libmangal.ProviderInfo, dir string, limits []luahttp.RateLimit) (libmangal.ProviderLoader, error) {
 	script, err := afs.Afero.ReadFile(filepath.Join(dir, mainLua))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("%s is missing", mainLua)
@@ -108,7 +116,9 @@ func newLoader(info libmangal.ProviderInfo, dir string) (libmangal.ProviderLoade
 		return nil, err
 	}
 
-	loader, err := luaprovider.NewLoader(script, info, LuaOptions(dir))
+	options := LuaOptions(dir)
+	options.RateLimits = limits
+	loader, err := newLuaLoader(script, info, options)
 	if err != nil {
 		return nil, fmt.Errorf("load %s: %w", mainLua, err)
 	}
