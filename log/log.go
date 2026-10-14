@@ -1,12 +1,11 @@
-// Package log is mangal's log: a file per day in the state dir and the recent lines for the
-// TUI (ctrl+l). Lines logged before Init only go to the recent lines.
+// Package log is mangal's log: rotated files in the state dir (several processes write
+// them at once, see Options), the recent lines for the TUI and reading the files back
+// (Files, Scan, Tail). Lines logged before Init only go to the recent lines.
 package log
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -34,14 +33,34 @@ func (l Level) String() string {
 	}
 }
 
+// ParseLevel is the Level of its name, any case.
+func ParseLevel(s string) (Level, error) {
+	for _, l := range []Level{LevelDebug, LevelInfo, LevelWarn, LevelError} {
+		if strings.EqualFold(s, l.String()) {
+			return l, nil
+		}
+	}
+	return LevelInfo, fmt.Errorf("%q isn't a level (debug, info, warn, error)", s)
+}
+
 // Options of Init.
 type Options struct {
 	// Dir of the log files, none are written if empty.
 	Dir string
 	// Level is the lowest level logged.
 	Level Level
+	// Rotate is the period of a file.
+	Rotate Period
+	// MaxSize starts the next segment of the period once a file has this many bytes, 0
+	// for no limit.
+	MaxSize int64
 	// Keep is how many days of files are kept (today's included), 0 for all.
 	Keep int
+	// MaxFiles and MaxTotalSize delete the oldest closed files beyond them, 0 for no limit.
+	MaxFiles     int
+	MaxTotalSize int64
+	// Compress gzips the closed files.
+	Compress bool
 }
 
 // maxLines is how many recent lines are kept for Lines.
@@ -51,42 +70,72 @@ var (
 	mu      sync.Mutex
 	options = Options{Level: LevelInfo}
 	file    *os.File
-	// fileDay is the date of file, a line of another day opens that day's
-	fileDay string
+	// fileStamp and fileSegment are file's period and segment, a line of another period
+	// opens that one's
+	fileStamp   string
+	fileSegment int
 	// fileErr disables the file after it couldn't be opened
-	fileErr error
-	ring    [maxLines]string
-	next    int
-	full    bool
+	fileErr  error
+	ring     [maxLines]string
+	next     int
+	ringFull bool
+
+	// maintaining is set while maintenance runs, again asks for another run after it
+	maintaining, again bool
+	againAt            time.Time
+	maintenance        sync.WaitGroup
 
 	// now is swapped in tests
 	now = time.Now
 )
 
-// Init sets where and what to log. The file is created on the first line, in Dir
-// (0700) as <date>.log (0600); a line of the next day goes to that day's file (a long
-// mangal serve), and the files older than Keep days are deleted then.
+// Init sets where and what to log. The file is created on the first line, in Dir (0700),
+// as <period>.log (0600), see Options; a line of the next period goes to that period's file
+// (a long mangal serve), and the closed files are compressed and deleted (as Options say)
+// in the background when a new one is opened.
 func Init(opts Options) {
 	mu.Lock()
-	defer mu.Unlock()
-	if file != nil {
-		file.Close()
-		file = nil
-	}
+	closeFile()
 	fileErr = nil
 	options = opts
+	mu.Unlock()
+	maintenance.Wait()
 }
 
-// Close closes the log file, if open.
+// Close closes the log file, if open, and waits for the maintenance.
 func Close() error {
 	mu.Lock()
-	defer mu.Unlock()
+	err := closeFile()
+	mu.Unlock()
+	maintenance.Wait()
+	return err
+}
+
+// closeFile is called with mu held.
+func closeFile() error {
 	if file == nil {
 		return nil
 	}
 	err := file.Close()
 	file = nil
 	return err
+}
+
+// Dir is the dir of the log files, empty if none.
+func Dir() string {
+	mu.Lock()
+	defer mu.Unlock()
+	return options.Dir
+}
+
+// Current is the path of the file this process writes, empty if none yet.
+func Current() string {
+	mu.Lock()
+	defer mu.Unlock()
+	if file == nil {
+		return ""
+	}
+	return file.Name()
 }
 
 func Debug(format string, a ...any) { logf(LevelDebug, format, a...) }
@@ -111,7 +160,7 @@ func logf(level Level, format string, a ...any) {
 	ring[next] = fmt.Sprintf("[%s] %s%s", now.Format(time.TimeOnly), prefix, msg)
 	next = (next + 1) % maxLines
 	if next == 0 {
-		full = true
+		ringFull = true
 	}
 
 	if f := openFile(now); f != nil {
@@ -119,33 +168,66 @@ func logf(level Level, format string, a ...any) {
 	}
 }
 
-// openFile returns the log file of now's day, opening it on its first line. Called with mu
-// held.
+// openFile returns the file to write a line of now to: the one of now's period, the next
+// segment when it's full. Called with mu held.
 func openFile(now time.Time) *os.File {
-	day := now.Format(time.DateOnly)
-	if file != nil && day != fileDay {
-		file.Close()
-		file = nil
+	if options.Dir == "" || fileErr != nil {
+		return nil
 	}
-	if file != nil || fileErr != nil || options.Dir == "" {
+	stamp := options.Rotate.stamp(now)
+	from := 0
+	if file != nil && stamp != fileStamp {
+		closeFile()
+	}
+	if file != nil && options.MaxSize > 0 && full(file, options.MaxSize) {
+		from = fileSegment + 1
+		closeFile()
+	}
+	if file != nil {
 		return file
 	}
 	if err := os.MkdirAll(options.Dir, 0o700); err != nil {
 		fileErr = err
 		return nil
 	}
-	name := filepath.Join(options.Dir, day+".log")
-	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	f, segment, err := openSegment(options.Dir, stamp, from, options.MaxSize)
 	if err != nil {
 		fileErr = err
 		ringLine(now, "ERROR log file: "+err.Error())
 		return nil
 	}
-	file, fileDay = f, day
-	if err := prune(options.Dir, now, options.Keep); err != nil {
-		ringLine(now, "ERROR delete old log files: "+err.Error())
-	}
+	file, fileStamp, fileSegment = f, stamp, segment
+	startMaintenance(now)
 	return file
+}
+
+// startMaintenance compresses and deletes the closed files (as of at) in the background,
+// once at a time. Called with mu held.
+func startMaintenance(at time.Time) {
+	if maintaining {
+		again, againAt = true, at
+		return
+	}
+	maintaining = true
+	opts := options
+	maintenance.Add(1)
+	go func() {
+		defer maintenance.Done()
+		for {
+			err := maintain(opts.Dir, at, opts)
+			mu.Lock()
+			if err != nil {
+				ringLine(at, "ERROR log files: "+err.Error())
+			}
+			if !again {
+				maintaining = false
+				mu.Unlock()
+				return
+			}
+			again, at, opts = false, againAt, options
+			mu.Unlock()
+		}
+	}()
 }
 
 // ringLine adds a line about the log itself, so it shows in the TUI logs. Called with mu
@@ -154,37 +236,8 @@ func ringLine(now time.Time, line string) {
 	ring[next] = fmt.Sprintf("[%s] %s", now.Format(time.TimeOnly), line)
 	next = (next + 1) % maxLines
 	if next == 0 {
-		full = true
+		ringFull = true
 	}
-}
-
-// prune deletes the <date>.log files of dir older than keep days before now's (0 keeps
-// them all).
-func prune(dir string, now time.Time, keep int) error {
-	if keep <= 0 {
-		return nil
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	y, m, d := now.Date()
-	oldest := time.Date(y, m, d-keep+1, 0, 0, 0, 0, time.UTC)
-	var errs []error
-	for _, e := range entries {
-		date, ok := strings.CutSuffix(e.Name(), ".log")
-		if !ok || e.IsDir() {
-			continue
-		}
-		t, err := time.Parse(time.DateOnly, date)
-		if err != nil || !t.Before(oldest) {
-			continue
-		}
-		if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
 }
 
 // Lines are the recent lines, oldest first.
@@ -193,7 +246,7 @@ func Lines() string {
 	defer mu.Unlock()
 	var sb strings.Builder
 	start, n := 0, next
-	if full {
+	if ringFull {
 		start, n = next, maxLines
 	}
 	for i := range n {

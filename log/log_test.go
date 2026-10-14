@@ -14,7 +14,7 @@ import (
 func reset(t *testing.T, opts Options) {
 	t.Helper()
 	Init(opts)
-	next, full = 0, false
+	next, ringFull = 0, false
 	t.Cleanup(func() { Close(); Init(Options{Level: LevelInfo}) })
 }
 
