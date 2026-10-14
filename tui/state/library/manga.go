@@ -197,12 +197,12 @@ func (s *mangaState) reload(ctx context.Context) tea.Cmd {
 func (s *mangaState) scanCmd(ctx context.Context) tea.Cmd {
 	files, manga := s.files, s.manga
 	providerDirs := config.Download.Provider.CreateDir.Get()
-	return base.Load(ctx, "", func(context.Context) (mangaScannedMsg, error) {
+	return base.LoadWithStatus(ctx, "", func(_ context.Context, status func(string)) (mangaScannedMsg, error) {
 		root, err := path.ExistingDownloads()
 		if err != nil {
 			return mangaScannedMsg{}, err
 		}
-		scanner := library.Scanner{FS: files.FS, Library: files.Library}
+		scanner := library.Scanner{FS: files.FS, Library: files.Library, OnProgress: func(p library.Progress) { status(p.String()) }}
 		res, err := scanner.ScanManga(manga, root, providerDirs)
 		if err != nil {
 			return mangaScannedMsg{}, err

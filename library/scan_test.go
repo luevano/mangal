@@ -99,12 +99,18 @@ func TestScanManga(t *testing.T) {
 	touch(t, filepath.Join(folder, "no number.cbz"))
 
 	m, _, _ := library.MangaByFolder(root, "Berserk")
+	var phases []string
+	scanner.OnProgress = func(p Progress) { phases = append(phases, p.String()) }
 	res, err := scanner.ScanManga(m, root, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Moved != 1 || res.Removed != 1 || res.Added != 1 || len(res.Unrecognized) != 1 {
 		t.Errorf("got %+v", res)
+	}
+	if want := []string{"reading the chapter files (Berserk)", "checking the recorded chapters: 1/3 (Berserk)", "checking the recorded chapters: 2/3 (Berserk)",
+		"checking the recorded chapters: 3/3 (Berserk)", "adding the new chapters (Berserk)"}; !slices.Equal(phases, want) {
+		t.Errorf("progress %q, want %q", phases, want)
 	}
 	downloads, _ := library.Downloads(m.ID)
 	numbers := map[float32]string{}

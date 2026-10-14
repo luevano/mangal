@@ -55,7 +55,7 @@ type Scanner struct {
 // recorded files that are gone are looked for in the folder before being forgotten, and
 // chapter files nobody recorded are added.
 func (s Scanner) ScanManga(m storage.Manga, root string, providerDirs bool) (ScanResult, error) {
-	return s.scanManga(m, root, providerDirs, &markedCache{})
+	return s.scanManga(m, root, providerDirs, &markedCache{}, s.OnProgress)
 }
 
 // markedCache keeps the marked folders under root for a whole scan, read when first needed.
@@ -76,7 +76,9 @@ func (s Scanner) marked(c *markedCache, root string, providerDirs bool) ([]manga
 	return folders, nil
 }
 
-func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, marked *markedCache) (ScanResult, error) {
+// scanManga is ScanManga, its steps told to onProgress (nil within a whole scan, which
+// counts the mangas).
+func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, marked *markedCache, onProgress func(Progress)) (ScanResult, error) {
 	var res ScanResult
 	folder := m.Path()
 	exists, err := afero.DirExists(s.FS, folder)
@@ -84,6 +86,7 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 		return res, err
 	}
 	if !exists {
+		report(onProgress, Progress{Phase: "looking for its folder", Item: m.Title})
 		found, ok, err := s.locate(m, root, providerDirs, marked)
 		if err != nil {
 			return res, err
@@ -103,6 +106,7 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 	// without its own folder the chapters share it with other mangas, only check what's recorded
 	var files []chapterFile
 	if m.Dir != "" {
+		report(onProgress, Progress{Phase: "reading the chapter files", Item: m.Title})
 		if files, err = s.chapterFiles(folder); err != nil {
 			return res, err
 		}
@@ -116,7 +120,8 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 		known[dl.Path] = true
 	}
 
-	for _, dl := range recorded {
+	for i, dl := range recorded {
+		report(onProgress, Progress{Phase: "checking the recorded chapters", Done: i + 1, Total: len(recorded), Item: m.Title})
 		if exists, err := afero.Exists(s.FS, dl.Path); err != nil {
 			return res, err
 		} else if exists {
@@ -137,6 +142,9 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 	}
 
 	provider, mangaID := s.sourceOf(m, folder, root, providerDirs)
+	if slices.ContainsFunc(files, func(f chapterFile) bool { return !known[f.path] && f.hasNumber }) {
+		report(onProgress, Progress{Phase: "adding the new chapters", Item: m.Title})
+	}
 	for _, f := range files {
 		if known[f.path] {
 			continue
@@ -178,7 +186,7 @@ func (s Scanner) ScanContext(ctx context.Context, root string, providerDirs bool
 			return res, err
 		}
 		report(s.OnProgress, Progress{Phase: "scanning library", Done: i + 1, Total: len(mangas), Item: m.Title})
-		r, err := s.scanManga(m, root, providerDirs, marked)
+		r, err := s.scanManga(m, root, providerDirs, marked, nil)
 		if err != nil {
 			return res, err
 		}
@@ -223,7 +231,7 @@ func (s Scanner) ScanContext(ctx context.Context, root string, providerDirs bool
 		if err != nil {
 			return res, err
 		}
-		r, err := s.scanManga(m, root, providerDirs, marked)
+		r, err := s.scanManga(m, root, providerDirs, marked, nil)
 		if err != nil {
 			return res, err
 		}
