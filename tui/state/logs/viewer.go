@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -28,6 +29,9 @@ const maxEntries = 50000
 // followEvery is how often a followed log is read again.
 var followEvery = 500 * time.Millisecond
 
+// now is swapped in tests.
+var now = time.Now
+
 // levels are the minimum levels tab goes through.
 var levels = []log.Level{log.LevelDebug, log.LevelInfo, log.LevelWarn, log.LevelError}
 
@@ -37,24 +41,37 @@ const (
 	kindSession kind = iota
 	kindFile
 	kindSearch
+	// every file of a period, in order
+	kindPeriod
 )
 
 type viewerKeys struct {
 	up, down, pageUp, pageDown, top, bottom, find, next, prev, level, copy, clear key.Binding
+	files, prevPeriod, nextPeriod                                                 key.Binding
 }
 
 var _ base.State = (*viewer)(nil)
 
 // viewer is a pager of log entries: this session's, a file's (and the next ones, when it's
-// the newest) or a search's through every file.
+// the newest), a period's (and the next ones, when it's the current one) or a search's
+// through every file.
 type viewer struct {
 	kind  kind
 	dir   string
 	file  log.File
 	query string
+	// main is the window ctrl+l opens ("Logs"), note is said in its subtitle
+	main bool
+	note string
+	// period is the period shown ("" the current one), stamps every period of the files
+	// (oldest first) and currentPeriod the current one's, as of the last load
+	period, currentPeriod string
+	stamps                []string
 	// followable: new entries come (this session, the newest file), follow shows them
 	followable, follow bool
 	tail               *log.Tail
+	// followed is the file the tail reads, as of its last read
+	followed string
 	// tailMu: a follow of before the window was left may still be reading
 	tailMu *sync.Mutex
 	gen    int
@@ -89,18 +106,21 @@ func newViewer(k kind) *viewer {
 		current: -1,
 		find:    search.New("Find (regexp)...", "", 64, 0),
 		keys: viewerKeys{
-			up:       util.BindNamedKey("↑/k", "up", "up", "k"),
-			down:     util.BindNamedKey("↓/j", "down", "down", "j"),
-			pageUp:   util.BindNamedKey("pgup/b", "page up", "pgup", "b"),
-			pageDown: util.BindNamedKey("pgdn/f/space", "page down", "pgdown", "f", " "),
-			top:      util.BindNamedKey("g/home", "top", "g", "home"),
-			bottom:   util.BindNamedKey("G/end", "end", "G", "end"),
-			find:     util.Bind("find", "/"),
-			next:     base.KeyNextMatch,
-			prev:     base.KeyPrevMatch,
-			level:    base.KeyLevel,
-			copy:     base.KeyCopy,
-			clear:    util.Bind("clear find", "esc"),
+			up:         util.BindNamedKey("↑/k", "up", "up", "k"),
+			down:       util.BindNamedKey("↓/j", "down", "down", "j"),
+			pageUp:     util.BindNamedKey("pgup/b", "page up", "pgup", "b"),
+			pageDown:   util.BindNamedKey("pgdn/f/space", "page down", "pgdown", "f", " "),
+			top:        util.BindNamedKey("g/home", "top", "g", "home"),
+			bottom:     util.BindNamedKey("G/end", "end", "G", "end"),
+			find:       util.Bind("find", "/"),
+			next:       base.KeyNextMatch,
+			prev:       base.KeyPrevMatch,
+			level:      base.KeyLevel,
+			copy:       base.KeyCopy,
+			clear:      util.Bind("clear find", "esc"),
+			files:      base.KeyLogFiles,
+			prevPeriod: base.KeyPrevPeriod,
+			nextPeriod: base.KeyNextPeriod,
 		},
 	}
 	return v
@@ -119,6 +139,14 @@ func newFile(dir string, f log.File, newest bool) *viewer {
 	return v
 }
 
+// newPeriod is the main viewer of a period of dir, "" for the current one (followed).
+func newPeriod(dir, period string) *viewer {
+	v := newViewer(kindPeriod)
+	v.main, v.dir, v.period = true, dir, period
+	v.followable, v.follow = period == "", period == ""
+	return v
+}
+
 func newSearch(dir, query string) *viewer {
 	v := newViewer(kindSearch)
 	v.dir, v.query = dir, query
@@ -127,6 +155,9 @@ func newSearch(dir, query string) *viewer {
 }
 
 func (v *viewer) Key() string {
+	if v.main {
+		return "logs"
+	}
 	switch v.kind {
 	case kindSession:
 		return viewerKey(sessionKey)
@@ -137,22 +168,44 @@ func (v *viewer) Key() string {
 }
 
 func (v *viewer) Title() base.Title {
-	switch v.kind {
-	case kindSession:
-		return base.Title{Text: "Log: this session"}
-	case kindSearch:
-		return base.Title{Text: "Log search: " + v.query}
+	switch {
+	case v.main && v.period != "":
+		return base.Title{Text: "Logs · " + v.period}
+	case v.main:
+		return base.Title{Text: "Logs"}
+	case v.kind == kindSession:
+		return base.Title{Text: "Logs · this session"}
+	case v.kind == kindSearch:
+		return base.Title{Text: "Logs · search: " + v.query}
 	}
-	return base.Title{Text: "Log: " + v.file.Name}
+	return base.Title{Text: "Logs · " + v.file.Name}
+}
+
+// stampOf is the period of a log file's name (2026-10-13 of 2026-10-13.1.log).
+func stampOf(name string) string {
+	stamp, _, _ := strings.Cut(name, ".")
+	return stamp
+}
+
+// following is the period followed: the current one's, or the next one's once there.
+func (v *viewer) following() string {
+	if v.followed != "" {
+		return stampOf(v.followed)
+	}
+	return v.currentPeriod
 }
 
 func (v *viewer) Subtitle() string {
 	var parts []string
 	switch {
+	case v.note != "":
+		parts = append(parts, v.note)
 	case v.kind == kindSearch:
 		parts = append(parts, stringutil.Quantify(len(v.entries), "entry", "entries")+" in every file")
-	case v.tail != nil && v.tail.Following() != v.file.Name:
-		parts = append(parts, "now in "+v.tail.Following())
+	case v.kind == kindPeriod && v.period == "" && v.following() != "":
+		parts = append(parts, v.following())
+	case v.kind == kindFile && v.followed != "" && v.followed != v.file.Name:
+		parts = append(parts, "now in "+v.followed)
 	}
 	if v.level != log.LevelDebug {
 		parts = append(parts, strings.ToLower(v.level.String())+" and up")
@@ -199,15 +252,67 @@ func (v *viewer) KeyMap() help.KeyMap {
 	if v.followable {
 		end.SetHelp(end.Help().Key, "follow")
 	}
+	if !v.main {
+		return util.KeyMap{
+			Short: []key.Binding{k.find, k.next, k.level, end, k.clear},
+			Full: [][]key.Binding{
+				{k.find, k.next, k.prev, k.clear},
+				{k.level, k.copy},
+				{k.up, k.down, k.pageUp, k.pageDown},
+				{k.top, end},
+			},
+		}
+	}
+	_, ok := v.stepPeriod(-1)
+	k.prevPeriod.SetEnabled(ok)
+	_, ok = v.stepPeriod(1)
+	k.nextPeriod.SetEnabled(ok)
 	return util.KeyMap{
-		Short: []key.Binding{k.find, k.next, k.level, end, k.clear},
+		Short: []key.Binding{k.find, k.next, k.level, end, k.files, k.prevPeriod, k.nextPeriod, k.clear},
 		Full: [][]key.Binding{
 			{k.find, k.next, k.prev, k.clear},
 			{k.level, k.copy},
+			{k.files, k.prevPeriod, k.nextPeriod},
 			{k.up, k.down, k.pageUp, k.pageDown},
 			{k.top, end},
 		},
 	}
+}
+
+// stepPeriod is the period d (1, -1) after the shown one, "" for the current one; ok is
+// false past the ends.
+func (v *viewer) stepPeriod(d int) (string, bool) {
+	if v.kind != kindPeriod || !v.loaded {
+		return "", false
+	}
+	var past []string
+	for _, s := range v.stamps {
+		if s != v.currentPeriod && s != v.following() {
+			past = append(past, s)
+		}
+	}
+	i := len(past)
+	if v.period != "" {
+		i = slices.Index(past, v.period)
+	}
+	switch j := i + d; {
+	case j < 0 || (v.period == "" && j >= len(past)):
+		return "", false
+	case j >= len(past):
+		return "", true
+	default:
+		return past[j], true
+	}
+}
+
+// showPeriod shows another period ("" the current one), keeping the level and the find.
+func (v *viewer) showPeriod(ctx context.Context, period string) tea.Cmd {
+	v.period = period
+	v.followable, v.follow = period == "", period == ""
+	v.loaded, v.tail, v.tailMu, v.followed = false, nil, nil, ""
+	v.current, v.top = -1, 0
+	v.setEntries(nil, true)
+	return v.start(ctx)
 }
 
 func (v *viewer) Resize(size base.Size) tea.Cmd {
@@ -231,11 +336,27 @@ func (v *viewer) height() int {
 	return max(1, h)
 }
 
-// entriesMsg are entries loaded (replace) or followed.
+// entriesMsg are entries loaded (replace) or followed (by tail).
 type entriesMsg struct {
 	gen     int
 	entries []log.Entry
 	replace bool
+	tail    *log.Tail
+	// followed is the tail's file after the read
+	followed string
+}
+
+// periodMsg is a period loaded: its entries, the tail that follows it (the current one),
+// the periods of the files.
+type periodMsg struct {
+	gen                   int
+	entries               []log.Entry
+	tail                  *log.Tail
+	stamps                []string
+	period, currentPeriod string
+	followed              string
+	// unreadable: the current period's dir can't be read, this session's entries instead
+	unreadable error
 }
 
 type tickMsg struct{ gen int }
@@ -256,6 +377,9 @@ func (v *viewer) start(ctx context.Context) tea.Cmd {
 		// the file was read, the tail goes on from where it was
 		return v.tick(ctx)
 	}
+	if v.kind == kindPeriod {
+		return v.loadPeriod(ctx, gen)
+	}
 	label := "Reading " + v.file.Name
 	if v.kind == kindSearch {
 		label = "Searching the logs"
@@ -266,13 +390,7 @@ func (v *viewer) start(ctx context.Context) tea.Cmd {
 	tail, file, dir, pattern := v.tail, v.file, v.dir, v.pattern
 	return base.Load(ctx, label, func(ctx context.Context) ([]log.Entry, error) {
 		var entries []log.Entry
-		add := func(e log.Entry) error {
-			entries = append(entries, e)
-			if len(entries) >= 2*maxEntries {
-				entries = append(entries[:0], entries[len(entries)-maxEntries:]...)
-			}
-			return nil
-		}
+		add := keepLast(&entries)
 		switch {
 		case tail != nil:
 			return entries, tail.Next(log.Filter{}, add)
@@ -286,8 +404,84 @@ func (v *viewer) start(ctx context.Context) tea.Cmd {
 			return entries, log.Scan(ctx, []log.File{file}, log.Filter{}, add)
 		}
 	}, func(entries []log.Entry) tea.Msg {
-		return entriesMsg{gen: gen, entries: entries, replace: true}
+		msg := entriesMsg{gen: gen, entries: entries, replace: true}
+		if tail != nil {
+			msg.followed = tail.Following()
+		}
+		return msg
 	})
+}
+
+// keepLast adds the entries to a slice that keeps about the last maxEntries.
+func keepLast(entries *[]log.Entry) func(log.Entry) error {
+	return func(e log.Entry) error {
+		*entries = append(*entries, e)
+		if len(*entries) >= 2*maxEntries {
+			*entries = append((*entries)[:0], (*entries)[len(*entries)-maxEntries:]...)
+		}
+		return nil
+	}
+}
+
+// loadPeriod reads the files of the period, the current one with a tail that follows it.
+func (v *viewer) loadPeriod(ctx context.Context, gen int) tea.Cmd {
+	dir, period := v.dir, v.period
+	label := "Reading the current log"
+	if period != "" {
+		label = "Reading the log of " + period
+	}
+	return base.Load(ctx, label, func(ctx context.Context) (periodMsg, error) {
+		msg := periodMsg{gen: gen, period: period}
+		files, err := log.Files(dir)
+		if err != nil && period == "" {
+			msg.unreadable = err
+			return msg, nil
+		}
+		if err != nil {
+			return msg, err
+		}
+		t := now()
+		for _, f := range files {
+			s := stampOf(f.Name)
+			if len(msg.stamps) == 0 || msg.stamps[len(msg.stamps)-1] != s {
+				msg.stamps = append(msg.stamps, s)
+			}
+			if !t.Before(f.Start) && t.Before(f.End) {
+				msg.currentPeriod = s
+			}
+		}
+		stamp := period
+		if stamp == "" {
+			stamp = msg.currentPeriod
+		}
+		var picked []log.File
+		for _, f := range files {
+			if stamp != "" && stampOf(f.Name) == stamp {
+				picked = append(picked, f)
+			}
+		}
+		add := keepLast(&msg.entries)
+		if period != "" {
+			return msg, log.Scan(ctx, picked, log.Filter{}, add)
+		}
+		// the current period: the compressed files (the tail skips them), then a tail from
+		// the first one written, or from the next file that comes
+		first := slices.IndexFunc(picked, func(f log.File) bool { return !f.Compressed })
+		if first < 0 {
+			first = len(picked)
+		}
+		if err := log.Scan(ctx, picked[:first], log.Filter{}, add); err != nil {
+			return msg, err
+		}
+		if first < len(picked) {
+			msg.tail = log.NewTailAt(dir, picked[first])
+		} else if msg.tail, err = log.NewTail(dir); err != nil {
+			return msg, err
+		}
+		err = msg.tail.Next(log.Filter{}, add)
+		msg.followed = msg.tail.Following()
+		return msg, err
+	}, func(msg periodMsg) tea.Msg { return msg })
 }
 
 // sameEntries: this session's entries didn't change (the ring only adds at the end).
@@ -317,7 +511,7 @@ func (v *viewer) tick(ctx context.Context) tea.Cmd {
 		}); err != nil {
 			log.Warn("logs: follow: %s", err)
 		}
-		return entriesMsg{gen: gen, entries: entries}
+		return entriesMsg{gen: gen, entries: entries, tail: tail, followed: tail.Following()}
 	})
 }
 
@@ -325,13 +519,30 @@ func (v *viewer) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case base.RestoredMsg:
 		return v.start(ctx)
+	case periodMsg:
+		if msg.gen != v.gen {
+			return nil
+		}
+		if msg.unreadable != nil {
+			v.kind, v.note = kindSession, "no log file: "+msg.unreadable.Error()
+			return v.start(ctx)
+		}
+		v.stamps, v.currentPeriod, v.tail, v.followed = msg.stamps, msg.currentPeriod, msg.tail, msg.followed
+		if msg.tail != nil {
+			v.tailMu = &sync.Mutex{}
+		}
+		return v.Update(ctx, entriesMsg{gen: msg.gen, entries: msg.entries, replace: true})
 	case entriesMsg:
-		// what a tail read is added even from an older follow: the tail moved past it
-		if msg.replace && msg.gen != v.gen {
+		// what a tail read is added even from an older follow: the tail moved past it; not
+		// another tail's (another period)
+		if (msg.replace && msg.gen != v.gen) || (!msg.replace && msg.tail != v.tail) {
 			return nil
 		}
 		first := !v.loaded
 		v.loaded = true
+		if msg.followed != "" {
+			v.followed = msg.followed
+		}
 		switch {
 		case v.kind == kindSession && !first && sameEntries(v.entries, msg.entries):
 		case msg.replace || len(msg.entries) > 0:
@@ -354,7 +565,7 @@ func (v *viewer) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if v.find.Searching() {
 			return v.find.Update(msg)
 		}
-		return v.key(msg)
+		return v.key(ctx, msg)
 	}
 	if v.find.Searching() {
 		return v.find.Update(msg)
@@ -362,10 +573,20 @@ func (v *viewer) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func (v *viewer) key(msg tea.KeyMsg) tea.Cmd {
+func (v *viewer) key(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 	k := v.keys
 	page := max(1, v.height()-1)
 	switch {
+	case v.main && key.Matches(msg, k.files):
+		return push(newFiles(v.dir))
+	case v.main && key.Matches(msg, k.prevPeriod):
+		if p, ok := v.stepPeriod(-1); ok {
+			return v.showPeriod(ctx, p)
+		}
+	case v.main && key.Matches(msg, k.nextPeriod):
+		if p, ok := v.stepPeriod(1); ok {
+			return v.showPeriod(ctx, p)
+		}
 	case key.Matches(msg, k.find):
 		cmd := v.find.Focus()
 		v.layout()

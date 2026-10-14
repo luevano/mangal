@@ -102,6 +102,11 @@ var (
 	KeyNextMatch = util.Bind("next match", "ctrl+n")
 	KeyPrevMatch = util.Bind("previous match", "ctrl+p")
 	KeyLevel     = util.Bind("level", "tab")
+	// Logs (the current log): the files are its past ones, like V's check runs; [ and ]
+	// step through the periods (h/l page)
+	KeyLogFiles   = util.Bind("every log file", "V")
+	KeyPrevPeriod = util.Bind("previous period", "[")
+	KeyNextPeriod = util.Bind("next period", "]")
 
 	// the health screen's: a and A are select all and bindings (old)
 	KeyApplyFix = util.Bind("apply fix", "x")
@@ -144,6 +149,8 @@ var keyConcepts = map[string][]string{
 	"L": {"library manga", "library"},
 	"W": {"its watch", "watches"},
 	"X": {"move to a provider", "migrate"},
+	// the past ones, a list: a watch's check runs, the log files
+	"V": {"every check run", "every log file"},
 }
 
 // Keys are every Key* binding, the old ones (from before v5.14) first.
@@ -160,7 +167,8 @@ func Keys() (old, newer []key.Binding) {
 		KeyUndo, KeyDuplicates, KeyBackups, KeyCheck, KeyCheckDue, KeyCheckProvider, KeyFillGaps, KeyPause,
 		KeyPauseProvider, KeyStopWatching, KeyDeleteRun, KeyRelink, KeyLiveLog, KeyLiveChecks, KeyRuns,
 		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,
-		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
+		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel,
+		KeyLogFiles, KeyPrevPeriod, KeyNextPeriod, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
 	}
 }
 

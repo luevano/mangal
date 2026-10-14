@@ -2,6 +2,7 @@ package logs
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,8 +32,6 @@ func press(k string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyCtrlN}
 	case "ctrl+p":
 		return tea.KeyMsg{Type: tea.KeyCtrlP}
-	case "G":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
 }
@@ -42,7 +41,7 @@ func run(s base.State, cmd tea.Cmd) []tea.Msg {
 	var other []tea.Msg
 	for _, msg := range base.Drain(cmd) {
 		switch msg.(type) {
-		case entriesMsg, filesMsg, search.SearchMsg, search.SearchCancelMsg:
+		case entriesMsg, periodMsg, filesMsg, search.SearchMsg, search.SearchCancelMsg:
 			other = append(other, run(s, s.Update(ctx, msg))...)
 		default:
 			other = append(other, msg)
@@ -84,11 +83,13 @@ func logDir(t *testing.T) string {
 
 func view(s base.State) string { return ansi.Strip(s.View()) }
 
-func TestFilesOpenTheNewest(t *testing.T) {
+func TestFiles(t *testing.T) {
 	dir := logDir(t)
 	s := newFiles(dir)
 	s.Resize(base.Size{Width: 80, Height: 20})
-	msgs := run(s, s.Init(ctx))
+	if msgs := run(s, s.Init(ctx)); len(msgs) != 0 {
+		t.Fatalf("msgs %v", msgs)
+	}
 	var titles []string
 	for _, i := range s.List.Items() {
 		titles = append(titles, i.(*item).Title())
@@ -96,16 +97,15 @@ func TestFilesOpenTheNewest(t *testing.T) {
 	if strings.Join(titles, "|") != "This session|2026-10-13.log|2026-10-12.log" {
 		t.Errorf("items %q", titles)
 	}
-	if len(msgs) != 1 {
-		t.Fatalf("msgs %v", msgs)
+	if s.Key() != "logs/files" || s.Title().Text != "Logs · files" {
+		t.Errorf("key %q, title %q", s.Key(), s.Title().Text)
 	}
+
+	s.List.Select(1)
+	msgs := run(s, s.Update(ctx, press("enter")))
 	v, ok := msgs[0].(*viewer)
-	if !ok || v.Key() != "logs/2026-10-13.log" || !v.follow {
-		t.Fatalf("pushed %#v", msgs[0])
-	}
-	// shown again: no second viewer
-	if msgs := run(s, s.Update(ctx, base.RestoredMsg{})); len(msgs) != 0 {
-		t.Errorf("restored: %v", msgs)
+	if !ok || v.Key() != "logs/2026-10-13.log" || !v.follow || v.Title().Text != "Logs · 2026-10-13.log" {
+		t.Fatalf("enter: %#v", msgs[0])
 	}
 
 	// enter on the older file: not followed
@@ -282,16 +282,161 @@ func TestKeys(t *testing.T) {
 	if bad := base.KeyCollisions(s.keyMap(), s.List.KeyMap.Browsing()...); len(bad) != 0 {
 		t.Errorf("files: %v", bad)
 	}
-	v := newViewer(kindFile)
-	v.pattern = log.Pattern("x", false)
-	var all []key.Binding
-	for _, b := range util.Bindings(v.KeyMap()) {
-		// esc clears the find while there's one: back is off then (Backable)
-		if b.Help().Desc != "clear find" {
-			all = append(all, b)
+	for _, v := range []*viewer{newViewer(kindFile), newPeriod(t.TempDir(), "")} {
+		v.pattern = log.Pattern("x", false)
+		var all []key.Binding
+		for _, b := range util.Bindings(v.KeyMap()) {
+			// esc clears the find while there's one: back is off then (Backable)
+			if b.Help().Desc != "clear find" {
+				all = append(all, b)
+			}
+		}
+		if bad := base.ViewerKeyCollisions(util.KeyMap{Short: all}); len(bad) != 0 {
+			t.Errorf("viewer %s: %v", v.Title().Text, bad)
 		}
 	}
-	if bad := base.ViewerKeyCollisions(util.KeyMap{Short: all}); len(bad) != 0 {
-		t.Errorf("viewer: %v", bad)
+	// the main viewer's own keys are base's
+	v := newPeriod(t.TempDir(), "")
+	k := util.KeyMap{Short: []key.Binding{v.keys.files, v.keys.prevPeriod, v.keys.nextPeriod, v.keys.level, v.keys.next, v.keys.prev, v.keys.copy}}
+	if bad := base.KeyInconsistencies(k); len(bad) != 0 {
+		t.Errorf("main viewer: %v", bad)
+	}
+}
+
+// periodDir has two periods, the current one (2026-10-13 at noon) in three files.
+func periodDir(t *testing.T) string {
+	t.Helper()
+	old := now
+	now = func() time.Time { return time.Date(2026, 10, 13, 12, 0, 0, 0, time.Local) }
+	t.Cleanup(func() { now = old })
+	dir := logDir(t)
+	writeFile(t, dir, "2026-10-13.1.log", "2026-10-13T11:00:00.000 INFO  in the second file\n")
+	writeFile(t, dir, "2026-10-13.2.log", "2026-10-13T11:30:00.000 INFO  in the third file\n")
+	return dir
+}
+
+func TestCurrentLog(t *testing.T) {
+	// ctrl+l
+	if v, ok := New().(*viewer); !ok || !v.main || v.kind != kindPeriod || v.period != "" {
+		t.Fatalf("New: %#v", v)
+	}
+	dir := periodDir(t)
+	v := newMain(dir, nil)
+	v.Resize(base.Size{Width: 80, Height: 20})
+	run(v, v.Init(ctx))
+	followEvery = time.Millisecond
+	t.Cleanup(func() { followEvery = 500 * time.Millisecond })
+	if v.Key() != "logs" || v.Title().Text != "Logs" || !v.follow {
+		t.Fatalf("key %q, title %q, follow %v", v.Key(), v.Title().Text, v.follow)
+	}
+	got := view(v)
+	// every file of the period, in order; not the other period's
+	order := []string{"page 1", "mangadex: timeout", "in the second file", "in the third file"}
+	last := -1
+	for _, want := range order {
+		i := strings.Index(got, want)
+		if i < last {
+			t.Errorf("%q missing or out of order in\n%s", want, got)
+		}
+		last = i
+	}
+	if strings.Contains(got, "started") {
+		t.Errorf("another period:\n%s", got)
+	}
+	if !strings.HasPrefix(v.Subtitle(), "2026-10-13") {
+		t.Errorf("subtitle %q", v.Subtitle())
+	}
+
+	// new entries, then the next period
+	f, err := os.OpenFile(filepath.Join(dir, "2026-10-13.2.log"), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("2026-10-13T23:59:00.000 INFO  late one\n")
+	f.Close()
+	writeFile(t, dir, "2026-10-14.log", "2026-10-14T00:01:00.000 INFO  tomorrow\n")
+	v.Update(ctx, v.tick(ctx)())
+	got = view(v)
+	if !strings.Contains(got, "late one") || !strings.Contains(got, "tomorrow") {
+		t.Errorf("followed:\n%s", got)
+	}
+	if !strings.HasPrefix(v.Subtitle(), "2026-10-14") {
+		t.Errorf("subtitle %q", v.Subtitle())
+	}
+}
+
+func TestPeriods(t *testing.T) {
+	dir := periodDir(t)
+	writeFile(t, dir, "2026-10-11.log", "2026-10-11T10:00:00.000 INFO  two days ago\n")
+	v := newMain(dir, nil)
+	v.Resize(base.Size{Width: 80, Height: 20})
+	run(v, v.Init(ctx))
+	if _, ok := v.stepPeriod(1); ok {
+		t.Error("next period on the current one")
+	}
+
+	// a find stays across the periods
+	run(v, v.Update(ctx, press("/")))
+	typeIn(v, "o")
+	run(v, v.Update(ctx, press("enter")))
+
+	run(v, v.Update(ctx, press("[")))
+	got := view(v)
+	if v.Title().Text != "Logs · 2026-10-12" || v.Key() != "logs" || v.follow || v.followable {
+		t.Errorf("title %q, key %q, follow %v", v.Title().Text, v.Key(), v.follow)
+	}
+	if !strings.Contains(got, "not found") || strings.Contains(got, "page 1") || v.pattern == nil {
+		t.Errorf("[:\n%s", got)
+	}
+	run(v, v.Update(ctx, press("[")))
+	if v.Title().Text != "Logs · 2026-10-11" || !strings.Contains(view(v), "two days ago") {
+		t.Errorf("[ [: %q\n%s", v.Title().Text, view(v))
+	}
+	// the oldest
+	run(v, v.Update(ctx, press("[")))
+	if v.Title().Text != "Logs · 2026-10-11" || !v.loaded {
+		t.Errorf("before the oldest: %q", v.Title().Text)
+	}
+	run(v, v.Update(ctx, press("]")))
+	run(v, v.Update(ctx, press("]")))
+	if v.Title().Text != "Logs" || !v.follow || !strings.Contains(view(v), "in the third file") {
+		t.Errorf("] ]: %q\n%s", v.Title().Text, view(v))
+	}
+
+	// V: the files, past ones too
+	msgs := run(v, v.Update(ctx, press("V")))
+	if s, ok := msgs[0].(*files); !ok || s.Key() != "logs/files" || s.dir != dir {
+		t.Errorf("V: %#v", msgs)
+	}
+}
+
+func TestSessionFallback(t *testing.T) {
+	log.Info("logs test: a fallback line")
+	dir := periodDir(t)
+	v := newMain(dir, errors.New("permission denied"))
+	v.Resize(base.Size{Width: 80, Height: 10})
+	run(v, v.Init(ctx))
+	if v.Key() != "logs" || v.Title().Text != "Logs" || v.kind != kindSession {
+		t.Fatalf("key %q, title %q, kind %v", v.Key(), v.Title().Text, v.kind)
+	}
+	if !strings.Contains(view(v), "a fallback line") || !strings.Contains(v.Subtitle(), "no log file: permission denied") {
+		t.Errorf("%q\n%s", v.Subtitle(), view(v))
+	}
+	run(v, v.Update(ctx, press("[")))
+	if v.kind != kindSession {
+		t.Error("[ on the session")
+	}
+	if msgs := run(v, v.Update(ctx, press("V"))); len(msgs) != 1 {
+		t.Errorf("V: %v", msgs)
+	}
+
+	// a log dir that can't be read
+	notDir := filepath.Join(t.TempDir(), "file")
+	writeFile(t, filepath.Dir(notDir), "file", "")
+	v = newMain(notDir, nil)
+	v.Resize(base.Size{Width: 80, Height: 10})
+	run(v, v.Init(ctx))
+	if v.kind != kindSession || !strings.Contains(view(v), "a fallback line") || !strings.Contains(v.Subtitle(), "no log file") {
+		t.Errorf("unreadable: %v %q\n%s", v.kind, v.Subtitle(), view(v))
 	}
 }

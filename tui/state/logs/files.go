@@ -1,4 +1,5 @@
-// Package logs is the Logs screen: the log files (and this session's entries), each opened
+// Package logs is the Logs screen: the current log (every file of the current period,
+// followed), the past periods, and the log files (and this session's entries), each opened
 // in a viewer with find, a level filter and follow, and a search through every file.
 package logs
 
@@ -76,14 +77,27 @@ type files struct {
 	keys   filesKeys
 	search *search.Model
 	size   base.Size
-	// opened is set once the newest file's viewer was opened over it
-	opened bool
 }
 
-// New is the Logs screen: the files of the log dir, with the newest one's viewer opened
-// over it.
+// New is the Logs screen: the current log, this session's entries when the log file isn't
+// written.
 func New() base.State {
-	return newFiles(path.Logs())
+	dir := log.Dir()
+	if dir == "" {
+		dir = path.Logs()
+	}
+	return newMain(dir, log.FileError())
+}
+
+// newMain is the viewer ctrl+l opens: the current period of dir, this session's entries
+// without a log file (fileErr).
+func newMain(dir string, fileErr error) *viewer {
+	if fileErr != nil {
+		v := newSession()
+		v.main, v.dir, v.note = true, dir, "no log file: "+fileErr.Error()
+		return v
+	}
+	return newPeriod(dir, "")
 }
 
 func newFiles(dir string) *files {
@@ -100,8 +114,8 @@ func (s *files) keyMap() help.KeyMap {
 	return util.KeyMap{Short: []key.Binding{s.keys.view, s.keys.search, s.keys.refresh}}
 }
 
-func (s *files) Key() string       { return "logs" }
-func (s *files) Title() base.Title { return base.Title{Text: "Logs"} }
+func (s *files) Key() string       { return "logs/files" }
+func (s *files) Title() base.Title { return base.Title{Text: "Logs · files"} }
 
 func (s *files) Subtitle() string {
 	if s.dir == "" {
@@ -159,17 +173,7 @@ func (s *files) setItems(files []log.File) tea.Cmd {
 func (s *files) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case filesMsg:
-		cmd := s.setItems(msg.files)
-		if s.opened {
-			return cmd
-		}
-		// the newest file's viewer (this session's without one), over the list
-		s.opened = true
-		var f *log.File
-		if len(msg.files) > 0 {
-			f = &msg.files[len(msg.files)-1]
-		}
-		return tea.Batch(cmd, push(s.viewer(f, msg.files)))
+		return s.setItems(msg.files)
 	case base.RestoredMsg:
 		return s.load(ctx)
 	case search.SearchMsg:
