@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -551,5 +552,29 @@ func TestSizeEntry(t *testing.T) {
 		if back, err := parseSize(formatSize(n)); err != nil || back != n {
 			t.Errorf("parseSize(formatSize(%d)) = %d, %v", n, back, err)
 		}
+	}
+}
+
+func TestMangaDexGroups(t *testing.T) {
+	reset(t)
+	if got := Providers.MangaDex.ExcludeGroups.Get(); len(got) != 0 {
+		t.Fatalf("default %q", got)
+	}
+	writeConfig(t, "[providers.mangadex]\nexclude_groups = 'Group A, , 0d8e2a7c-1111-2222-3333-444455556666 '\n")
+	if err := Load(Path); err != nil {
+		t.Fatal(err)
+	}
+	if got := Providers.MangaDex.ExcludeGroups.Get(); !slices.Equal(got, []string{"Group A", "0d8e2a7c-1111-2222-3333-444455556666"}) {
+		t.Errorf("exclude_groups %q", got)
+	}
+	t.Setenv("MANGAL_PROVIDERS_MANGADEX_PREFER_GROUPS", "B,A")
+	if got := Providers.MangaDex.PreferGroups.Get(); !slices.Equal(got, []string{"B", "A"}) {
+		t.Errorf("prefer_groups %q", got)
+	}
+	if err := Providers.MangaDex.PreferGroups.Write([]string{"C", "D"}); err != nil {
+		t.Fatal(err)
+	}
+	if file := readConfig(t); !strings.Contains(file, "prefer_groups = 'C, D'") {
+		t.Errorf("written:\n%s", file)
 	}
 }

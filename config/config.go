@@ -228,6 +228,26 @@ func enumEntry[T fmt.Stringer](key string, def T, description string, parse func
 	})
 }
 
+// listEntry is a comma separated list, its entries trimmed (empty ones dropped).
+func listEntry(key, description string) *entry[string, []string] {
+	return reg(entry[string, []string]{
+		Key:         key,
+		Default:     []string{},
+		Description: description,
+		Unmarshal: func(raw string) ([]string, error) {
+			list := []string{}
+			for item := range strings.SplitSeq(raw, ",") {
+				if item = strings.TrimSpace(item); item != "" {
+					list = append(list, item)
+				}
+			}
+			return list, nil
+		},
+		Marshal:  func(list []string) (string, error) { return strings.Join(list, ", "), nil },
+		Validate: func([]string) error { return nil },
+	})
+}
+
 func oneOfEntry(key, def, description string, values ...string) *entry[string, string] {
 	return reg(entry[string, string]{
 		Key:         key,
@@ -433,6 +453,10 @@ var Providers = configProviders{
 	},
 	MangaDex: configProvidersMangaDex{
 		DataSaver: boolEntry("providers.mangadex.data_saver", false, `Use MangaDex "data-saver" option for chapter pages.`),
+		ExcludeGroups: listEntry("providers.mangadex.exclude_groups",
+			`Scanlation groups whose MangaDex chapters are left out, comma separated: names (any case) or group ids (a name with a comma needs the id), e.g. "Group A, 0d8e2a7c-...".`),
+		PreferGroups: listEntry("providers.mangadex.prefer_groups",
+			`Scanlation groups to take a MangaDex chapter from when there are several of the same number (providers.filter.avoid_duplicate_chapters), first listed first, comma separated names (any case) or group ids. Without one of them, the group with the most chapters in the volume.`),
 	},
 	MangaPlus: configProvidersMangaPlus{
 		Quality: oneOfEntry("providers.mangaplus.quality", "super_high",

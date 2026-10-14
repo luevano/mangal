@@ -143,7 +143,9 @@ type configProvidersMangaPlus struct {
 }
 
 type configProvidersMangaDex struct {
-	DataSaver *entry[bool, bool]
+	DataSaver     *entry[bool, bool]
+	ExcludeGroups *entry[string, []string]
+	PreferGroups  *entry[string, []string]
 }
 
 type configNotification struct {

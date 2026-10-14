@@ -19,7 +19,23 @@ import (
 )
 
 func MangoLoaders() ([]libmangal.ProviderLoader, error) {
-	// Generates overall default options then overriding as necessary
+	o := mangoOptions()
+
+	var loaders []libmangal.ProviderLoader
+	loaders = append(loaders, apis.Loaders(o)...)
+	loaders = append(loaders, scrapers.Loaders(o)...)
+
+	for i, loader := range loaders {
+		if loader == nil {
+			return nil, fmt.Errorf("mangoprovider loader %d is nil", i)
+		}
+	}
+
+	return loaders, nil
+}
+
+// mangoOptions are mangoprovider's default options with the config's.
+func mangoOptions() mango.Options {
 	o := mango.DefaultOptions()
 
 	c := commonOptions()
@@ -32,6 +48,8 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 	o.Headless.FlaresolverrURL = config.Providers.Headless.FlaresolverrURL.Get()
 	o.Mirrors = config.Providers.Mirrors.Get()
 	o.MangaDex.DataSaver = config.Providers.MangaDex.DataSaver.Get()
+	o.MangaDex.ExcludeGroups = config.Providers.MangaDex.ExcludeGroups.Get()
+	o.MangaDex.PreferGroups = config.Providers.MangaDex.PreferGroups.Get()
 	o.MangaPlus.Quality = config.Providers.MangaPlus.Quality.Get()
 	o.MangaPlus.OSVersion = config.Providers.MangaPlus.OSVersion.Get()
 	o.MangaPlus.AppVersion = config.Providers.MangaPlus.AppVersion.Get()
@@ -46,18 +64,7 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 	o.MangaPlus.Secret = mangaPlusSecret()
 	o.MangaPlus.FreeSecret = mangaPlusFreeSecret()
 	o.MangaPlus.OnRegister = saveMangaPlusFreeSecret
-
-	var loaders []libmangal.ProviderLoader
-	loaders = append(loaders, apis.Loaders(o)...)
-	loaders = append(loaders, scrapers.Loaders(o)...)
-
-	for i, loader := range loaders {
-		if loader == nil {
-			return nil, fmt.Errorf("mangoprovider loader %d is nil", i)
-		}
-	}
-
-	return loaders, nil
+	return o
 }
 
 // mangaPlusSecret is the saved secret (mangal accounts), or the one in the configured file,
