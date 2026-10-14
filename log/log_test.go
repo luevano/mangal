@@ -73,6 +73,16 @@ func TestRing(t *testing.T) {
 	}
 }
 
+func TestRecent(t *testing.T) {
+	reset(t, Options{Level: LevelDebug})
+	Debug("a")
+	Error("b\nc")
+	got := Recent()
+	if len(got) != 2 || got[0].Level != LevelDebug || got[0].Message != "a" || got[1].Level != LevelError || got[1].Message != "b\nc" || got[1].Time.IsZero() {
+		t.Errorf("recent %+v", got)
+	}
+}
+
 func TestConcurrent(t *testing.T) {
 	reset(t, Options{Dir: t.TempDir(), Level: LevelDebug})
 	hook := ProviderHook("p")

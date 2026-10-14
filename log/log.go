@@ -76,7 +76,7 @@ var (
 	fileSegment int
 	// fileErr disables the file after it couldn't be opened
 	fileErr  error
-	ring     [maxLines]string
+	ring     [maxLines]Entry
 	next     int
 	ringFull bool
 
@@ -153,15 +153,7 @@ func logf(level Level, format string, a ...any) {
 		return
 	}
 
-	prefix := ""
-	if level != LevelInfo {
-		prefix = level.String() + " "
-	}
-	ring[next] = fmt.Sprintf("[%s] %s%s", now.Format(time.TimeOnly), prefix, msg)
-	next = (next + 1) % maxLines
-	if next == 0 {
-		ringFull = true
-	}
+	ringAdd(Entry{Time: now, Level: level, Message: msg})
 
 	if f := openFile(now); f != nil {
 		fmt.Fprintf(f, "%s %-5s %s\n", now.Format("2006-01-02T15:04:05.000"), level, msg)
@@ -193,7 +185,7 @@ func openFile(now time.Time) *os.File {
 	f, segment, err := openSegment(options.Dir, stamp, from, options.MaxSize)
 	if err != nil {
 		fileErr = err
-		ringLine(now, "ERROR log file: "+err.Error())
+		ringAdd(Entry{Time: now, Level: LevelError, Message: "log file: " + err.Error()})
 		return nil
 	}
 	file, fileStamp, fileSegment = f, stamp, segment
@@ -217,7 +209,7 @@ func startMaintenance(at time.Time) {
 			err := maintain(opts.Dir, at, opts)
 			mu.Lock()
 			if err != nil {
-				ringLine(at, "ERROR log files: "+err.Error())
+				ringAdd(Entry{Time: at, Level: LevelError, Message: "log files: " + err.Error()})
 			}
 			if !again {
 				maintaining = false
@@ -230,27 +222,40 @@ func startMaintenance(at time.Time) {
 	}()
 }
 
-// ringLine adds a line about the log itself, so it shows in the TUI logs. Called with mu
-// held.
-func ringLine(now time.Time, line string) {
-	ring[next] = fmt.Sprintf("[%s] %s", now.Format(time.TimeOnly), line)
+// ringAdd adds a recent entry (also the log's own errors, so they show in the TUI). Called
+// with mu held.
+func ringAdd(e Entry) {
+	ring[next] = e
 	next = (next + 1) % maxLines
 	if next == 0 {
 		ringFull = true
 	}
 }
 
-// Lines are the recent lines, oldest first.
-func Lines() string {
+// Recent are the entries logged lately by this process (files or not), oldest first.
+func Recent() []Entry {
 	mu.Lock()
 	defer mu.Unlock()
-	var sb strings.Builder
 	start, n := 0, next
 	if ringFull {
 		start, n = next, maxLines
 	}
+	entries := make([]Entry, n)
 	for i := range n {
-		sb.WriteString(ring[(start+i)%maxLines])
+		entries[i] = ring[(start+i)%maxLines]
+	}
+	return entries
+}
+
+// Lines are the recent entries as lines, oldest first.
+func Lines() string {
+	var sb strings.Builder
+	for _, e := range Recent() {
+		sb.WriteString("[" + e.Time.Format(time.TimeOnly) + "] ")
+		if e.Level != LevelInfo {
+			sb.WriteString(e.Level.String() + " ")
+		}
+		sb.WriteString(e.Message)
 		sb.WriteByte('\n')
 	}
 	return sb.String()
