@@ -90,6 +90,8 @@ func jumpLabel(f health.Finding) string {
 	switch {
 	case len(f.Items) != 0:
 		return fmt.Sprintf("list them (%d)", len(f.Items))
+	case f.Fix.Action != nil && f.Fix.Action.Kind == health.ActionRename:
+		return "rename screen"
 	case f.Check == "M1" || f.Check == "M3":
 		return "links"
 	case f.Check == "L3" || f.Check == "W8":
@@ -531,6 +533,15 @@ func (s *state) jump(ctx context.Context, f health.Finding) tea.Cmd {
 		return func() tea.Msg { return newState(&summary) }
 	case what == "migrate":
 		return func() tea.Msg { return migrate.New() }
+	case what == "rename screen":
+		paths := f.Fix.Action.Paths
+		return func() tea.Msg {
+			state, err := tuilibrary.NewRename(paths)
+			if err != nil {
+				return err
+			}
+			return state
+		}
 	case what == "accounts":
 		return func() tea.Msg { return accounts.New(false) }
 	case what == "trash":

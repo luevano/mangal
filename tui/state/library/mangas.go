@@ -91,7 +91,7 @@ type mangasState struct {
 }
 
 type mangasKeyMap struct {
-	confirm, scan, check, merge, move, trash, delete, watch, undo, duplicates, links, backups key.Binding
+	confirm, scan, check, merge, move, trash, delete, watch, undo, duplicates, links, backups, rename key.Binding
 }
 
 type mangasLoadedMsg struct {
@@ -147,6 +147,7 @@ func newMangasState(files library.Files) *mangasState {
 			duplicates: base.KeyDuplicates,
 			links:      base.KeyBindings,
 			backups:    base.KeyBackups,
+			rename:     base.KeyRename,
 		},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "manga", "mangas", []*mangaItem{}, func(i *mangaItem) _list.DefaultItem { return i }), s.keyMap)
@@ -157,7 +158,7 @@ func newMangasState(files library.Files) *mangasState {
 func (s *mangasState) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash, k.undo}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.check, k.watch, k.duplicates, k.links, k.backups)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.rename, k.check, k.watch, k.duplicates, k.links, k.backups)}}
 }
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
@@ -331,6 +332,9 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 		return func() tea.Msg { return newTrashState(files) }, true
 	case key.Matches(msg, s.keys.undo):
 		return s.undo(ctx), true
+	case key.Matches(msg, s.keys.rename):
+		lib := s.files.Library
+		return func() tea.Msg { return newRenameState(lib, nil) }, true
 	case key.Matches(msg, s.keys.backups):
 		mangas := make([]storage.Manga, len(s.items))
 		for i, item := range s.items {

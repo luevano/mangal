@@ -80,12 +80,12 @@ func TestKeyInconsistencies(t *testing.T) {
 		util.Bind("library manga", "l"),
 		util.BindNamedKey("enter/e", "edit", "enter", "e"),
 		util.Bind("merge", "m"),
-		util.Bind("rename", "m"),
+		util.Bind("squash", "m"),
 		util.Bind("frobnicate", "Q"),
 		util.Bind("open", "enter"),
 	}}
 	got := KeyInconsistencies(screen)
-	want := []string{"library manga: l, not L", "merge: m, not J", "m: rename, is metadata", "frobnicate: Q isn't a base key"}
+	want := []string{"library manga: l, not L", "merge: m, not J", "m: squash, is metadata", "frobnicate: Q isn't a base key"}
 	if !slices.Equal(got, want) {
 		t.Errorf("got %q, want %q", got, want)
 	}

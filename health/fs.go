@@ -283,7 +283,7 @@ func checkProviderDirs(s *snapshot) []Finding {
 			Fix: Fix{
 				Commands: []string{"mangal library rename"},
 				Note:     "lists every rename, --apply renames (undo: mangal library undo)",
-				TUI:      "health: apply fix",
+				TUI:      "health: apply fix, or enter (the rename screen: pick the renames)",
 				Action:   &Action{Kind: ActionRename, Paths: []string{dir}},
 			}}
 		to := ""
@@ -359,7 +359,7 @@ func checkFolderNames(s *snapshot) []Finding {
 			f.Message += " (can't: " + r.Skip + ")"
 		} else {
 			paths = append(paths, r.From)
-			f.Fix = Fix{Commands: []string{"mangal library rename"}, Note: "renames every folder off the template, --apply", TUI: "health: apply fix",
+			f.Fix = Fix{Commands: []string{"mangal library rename"}, Note: "renames every folder off the template, --apply", TUI: "health: apply fix, or enter (the rename screen: pick the renames)",
 				Action: &Action{Kind: ActionRename, Paths: []string{r.From}}}
 		}
 		items = append(items, f)
@@ -388,7 +388,7 @@ func checkFolderNames(s *snapshot) []Finding {
 		Fix: Fix{
 			Commands: []string{"mangal library rename"},
 			Note:     "lists every rename, --apply renames (undo: mangal library undo); mangal health --only L5 lists them",
-			TUI:      "health: open the finding, apply fix",
+			TUI:      "health: open the finding, apply fix; library: alt+r (the rename screen)",
 		}}
 	if len(items) == 1 {
 		f.Message = "1 folder isn't named by the manga template: " + items[0].Message

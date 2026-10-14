@@ -1,0 +1,149 @@
+package library
+
+import (
+	"context"
+	"slices"
+	"strings"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/tui/base"
+)
+
+// the screen shows library rename's plan, the renames selected but the skipped ones; enter
+// asks, yes renames the selected ones only (in the plan's order), a new plan keeps what
+// was unselected
+func TestRename(t *testing.T) {
+	ctx := context.Background()
+	var asked []client.RenameOptions
+	var applied []library.Rename
+	oldPlan, oldApply := planLibraryRename, applyLibraryRename
+	t.Cleanup(func() { planLibraryRename, applyLibraryRename = oldPlan, oldApply })
+	planLibraryRename = func(_ context.Context, _ storage.Library, opts client.RenameOptions) (client.RenamePlan, error) {
+		asked = append(asked, opts)
+		plan := client.RenamePlan{Root: "/dl", Unmarked: 2, Renames: []library.Rename{
+			{From: "/dl/Berserk", To: "/dl/Berserk (1989)"},
+			{From: "/dl/Vagabond", To: "/dl/Vagabond (1998)"},
+			{From: "/dl/Kagurabachi", To: "/dl/Kagurabachi", Skip: "no metadata", NoMetadata: true},
+		}}
+		if opts.Chapters {
+			plan.Renames = append([]library.Rename{{From: "/dl/Berserk/1.cbz", To: "/dl/Berserk/[1] The Black Swordsman.cbz", Chapter: true}}, plan.Renames...)
+		}
+		return plan, nil
+	}
+	applyLibraryRename = func(_ context.Context, _ storage.Library, renames []library.Rename, _ func(library.Progress), _ func(int, error)) (client.RenameResult, error) {
+		applied = renames
+		return client.RenameResult{Folders: len(renames)}, nil
+	}
+
+	s := newRenameState(storage.Library{}, nil)
+	s.Resize(base.Size{Width: 120, Height: 40})
+	planned := func(paths []string) renamePlannedMsg {
+		t.Helper()
+		msg, err := planRenames(ctx, storage.Library{}, paths, s.opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return msg
+	}
+	s.Update(ctx, planned(nil))
+	items := s.items()
+	if len(items) != 3 || !items[0].selected || !items[1].selected || items[2].selected {
+		t.Fatalf("items %+v", items)
+	}
+	if !strings.Contains(s.Status(), "2 selected, 1 skipped") || !strings.Contains(s.Status(), "2 notes") {
+		t.Errorf("status %q", s.Status())
+	}
+	if !strings.Contains(items[2].Description(), "alt+b renames it") {
+		t.Errorf("no metadata: %q", items[2].Description())
+	}
+
+	// the skipped one can't be selected; Berserk unselected
+	s.List.Select(2)
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")})
+	if items[2].selected {
+		t.Error("a skipped rename selected")
+	}
+	s.List.Select(0)
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")})
+	if items[0].selected {
+		t.Fatal("space didn't unselect")
+	}
+
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter})
+	if !s.Confirm.Active() {
+		t.Fatal("enter didn't ask")
+	}
+	question := strings.Join(strings.Fields(s.Confirm.View()), " ")
+	if !strings.Contains(question, "Vagabond -> Vagabond (1998)") || strings.Contains(question, "Berserk ->") || !strings.Contains(question, "Rename 1 folder?") {
+		t.Errorf("question:\n%s", s.Confirm.View())
+	}
+	act, ok := s.Update(ctx, press("y"))().(actionMsg)
+	if !ok {
+		t.Fatal("yes isn't the rename")
+	}
+	reload, err := act.do(ctx, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(applied) != 1 || applied[0].From != "/dl/Vagabond" || !strings.Contains(reload.notify, "renamed 1 folder") || !strings.Contains(reload.notify, "U undoes it") {
+		t.Errorf("applied %+v, notify %q", applied, reload.notify)
+	}
+
+	// alt+f plans the chapter files too, Berserk stays unselected
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f"), Alt: true})
+	if !s.opts.Chapters || !strings.Contains(s.Subtitle(), "chapter files on") {
+		t.Fatalf("alt+f: %+v, %q", s.opts, s.Subtitle())
+	}
+	s.Update(ctx, planned(nil))
+	items = s.items()
+	if len(items) != 4 || !items[0].r.Chapter || !items[0].selected || items[1].selected || !items[2].selected {
+		t.Fatalf("with the chapters %+v", items)
+	}
+	// a selects all, the chapter file goes first
+	s.Update(ctx, press("a"))
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter})
+	act = s.Update(ctx, press("y"))().(actionMsg)
+	if _, err := act.do(ctx, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(applied); got != 3 || !applied[0].Chapter {
+		t.Errorf("applied %+v", applied)
+	}
+	if last := asked[len(asked)-1]; !last.Chapters || last.Fallback || last.Refresh {
+		t.Errorf("asked %+v", last)
+	}
+
+	// backspace unselects all: nothing to ask
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyBackspace})
+	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter})
+	if s.Confirm.Active() {
+		t.Error("asked with nothing selected")
+	}
+}
+
+// a health finding's paths keep only their renames
+func TestRenamePaths(t *testing.T) {
+	oldPlan := planLibraryRename
+	t.Cleanup(func() { planLibraryRename = oldPlan })
+	planLibraryRename = func(context.Context, storage.Library, client.RenameOptions) (client.RenamePlan, error) {
+		return client.RenamePlan{Root: "/dl", Renames: []library.Rename{
+			{From: "/dl/MangaDex/Berserk", To: "/dl/Weeb Central/Berserk", ProviderDir: "/dl/MangaDex"},
+			{From: "/dl/MangaDex", RemoveEmpty: true, ProviderDir: "/dl/MangaDex"},
+			{From: "/dl/Vagabond", To: "/dl/Vagabond (1998)"},
+		}}, nil
+	}
+	msg, err := planRenames(context.Background(), storage.Library{}, []string{"/dl/MangaDex"}, client.RenameOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := msg.plan.Renames; len(got) != 2 || slices.ContainsFunc(got, func(r library.Rename) bool { return r.From == "/dl/Vagabond" }) {
+		t.Errorf("renames %+v", got)
+	}
+	if s := newRenameState(storage.Library{}, []string{"/dl/MangaDex"}); s.Key() == newRenameState(storage.Library{}, nil).Key() {
+		t.Error("a finding's renames are the whole library's window")
+	}
+}

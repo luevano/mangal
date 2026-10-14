@@ -112,6 +112,7 @@ func TestKeys(t *testing.T) {
 	trash := newTrashState(library.Files{})
 	move := newMoveState(storage.Manga{ID: 7, Title: "Berserk"}, "mango-mangapill")
 	links := newLinksState(storage.Manga{ID: 7, Title: "Berserk"})
+	rename := newRenameState(storage.Library{}, nil)
 	providers := pick.NewProviders("", nil)
 	for name, keys := range map[string][]string{
 		"move":      base.KeyCollisions(move.Keys(), move.List.KeyMap.Browsing()...),
@@ -120,6 +121,7 @@ func TestKeys(t *testing.T) {
 		"manga":     base.KeyCollisions(manga.keyMap(), manga.List.KeyMap.Browsing()...),
 		"trash":     base.KeyCollisions(trash.keyMap(), trash.List.KeyMap.Browsing()...),
 		"links":     base.KeyCollisions(links.keyMap(), links.List.KeyMap.Browsing()...),
+		"rename":    base.KeyCollisions(rename.keyMap(), rename.List.KeyMap.Browsing()...),
 	} {
 		if len(keys) != 0 {
 			t.Errorf("%s: %v", name, keys)

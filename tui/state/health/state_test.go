@@ -47,7 +47,7 @@ func TestHints(t *testing.T) {
 			"enter list them (2) · x mark 2 folders"},
 		{health.Finding{Check: "L4", Subject: health.Subject{Kind: "directory", Name: "mango-mangasee"},
 			Fix: health.Fix{Action: &health.Action{Kind: health.ActionRename, Paths: []string{"/dl/mango-mangasee"}}}},
-			"x rename"},
+			"enter rename screen · x rename"},
 	} {
 		if got := s.hint(c.f); got != c.want {
 			t.Errorf("%s: %q, want %q", c.f.Check, got, c.want)

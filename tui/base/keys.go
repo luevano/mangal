@@ -116,6 +116,12 @@ var (
 	// dismiss (a finding that's fine), z and Z were free everywhere
 	KeyDismiss       = util.Bind("dismiss", "z")
 	KeyShowDismissed = util.Bind("show dismissed", "Z")
+
+	// library rename (library, health's rename fixes) and its options (mangal library
+	// rename --chapters, --fallback); r and R are read and reverse
+	KeyRename       = util.Bind("rename", "alt+r")
+	KeyChapterFiles = util.Bind("chapter files", "alt+f")
+	KeyFallback     = util.Bind("fallback names", "alt+b")
 )
 
 // The global keys of the screens base opens from anywhere (GlobalKeys, not Key* keys: no
@@ -171,6 +177,7 @@ func Keys() (old, newer []key.Binding) {
 		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,
 		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel, KeyNarrow,
 		KeyLogFiles, KeyPrevPeriod, KeyNextPeriod, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
+		KeyRename, KeyChapterFiles, KeyFallback,
 	}
 }
 

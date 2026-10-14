@@ -79,77 +79,30 @@ the year and the id tags) and is listed as a warning; --fallback renames it anyw
 		if err != nil {
 			return err
 		}
-		dir, err := path.ExistingDownloads()
+		plan, err := client.PlanLibraryRename(st.Context(cmd.Context()), index, client.RenameOptions{
+			Refresh:    libraryRenameArgs.Refresh,
+			Chapters:   libraryRenameArgs.Chapters,
+			Fallback:   libraryRenameArgs.Fallback,
+			OnProgress: st.Progress,
+		})
 		if err != nil {
 			return err
 		}
-		rel := func(p string) string {
-			if r, err := filepath.Rel(dir, p); err == nil {
-				return r
-			}
-			return p
-		}
-		var disagree []string
-		namer, err := client.LibraryNamer(index, anilist.MetadataByIDsBatch)
-		if err != nil {
-			return err
-		}
-		namer.OnProgress = st.Progress
-		namer.OnDisagree = func(folder string, d []string) {
-			for _, line := range d {
-				disagree = append(disagree, fmt.Sprintf("  %s: %s", rel(folder), line))
-			}
-		}
-		if libraryRenameArgs.Refresh {
-			namer.Metadata = anilist.MetadataByIDsFresh
-		}
-		namer.Fallback = libraryRenameArgs.Fallback
-		providerDirs := config.Download.Provider.CreateDir.Get()
-		renames, err := namer.Plan(st.Context(cmd.Context()), dir, providerDirs)
-		if err != nil {
-			return err
-		}
-		untitled := 0
-		if libraryRenameArgs.Chapters {
-			mangas, err := index.Mangas()
-			if err != nil {
-				return err
-			}
-			chapters, err := namer.PlanChapters(mangas)
-			if err != nil {
-				return err
-			}
-			var kept []library.Rename
-			for _, r := range chapters {
-				if r.Skip == "no chapter title recorded" {
-					untitled++
-					continue
-				}
-				kept = append(kept, r)
-			}
-			// before the folders: they use the paths of now
-			renames = append(kept, renames...)
-		}
+		rel, renames := plan.Rel, plan.Renames
 		st.Clear()
-		if len(disagree) != 0 {
+		if len(plan.Disagree) != 0 {
 			cmd.Println("ids that disagree with the links (the links are used, \"mangal library bind <id>\" shows and fixes them):")
-			for _, line := range disagree {
-				cmd.Println(line)
+			for _, line := range plan.Disagree {
+				cmd.Println("  " + line)
 			}
 		}
-		if unmarked, err := library.Unmarked(afs.Afero, dir, providerDirs); err == nil && len(unmarked) != 0 {
-			cmd.Printf("%d folders without a %s aren't renamed (\"mangal library scan --mark\" marks them)\n", len(unmarked), libmangal.FilenameMangaDirInfo)
+		if plan.Unmarked != 0 {
+			cmd.Printf("%d folders without a %s aren't renamed (\"mangal library scan --mark\" marks them)\n", plan.Unmarked, libmangal.FilenameMangaDirInfo)
 		}
-		if untitled != 0 {
-			cmd.Printf("%d chapter files kept: no chapter title recorded\n", untitled)
+		if plan.Untitled != 0 {
+			cmd.Printf("%d chapter files kept: no chapter title recorded\n", plan.Untitled)
 		}
-		var noMetadata []library.Rename
-		for _, r := range renames {
-			if r.NoMetadata && r.Skip != "" {
-				noMetadata = append(noMetadata, r)
-			}
-		}
-		if len(noMetadata) != 0 {
+		if noMetadata := plan.NoMetadata(); len(noMetadata) != 0 {
 			cmd.Printf("warning: %d folders not renamed, no metadata found for their ids (the fallback name would drop the year and ids; --fallback renames them anyway):\n", len(noMetadata))
 			for _, r := range noMetadata {
 				cmd.Printf("  %s: %s (would be %s)\n", rel(r.From), r.Skip, filepath.Base(r.To))
@@ -162,72 +115,32 @@ the year and the id tags) and is listed as a warning; --fallback renames it anyw
 
 		if !libraryRenameArgs.Apply {
 			for _, r := range renames {
-				switch {
-				case r.NoMetadata && r.Skip != "":
+				if r.NoMetadata && r.Skip != "" {
 					// listed in the warning above
-				case r.Skip != "":
-					cmd.Printf("skip %s: %s\n", rel(r.From), r.Skip)
-				case r.RemoveEmpty:
-					cmd.Printf("remove %s once empty\n", rel(r.From))
-				case r.Chapter:
-					cmd.Printf("%s -> %s\n", rel(r.From), filepath.Base(r.To))
-				default:
-					cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To))
+					continue
 				}
+				cmd.Println(plan.Line(r))
 			}
 			cmd.Println("run with --apply to rename")
 			return nil
 		}
-		folders, files := 0, 0
-		for _, r := range renames {
+		res, err := client.ApplyLibraryRename(st.Context(cmd.Context()), index, renames, st.Progress, func(i int, err error) {
+			r := renames[i]
 			switch {
-			case r.Skip != "" || r.RemoveEmpty:
-			case r.Chapter:
-				files++
+			case errors.Is(err, library.ErrNotEmpty):
+				st.Print(func() { cmd.Printf("kept %s: not empty\n", rel(r.From)) })
+			case err != nil:
+				st.Print(func() { cmd.PrintErrf("skipped %s: %s\n", rel(r.From), err) })
+			case r.RemoveEmpty:
+				st.Print(func() { cmd.Printf("removed %s\n", rel(r.From)) })
 			default:
-				folders++
+				st.Print(func() { cmd.Println(plan.Line(r)) })
 			}
-		}
-		snapshot, err := client.Operation("rename", renameSummary(folders, files), func(j library.Journal) error {
-			// the journal says what was renamed, not what was planned
-			folders, files := 0, 0
-			if op, ok := j.(interface{ SetSummary(string) }); ok {
-				defer func() { op.SetSummary(renameSummary(folders, files)) }()
-			}
-			return library.ApplyRenamesContext(st.Context(cmd.Context()), afs.Afero, client.LibraryModes(), index, j, renames, st.Progress, func(i int, err error) {
-				r := renames[i]
-				switch {
-				case errors.Is(err, library.ErrNotEmpty):
-					st.Print(func() { cmd.Printf("kept %s: not empty\n", rel(r.From)) })
-				case err != nil:
-					st.Print(func() { cmd.PrintErrf("skipped %s: %s\n", rel(r.From), err) })
-				case r.RemoveEmpty:
-					st.Print(func() { cmd.Printf("removed %s\n", rel(r.From)) })
-				case r.Chapter:
-					files++
-					st.Print(func() { cmd.Printf("%s -> %s\n", rel(r.From), filepath.Base(r.To)) })
-				default:
-					folders++
-					st.Print(func() { cmd.Printf("%s -> %s\n", rel(r.From), rel(r.To)) })
-				}
-			})
 		})
 		st.Done()
-		undoHint(cmd, snapshot, err)
+		undoHint(cmd, res.Snapshot, err)
 		return err
 	},
-}
-
-// renameSummary is the journal's summary of a rename.
-func renameSummary(folders, files int) string {
-	var what []string
-	if folders != 0 || files == 0 {
-		what = append(what, fmt.Sprintf("%d folders", folders))
-	}
-	if files != 0 {
-		what = append(what, fmt.Sprintf("%d chapter files", files))
-	}
-	return "rename " + strings.Join(what, ", ")
 }
 
 func init() {
