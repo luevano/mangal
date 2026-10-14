@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/model/viewport"
 	"github.com/luevano/mangal/v5/util"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 // Update implements tea.Model.
@@ -46,12 +47,16 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		if m.inViewport {
 			return m.hideViewport()
 		}
-		return m.back(msg.Steps, nil)
+		return m.back(msg.Steps)
 	case BackToHomeMsg:
 		if m.inViewport {
 			return m.hideViewport()
 		}
-		return m.back(m.history.Size(), nil)
+		return m.back(m.history.Size())
+	case jumpMsg:
+		return m.jumpToKey(msg.key)
+	case activityMsg:
+		return m.onActivity(msg.msg)
 	case State:
 		return m.pushState(msg)
 	case spinner.TickMsg:
@@ -106,10 +111,15 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 }
 
 func (m *model) updateKey(msg tea.KeyMsg) tea.Cmd {
+	if m.quitAsk != nil {
+		return m.answerQuit(msg)
+	}
+	if m.switcher != nil {
+		return m.updateSwitcher(msg)
+	}
 	switch {
 	case key.Matches(msg, m.keyMap.quit), key.Matches(msg, m.keyMap.quitQ):
-		m.quitting = true
-		return tea.Quit
+		return m.quit()
 	case key.Matches(msg, m.keyMap.help):
 		return m.toggleHelp()
 	}
@@ -130,6 +140,11 @@ func (m *model) updateKey(msg tea.KeyMsg) tea.Cmd {
 		return BackToHome
 	case key.Matches(msg, m.keyMap.log):
 		return Viewport("Logs", log.Lines(), color.Viewport)
+	case key.Matches(msg, m.keyMap.windows):
+		m.openSwitcher()
+		return nil
+	case key.Matches(msg, m.keyMap.downloads):
+		return m.pushState(NewDownloads())
 	}
 	return m.state.Update(m.ctx, msg)
 }
@@ -147,6 +162,8 @@ func (m *model) updateKeybinds() {
 	_, inConfig := m.state.(ConfigWindow)
 	m.keyMap.config.SetEnabled(NewConfigWindow != nil && !m.standalone && !m.inViewport && !inputting && !inConfig)
 	m.keyMap.configFix.SetEnabled(NewConfigWindow != nil && !m.standalone && m.inViewport && m.viewportConfigKey != "")
+	m.keyMap.windows.SetEnabled(!m.standalone && !m.inViewport && !inputting)
+	m.keyMap.downloads.SetEnabled(NewDownloads != nil && !m.standalone && !m.inViewport && !inputting)
 }
 
 // resize the program
@@ -165,33 +182,20 @@ func (m *model) resizeState() tea.Cmd {
 	return m.state.Resize(s)
 }
 
-// back pops steps States and shows the one under them, with a RestoredMsg of request (a
-// push of that window, nil going back). A Keeper isn't popped: it's shown, with its notice.
-func (m *model) back(steps int, request State) tea.Cmd {
+// back closes the shown window and the ones ahead of it, then steps-1 more under it, and
+// shows the one under them with a RestoredMsg.
+func (m *model) back(steps int) tea.Cmd {
 	// do not pop the last state
 	if m.history.Size() == 0 || steps <= 0 {
 		return nil
 	}
-
-	var notice string
-	popped := 0
-	for ; popped < steps && m.history.Size() > 0; popped++ {
-		if notice = keeping(m.state); notice != "" {
-			break
-		}
+	m.dropForward()
+	for popped := 0; popped < steps && m.history.Size() > 0; popped++ {
 		destroy(m.state)
 		m.state = m.history.Pop()
 	}
-	if notice != "" {
-		// not where the request was going
-		destroy(request)
-		request = nil
-		if popped == 0 {
-			return Notify(notice)
-		}
-	}
 	log.Debug("tui: back to %q", m.state.Title().Text)
-	return tea.Sequence(m.restore(request), notifyCmd(notice))
+	return m.restore(nil)
 }
 
 // restore shows the State again with a new ctx and a RestoredMsg of request.
@@ -209,30 +213,22 @@ func (m *model) restore(request State) tea.Cmd {
 	return cmd
 }
 
-func notifyCmd(message string) tea.Cmd {
-	if message == "" {
-		return nil
-	}
-	return Notify(message)
-}
-
-// pushState shows state, the shown one goes to the history. The same window (Keyed) shown
-// or in the history is shown again instead, with state as the request: no window is
-// open twice. Nothing goes over a Keeper (its msgs would go to the State over it).
+// pushState shows state, the shown one goes to the history. The same window (Keyed, or
+// the same instance) open anywhere (history, shown, ahead) is shown instead, with state as
+// the request: no window is open twice. A new window drops the windows ahead.
 func (m *model) pushState(state State) tea.Cmd {
-	if notice := keeping(m.state); notice != "" {
-		destroy(state)
-		return Notify(notice)
-	}
-	if key := keyOf(state); state == m.state || (key != "" && key == keyOf(m.state)) {
-		log.Debug("tui: show %q again", m.state.Title().Text)
-		return m.restore(state)
-	}
-	if i := m.history.Find(state); i >= 0 {
-		return m.back(m.history.Size()-i, state)
+	key := keyOf(state)
+	for i, s := range m.windows() {
+		if s == state || (key != "" && keyOf(s) == key) {
+			return m.jump(i, state)
+		}
 	}
 
 	log.Debug("tui: show %q", state.Title().Text)
+	var notice tea.Cmd
+	if n := m.dropForward(); n > 0 {
+		notice = Notify("Closed " + stringutil.Quantify(n, "window", "windows") + " ahead")
+	}
 	m.history.Push(m.state)
 	m.state = state
 	m.newCtx()
@@ -240,6 +236,7 @@ func (m *model) pushState(state State) tea.Cmd {
 	return tea.Sequence(
 		m.state.Init(m.ctx),
 		m.resizeState(),
+		notice,
 	)
 }
 

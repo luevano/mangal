@@ -27,6 +27,15 @@ type model struct {
 	state    State
 	viewport *viewport.Model
 	history  *history
+	// forward are the windows ahead of the shown one (it was jumped back to), the nearest
+	// first
+	forward []State
+	// switcher is the window switcher while it's open
+	switcher *switcher
+	// quitAsk is what quitting would cancel while it asks, nil when it doesn't
+	quitAsk []string
+	// activity is the background work (downloads, checks), nil without
+	activity Activity
 
 	// root is cancelled on quit, ctx (the shown State's) when the State changes
 	root       context.Context
@@ -78,6 +87,9 @@ func newModel(ctx context.Context, state State, standalone bool, notices []strin
 		notificationDefaultDuration: time.Second,
 		notices:                     notices,
 	}
+	if !standalone {
+		m.activity = CurrentActivity
+	}
 	m.root, m.rootCancel = context.WithCancel(ctx)
 	m.newCtx()
 	m.updateKeybinds()
@@ -102,9 +114,13 @@ func (m *model) newCtx() {
 // background work to stop.
 func (m *model) shutdown(timeout time.Duration) {
 	m.rootCancel()
+	m.dropForward()
 	destroy(m.state)
 	for m.history.Size() > 0 {
 		destroy(m.history.Pop())
+	}
+	if m.activity != nil {
+		m.activity.Shutdown(timeout)
 	}
 	m.work.wait(timeout)
 }
@@ -112,9 +128,9 @@ func (m *model) shutdown(timeout time.Duration) {
 // Init implements tea.Model.
 func (m *model) Init() tea.Cmd {
 	if len(m.notices) == 0 {
-		return m.state.Init(m.ctx)
+		return tea.Batch(m.state.Init(m.ctx), m.listenActivity())
 	}
-	return tea.Batch(m.state.Init(m.ctx), Viewport("Notice", strings.Join(m.notices, "\n\n"), color.Warning))
+	return tea.Batch(m.state.Init(m.ctx), m.listenActivity(), Viewport("Notice", strings.Join(m.notices, "\n\n"), color.Warning))
 }
 
 // stateSize returns the usable size of the state viewport (everything but the header/footer).

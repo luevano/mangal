@@ -61,6 +61,11 @@ var (
 	KeyAdd             = util.Bind("add", "n")
 	KeyDelete          = util.Bind("delete", "d")
 	KeyRemove          = util.Bind("remove", "d")
+	KeyCancel          = util.Bind("cancel", "d")
+	KeyCancelAll       = util.Bind("cancel all", "alt+d")
+	KeyClearQueue      = util.Bind("clear its queue", "backspace")
+	KeyClearQueues     = util.Bind("clear every queue", "alt+backspace")
+	KeyOrigin          = util.Bind("its screen", "o")
 	KeyReset           = util.Bind("reset to default", "backspace")
 	KeyExpandAll       = util.Bind("expand/collapse all", "E")
 	KeyChange          = util.BindNamedKey("enter/space", "change", "enter", " ")
@@ -102,6 +107,13 @@ var (
 	KeyShowDismissed = util.Bind("show dismissed", "Z")
 )
 
+// The global keys of the screens base opens from anywhere (GlobalKeys, not Key* keys: no
+// screen may use them). Q and ctrl+w were free on every screen.
+var (
+	KeyDownloads = util.Bind("downloads", "Q")
+	KeyWindows   = util.Bind("windows", "ctrl+w")
+)
+
 // keyConcepts are the keys with more than one help, each one concept: the helps they may
 // have. The rest have one.
 var keyConcepts = map[string][]string{
@@ -110,15 +122,15 @@ var keyConcepts = map[string][]string{
 	// old: chapter number on the chapters, copy
 	"c": {"toggle number", "copy", "copy url"},
 	// old: open, and log out on the logins
-	"o": {"open url", "open directory", "log out"},
+	"o": {"open url", "open directory", "log out", "its screen"},
 	// old: read on the chapters, retry on the downloads
 	"r": {"read", "retry"},
 	// old: forget on the logins, the date on the chapters
 	"ctrl+d": {"forget", "toggle date"},
 	// delete; download is the chapters' old key (no delete there)
-	"d": {"delete", "remove", "stop watching", "empty", "delete check", "download"},
+	"d": {"delete", "remove", "stop watching", "empty", "delete check", "download", "cancel"},
 	// clear
-	"backspace": {"close all", "unselect all", "reset to default"},
+	"backspace": {"close all", "unselect all", "reset to default", "clear its queue"},
 	" ":         {"toggle", "change", "on/off"},
 	"tab":       {"next provider", "provider", "next"},
 	"n":         {"new login", "add"},
@@ -140,7 +152,7 @@ func Keys() (old, newer []key.Binding) {
 	}, []key.Binding{
 		KeyLibrary, KeyWatches, KeyAccounts, KeyMigrate, KeyHealth, KeyWatch, KeyItsWatch, KeyLibraryManga,
 		KeyMirrors, KeyCopyURL, KeyAccountLogIn, KeyAPIClient, KeyRefresh, KeyEdit, KeyAdd, KeyDelete,
-		KeyRemove, KeyReset, KeyExpandAll, KeyChange, KeyOnOff, KeyScan, KeyScanIDs, KeyMerge, KeyMove, KeyTrash, KeyEmptyTrash,
+		KeyRemove, KeyCancel, KeyCancelAll, KeyClearQueue, KeyClearQueues, KeyOrigin, KeyReset, KeyExpandAll, KeyChange, KeyOnOff, KeyScan, KeyScanIDs, KeyMerge, KeyMove, KeyTrash, KeyEmptyTrash,
 		KeyUndo, KeyDuplicates, KeyBackups, KeyCheck, KeyCheckDue, KeyCheckProvider, KeyFillGaps, KeyPause,
 		KeyPauseProvider, KeyStopWatching, KeyDeleteRun, KeyRelink, KeyLiveLog, KeyLiveChecks, KeyRuns,
 		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,

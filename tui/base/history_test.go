@@ -16,14 +16,6 @@ type keyedState struct {
 
 func (s *keyedState) Key() string { return s.key }
 
-// keeperState is a fakeState that can't be left while keep is set.
-type keeperState struct {
-	fakeState
-	keep string
-}
-
-func (s *keeperState) Keeping() string { return s.keep }
-
 func keyed(title, key string) *keyedState {
 	return &keyedState{fakeState: fakeState{title: title}, key: key}
 }
@@ -74,8 +66,12 @@ func TestPushSameWindowGoesBack(t *testing.T) {
 	again := keyed("details 7 (new)", "watch/7")
 	m.Update(State(again))
 	checkTitles(t, m, "home", "watches", "details 7")
-	if !manga.destroyed {
-		t.Error("the window over it wasn't destroyed")
+	// the window over it stays, ahead
+	if manga.destroyed || len(m.forward) != 1 || m.forward[0] != State(manga) {
+		t.Error("the window over it didn't stay ahead")
+	}
+	if manga.ctx.Err() == nil {
+		t.Error("the window ahead has a live ctx")
 	}
 	if !again.destroyed {
 		t.Error("the request wasn't destroyed")
@@ -136,48 +132,6 @@ func TestDifferentItemsStack(t *testing.T) {
 	m.Update(State(keyed("manga 1", "library/1")))
 	m.Update(State(keyed("manga 2", "library/2")))
 	checkTitles(t, m, "home", "manga 1", "manga 2")
-}
-
-func TestKeeperStaysShown(t *testing.T) {
-	m := newTestModel(t, keyed("home", "home"))
-	m.Update(State(keyed("library", "library")))
-	download := &keeperState{fakeState: fakeState{title: "download"}, keep: "a download is running"}
-	m.Update(State(download))
-
-	for _, msg := range []tea.Msg{BackToHomeMsg{}, BackMsg{Steps: 1}, State(keyed("config", "config")), State(keyed("library", "library"))} {
-		_, cmd := m.Update(msg)
-		checkTitles(t, m, "home", "library", "download")
-		if !containsNotification(cmd, "a download is running") {
-			t.Errorf("%T: no notice of why it stayed", msg)
-		}
-	}
-	if download.destroyed {
-		t.Error("the download was destroyed")
-	}
-
-	download.keep = ""
-	m.Update(BackToHomeMsg{})
-	checkTitles(t, m, "home")
-	if !download.destroyed {
-		t.Error("the download wasn't destroyed once it could go")
-	}
-}
-
-func TestBackStopsOnKeeper(t *testing.T) {
-	m := newTestModel(t, keyed("home", "home"))
-	download := &keeperState{fakeState: fakeState{title: "download"}}
-	m.Update(State(download))
-	m.Update(State(keyed("config", "config")))
-	// it started keeping while covered
-	download.keep = "busy"
-	_, cmd := m.Update(BackToHomeMsg{})
-	checkTitles(t, m, "home", "download")
-	if !containsNotification(cmd, "busy") {
-		t.Error("no notice of why it stopped")
-	}
-	if req, ok := restoredWith(&download.fakeState); !ok || req != nil {
-		t.Errorf("not restored, or with a request: %v", req)
-	}
 }
 
 func TestBreadcrumbsFollowTheHistory(t *testing.T) {

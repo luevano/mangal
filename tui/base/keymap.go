@@ -21,6 +21,8 @@ func newKeyMap() *keyMap {
 		log:       util.Bind("log", "ctrl+l"),
 		config:    util.Bind("config", ","),
 		configFix: util.Bind("change it", "e"),
+		downloads: KeyDownloads,
+		windows:   KeyWindows,
 	}
 }
 
@@ -40,7 +42,9 @@ type keyMap struct {
 	help,
 	log,
 	config,
-	configFix key.Binding
+	configFix,
+	downloads,
+	windows key.Binding
 }
 
 // ShortHelp implements help.KeyMap.
@@ -59,6 +63,8 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		k.ShortHelp(),
 		{
 			k.home,
+			k.downloads,
+			k.windows,
 			k.config,
 			k.quit,
 			k.log,
@@ -94,10 +100,10 @@ func (c combinedKeyMap) FullHelp() [][]key.Binding {
 }
 
 // GlobalKeys are the keys every screen has while not typing (quit, back, home, help, log,
-// config): a screen's own keys mustn't use them.
+// config, downloads, windows): a screen's own keys mustn't use them.
 func GlobalKeys() []key.Binding {
 	k := newKeyMap()
-	return []key.Binding{k.quit, k.back, k.home, k.help, k.log, k.config}
+	return []key.Binding{k.quit, k.back, k.home, k.help, k.log, k.config, k.downloads, k.windows}
 }
 
 // KeyCollisions are the keys that would mean two things on a screen, between its own keys

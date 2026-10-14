@@ -1,7 +1,11 @@
 package base
 
 import (
+	"strconv"
 	"strings"
+
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/luevano/mangal/v5/tui/util"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/util/sanitize"
@@ -31,6 +35,9 @@ func (m *model) viewBreadcrumb() string {
 	for _, s := range m.history.states {
 		bc.WriteString(m.styles.breadcrumb.state.Render(s.Title().Text))
 		bc.WriteString(sep)
+	}
+	if n := len(m.forward); n > 0 {
+		bc.WriteString(m.styles.breadcrumb.state.Render("(" + strconv.Itoa(n) + " ahead: " + m.keyMap.windows.Help().Key + ")"))
 	}
 	return bc.String()
 }
@@ -79,9 +86,16 @@ func (m *model) viewHeader() string {
 	}
 
 	header.WriteString(newline)
-	if label := m.loadingLabel(); label != "" {
+	label := m.loadingLabel()
+	if label != "" {
 		header.WriteString(m.spinner.View())
 		header.WriteString(m.styles.loading.message.Render(label))
+	}
+	if activity := m.activityStatus(); activity != "" {
+		if label != "" {
+			header.WriteString("  ")
+		}
+		header.WriteString(m.styles.loading.message.Render(activity))
 	}
 
 	header.WriteString(newline)
@@ -100,16 +114,29 @@ func (m *model) viewState() string {
 		return m.styles.state.Render(m.state.View())
 	}
 	size := m.stateSize()
-	return lipgloss.Place(
+	view := lipgloss.Place(
 		size.Width,
 		size.Height,
 		lipgloss.Left,
 		lipgloss.Top,
 		m.styles.state.Render(m.state.View()),
 	)
+	switch {
+	case m.quitAsk != nil:
+		return m.viewQuitAsk(view)
+	case m.switcher != nil:
+		return m.viewSwitcher(view)
+	}
+	return view
 }
 
 func (m *model) viewFooter() string {
+	switch {
+	case m.quitAsk != nil:
+		return m.styles.footer.Render(m.help.View(util.KeyMap{Short: []key.Binding{quitYes, quitNo}}))
+	case m.switcher != nil:
+		return m.styles.footer.Render(m.help.View(m.switcherKeyMap()))
+	}
 	if m.inViewport {
 		return m.styles.footer.Render(m.help.View(CombinedKeyMap(m.viewport.KeyMap, m.keyMap)))
 	}
