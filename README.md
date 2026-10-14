@@ -125,7 +125,7 @@ When a provider is renamed (e.g. MangaSee is now Weeb Central, `mango-weebcentra
 
 Some Lua providers are available at [saturno](https://github.com/luevano/saturno), mostly as examples since `mangoprovider` already covers those sites.
 
-Each Lua provider is a directory with the `main.lua` (scraper) and `mangal.toml` (metadata) files inside. By default, they need to be placed in `$XDG_CONFIG_HOME/mangal/providers`. Old ids of a renamed provider go in `mangal.toml` as `[[history]]` entries.
+Each Lua provider is a directory with the `main.lua` (scraper) and `mangal.toml` (metadata) files inside. By default, they need to be placed in `$XDG_CONFIG_HOME/mangal/providers`. Old ids of a renamed provider go in `mangal.toml` as `[[history]]` entries. Request rate limits go there too: `rate_limits = [{ rate = "1/2s", match = "site.com", burst = 1 }]` (`match`, a host with an optional path prefix, and `burst` are optional).
 
 A new provider can be created by running:
 
