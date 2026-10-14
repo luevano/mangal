@@ -356,14 +356,16 @@ func (s Watches) Find(provider, mangaID string) (Watch, bool, error) {
 
 // Remove removes the watch, its runs stay in the history.
 func (s Watches) Remove(id int64) error {
-	res, err := s.DB.Exec(`DELETE FROM watches WHERE id = ?`, id)
-	if err != nil {
-		return fmt.Errorf("remove watch %d: %w", id, err)
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("watch %d: %w", id, ErrWatchNotFound)
-	}
-	return nil
+	return s.DB.InTx(func(tx *sql.Tx) error {
+		res, err := tx.Exec(`DELETE FROM watches WHERE id = ?`, id)
+		if err != nil {
+			return fmt.Errorf("remove watch %d: %w", id, err)
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return fmt.Errorf("watch %d: %w", id, ErrWatchNotFound)
+		}
+		return forgetSubject(tx, fmt.Sprintf("watch/%d", id))
+	})
 }
 
 // SetLibraryManga links the watch to its library manga, unless it's linked already.

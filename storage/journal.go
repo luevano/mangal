@@ -47,9 +47,9 @@ CREATE TABLE journal_steps (
 // it ran (a restore of its snapshot would lose them).
 const journalInterfered = `ALTER TABLE journal ADD COLUMN interfered TEXT NOT NULL DEFAULT ''`
 
-// keptTables aren't restored from a snapshot: no library operation changes them, and
-// logins, searches or dismissed health findings made since are worth more than the old
-// ones.
+// keptTables aren't restored from a snapshot: no library operation changes them (but a
+// removed manga's dismissed findings go with it, see forgetSubject), and logins, searches
+// or dismissed health findings made since are worth more than the old ones.
 var keptTables = []string{
 	TableTitleBindings, TableAuthTokens, TableAuthHistory, TableSearchHistory,
 	"locks", "journal", "journal_steps", "health_ignores",

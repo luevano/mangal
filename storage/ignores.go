@@ -67,3 +67,12 @@ func (h HealthIgnores) Undismiss(check, subject string) (bool, error) {
 	n, _ := res.RowsAffected()
 	return n != 0, nil
 }
+
+// forgetSubject drops the dismissed findings of a subject that's gone (e.g. "manga/5"):
+// its id may be reused by a new one, which mustn't inherit them.
+func forgetSubject(tx *sql.Tx, subject string) error {
+	if _, err := tx.Exec(`DELETE FROM health_ignores WHERE subject = ? OR subject LIKE ?`, subject, subject+"/%"); err != nil {
+		return fmt.Errorf("forget the dismissed findings of %s: %w", subject, err)
+	}
+	return nil
+}

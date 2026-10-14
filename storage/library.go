@@ -734,6 +734,9 @@ func (l Library) RemoveMangas(ids ...int64) error {
 			if _, err := tx.Exec(`DELETE FROM library_mangas WHERE id = ?`, id); err != nil {
 				return fmt.Errorf("remove manga %d: %w", id, err)
 			}
+			if err := forgetSubject(tx, fmt.Sprintf("manga/%d", id)); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -808,8 +811,10 @@ func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) e
 		if err := addMetadataIDs(tx, keep, ids); err != nil {
 			return err
 		}
-		_, err := tx.Exec(`DELETE FROM library_mangas WHERE id = ?`, other)
-		return err
+		if _, err := tx.Exec(`DELETE FROM library_mangas WHERE id = ?`, other); err != nil {
+			return err
+		}
+		return forgetSubject(tx, fmt.Sprintf("manga/%d", other))
 	})
 	if err != nil {
 		return fmt.Errorf("merge manga %d into %d: %w", other, keep, err)
