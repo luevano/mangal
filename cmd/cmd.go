@@ -181,7 +181,18 @@ func setup(cmd *cobra.Command, _ []string) error {
 	if rootArgs.Debug {
 		logLevel = log.LevelDebug
 	}
-	log.Init(log.Options{Dir: path.Logs(), Level: logLevel, Keep: config.Log.KeepDays.Get()})
+	// validated by the config, Daily otherwise
+	rotate, _ := log.ParsePeriod(config.Log.Rotate.Get())
+	log.Init(log.Options{
+		Dir:          path.Logs(),
+		Level:        logLevel,
+		Rotate:       rotate,
+		MaxSize:      config.Log.MaxSize.Get(),
+		Keep:         config.Log.KeepDays.Get(),
+		MaxFiles:     config.Log.MaxFiles.Get(),
+		MaxTotalSize: config.Log.MaxTotalSize.Get(),
+		Compress:     config.Log.Compress.Get(),
+	})
 	icon.SetType(config.Icons.Get())
 
 	if level == startupConfig || level == startupNoStorage {
