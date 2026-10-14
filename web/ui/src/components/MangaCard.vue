@@ -2,6 +2,7 @@
 import type { components } from '@/api/mangal';
 import type { Manga } from '@/api/schemas';
 import { useRoute } from 'vue-router';
+import { imageURL } from '@/api/image';
 
 const route = useRoute()
 
@@ -32,19 +33,7 @@ function httpURL(url?: string): string | undefined {
 }
 
 function getImageURL(manga: Manga): string {
-    if (!manga.cover) {
-        return ""
-    }
-
-    const apiURL = new URL('/api/image', `${location.protocol}//${location.host}`)
-
-    apiURL.searchParams.set('url', manga.cover)
-
-    if (manga.url) {
-        apiURL.searchParams.set('referer', manga.url)
-    }
-
-    return apiURL.toString()
+    return imageURL(manga.cover, manga.url)
 }
 
 </script>

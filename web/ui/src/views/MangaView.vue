@@ -3,7 +3,7 @@ import { useRoute } from 'vue-router';
 import client from '@/api/client';
 import { computed, onMounted, ref } from 'vue';
 import type { MangaPage } from '@/api/schemas';
-import type { Manga } from '@/api/schemas';
+import { imageURL } from '@/api/image';
 
 const route = useRoute()
 const error = ref("")
@@ -16,8 +16,18 @@ const description = computed(() => {
     if (!html) {
         return ""
     }
-    const doc = new DOMParser().parseFromString(html.replace(/<br\s*\/?>/gi, "\n"), "text/html")
-    return doc.body.textContent ?? ""
+    // AniList puts a <br> before its newlines: one break each, at most a blank line between
+    const doc = new DOMParser().parseFromString(html.replace(/\s*<br\s*\/?>\s*/gi, "\n"), "text/html")
+    return (doc.body.textContent ?? "").replace(/\n{3,}/g, "\n\n").trim()
+})
+
+// the AniList cover, else the provider's (it may need the site as Referer)
+const cover = computed(() => {
+    const anilist = data.value?.anilistManga?.coverImage.extraLarge
+    if (anilist) {
+        return imageURL(anilist)
+    }
+    return imageURL(data.value?.manga.cover, data.value?.manga.url)
 })
 
 onMounted(async () => {
@@ -51,7 +61,7 @@ onMounted(async () => {
     </div>
     <p v-else-if="error">{{ error }}</p>
     <div v-else>
-        <img :src="data?.anilistManga?.coverImage.extraLarge ?? data?.manga.cover" alt="">
+        <img v-if="cover" :src="cover" alt="Cover image">
         <h2>{{ data?.manga.title }}</h2>
         <p class="description">{{ description }}</p>
         <ul v-for="volume in data?.volumes">
