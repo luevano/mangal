@@ -11,6 +11,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/progress"
+	"github.com/luevano/mangoprovider"
 
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
@@ -172,6 +173,16 @@ func probeProvider(ctx context.Context, loaders []libmangal.ProviderLoader, prov
 	if l, _, ok := libmangal.FindLoader(loaders, provider); ok {
 		if a, ok := l.(interface{ HasAccount() bool }); ok && a.HasAccount() {
 			p.Account = cachedAccount(c.Info().ID)
+		}
+	}
+	// a cached answer says nothing about the site: mangoprovider caches the lookup,
+	// luaprovider the http responses (cleared as a watch check does)
+	if st, err := cache.Storage(); err == nil {
+		_ = st.ForgetMangaByID(c.Info().ID, m.MangaID)
+	}
+	if l, _, ok := libmangal.FindLoader(loaders, provider); ok {
+		if _, mango := l.(*mangoprovider.Loader); !mango {
+			_ = cache.ClearChapterCache(c.Info().ID)
 		}
 	}
 	start := time.Now()

@@ -228,6 +228,27 @@ func TestClearChapterCache(t *testing.T) {
 	}
 }
 
+func TestForgetMangaByID(t *testing.T) {
+	cache, data := openBoth(t)
+	st := Storage{Cache: cache, Data: data}
+	opts := StoreOptions{TTL: time.Hour}
+	_ = st.Store("p", mango.CacheBucketNameMangas, opts).Set("mid:x", 1)
+	_ = st.Store("p", mango.CacheBucketNameMangas, opts).Set("mid:y", 1)
+	_ = st.Store("other", mango.CacheBucketNameMangas, opts).Set("mid:x", 1)
+	if err := st.ForgetMangaByID("p", "x"); err != nil {
+		t.Fatal(err)
+	}
+	var v int
+	if found, _ := st.Store("p", mango.CacheBucketNameMangas, opts).Get("mid:x", &v); found {
+		t.Error("mid:x still cached")
+	}
+	for _, k := range [][2]string{{"p", "mid:y"}, {"other", "mid:x"}} {
+		if found, _ := st.Store(k[0], mango.CacheBucketNameMangas, opts).Get(k[1], &v); !found {
+			t.Errorf("%s %s gone", k[0], k[1])
+		}
+	}
+}
+
 func TestPermissions(t *testing.T) {
 	dir := t.TempDir()
 	cache, err := OpenCache(filepath.Join(dir, "cache", FilenameCache))

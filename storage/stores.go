@@ -201,3 +201,9 @@ func (s Storage) AuthFingerprint() (string, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
+
+// ForgetMangaByID drops the provider's cached lookup of the manga id (mangoprovider's
+// "mid:<id>" search), so the next one asks the site.
+func (s Storage) ForgetMangaByID(provider, id string) error {
+	return KV{DB: s.Cache, Table: TableMangaSearches, Owner: provider}.Delete("mid:" + id)
+}
