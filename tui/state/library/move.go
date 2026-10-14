@@ -198,11 +198,15 @@ func (s *moveState) askTitle(msg movePlannedMsg) {
 }
 
 func (s *moveState) askMove(mover library.Mover, plan library.MovePlan) {
-	s.Confirm.Ask("Move", strings.Join(plan.Lines(), "\n"), s.View(), action("Moving "+plan.Manga.Title, func() (string, error) {
-		summary := fmt.Sprintf("move %d %q to %s %s", plan.Manga.ID, plan.Manga.Title, plan.Provider.ID, plan.To.ID)
-		return journaled("move", summary, fmt.Sprintf("moved %s to %s (%s)", plan.Manga.Title, plan.Provider.ID, plan.To.Title), func(j library.Journal) error {
-			mover.Journal = j
-			return mover.ApplyMove(plan)
-		})
-	}))
+	// with the screen's ctx: a copy across drives reports its progress, esc stops it
+	s.Confirm.Ask("Move", strings.Join(plan.Lines(), "\n"), s.View(), func() tea.Msg {
+		return actionMsg{label: "Moving " + plan.Manga.Title, do: func(ctx context.Context, _ func(string)) (reloadMsg, error) {
+			summary := fmt.Sprintf("move %d %q to %s %s", plan.Manga.ID, plan.Manga.Title, plan.Provider.ID, plan.To.ID)
+			notify, err := journaled("move", summary, fmt.Sprintf("moved %s to %s (%s)", plan.Manga.Title, plan.Provider.ID, plan.To.Title), func(j library.Journal) error {
+				mover.Journal = j
+				return mover.ApplyMoveContext(ctx, plan)
+			})
+			return reloadMsg{notify: notify}, err
+		}}
+	})
 }

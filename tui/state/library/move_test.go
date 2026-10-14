@@ -2,15 +2,18 @@ package library
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -124,5 +127,78 @@ func TestMove(t *testing.T) {
 	}
 	if cmd := ms.Update(ctx, reload); cmd == nil {
 		t.Error("done: no cmd")
+	}
+}
+
+// xdevFs renames no folder: every folder move is a copy across drives.
+type xdevFs struct{ afero.Fs }
+
+func (f xdevFs) Rename(from, to string) error {
+	if info, err := f.Stat(from); err == nil && info.IsDir() {
+		return &os.LinkError{Op: "rename", Old: from, New: to, Err: syscall.EXDEV}
+	}
+	return f.Fs.Rename(from, to)
+}
+
+// the move runs with the screen's ctx: a copy across drives reports its progress, esc
+// (the ctx cancelled) stops it
+func TestMoveProgress(t *testing.T) {
+	root := t.TempDir()
+	db, err := storage.OpenData(filepath.Join(t.TempDir(), storage.FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	lib := storage.Library{DB: db}
+	dir := filepath.Join(root, "Berserk")
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "1.cbz"), make([]byte, 1<<20), 0o644)
+	if err := lib.RecordDownload(root, "Berserk", storage.Download{Path: filepath.Join(dir, "1.cbz"), Provider: "mango-asurascans", MangaID: "berserk", MangaTitle: "Berserk", Chapter: 1, Format: "CBZ"}); err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ := lib.MangaBySource("mango-asurascans", "berserk")
+	mover := library.Mover{
+		Files:        library.Files{FS: xdevFs{afero.NewOsFs()}, Library: lib, Root: root, Modes: library.DefaultModes},
+		ProviderDirs: true,
+		ProviderName: func(p libmangal.ProviderInfo) string { return p.Name },
+		MangaName:    func(_ libmangal.ProviderInfo, m mangadata.Manga) string { return m.Info().Title },
+	}
+	oldMover, oldInfo := newMover, acquireInfo
+	t.Cleanup(func() { newMover, acquireInfo = oldMover, oldInfo })
+	newMover = func() (library.Mover, error) { return mover, nil }
+	acquireInfo = func(_ context.Context, provider string) (libmangal.ProviderInfo, error) {
+		return libmangal.ProviderInfo{ID: provider, Name: "Weeb Central"}, nil
+	}
+	planned, err := planMove(context.Background(), m, "mango-weebcentral", &testManga{mangadata.MangaInfo{ID: "01J", Title: "Berserk"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := newMoveState(m, "mango-weebcentral")
+	ms.Resize(base.Size{Width: 120, Height: 40})
+	ms.Update(context.Background(), planned)
+	act, ok := ms.Update(context.Background(), press("y"))().(actionMsg)
+	if !ok {
+		t.Fatal("yes isn't the move")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := act.do(ctx, func(string) {}); !errors.Is(err, context.Canceled) {
+		t.Errorf("cancelled: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "1.cbz")); err != nil {
+		t.Fatal("cancelled, still moved")
+	}
+
+	var reports []string
+	ctx = progress.WithReporter(context.Background(), func(s progress.Status) { reports = append(reports, s.String()) })
+	if _, err := act.do(ctx, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	if len(reports) == 0 {
+		t.Error("the copy didn't report its progress")
+	}
+	if _, err := os.Stat(filepath.Join(root, "Weeb Central", "Berserk", "1.cbz")); err != nil {
+		t.Error("not moved")
 	}
 }
