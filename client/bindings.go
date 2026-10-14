@@ -14,6 +14,7 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -261,12 +262,45 @@ func Bind(ctx context.Context, c *libmangal.Client, provider, mangaID string, ma
 	return bind(ctx, bindings, c, provider, mangaID, manga, code, id)
 }
 
+// bindOperation runs a change that loses a binding as an undoable operation (Operation: a
+// snapshot of the data db first), swapped in tests.
+var bindOperation = func(summary string, do func() error) error {
+	_, err := Operation("bind", summary, func(library.Journal) error { return do() })
+	return err
+}
+
+// boundID is the manga's binding of the source, "" for none.
+func boundID(bindings storage.Bindings, provider, mangaID string, code metadata.IDCode) (string, error) {
+	list, err := bindings.Get(provider, mangaID)
+	if err != nil {
+		return "", err
+	}
+	for _, b := range list {
+		if b.Source == code {
+			return b.ID, nil
+		}
+	}
+	return "", nil
+}
+
 func bind(ctx context.Context, bindings storage.Bindings, c metadataProvider, provider, mangaID string, manga mangadata.Manga, code metadata.IDCode, id string) (metadata.Metadata, error) {
 	meta, err := boundMetadata(ctx, c, code, id)
 	if err != nil {
 		return nil, err
 	}
-	if err := bindings.Set(storage.Binding{Provider: provider, MangaID: mangaID, Source: code, ID: id}); err != nil {
+	previous, err := boundID(bindings, provider, mangaID, code)
+	if err != nil {
+		return nil, err
+	}
+	set := func() error {
+		return bindings.Set(storage.Binding{Provider: provider, MangaID: mangaID, Source: code, ID: id})
+	}
+	if previous != "" && previous != id {
+		err = bindOperation(fmt.Sprintf("bind %s %s to %s %s (was %s)", provider, mangaID, SourceName(code), id, previous), set)
+	} else {
+		err = set()
+	}
+	if err != nil {
 		return nil, err
 	}
 	log.Info("bound %s %q to %s %s (%s)", provider, mangaID, SourceName(code), id, meta)
@@ -276,6 +310,29 @@ func bind(ctx context.Context, bindings storage.Bindings, c metadataProvider, pr
 		}
 	}
 	return meta, nil
+}
+
+// Unbind removes the manga's binding of the source (an undoable operation), false when
+// there was none.
+func Unbind(provider, mangaID string, code metadata.IDCode) (bool, error) {
+	bindings, err := cache.Bindings()
+	if err != nil {
+		return false, err
+	}
+	return unbind(bindings, provider, mangaID, code)
+}
+
+func unbind(bindings storage.Bindings, provider, mangaID string, code metadata.IDCode) (bool, error) {
+	previous, err := boundID(bindings, provider, mangaID, code)
+	if err != nil || previous == "" {
+		return false, err
+	}
+	var removed bool
+	err = bindOperation(fmt.Sprintf("unbind %s %s from %s %s", provider, mangaID, SourceName(code), previous), func() error {
+		removed, err = bindings.Remove(provider, mangaID, code)
+		return err
+	})
+	return removed, err
 }
 
 // boundSyncs are the manga's bindings of the sources options syncs, and the options

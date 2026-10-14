@@ -269,3 +269,44 @@ func TestFirstBoundRateLimited(t *testing.T) {
 		t.Errorf("%v, kitsu asked %v", err, kitsu.ids)
 	}
 }
+
+// TestBindOverwriteIsAnOperation: replacing or removing a binding goes through an undoable
+// operation (a snapshot first), a new one doesn't need it.
+func TestBindOverwriteIsAnOperation(t *testing.T) {
+	ctx := context.Background()
+	bindings := openBindings(t)
+	ani := &fakeMetaProvider{src: srcAnilist, byID: map[int]string{1: "A", 2: "B"}}
+	providers := newFakeMetaProviders(t, ani)
+	var ops []string
+	old := bindOperation
+	t.Cleanup(func() { bindOperation = old })
+	bindOperation = func(summary string, do func() error) error {
+		ops = append(ops, summary)
+		return do()
+	}
+
+	if _, err := bind(ctx, bindings, providers, "p", "m", nil, metadata.IDCodeAnilist, "1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bind(ctx, bindings, providers, "p", "m", nil, metadata.IDCodeAnilist, "1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(ops) != 0 {
+		t.Fatalf("operations for a new/same binding: %q", ops)
+	}
+	if _, err := bind(ctx, bindings, providers, "p", "m", nil, metadata.IDCodeAnilist, "2"); err != nil {
+		t.Fatal(err)
+	}
+	if len(ops) != 1 {
+		t.Fatalf("overwrite: operations %q", ops)
+	}
+	if removed, err := unbind(bindings, "p", "m", metadata.IDCodeAnilist); err != nil || !removed {
+		t.Fatalf("unbind: %v %v", removed, err)
+	}
+	if removed, err := unbind(bindings, "p", "m", metadata.IDCodeAnilist); err != nil || removed {
+		t.Fatalf("unbind again: %v %v", removed, err)
+	}
+	if len(ops) != 2 {
+		t.Errorf("remove: operations %q", ops)
+	}
+}

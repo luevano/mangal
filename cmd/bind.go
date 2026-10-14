@@ -120,7 +120,7 @@ manga) share the bindings.`,
 			successf(cmd, "bound to %s %s: %s", s.src.Name, s.id, meta)
 		}
 		for _, code := range remove {
-			removed, err := bindings.Remove(provider, mangaID, code)
+			removed, err := client.Unbind(provider, mangaID, code)
 			if err != nil {
 				return err
 			}
