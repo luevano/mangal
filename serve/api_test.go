@@ -24,6 +24,7 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/web"
 )
 
@@ -763,5 +764,51 @@ func TestCLIWhileServing(t *testing.T) {
 	waitRun(t, s, resp.Run)
 	if _, err := cli.Check(ctx, []int64{w.ID}, watch.CheckOptions{}); err != nil {
 		t.Errorf("cli check after: %v", err)
+	}
+}
+
+// TestRefusedLogged: refused requests are logged at debug level, without the token.
+func TestRefusedLogged(t *testing.T) {
+	log.Init(log.Options{Level: log.LevelDebug})
+	t.Cleanup(func() { log.Init(log.Options{Level: log.LevelInfo}) })
+	s := newTestServer(t, "s3cret")
+	mux := http.NewServeMux()
+	s.api.Register(mux)
+	mux.Handle("/", s.api.AuthWeb(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})))
+	h := web.Guard(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}, mux)
+	for _, tc := range []struct {
+		method, path, host, origin, contentType, auth string
+		want                                          string
+	}{
+		{"GET", "/api/watches", "evil.example:6977", "", "", "Bearer s3cret", `refused GET /api/watches from 192.0.2.1:1234: unknown host "evil.example:6977"`},
+		{"POST", "/api/check", "127.0.0.1:6977", "https://evil.example", "application/json", "Bearer s3cret", `refused POST /api/check from 192.0.2.1:1234: cross-origin request (Origin "https://evil.example")`},
+		{"GET", "/api/watches", "127.0.0.1:6977", "", "", "Bearer nope", "refused GET /api/watches from 192.0.2.1:1234: wrong token"},
+		{"GET", "/", "127.0.0.1:6977", "", "", "", "refused GET / from 192.0.2.1:1234: missing token"},
+		{"POST", "/api/check", "127.0.0.1:6977", "", "text/plain", "Bearer s3cret", `refused POST /api/check from 192.0.2.1:1234: content type "text/plain", not JSON`},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`))
+		req.RemoteAddr = "192.0.2.1:1234"
+		req.Host = tc.host
+		if tc.origin != "" {
+			req.Header.Set("Origin", tc.origin)
+		}
+		if tc.contentType != "" {
+			req.Header.Set("Content-Type", tc.contentType)
+		}
+		if tc.auth != "" {
+			req.Header.Set("Authorization", tc.auth)
+		}
+		h.ServeHTTP(httptest.NewRecorder(), req)
+		recent := log.Recent()
+		if len(recent) == 0 {
+			t.Fatalf("%s %s: nothing logged", tc.method, tc.path)
+		}
+		last := recent[len(recent)-1]
+		if last.Level != log.LevelDebug || last.Message != tc.want {
+			t.Errorf("%s %s: logged %s %q, want %q", tc.method, tc.path, last.Level, last.Message, tc.want)
+		}
+		if strings.Contains(last.Message, "s3cret") || strings.Contains(last.Message, "nope") {
+			t.Errorf("token logged: %q", last.Message)
+		}
 	}
 }

@@ -107,7 +107,24 @@ func Handler(out io.Writer) (http.Handler, error) {
 // site's pages, which need no CORS preflight (http.CrossOriginProtection). Non-browser
 // clients (mangal's remote client, curl) send neither Sec-Fetch-Site nor Origin and pass.
 func Guard(addr net.Addr, next http.Handler) http.Handler {
-	return checkHost(addr, http.NewCrossOriginProtection().Handler(next))
+	cop := http.NewCrossOriginProtection()
+	cop.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reason := "cross-origin request"
+		if origin := r.Header.Get("Origin"); origin != "" {
+			reason += fmt.Sprintf(" (Origin %q)", origin)
+		} else {
+			reason += fmt.Sprintf(" (Sec-Fetch-Site %q)", r.Header.Get("Sec-Fetch-Site"))
+		}
+		LogRefused(r, reason)
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	return checkHost(addr, cop.Handler(next))
+}
+
+// LogRefused logs a refused request at debug level: method, path, client and why, never
+// the query or the headers' secrets.
+func LogRefused(r *http.Request, reason string) {
+	log.Debug("refused %s %s from %s: %s", r.Method, r.URL.Path, r.RemoteAddr, reason)
 }
 
 // checkHost refuses requests for another host when serving on a loopback address, so a
@@ -119,6 +136,7 @@ func checkHost(addr net.Addr, next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !isLoopbackHost(r.Host) {
+			LogRefused(r, fmt.Sprintf("unknown host %q", r.Host))
 			http.Error(w, "unknown host", http.StatusMisdirectedRequest)
 			return
 		}

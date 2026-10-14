@@ -21,6 +21,7 @@ import (
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/storage"
 	stringutil "github.com/luevano/mangal/v5/util/string"
+	"github.com/luevano/mangal/v5/web"
 )
 
 // runs tracks the check runs of the server: the running ones and how to cancel the ones
@@ -151,6 +152,7 @@ func (a *API) auth(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !a.authorized(r) {
+			web.LogRefused(r, tokenProblem(r))
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			writeJSON(w, http.StatusUnauthorized, watch.ErrorResponse{Error: "missing or wrong token (serve.token)"})
 			return
@@ -167,6 +169,7 @@ func (a *API) AuthWeb(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !a.authorized(r) {
+			web.LogRefused(r, tokenProblem(r))
 			w.Header().Set("WWW-Authenticate", `Basic realm="mangal serve", charset="UTF-8"`)
 			http.Error(w, "missing or wrong token (serve.token)", http.StatusUnauthorized)
 			return
@@ -182,6 +185,14 @@ func (a *API) authorized(r *http.Request) bool {
 	}
 	_, password, ok := r.BasicAuth()
 	return ok && subtle.ConstantTimeCompare([]byte(password), []byte(a.Token)) == 1
+}
+
+// tokenProblem is why the request isn't authorized, for the log.
+func tokenProblem(r *http.Request) string {
+	if r.Header.Get("Authorization") == "" {
+		return "missing token"
+	}
+	return "wrong token"
 }
 
 // httpError is an error with its status code.
@@ -221,6 +232,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func decode(r *http.Request, v any) error {
 	// a page of another site can only send simple content types without a CORS preflight
 	if mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mediaType != "application/json" {
+		web.LogRefused(r, fmt.Sprintf("content type %q, not JSON", r.Header.Get("Content-Type")))
 		return &httpError{http.StatusUnsupportedMediaType, errors.New("the body has to be JSON (Content-Type: application/json)")}
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
