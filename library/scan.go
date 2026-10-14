@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"path/filepath"
 	"regexp"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/spf13/afero"
 )
@@ -395,19 +397,31 @@ func (s Scanner) countImages(dir string) (int, error) {
 	return n, nil
 }
 
-// readZip counts the pages and reads the chapter from its ComicInfo.xml, if any.
+// readZip counts the pages and reads the chapter from its ComicInfo.xml, if any. A file
+// it can't read is logged, the chapter's number then comes from its name.
 func (s Scanner) readZip(f *chapterFile) {
+	warn := func(format string, a ...any) {
+		log.Warn("scan %s: %s", f.path, fmt.Sprintf(format, a...))
+	}
 	file, err := s.FS.Open(f.path)
 	if err != nil {
+		warn("%s", err)
 		return
 	}
 	defer file.Close()
 	stat, err := file.Stat()
 	if err != nil {
+		warn("%s", err)
 		return
 	}
-	r, err := zip.NewReader(file.(io.ReaderAt), stat.Size())
+	readerAt, ok := file.(io.ReaderAt)
+	if !ok {
+		warn("can't be read as a zip")
+		return
+	}
+	r, err := zip.NewReader(readerAt, stat.Size())
 	if err != nil {
+		warn("%s", err)
 		return
 	}
 	for _, entry := range r.File {
@@ -420,6 +434,7 @@ func (s Scanner) readZip(f *chapterFile) {
 		}
 		rc, err := entry.Open()
 		if err != nil {
+			warn("%s: %s", entry.Name, err)
 			continue
 		}
 		var info struct {
@@ -431,6 +446,7 @@ func (s Scanner) readZip(f *chapterFile) {
 		err = xml.NewDecoder(rc).Decode(&info)
 		_ = rc.Close()
 		if err != nil {
+			warn("%s: %s", entry.Name, err)
 			continue
 		}
 		if n, err := strconv.ParseFloat(strings.TrimSpace(info.Number), 32); err == nil {

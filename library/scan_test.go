@@ -7,12 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/spf13/afero"
 )
@@ -339,5 +341,17 @@ func TestScanUnmarkedKitsuTag(t *testing.T) {
 	want.MetadataIDs = []metadata.ID{{Raw: "12345", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}}
 	if dir, found, err := library.FindMangaDir(filepath.Dir(folder), provider, want); err != nil || found {
 		t.Errorf("found by an anilist id: %q, %t, %v", dir, found, err)
+	}
+}
+
+// TestReadZipLogs: a chapter file that isn't a readable zip is logged, not dropped silently.
+func TestReadZipLogs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "[0001.0] Ch 1.cbz")
+	touch(t, path)
+	f := chapterFile{path: path}
+	Scanner{FS: afero.NewOsFs()}.readZip(&f)
+	recent := log.Recent()
+	if len(recent) == 0 || recent[len(recent)-1].Level != log.LevelWarn || !strings.Contains(recent[len(recent)-1].Message, path) {
+		t.Errorf("not logged: %+v", recent)
 	}
 }
