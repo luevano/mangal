@@ -11,28 +11,49 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
-func (s *state) viewDownloading() string {
-	progress := 0.0
-	if len(s.batch) != 0 {
-		progress = min(1, (float64(s.done)+s.pages)/float64(len(s.batch)))
+// noteFor is how long a provider's note is shown.
+const noteFor = 15 * time.Second
+
+// viewActive is the job's place in the queue, or its progress.
+func (s *state) viewActive() string {
+	j := s.job
+	var head string
+	switch j.Status {
+	case jobs.Queued:
+		head = fmt.Sprintf("%s Queued behind %s%s%s",
+			icon.Queued.Colored(), s.styles.accent.Render(j.Behind), s.sep,
+			stringutil.Quantify(j.Ahead, "job", "jobs")+" ahead on "+strings.Join(j.Providers, ", "))
+	case jobs.Waiting:
+		head = icon.Timer.Colored() + " " + capitalize(j.Message)
+	default:
+		head = fmt.Sprintf("%s Downloading%s%d/%d", icon.Progress.Colored(), s.sep, min(j.Done+1, j.Total), j.Total)
 	}
-	message := s.message
-	if s.status != "" && time.Since(s.statusAt) < statusFor {
-		message += s.sep + s.status
+	progress := 0.0
+	if j.Total != 0 {
+		progress = min(1, (float64(j.Done)+j.Part)/float64(j.Total))
+	}
+	message := capitalize(j.Message)
+	if j.Status == jobs.Queued {
+		message = "Waiting for its turn"
+	}
+	if j.Note != "" && time.Since(j.NoteAt) < noteFor {
+		message += s.sep + j.Note
 	}
 	line := s.spinner.View() + " " + style.Normal.Secondary.Render(message)
 	if s.size.Width > 1 {
-		// one line, or the viewport below would be pushed off
+		// one line each, or the viewport below would be pushed off
 		line = ansi.Truncate(line, s.size.Width-1, "…")
+		head = ansi.Truncate(head, s.size.Width-1, "…")
 	}
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		s.viewSummary(),
+		head,
 		" ",
 		s.progress.ViewAs(progress),
 		" ",
@@ -49,33 +70,19 @@ func capitalize(s string) string {
 	return string(unicode.ToUpper(r)) + s[size:]
 }
 
-func (s *state) viewSummary() string {
-	if len(s.batch) == 0 {
-		return ""
-	}
-	ch := s.batch[s.current].Chapter
-	if s.attempt != 0 {
-		return fmt.Sprintf(
-			`%s Retrying chapter %s "%s" in %s%s%d/%d`,
-			icon.Timer.Colored(),
-			s.styles.accent.Render(stringutil.FormatFloa32(ch.Info().Number)),
-			s.styles.accent.Render(ch.String()),
-			s.timer.View(),
-			s.sep, s.current+1, len(s.batch),
-		)
-	}
-	return fmt.Sprintf(
-		`%s Downloading chapter %s "%s"%s%d/%d`,
-		icon.Progress.Colored(),
-		s.styles.accent.Render(stringutil.FormatFloa32(ch.Info().Number)),
-		s.styles.accent.Render(ch.String()),
-		s.sep, s.current+1, len(s.batch),
-	)
-}
-
 func (s *state) viewDownloaded() string {
-	down, succ, fail := s.results.GetEach()
+	down, succ, fail := s.job.Results.GetEach()
 	var lines []string
+	switch {
+	case s.gone:
+		lines = append(lines, s.styles.warning.Render("This download isn't listed anymore."))
+	case s.job.Status == jobs.Cancelled:
+		lines = append(lines, s.styles.warning.Render("Cancelled."))
+	case s.job.Err != nil:
+		lines = append(lines, s.styles.failed.Render(capitalize(s.job.Err.Error())))
+	case s.job.Status == jobs.Done:
+		lines = append(lines, s.styles.succeed.Render(capitalize(s.job.Message)))
+	}
 	if len(down) != 0 {
 		lines = append(lines, s.viewChapterList("To download:", s.styles.toDownload, down))
 	}
@@ -85,7 +92,7 @@ func (s *state) viewDownloaded() string {
 	if len(fail) != 0 {
 		lines = append(lines, s.viewChapterList("Failed:", s.styles.failed, fail))
 	}
-	if unavailable := s.results.Unavailable(); len(unavailable) != 0 {
+	if unavailable := s.job.Results.Unavailable(); len(unavailable) != 0 {
 		lines = append(lines, s.viewChapterList("Unavailable:", s.styles.warning, unavailable))
 	}
 	expl := "\nThe lists follow the template:\n" +

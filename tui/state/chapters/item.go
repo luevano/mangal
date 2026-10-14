@@ -41,6 +41,8 @@ type item struct {
 
 	show   *show
 	styles styles
+	// jobMark is the mark of the chapter's download job (queued, downloading), may be nil
+	jobMark func(mangadata.Chapter) string
 }
 
 func (i *item) FilterValue() string {
@@ -67,6 +69,13 @@ func (i *item) Title() string {
 	if i.selected {
 		title.WriteString(i.renderedSep)
 		title.WriteString(icon.Mark.Colored())
+	}
+
+	if i.jobMark != nil {
+		if mark := i.jobMark(i.chapter); mark != "" {
+			title.WriteString(i.renderedSep)
+			title.WriteString(mark)
+		}
 	}
 
 	if i.read {

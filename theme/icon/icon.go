@@ -34,6 +34,15 @@ var (
 		},
 	}
 
+	// Queued is a chapter or manga waiting in a download queue.
+	Queued = icon{
+		color: color.Warning,
+		symbols: symbols{
+			TypeASCII: "q",
+			TypeNerd:  "\uF252",
+		},
+	}
+
 	Timer = icon{
 		color: color.Accent,
 		symbols: symbols{

@@ -5,17 +5,18 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/tui/base"
+	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
 	"github.com/luevano/mangal/v5/tui/state/download"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/skratchdot/open-golang/open"
@@ -30,17 +31,11 @@ var errNoMetadata = func() error {
 }()
 
 // downloadMsg is a confirmed download: of one chapter (to read it after if read), or of
-// the toggled ones on the download screen.
+// the toggled ones (their job's view is opened).
 type downloadMsg struct {
 	item     *item
 	read     bool
 	chapters []mangadata.Chapter
-}
-
-type downloadedMsg struct {
-	item *item
-	down *lmmeta.DownloadedChapter
-	read bool
 }
 
 const busyNotice = "Wait for the running download or read"
@@ -53,10 +48,7 @@ func (s *state) target(hovered *item) *item {
 	return hovered
 }
 
-func (s *state) askDownload(ctx context.Context, hovered *item) tea.Cmd {
-	if base.Busy(ctx) {
-		return base.Notify(busyNotice)
-	}
+func (s *state) askDownload(hovered *item) tea.Cmd {
 	if size := s.selected.Size(); size > 1 {
 		items := s.selected.Keys()
 		sort.SliceStable(items, func(i, j int) bool {
@@ -132,68 +124,68 @@ func checkMetadata(manga mangadata.Manga, options libmangal.DownloadOptions) err
 	return nil
 }
 
+// download queues the download as a job (tui/jobs), it goes on in the background. A batch
+// opens its view; reading opens the reader when it's done, if this screen is shown.
 func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
 	options := downloadOptions(msg.read)
 	if err := checkMetadata(s.manga, options); err != nil {
 		return func() tea.Msg { return err }
 	}
-	if msg.item == nil {
-		return func() tea.Msg { return download.New(s.client, msg.chapters, options) }
-	}
-	if base.Busy(ctx) {
-		return base.Notify(busyNotice)
-	}
-
-	i, chapter := msg.item, msg.item.chapter
-	if path := i.downloaded[options.Format]; path != "" && !msg.read {
-		return base.Notify(fmt.Sprintf("Chapter %q already downloaded in %s format", chapter, options.Format))
-	}
-	feed := download.NewFeed(ctx, 0)
-	c := s.client
-	load := base.LoadWithStatus(ctx, fmt.Sprintf("Downloading %q", chapter), func(ctx context.Context, status func(string)) (downloadedMsg, error) {
-		defer feed.Close()
-		if options.Directory == path.Temp() {
-			if _, err := path.EnsureTemp(); err != nil {
-				return downloadedMsg{}, err
-			}
+	chapters := msg.chapters
+	if msg.item != nil {
+		chapter := msg.item.chapter
+		if path := msg.item.downloaded[options.Format]; path != "" && !msg.read {
+			return base.Notify(fmt.Sprintf("Chapter %q already downloaded in %s format", chapter, options.Format))
 		}
-		down, err := client.DownloadChapter(ctx, c, chapter, options, func(e client.Event) {
-			if e.Kind == client.EventProgress {
-				status(fmt.Sprintf("Downloading %q: %s", chapter, e))
-				return
-			}
-			feed.Send(e)
-		})
-		if err != nil {
-			return downloadedMsg{}, fmt.Errorf("download %q: %w", chapter, err)
-		}
-		return downloadedMsg{item: i, down: down, read: msg.read}, nil
-	}, func(msg downloadedMsg) tea.Msg { return msg })
-	return tea.Batch(load, feed.Listen())
-}
-
-// onEvent tells the waits of the download: a rate limit, the manga's lock (busy).
-func onEvent(msg download.EventMsg) tea.Cmd {
-	switch msg.Kind {
-	case client.EventWait:
-		return tea.Batch(base.NotifyWithDuration(fmt.Sprintf("Rate limited, trying again in %s (#%d)", msg.Wait, msg.Attempt), msg.Wait), msg.Next)
-	case client.EventBusy:
-		return tea.Batch(base.NotifyWithDuration(msg.Busy.Message(), 10*time.Second), msg.Next)
+		chapters = []mangadata.Chapter{chapter}
 	}
-	return msg.Next
-}
-
-func (s *state) onDownloaded(ctx context.Context, msg downloadedMsg) tea.Cmd {
-	chapter := msg.item.chapter
-	log.Info("downloaded chapter %q at %q", chapter, msg.down.Path())
-	refresh := s.refresh(ctx, false)
+	provider, mangaID := s.client.Info().ID, s.manga.Info().ID
+	var fresh []mangadata.Chapter
+	for _, c := range chapters {
+		if _, ok := tuijobs.Manager().ChapterStatus(provider, mangaID, c); !ok {
+			fresh = append(fresh, c)
+		}
+	}
 	switch {
-	case msg.read:
-		return tea.Batch(refresh, s.readCmd(ctx, msg.down.Path(), chapter))
-	case msg.down.Skipped != "":
-		return tea.Batch(refresh, base.Notify(fmt.Sprintf("Skipped %q: %s", chapter, msg.down.Skipped)))
+	case len(fresh) == 0 && len(chapters) == 1:
+		return base.Notify(fmt.Sprintf("Chapter %q is already being downloaded (%s: downloads)", chapters[0], base.KeyDownloads.Help().Key))
+	case len(fresh) == 0:
+		return base.Notify("Those chapters are already being downloaded")
 	}
-	return tea.Batch(refresh, base.Notify(fmt.Sprintf("Downloaded %q", chapter)))
+	job := tuijobs.Download(s.client, s.manga, fresh, options, msg.read, s.Key())
+	if msg.read {
+		s.reading = job.ID
+		return nil
+	}
+	if msg.item == nil {
+		// they're queued, the marks show them
+		s.unselectAll()
+		return func() tea.Msg { return download.New(job.ID) }
+	}
+	return nil
+}
+
+// onJobs refreshes the marks when a download of the manga is over, and opens the chapter
+// downloaded for reading.
+func (s *state) onJobs(ctx context.Context, msg tuijobs.ChangedMsg) tea.Cmd {
+	var cmds []tea.Cmd
+	if msg.FinishedFor(s.client.Info().ID, s.manga.Info().ID) {
+		cmds = append(cmds, s.refresh(ctx, false))
+	}
+	for _, j := range msg.Finished {
+		if j.ID != s.reading {
+			continue
+		}
+		s.reading = 0
+		if j.Status != jobs.Done {
+			break
+		}
+		for _, r := range j.Results.Succeed() {
+			log.Info("downloaded chapter %q at %q", r.Chapter, r.Down.Path())
+			cmds = append(cmds, s.readCmd(ctx, r.Down.Path(), r.Chapter))
+		}
+	}
+	return tea.Batch(cmds...)
 }
 
 // readMsg is a chapter opened for reading, err is from opening or syncing it.

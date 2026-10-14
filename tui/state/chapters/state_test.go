@@ -11,11 +11,15 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/logger"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/client/jobs"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui/base"
+	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
 )
 
 type fakeManga struct {
@@ -204,5 +208,84 @@ func TestWebURL(t *testing.T) {
 		if got := webURL(raw); got != want {
 			t.Errorf("webURL(%q) = %v, want %v", raw, got, want)
 		}
+	}
+}
+
+type fakeLoader struct{}
+
+func (fakeLoader) String() string { return "fake" }
+func (fakeLoader) Info() libmangal.ProviderInfo {
+	return libmangal.ProviderInfo{ID: "fake", Name: "Fake", Version: "0.1.0"}
+}
+func (l fakeLoader) Load(context.Context) (libmangal.Provider, error) {
+	return &fakeProvider{}, nil
+}
+
+type fakeProvider struct{ libmangal.Provider }
+
+func (p *fakeProvider) Info() libmangal.ProviderInfo { return fakeLoader{}.Info() }
+func (p *fakeProvider) String() string               { return "Fake" }
+func (p *fakeProvider) SetLogger(*logger.Logger)     {}
+func (p *fakeProvider) Close() error                 { return nil }
+
+// A download goes to the provider's queue (behind a job that has it): the batch opens its
+// view, the chapters are marked queued, a second download of them is refused.
+func TestDownloadQueues(t *testing.T) {
+	m := jobs.New(context.Background())
+	tuijobs.SetManager(m)
+	t.Cleanup(func() {
+		m.Shutdown(time.Second)
+		tuijobs.SetManager(nil)
+	})
+	blocker := make(chan struct{})
+	defer close(blocker)
+	m.Add(jobs.Spec{Kind: jobs.KindCheck, Title: "check", Providers: []string{"fake"}, Run: func(ctx context.Context, p *jobs.Progress) error {
+		select {
+		case <-blocker:
+		case <-ctx.Done():
+		}
+		return nil
+	}})
+
+	c, err := libmangal.NewClient(fakeLoader{}, libmangal.DefaultClientOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manga, list := chapters(3)
+	s := New(c, manga, nil, list).(*state)
+	s.Resize(base.Size{Width: 80, Height: 30})
+	ctx := context.Background()
+	old := config.Download.Metadata.Strict.Get()
+	if err := config.Download.Metadata.Strict.Set(false); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = config.Download.Metadata.Strict.Set(old) })
+
+	cmd := s.Update(ctx, downloadMsg{chapters: list[:2]})
+	if cmd == nil {
+		t.Fatal("the batch didn't open its view")
+	}
+	if view, ok := cmd().(base.Keyed); !ok || !strings.HasPrefix(view.Key(), "download/") {
+		t.Errorf("opened %#v, want the job's view", view)
+	}
+	var job jobs.Job
+	for _, j := range m.Jobs() {
+		if j.Kind == jobs.KindDownload {
+			job = j
+		}
+	}
+	if job.Status != jobs.Queued || job.Origin != s.Key() || job.Total != 2 {
+		t.Errorf("job %s, origin %q, %d chapters", job.Status, job.Origin, job.Total)
+	}
+	items := s.items()
+	if !strings.Contains(items[0].Title(), icon.Queued.Colored()) || strings.Contains(items[2].Title(), icon.Queued.Colored()) {
+		t.Errorf("marks: %q, %q", items[0].Title(), items[2].Title())
+	}
+	got := base.Drain(s.Update(ctx, downloadMsg{item: items[0]}))
+	if len(got) != 1 || !strings.Contains(fmt.Sprint(got[0]), "already being downloaded") {
+		t.Errorf("downloading it again: %v", got)
+	}
+	if n := len(m.Jobs()); n != 2 {
+		t.Errorf("%d jobs, want 2", n)
 	}
 }

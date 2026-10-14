@@ -3,6 +3,7 @@ package mangas
 import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/luevano/libmangal/mangadata"
+	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
 	"github.com/luevano/mangal/v5/tui/model/metadata"
 	"github.com/luevano/mangal/v5/tui/state/watches"
 )
@@ -13,6 +14,8 @@ type item struct {
 	manga mangadata.Manga
 	// watched marks it
 	watched bool
+	// provider is the client's, for the mark of a download job of the manga
+	provider string
 
 	extraInfo     *bool
 	fullExtraInfo *bool
@@ -27,6 +30,9 @@ func (i *item) FilterValue() string {
 
 func (i *item) Title() string {
 	title := i.FilterValue()
+	if mark := tuijobs.MangaMark(i.provider, i.manga.Info().ID); mark != "" {
+		title += " " + mark
+	}
 	if i.watched {
 		title += " " + watches.Mark()
 	}
@@ -44,8 +50,9 @@ func (i *item) Description() string {
 	return i.manga.Info().URL
 }
 
-func newItem(manga mangadata.Manga, info, fullInfo *bool) *item {
+func newItem(provider string, manga mangadata.Manga, info, fullInfo *bool) *item {
 	i := &item{
+		provider:      provider,
 		manga:         manga,
 		extraInfo:     info,
 		fullExtraInfo: fullInfo,

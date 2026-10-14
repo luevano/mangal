@@ -8,13 +8,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/tui/base"
+	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
+	"github.com/luevano/mangal/v5/tui/util"
 )
 
 type fakeChapter struct {
@@ -27,108 +30,143 @@ func (c fakeChapter) Info() mangadata.ChapterInfo {
 }
 func (fakeChapter) Volume() mangadata.Volume { return nil }
 
-func done(run, index int, r client.Result) EventMsg {
-	return EventMsg{Run: run, Kind: client.EventDone, Index: index, Result: r}
+func withManager(t *testing.T) *jobs.Manager {
+	t.Helper()
+	m := jobs.New(context.Background())
+	tuijobs.SetManager(m)
+	t.Cleanup(func() {
+		m.Shutdown(time.Second)
+		tuijobs.SetManager(nil)
+	})
+	return m
 }
 
-func TestDownloadEvents(t *testing.T) {
+func waitStatus(t *testing.T, m *jobs.Manager, id int64, status jobs.Status) {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		changed := m.Changed()
+		if j, _ := m.Get(id); j.Status == status {
+			return
+		}
+		select {
+		case <-changed:
+		case <-deadline:
+			j, _ := m.Get(id)
+			t.Fatalf("job %d is %s, want %s", id, j.Status, status)
+		}
+	}
+}
+
+func press(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+
+func TestJobView(t *testing.T) {
+	m := withManager(t)
+	ctx := context.Background()
+	gate, first := make(chan struct{}), make(chan struct{})
+	blocker := m.Add(jobs.Spec{Kind: jobs.KindCheck, Title: "check of p", Providers: []string{"p"}, Run: func(ctx context.Context, p *jobs.Progress) error {
+		close(first)
+		<-gate
+		return nil
+	}})
+	<-first
 	chapters := []mangadata.Chapter{fakeChapter{1}, fakeChapter{2}, fakeChapter{3}}
-	s := New(nil, chapters, libmangal.DownloadOptions{}).(*state)
-	ctx := context.Background()
-	s.start(ctx, s.results.ToDownload())
-	run := s.run
-	down := &metadata.DownloadedChapter{Directory: "/dl/manga"}
+	fail := true
+	job := m.Add(jobs.Spec{Kind: jobs.KindDownload, Title: "Manga: 3 chapters", Providers: []string{"p"}, MangaID: "m", Chapters: chapters, Run: func(ctx context.Context, p *jobs.Progress) error {
+		return jobs.RunDownload(ctx, p, func(ctx context.Context, list []mangadata.Chapter, onEvent func(client.Event)) client.Results {
+			results := client.NewResults(list)
+			for i, r := range results {
+				onEvent(client.Event{Kind: client.EventStart, Index: i, Result: r})
+				switch {
+				case r.Chapter.Info().Number == 2 && fail:
+					r.Err = errors.New("boom")
+				case r.Chapter.Info().Number == 3:
+					r.Unavailable = "paid"
+				default:
+					r.Down = &metadata.DownloadedChapter{Directory: "/dl/manga"}
+				}
+				onEvent(client.Event{Kind: client.EventDone, Index: i, Result: r})
+			}
+			return results
+		})
+	}})
 
-	s.Update(ctx, EventMsg{Run: run, Kind: client.EventStart, Index: 0})
-	s.Update(ctx, done(run, 0, client.Result{Chapter: chapters[0], Err: errors.New("boom")}))
-	s.Update(ctx, EventMsg{Run: run, Kind: client.EventStart, Index: 1})
-	s.Update(ctx, EventMsg{Run: run, Kind: client.EventWait, Index: 1, Attempt: 2, Wait: time.Second})
-	if got := ansi.Strip(s.viewSummary()); !strings.Contains(got, `Retrying chapter 2 "Chapter 2"`) || !strings.Contains(s.message, "retry #2") {
-		t.Errorf("waiting: summary %q, message %q", got, s.message)
+	s := New(job.ID).(*state)
+	s.Init(ctx)
+	s.Resize(base.Size{Width: 100, Height: 30})
+	if s.Key() != fmt.Sprintf("download/%d", job.ID) || !s.Backable() {
+		t.Errorf("key %q, backable %v", s.Key(), s.Backable())
 	}
-	s.Update(ctx, EventMsg{Run: run, Kind: client.EventProgress, Index: 1, Progress: &libmangal.DownloadProgress{Stage: libmangal.DownloadStageImages, Done: 23, Total: 57}})
-	s.Update(ctx, EventMsg{Run: run, Kind: EventStatus, Status: "MangaDex: rate limited"})
-	if got := ansi.Strip(s.viewDownloading()); !strings.Contains(got, "23/57 pages") || !strings.Contains(got, "MangaDex: rate limited") {
-		t.Errorf("progress: %q", got)
+	if got := ansi.Strip(s.View()); !strings.Contains(got, "Queued behind check of p") || !strings.Contains(got, "1 job ahead on p") {
+		t.Errorf("queued view:\n%s", got)
 	}
-	s.Update(ctx, done(run, 1, client.Result{Chapter: chapters[1], Down: down}))
-	s.Update(ctx, done(run, 2, client.Result{Chapter: chapters[2], Unavailable: "paid"}))
-	s.Update(ctx, FinishedMsg{Run: run})
-
-	if s.downloading {
-		t.Fatal("still downloading")
-	}
-	if !s.open.Enabled() || !s.retry.Enabled() {
-		t.Errorf("open %v retry %v, want both", s.open.Enabled(), s.retry.Enabled())
-	}
-	// the first chapter failed (A9)
-	if s.openCmd() == nil {
-		t.Error("nothing to open")
+	if !s.cancel.Enabled() || s.retry.Enabled() {
+		t.Errorf("queued: cancel %v retry %v", s.cancel.Enabled(), s.retry.Enabled())
 	}
 
-	// a retry downloads the failed one, its events index the retried chapters
-	s.start(ctx, s.results.Failed())
-	if s.run == run || len(s.batch) != 1 || s.results[0].Failed() {
-		t.Fatalf("retry: run %d, batch %d, first failed %v", s.run, len(s.batch), s.results[0].Failed())
+	close(gate)
+	waitStatus(t, m, blocker.ID, jobs.Done)
+	waitStatus(t, m, job.ID, jobs.Failed)
+	s.Update(ctx, tuijobs.ChangedMsg{})
+	got := ansi.Strip(s.View())
+	for _, want := range []string{"1 chapter failed: boom", "Succeeded:", "Failed:", "Unavailable:"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("results view lacks %q:\n%s", want, got)
+		}
 	}
-	s.Update(ctx, done(run, 0, client.Result{Chapter: chapters[2]}))
-	if s.done != 0 {
-		t.Error("an event of the previous run was applied")
+	if s.cancel.Enabled() || !s.retry.Enabled() || !s.open.Enabled() {
+		t.Errorf("over: cancel %v retry %v open %v", s.cancel.Enabled(), s.retry.Enabled(), s.open.Enabled())
 	}
-	s.Update(ctx, EventMsg{Run: s.run, Kind: client.EventWait, Index: 0, Attempt: 1, Wait: time.Second})
-	if got := ansi.Strip(s.viewSummary()); !strings.Contains(got, `chapter 1 "Chapter 1"`) || !strings.Contains(got, "1/1") {
-		t.Errorf("retry summary %q, want chapter 1", got)
-	}
-	s.Update(ctx, done(s.run, 0, client.Result{Chapter: chapters[0], Down: down}))
-	s.Update(ctx, FinishedMsg{Run: s.run})
-	if got := len(s.results.Succeed()); got != 2 {
-		t.Errorf("%d succeeded, want 2", got)
-	}
-	if s.retry.Enabled() {
-		t.Error("retry enabled without failures")
+
+	// r queues the failed chapter again
+	fail = false
+	s.Update(ctx, press("r"))
+	waitStatus(t, m, job.ID, jobs.Done)
+	s.Update(ctx, tuijobs.ChangedMsg{})
+	if n := len(s.job.Results.Succeed()); n != 2 {
+		t.Errorf("%d succeeded after the retry, want 2", n)
 	}
 }
 
-func TestOpenWithoutDownloads(t *testing.T) {
-	s := New(nil, []mangadata.Chapter{fakeChapter{1}}, libmangal.DownloadOptions{}).(*state)
-	s.results[0].Err = errors.New("boom")
-	if s.openCmd() != nil {
-		t.Error("open without a downloaded chapter")
+func TestJobViewCancel(t *testing.T) {
+	m := withManager(t)
+	ctx := context.Background()
+	started := make(chan struct{})
+	job := m.Add(jobs.Spec{Kind: jobs.KindDownload, Title: "Manga: chapter 1", Providers: []string{"p"}, Chapters: []mangadata.Chapter{fakeChapter{1}}, Run: func(ctx context.Context, p *jobs.Progress) error {
+		p.Running("downloading chapter 1 (1/1)")
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	}})
+	<-started
+	s := New(job.ID).(*state)
+	s.Init(ctx)
+	s.Resize(base.Size{Width: 100, Height: 30})
+	if got := ansi.Strip(s.View()); !strings.Contains(got, "Downloading chapter 1 (1/1)") {
+		t.Errorf("running view:\n%s", got)
+	}
+	s.Update(ctx, press("d"))
+	waitStatus(t, m, job.ID, jobs.Cancelled)
+	s.Update(ctx, tuijobs.ChangedMsg{})
+	if got := ansi.Strip(s.View()); !strings.Contains(got, "Cancelled.") {
+		t.Errorf("cancelled view:\n%s", got)
+	}
+
+	// removed from the list meanwhile
+	m.Remove(job.ID)
+	s.Update(ctx, base.RestoredMsg{})
+	if got := ansi.Strip(s.View()); !strings.Contains(got, "isn't listed anymore") {
+		t.Errorf("gone view:\n%s", got)
 	}
 }
 
-func TestLeaveAsks(t *testing.T) {
-	chapters := []mangadata.Chapter{fakeChapter{1}}
-	s := New(nil, chapters, libmangal.DownloadOptions{}).(*state)
-	ctx := context.Background()
-	s.start(ctx, s.results.ToDownload())
-	if s.Backable() || s.Keeping() == "" {
-		t.Fatal("a running download can be left")
+func TestKeys(t *testing.T) {
+	withManager(t)
+	s := New(1).(*state)
+	if c := base.KeyCollisions(util.KeyMap{Short: []key.Binding{s.cancel, s.open, s.retry}}); len(c) != 0 {
+		t.Errorf("collisions: %q", c)
 	}
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEsc})
-	if !s.confirm.Active() {
-		t.Fatal("esc didn't ask")
-	}
-	// no
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEsc})
-	if s.confirm.Active() || s.Keeping() == "" {
-		t.Fatal("no didn't keep it")
-	}
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEsc})
-	cmd := s.Update(ctx, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
-	if cmd == nil {
-		t.Fatal("yes did nothing")
-	}
-	back := s.Update(ctx, cmd())
-	if s.Keeping() != "" || !s.Backable() {
-		t.Error("still kept after yes")
-	}
-	if _, ok := back().(base.BackMsg); !ok {
-		t.Error("yes didn't go back")
-	}
-
-	s.Update(ctx, FinishedMsg{Run: s.run})
-	if s.Keeping() != "" {
-		t.Error("a finished download kept")
+	if c := base.ViewerKeyCollisions(s.KeyMap()); len(c) != 0 {
+		t.Errorf("collisions with the pager: %q", c)
 	}
 }

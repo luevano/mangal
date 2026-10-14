@@ -20,12 +20,12 @@ import (
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui/base"
+	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/format"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/model/metadata"
 	"github.com/luevano/mangal/v5/tui/state/anilist"
-	"github.com/luevano/mangal/v5/tui/state/download"
 	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/afs"
@@ -53,6 +53,8 @@ type state struct {
 	fullMeta bool
 	// watched is the manga's watch, empty when it isn't
 	watched []watch.Watch
+	// reading is the job downloading a chapter to read, 0 if none
+	reading int64
 
 	renderedSep,
 	renderedSubtitleFormats string
@@ -128,6 +130,12 @@ func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volum
 	}
 
 	volumeFormat, numberFormat := config.TUI.Chapter.VolumeNumberFormat.Get(), config.TUI.Chapter.NumberFormat.Get()
+	jobMark := func(c mangadata.Chapter) string {
+		if client == nil {
+			return ""
+		}
+		return tuijobs.ChapterMark(client.Info().ID, manga.Info().ID, c)
+	}
 	s.Screen = list.NewScreen(list.New(3, 1, "chapter", "chapters", chapters, func(chapter mangadata.Chapter) _list.DefaultItem {
 		return &item{
 			chapter:               chapter,
@@ -136,6 +144,7 @@ func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volum
 			renderedChapterNumber: fmt.Sprintf(numberFormat, chapter.Info().Number),
 			show:                  &s.show,
 			styles:                _styles,
+			jobMark:               jobMark,
 		}
 	}), s.keyMap)
 	s.Confirm = confirm.NewDialog(30, color.Success)
@@ -233,18 +242,14 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return nil
 	case downloadMsg:
 		return s.download(ctx, msg)
-	case downloadedMsg:
-		return s.onDownloaded(ctx, msg)
+	case tuijobs.ChangedMsg:
+		return s.onJobs(ctx, msg)
 	case readMsg:
 		refresh := s.refresh(ctx, false)
 		if msg.err != nil {
 			return tea.Batch(refresh, func() tea.Msg { return msg.err })
 		}
 		return refresh
-	case download.EventMsg:
-		return onEvent(msg)
-	case download.FinishedMsg:
-		return nil
 	case format.BackMsg:
 		s.inFormats = false
 		s.updateSubtitleFormats()
@@ -256,6 +261,10 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case base.RestoredMsg:
 		// e.g. after the download screen
 		s.updateSubtitleFormats()
+		if j, ok := tuijobs.Manager().Get(s.reading); !ok || !j.Status.Active() {
+			// over while away: not opened, the marks say it's there
+			s.reading = 0
+		}
 		return tea.Batch(s.refresh(ctx, false), s.watchedCmd(ctx))
 	}
 	return s.updateChild(msg)
@@ -313,10 +322,7 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, k.selectAll):
 		s.selectAll()
 	case key.Matches(msg, k.unselectAll):
-		for _, i := range s.selected.Keys() {
-			i.toggle()
-			s.selected.Remove(i)
-		}
+		s.unselectAll()
 	default:
 		return s.updateItemKey(ctx, msg)
 	}
@@ -344,11 +350,18 @@ func (s *state) updateItemKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, s.keys.read):
 		return s.askRead(ctx, i)
 	case key.Matches(msg, s.keys.download):
-		return s.askDownload(ctx, i)
+		return s.askDownload(i)
 	case key.Matches(msg, s.keys.openURL):
 		return openURLCmd(i.chapter)
 	}
 	return s.List.Update(msg)
+}
+
+func (s *state) unselectAll() {
+	for _, i := range s.selected.Keys() {
+		i.toggle()
+		s.selected.Remove(i)
+	}
 }
 
 func (s *state) selectAll() {

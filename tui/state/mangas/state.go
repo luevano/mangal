@@ -96,7 +96,7 @@ func New(client *libmangal.Client, release func()) base.State {
 		},
 	}
 	l := list.New(2, 1, "manga", "mangas", []mangadata.Manga{}, func(manga mangadata.Manga) _list.DefaultItem {
-		return newItem(manga, &s.extraInfo, &s.fullExtraInfo)
+		return newItem(client.Info().ID, manga, &s.extraInfo, &s.fullExtraInfo)
 	})
 	s.Screen = searchlist.New(search.New("Search manga...", "", 64, 5), l, searchlist.History{
 		Get: cache.GetMangasSearchHistory,
@@ -260,7 +260,7 @@ func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 		}
 		items := make([]_list.Item, len(mangas))
 		for i, m := range mangas {
-			items[i] = newItem(m, &s.extraInfo, &s.fullExtraInfo)
+			items[i] = newItem(s.client.Info().ID, m, &s.extraInfo, &s.fullExtraInfo)
 		}
 		return items, nil
 	}, func(items []_list.Item) tea.Msg { return resultsMsg{search: n, items: items} })
