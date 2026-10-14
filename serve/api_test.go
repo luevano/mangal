@@ -447,8 +447,9 @@ func TestCrossSite(t *testing.T) {
 		{"POST", "/api/check", "", "", http.StatusUnsupportedMediaType},
 		{"POST", "/api/check", "https://evil.example", "application/json", http.StatusForbidden},
 		{"POST", "/api/check", "null", "application/json", http.StatusForbidden},
-		{"GET", "/api/watches", "https://evil.example", "", http.StatusForbidden},
-		{"GET", "/api/events", "http://127.0.0.1:1234", "", http.StatusForbidden},
+		{"DELETE", "/api/watches/1", "https://evil.example", "", http.StatusForbidden},
+		// safe methods pass: without CORS headers the page can't read the answer
+		{"GET", "/api/watches", "https://evil.example", "", http.StatusOK},
 		{"POST", "/api/watches", "http://127.0.0.1:6977", "application/json; charset=utf-8", http.StatusBadRequest},
 		{"GET", "/api/watches", "http://127.0.0.1:6977", "", http.StatusOK},
 	} {

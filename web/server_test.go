@@ -367,26 +367,39 @@ func TestCheckHost(t *testing.T) {
 	}
 }
 
-func TestCheckOrigin(t *testing.T) {
+// TestCrossOrigin: unsafe requests from another site's page are refused, by Sec-Fetch-Site
+// or, from browsers without it, by Origin; safe methods and non-browser clients pass.
+func TestCrossOrigin(t *testing.T) {
 	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 	h := Guard(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6970}, ok)
-	for origin, want := range map[string]int{
-		"":                       http.StatusOK,
-		"http://127.0.0.1:6970":  http.StatusOK,
-		"http://127.0.0.1:6971":  http.StatusForbidden,
-		"https://127.0.0.1:6970": http.StatusForbidden,
-		"https://evil.example":   http.StatusForbidden,
-		"null":                   http.StatusForbidden,
+	for _, tc := range []struct {
+		method, site, origin string
+		want                 int
+	}{
+		{"POST", "", "", http.StatusOK},
+		{"POST", "same-origin", "http://127.0.0.1:6970", http.StatusOK},
+		{"POST", "none", "", http.StatusOK},
+		{"POST", "cross-site", "https://evil.example", http.StatusForbidden},
+		{"POST", "same-site", "http://127.0.0.1:6971", http.StatusForbidden},
+		{"DELETE", "cross-site", "https://evil.example", http.StatusForbidden},
+		{"POST", "", "http://127.0.0.1:6970", http.StatusOK},
+		{"POST", "", "http://127.0.0.1:6971", http.StatusForbidden},
+		{"POST", "", "https://evil.example", http.StatusForbidden},
+		{"POST", "", "null", http.StatusForbidden},
+		{"GET", "cross-site", "https://evil.example", http.StatusOK},
 	} {
-		r := httptest.NewRequest(http.MethodGet, "/api/image?url=x", nil)
+		r := httptest.NewRequest(tc.method, "/api/x", nil)
 		r.Host = "127.0.0.1:6970"
-		if origin != "" {
-			r.Header.Set("Origin", origin)
+		if tc.site != "" {
+			r.Header.Set("Sec-Fetch-Site", tc.site)
+		}
+		if tc.origin != "" {
+			r.Header.Set("Origin", tc.origin)
 		}
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
-		if w.Code != want {
-			t.Errorf("%q: %d, want %d", origin, w.Code, want)
+		if w.Code != tc.want {
+			t.Errorf("%s site %q origin %q: %d, want %d", tc.method, tc.site, tc.origin, w.Code, tc.want)
 		}
 	}
 }

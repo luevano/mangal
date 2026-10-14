@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -104,34 +103,11 @@ func Handler(out io.Writer) (http.Handler, error) {
 }
 
 // Guard refuses the requests the server shouldn't answer: for another host when serving
-// on a loopback address (checkHost) and from another site's pages (checkOrigin).
+// on a loopback address (checkHost) and unsafe ones (POST, PATCH, DELETE) from another
+// site's pages, which need no CORS preflight (http.CrossOriginProtection). Non-browser
+// clients (mangal's remote client, curl) send neither Sec-Fetch-Site nor Origin and pass.
 func Guard(addr net.Addr, next http.Handler) http.Handler {
-	return checkHost(addr, checkOrigin(next))
-}
-
-// checkOrigin refuses requests a browser sends from another origin's page: without it any
-// site could POST to the server (forms and no-cors fetches need no CORS preflight).
-// Requests without an Origin (mangal's own clients, curl, same-origin GETs) pass.
-func checkOrigin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); origin != "" && !sameOrigin(origin, r) {
-			http.Error(w, "cross-origin request", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func sameOrigin(origin string, r *http.Request) bool {
-	u, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	return u.Scheme == scheme && u.Host != "" && strings.EqualFold(u.Host, r.Host) && u.Path == ""
+	return checkHost(addr, http.NewCrossOriginProtection().Handler(next))
 }
 
 // checkHost refuses requests for another host when serving on a loopback address, so a
