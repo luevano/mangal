@@ -1,7 +1,6 @@
 package web
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -9,30 +8,24 @@ import (
 	"syscall"
 	"time"
 
+	"code.dny.dev/ssrf"
 	"github.com/luevano/mangal/v5/provider/loader"
 )
 
-// errPrivateAddress: the image proxy only fetches from public addresses, so a page can't
-// use it to reach the LAN (the router, FlareSolverr) or the host itself.
-var errPrivateAddress = errors.New("not a public address")
-
-// sharedAddressSpace is 100.64.0.0/10 (carrier-grade NAT, Tailscale).
-var sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
+// guardian: the image proxy only fetches from public addresses, so a page can't use it to
+// reach the LAN (the router, FlareSolverr) or the host itself. It refuses the IANA special-purpose ranges (v4 and v6), IPv6 outside 2000::/3
+// (IPv4-mapped/compatible, NAT64 included) and 6to4, on any port.
+var guardian = ssrf.New(ssrf.WithAnyPort())
 
 func isPublic(addr netip.Addr) bool {
-	addr = addr.Unmap()
-	return addr.IsGlobalUnicast() && !addr.IsPrivate() && !sharedAddressSpace.Contains(addr)
+	return guardian.SafeAddr(addr) == nil
 }
 
 // publicOnly is a dialer Control that refuses non-public addresses: checked on the
 // resolved address of every connection, redirects included.
-func publicOnly(_, address string, _ syscall.RawConn) error {
-	ap, err := netip.ParseAddrPort(address)
-	if err != nil {
-		return fmt.Errorf("%s: %w", address, err)
-	}
-	if !isPublic(ap.Addr()) {
-		return fmt.Errorf("%s: %w: %w", ap.Addr(), errPrivateAddress, errBadRequest)
+func publicOnly(network, address string, c syscall.RawConn) error {
+	if err := guardian.Safe(network, address, c); err != nil {
+		return fmt.Errorf("%w: %w", err, errBadRequest)
 	}
 	return nil
 }

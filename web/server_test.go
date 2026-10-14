@@ -420,6 +420,20 @@ func TestImagePublicOnly(t *testing.T) {
 		"fd00::1":         false,
 		"::ffff:10.0.0.1": false,
 		"224.0.0.1":       false,
+		"8.8.8.8":         true,
+		"1.1.1.1":         true,
+		"2001:4860::8888": true,
+		"0.0.0.1":         false,
+		"192.0.0.8":       false,
+		"198.18.0.1":      false,
+		"240.0.0.1":       false,
+		"192.0.2.1":       false,
+		"64:ff9b::7f00:1": false, // NAT64 of 127.0.0.1
+		"2002:7f00:1::":   false, // 6to4 of 127.0.0.1
+		"::127.0.0.1":     false, // IPv4-compatible
+		"::ffff:8.8.8.8":  false,
+		"2001:db8::1":     false,
+		"ff02::1":         false,
 	} {
 		if got := isPublic(netip.MustParseAddr(addr)); got != want {
 			t.Errorf("%s: %t", addr, got)

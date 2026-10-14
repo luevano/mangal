@@ -3,6 +3,7 @@ module github.com/luevano/mangal/v5
 go 1.27.0
 
 require (
+	code.dny.dev/ssrf v0.3.0
 	github.com/adrg/xdg v0.5.3
 	github.com/atotto/clipboard v0.1.4
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1
