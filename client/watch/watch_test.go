@@ -1671,3 +1671,28 @@ func TestLostLockStopsTheCheck(t *testing.T) {
 		t.Fatal("still checking without the lock")
 	}
 }
+
+// TestUpdateAnilistIsUndoable: replacing or removing a watch's AniList binding is an
+// operation (a snapshot first); setting the same one isn't.
+func TestUpdateAnilistIsUndoable(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	w, err := e.svc.Add(ctx, AddOptions{Offline: true, Provider: "mango-weebcentral", MangaID: "berserk", Title: "Berserk", AnilistID: 30002})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ops []string
+	e.svc.Operation = func(kind, summary string, do func() error) (string, error) {
+		ops = append(ops, kind+": "+summary)
+		return "", do()
+	}
+	for _, id := range []int{30002, 30003, 0, 0} {
+		if _, err := e.svc.Update(ctx, w.ID, UpdateOptions{AnilistID: &id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []string{"bind: bind mango-weebcentral berserk to AniList 30003 (was 30002)", "bind: unbind mango-weebcentral berserk from AniList 30003"}
+	if !slices.Equal(ops, want) {
+		t.Errorf("operations %q, want %q", ops, want)
+	}
+}

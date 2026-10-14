@@ -567,8 +567,55 @@ func (s *Service) bindAnilist(w storage.Watch, anilistID int) error {
 	if anilistID == 0 {
 		return nil
 	}
-	return s.bindings().Set(storage.Binding{Provider: w.Provider, MangaID: w.MangaID, Source: metadata.IDCodeAnilist,
-		ID: strconv.Itoa(anilistID), Updated: s.now()})
+	id := strconv.Itoa(anilistID)
+	set := func() error {
+		return s.bindings().Set(storage.Binding{Provider: w.Provider, MangaID: w.MangaID, Source: metadata.IDCodeAnilist,
+			ID: id, Updated: s.now()})
+	}
+	previous, err := s.anilistBinding(w)
+	if err != nil {
+		return err
+	}
+	if previous != "" && previous != id {
+		return s.lossy(fmt.Sprintf("bind %s %s to AniList %s (was %s)", w.Provider, w.MangaID, id, previous), set)
+	}
+	return set()
+}
+
+// unbindAnilist removes the watched manga's AniList binding.
+func (s *Service) unbindAnilist(w storage.Watch) error {
+	previous, err := s.anilistBinding(w)
+	if err != nil || previous == "" {
+		return err
+	}
+	return s.lossy(fmt.Sprintf("unbind %s %s from AniList %s", w.Provider, w.MangaID, previous), func() error {
+		_, err := s.bindings().Remove(w.Provider, w.MangaID, metadata.IDCodeAnilist)
+		return err
+	})
+}
+
+// anilistBinding is the AniList id the watched manga is bound to, "" for none.
+func (s *Service) anilistBinding(w storage.Watch) (string, error) {
+	list, err := s.bindings().Get(w.Provider, w.MangaID)
+	if err != nil {
+		return "", err
+	}
+	for _, b := range list {
+		if b.Source == metadata.IDCodeAnilist {
+			return b.ID, nil
+		}
+	}
+	return "", nil
+}
+
+// lossy runs a change that loses data (a binding) as an undoable operation, when the
+// service has them.
+func (s *Service) lossy(summary string, do func() error) error {
+	if s.Operation == nil {
+		return do()
+	}
+	_, err := s.Operation("bind", summary, do)
+	return err
 }
 
 func (s *Service) complete(w storage.Watch) (Watch, error) {
@@ -786,7 +833,7 @@ func (s *Service) Update(ctx context.Context, id int64, opts UpdateOptions) (Wat
 			return Watch{}, err
 		}
 		if *opts.AnilistID == 0 {
-			if _, err := s.bindings().Remove(w.Provider, w.MangaID, metadata.IDCodeAnilist); err != nil {
+			if err := s.unbindAnilist(w); err != nil {
 				return Watch{}, err
 			}
 		} else if err := s.bindAnilist(w, *opts.AnilistID); err != nil {
