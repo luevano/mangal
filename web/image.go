@@ -31,32 +31,43 @@ type cachedImage struct {
 
 // GetImage implements api.StrictServerInterface.
 func (s *Server) GetImage(ctx context.Context, request api.GetImageRequestObject) (api.GetImageResponseObject, error) {
-	if err := checkHTTPURL(request.Params.Url); err != nil {
-		return nil, fmt.Errorf("url: %w", err)
-	}
 	referer := ""
-	if request.Params.Referer != nil && *request.Params.Referer != "" {
+	if request.Params.Referer != nil {
 		referer = *request.Params.Referer
-		if err := checkHTTPURL(referer); err != nil {
-			return nil, fmt.Errorf("referer: %w", err)
-		}
 	}
 
-	img, ok := s.images.get(request.Params.Url)
+	data, contentType, err := s.Image(ctx, request.Params.Url, referer)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetImage200ImageResponse{
+		Body:          bytes.NewReader(data),
+		ContentType:   contentType,
+		ContentLength: int64(len(data)),
+	}, nil
+}
+
+// Image is the image at the url (fetched with the referer, or from the cache) and its
+// type: only from public addresses, only raster images.
+func (s *Server) Image(ctx context.Context, rawURL, referer string) ([]byte, string, error) {
+	if err := checkHTTPURL(rawURL); err != nil {
+		return nil, "", fmt.Errorf("url: %w", err)
+	}
+	if referer != "" {
+		if err := checkHTTPURL(referer); err != nil {
+			return nil, "", fmt.Errorf("referer: %w", err)
+		}
+	}
+	img, ok := s.images.get(rawURL)
 	if !ok {
 		var err error
-		img, err = s.fetchImage(ctx, request.Params.Url, referer)
+		img, err = s.fetchImage(ctx, rawURL, referer)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		s.images.add(request.Params.Url, img)
+		s.images.add(rawURL, img)
 	}
-
-	return api.GetImage200ImageResponse{
-		Body:          bytes.NewReader(img.data),
-		ContentType:   img.contentType,
-		ContentLength: int64(len(img.data)),
-	}, nil
+	return img.data, img.contentType, nil
 }
 
 func (s *Server) fetchImage(ctx context.Context, rawURL, referer string) (cachedImage, error) {
@@ -76,10 +87,10 @@ func (s *Server) fetchImage(ctx context.Context, rawURL, referer string) (cached
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return cachedImage{}, fmt.Errorf("get image: %s: %w", resp.Status, errUpstream)
+		return cachedImage{}, fmt.Errorf("get image: %s: %w", resp.Status, ErrUpstream)
 	}
 	if resp.ContentLength > maxImageSize {
-		return cachedImage{}, fmt.Errorf("get image: %d bytes, more than %d: %w", resp.ContentLength, maxImageSize, errUpstream)
+		return cachedImage{}, fmt.Errorf("get image: %d bytes, more than %d: %w", resp.ContentLength, maxImageSize, ErrUpstream)
 	}
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxImageSize+1))
@@ -87,7 +98,7 @@ func (s *Server) fetchImage(ctx context.Context, rawURL, referer string) (cached
 		return cachedImage{}, fmt.Errorf("get image: %w", err)
 	}
 	if len(data) > maxImageSize {
-		return cachedImage{}, fmt.Errorf("get image: more than %d bytes: %w", maxImageSize, errUpstream)
+		return cachedImage{}, fmt.Errorf("get image: more than %d bytes: %w", maxImageSize, ErrUpstream)
 	}
 
 	contentType, err := imageType(resp.Header.Get("Content-Type"), data)
@@ -117,11 +128,12 @@ func imageType(header string, data []byte) (string, error) {
 	if sniffed, _, _ := mime.ParseMediaType(http.DetectContentType(data)); rasterTypes[sniffed] {
 		return sniffed, nil
 	}
-	return "", fmt.Errorf("not an image (%q): %w", header, errUpstream)
+	return "", fmt.Errorf("not an image (%q): %w", header, ErrUpstream)
 }
 
-// imageHeaders keep a proxied image from being anything but an image in the browser.
-func imageHeaders(next echo.HandlerFunc) echo.HandlerFunc {
+// ImageHeaders keep a proxied image (any /api/ answer) from being anything but an image
+// in the browser.
+func ImageHeaders(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		if strings.HasPrefix(c.Request().URL.Path, "/api/") {
 			h := c.Response().Header()
@@ -135,10 +147,10 @@ func imageHeaders(next echo.HandlerFunc) echo.HandlerFunc {
 func checkHTTPURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return fmt.Errorf("%w: %w", errBadRequest, err)
+		return fmt.Errorf("%w: %w", ErrBadRequest, err)
 	}
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return fmt.Errorf("%q isn't an http(s) url: %w", rawURL, errBadRequest)
+		return fmt.Errorf("%q isn't an http(s) url: %w", rawURL, ErrBadRequest)
 	}
 	return nil
 }

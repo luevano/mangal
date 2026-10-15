@@ -350,7 +350,7 @@ func TestImageCache(t *testing.T) {
 
 func TestCheckHost(t *testing.T) {
 	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
-	loopback := checkHost(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}, ok)
+	loopback := checkHost(GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}}, ok)
 	for host, want := range map[string]int{
 		"127.0.0.1:6969": http.StatusOK,
 		"localhost:6969": http.StatusOK,
@@ -365,13 +365,72 @@ func TestCheckHost(t *testing.T) {
 			t.Errorf("%s: %d", host, w.Code)
 		}
 	}
+	// a reverse proxy's name, on loopback or any address
+	for _, ip := range []net.IP{net.IPv4(127, 0, 0, 1), net.IPv4zero} {
+		h := checkHost(GuardOptions{Addr: &net.TCPAddr{IP: ip, Port: 1}, AllowedHosts: []string{"mangal.example.com"}}, ok)
+		for host, want := range map[string]int{
+			"mangal.example.com":     http.StatusOK,
+			"MANGAL.example.com:443": http.StatusOK,
+			"localhost:1":            http.StatusOK,
+			"evil.example":           http.StatusMisdirectedRequest,
+		} {
+			r := httptest.NewRequest(http.MethodGet, "/", nil)
+			r.Host = host
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			if w.Code != want {
+				t.Errorf("%s on %s: %d", host, ip, w.Code)
+			}
+		}
+	}
+	// no list off loopback: any host
+	any := checkHost(GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4zero, Port: 1}}, ok)
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Host = "whatever.lan"
+	w := httptest.NewRecorder()
+	any.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Errorf("any host: %d", w.Code)
+	}
+}
+
+// TestGuardProxy: a trusted proxy's X-Forwarded-Host is the host (checked, and the origin
+// compared with it); an allowed origin passes, anyone else's forwarded host is ignored.
+func TestGuardProxy(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	_, proxy, _ := net.ParseCIDR("10.0.0.2/32")
+	h := Guard(GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977},
+		AllowedHosts: []string{"mangal.example.com"}, AllowedOrigins: []string{"https://public.example.com"},
+		TrustedProxies: []*net.IPNet{proxy}})(ok)
+	for _, tc := range []struct {
+		remote, host, forwarded, origin string
+		want                            int
+	}{
+		{"10.0.0.2:1", "127.0.0.1:6977", "mangal.example.com", "https://mangal.example.com", http.StatusOK},
+		{"10.0.0.2:1", "127.0.0.1:6977", "evil.example", "", http.StatusMisdirectedRequest},
+		{"10.0.0.9:1", "127.0.0.1:6977", "mangal.example.com", "https://mangal.example.com", http.StatusForbidden},
+		{"10.0.0.2:1", "127.0.0.1:6977", "mangal.example.com", "https://public.example.com", http.StatusOK},
+		{"10.0.0.2:1", "127.0.0.1:6977", "mangal.example.com", "https://evil.example", http.StatusForbidden},
+	} {
+		r := httptest.NewRequest(http.MethodPost, "/api/x", nil)
+		r.RemoteAddr, r.Host = tc.remote, tc.host
+		r.Header.Set("X-Forwarded-Host", tc.forwarded)
+		if tc.origin != "" {
+			r.Header.Set("Origin", tc.origin)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != tc.want {
+			t.Errorf("%+v: %d", tc, w.Code)
+		}
+	}
 }
 
 // TestCrossOrigin: unsafe requests from another site's page are refused, by Sec-Fetch-Site
 // or, from browsers without it, by Origin; safe methods and non-browser clients pass.
 func TestCrossOrigin(t *testing.T) {
 	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
-	h := Guard(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6970}, ok)
+	h := Guard(GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6970}})(ok)
 	for _, tc := range []struct {
 		method, site, origin string
 		want                 int

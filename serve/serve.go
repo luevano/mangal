@@ -149,7 +149,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	mux := http.NewServeMux()
 	api.Register(mux)
 	if args.Web {
-		ui, err := web.Handler(out)
+		ui, err := web.Handler(out, web.GuardOptions{Addr: listener.Addr()})
 		if err != nil {
 			return err
 		}
@@ -159,7 +159,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 			writeJSON(w, http.StatusNotFound, watch.ErrorResponse{Error: "not found (the web UI is off, see serve.web)", Code: watch.CodeNotFound})
 		})
 	}
-	server := web.NewServer(ctx, listener.Addr(), mux)
+	server := web.NewServer(ctx, web.Guard(web.GuardOptions{Addr: listener.Addr()})(mux))
 
 	dataDB := watch.DataDB()
 	discovery := watch.DiscoveryPath(dataDB)

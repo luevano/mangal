@@ -15,7 +15,7 @@ import (
 func (s *Server) findLoader(id string) (libmangal.ProviderLoader, error) {
 	loader, alias, ok := libmangal.FindLoader(s.loaders, id)
 	if !ok {
-		return nil, fmt.Errorf("provider %q: %w", id, errNotFound)
+		return nil, fmt.Errorf("provider %q: %w", id, ErrNotFound)
 	}
 	if alias != nil {
 		info := loader.Info()
@@ -50,7 +50,7 @@ func findManga(ctx context.Context, c *libmangal.Client, query, mangaID string) 
 			return manga, nil
 		}
 	}
-	return nil, fmt.Errorf("manga %q in the results of %q: %w", mangaID, query, errNotFound)
+	return nil, fmt.Errorf("manga %q in the results of %q: %w", mangaID, query, ErrNotFound)
 }
 
 func findVolume(ctx context.Context, c *libmangal.Client, manga mangadata.Manga, number float32) (mangadata.Volume, error) {
@@ -63,7 +63,7 @@ func findVolume(ctx context.Context, c *libmangal.Client, manga mangadata.Manga,
 			return volume, nil
 		}
 	}
-	return nil, fmt.Errorf("volume %v of %q: %w", number, manga, errNotFound)
+	return nil, fmt.Errorf("volume %v of %q: %w", number, manga, ErrNotFound)
 }
 
 func toAPIManga(manga mangadata.Manga) api.Manga {

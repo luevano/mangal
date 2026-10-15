@@ -1,0 +1,8 @@
+package: apiv1
+generate:
+  echo5-server: true
+  strict-server: true
+  embedded-spec: true
+output-options:
+  include-tags: [v1]
+output: server.gen.go

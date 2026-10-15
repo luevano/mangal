@@ -422,7 +422,7 @@ func TestHostCheck(t *testing.T) {
 	s := newTestServer(t, "")
 	mux := http.NewServeMux()
 	s.api.Register(mux)
-	h := web.Guard(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}, mux)
+	h := web.Guard(web.GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}})(mux)
 	for host, want := range map[string]int{"127.0.0.1:6977": http.StatusOK, "localhost:6977": http.StatusOK, "evil.example:6977": http.StatusMisdirectedRequest} {
 		req := httptest.NewRequest("GET", "/api/watches", nil)
 		req.Host = host
@@ -439,7 +439,7 @@ func TestCrossSite(t *testing.T) {
 	s := newTestServer(t, "")
 	mux := http.NewServeMux()
 	s.api.Register(mux)
-	h := web.Guard(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}, mux)
+	h := web.Guard(web.GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}})(mux)
 	for _, tc := range []struct {
 		method, path, origin, contentType string
 		want                              int
@@ -775,7 +775,7 @@ func TestRefusedLogged(t *testing.T) {
 	mux := http.NewServeMux()
 	s.api.Register(mux)
 	mux.Handle("/", s.api.AuthWeb(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})))
-	h := web.Guard(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}, mux)
+	h := web.Guard(web.GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}})(mux)
 	for _, tc := range []struct {
 		method, path, host, origin, contentType, auth string
 		want                                          string

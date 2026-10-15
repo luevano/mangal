@@ -25,7 +25,7 @@ func isPublic(addr netip.Addr) bool {
 // resolved address of every connection, redirects included.
 func publicOnly(network, address string, c syscall.RawConn) error {
 	if err := guardian.Safe(network, address, c); err != nil {
-		return fmt.Errorf("%w: %w", err, errBadRequest)
+		return fmt.Errorf("%w: %w", err, ErrBadRequest)
 	}
 	return nil
 }

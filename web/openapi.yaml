@@ -1,13 +1,21 @@
 openapi: "3.0.0"
 info:
-  version: 1.1.0
-  title: Mangal web UI
-  description: Browse-only API of the mangal web UI (no downloads or library).
+  version: 1.0.0
+  title: mangal API
+  description: |
+    The HTTP API of mangal: the browse routes of `mangal web` (tag web, camelCase, kept
+    for the current web UI) and the API v1 of `mangal serve` under /api/v1 (tag v1). Paths
+    are relative to /api. Every v1 operation has an x-mangal-scope (read, watch or write):
+    the token scope it needs; the plan/apply ones (x-mangal-plan) need it only with
+    apply=1, a plan needs read.
+servers:
+  - url: /api
 paths:
   /image:
     get:
       description: Get an image from an http(s) URL, bypassing the CORS policy
       operationId: getImage
+      tags: [web]
       parameters:
         - name: url
           in: query
@@ -38,6 +46,7 @@ paths:
     get:
       description: Get information about installed Mangal app
       operationId: getMangalInfo
+      tags: [web]
       responses:
         '200':
           description: mangal info response
@@ -56,6 +65,7 @@ paths:
       description: |
         Get available providers
       operationId: getProviders
+      tags: [web]
       responses:
         '200':
           description: providers response
@@ -75,6 +85,7 @@ paths:
     get:
       description: Search for mangas
       operationId: searchMangas
+      tags: [web]
       parameters:
         - &providerParam
           name: provider
@@ -109,6 +120,7 @@ paths:
     get:
       description: Get manga volumes
       operationId: getMangaVolumes
+      tags: [web]
       parameters:
         - *providerParam
         - *queryParam
@@ -139,6 +151,7 @@ paths:
     get:
       description: Get volume chapters
       operationId: getVolumeChapters
+      tags: [web]
       parameters:
         - *providerParam
         - *queryParam
@@ -170,6 +183,7 @@ paths:
     get:
       description: Get provider
       operationId: getProvider
+      tags: [web]
       parameters:
         - name: id
           in: query
@@ -195,6 +209,7 @@ paths:
     get:
       description: Get manga page with volumes and chapters
       operationId: getMangaPage
+      tags: [web]
       parameters:
         - *providerParam
         - *queryParam
@@ -217,6 +232,7 @@ paths:
     get:
       description: Get available formats
       operationId: getFormats
+      tags: [web]
       responses:
         '200':
           description: formats response
@@ -232,7 +248,1411 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  # ---- API v1 (mangal serve) ----
+  /v1/:
+    get:
+      summary: The operations of the API v1
+      operationId: getIndex
+      tags: [v1, meta]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the API version and every operation with its scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Index'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/openapi.yaml:
+    get:
+      summary: This spec
+      operationId: getSpec
+      tags: [v1, meta]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the OpenAPI spec of the API
+          content:
+            application/yaml:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/status:
+    get:
+      summary: The server, its checks, the API version and features
+      description: Also GET /api/status (what watch.Remote reads).
+      operationId: getStatus
+      tags: [v1, meta]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/events:
+    get:
+      summary: Server-sent events of the topics
+      description: |
+        `id:` is the event's seq, `data:` the Event JSON, `: ping` every 30 s. The recent
+        events come first, after `since` or Last-Event-ID. A subscriber too far behind is
+        disconnected (it reconnects from its last seq). GET /api/events stays the watch
+        events only, as watch.LiveEvent (watch.Remote).
+      operationId: getEvents
+      tags: [v1, meta]
+      x-mangal-scope: read
+      parameters:
+        - name: topics
+          in: query
+          description: comma separated, every topic when empty
+          schema:
+            type: string
+            example: watch,job,op,health,log
+        - name: since
+          in: query
+          description: the seq of the last event seen
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        '200':
+          description: the event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/library/mangas:
+    get:
+      summary: The library's mangas
+      operationId: listLibraryMangas
+      tags: [v1, library]
+      x-mangal-scope: read
+      parameters:
+        - name: q
+          in: query
+          description: a text the title, the folder or a source's title has (any case)
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: publication status (finished, releasing, hiatus, cancelled, not_yet_released; unknown for none)
+          schema:
+            type: string
+        - name: provider
+          in: query
+          description: only the mangas with a source of this provider
+          schema:
+            type: string
+        - name: duplicates
+          in: query
+          description: only the mangas sharing a metadata id with another
+          schema:
+            type: boolean
+        - name: watched
+          in: query
+          description: only the watched mangas (true) or the others (false)
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        '200':
+          description: the mangas, by title
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LibraryMangaList'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}:
+    get:
+      summary: A library manga with its bindings, watches and marker
+      operationId: getLibraryManga
+      tags: [v1, library]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '200':
+          description: the manga
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LibraryMangaDetail'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}/chapters:
+    get:
+      summary: A library manga's downloaded chapters, with how often each was read
+      operationId: listLibraryChapters
+      tags: [v1, library]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '200':
+          description: the chapters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LibraryChapter'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/downloads:
+    get:
+      summary: The downloaded chapters, newest first
+      operationId: listDownloads
+      tags: [v1, library]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/ProviderParam'
+        - $ref: '#/components/parameters/MangaIDParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        '200':
+          description: the downloads
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadList'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/duplicates:
+    get:
+      summary: The library mangas sharing a metadata id (to merge)
+      operationId: listDuplicates
+      tags: [v1, library]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the duplicates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Duplicate'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/trash:
+    get:
+      summary: What's in the trash
+      operationId: getTrash
+      tags: [v1, library]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the trash
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trash'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/scan:
+    post:
+      summary: Scan the download directory (a job)
+      description: Reconciles the library with the files (rows only, as a download does). Answers 202 with the job.
+      operationId: scanLibrary
+      tags: [v1, library]
+      x-mangal-scope: write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanRequest'
+      responses:
+        '202':
+          description: the scan's job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/merge:
+    post:
+      summary: Merge a library manga into another
+      operationId: mergeLibraryMangas
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/move:
+    post:
+      summary: Move a library manga to another provider's manga
+      operationId: moveLibraryManga
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/links:
+    post:
+      summary: Set a library manga's metadata links
+      operationId: linkLibraryManga
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/backups:
+    post:
+      summary: Fill the Kitsu and MyAnimeList links of mangas linked to AniList
+      operationId: fillBackupLinks
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackupsRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/mark:
+    post:
+      summary: Write the .libmangal.json of folders without one
+      operationId: markLibraryMangas
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/rename:
+    post:
+      summary: Rename the library's folders (and chapters) to the name templates
+      operationId: renameLibrary
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/forget:
+    post:
+      summary: Forget library mangas (rows only, the files stay)
+      operationId: forgetLibraryMangas
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgetRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/delete:
+    post:
+      summary: Delete a library manga or one of its chapters (to the trash)
+      operationId: deleteLibraryManga
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/trash/empty:
+    post:
+      summary: Empty the trash (irreversible)
+      description: Applying needs `"confirm":"empty-trash"` too, else 428 confirm_required.
+      operationId: emptyTrash
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyFields'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/migrate:
+    post:
+      summary: Migrate the library's old provider ids
+      operationId: migrateLibrary
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyFields'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/ops:
+    get:
+      summary: The journal's operations, newest first
+      operationId: listOps
+      tags: [v1, library]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: the operations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Op'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/ops/{id}/undo:
+    post:
+      summary: Undo an operation
+      description: A forced undo (force, when the plan is forceable) loses what it blocks, it needs `"confirm":"force-undo"` too.
+      operationId: undoOp
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyFields'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/health:
+    get:
+      summary: The health report (offline checks), or a job with the network ones
+      description: Also GET /api/health.
+      operationId: getHealth
+      tags: [v1, health]
+      x-mangal-scope: read
+      parameters:
+        - name: only
+          in: query
+          description: comma separated checks or categories
+          schema:
+            type: string
+        - name: all
+          in: query
+          description: also the dismissed findings
+          schema:
+            type: boolean
+        - name: network
+          in: query
+          description: with the network checks, as a job (202)
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: the report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthReport'
+        '202':
+          description: the network job (Location has its url)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthJob'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/health/jobs/{id}:
+    get:
+      summary: A health job, with its report once done
+      operationId: getHealthJob
+      tags: [v1, health]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '200':
+          description: the job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthJob'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/health/fix:
+    post:
+      summary: Fix a finding (by key)
+      description: |
+        The finding is looked up now (an offline run of its check, else the last network
+        job's report). 422 for a finding without a fix that can be applied here (a merge
+        without a choice, a scan).
+      operationId: fixHealthFinding
+      tags: [v1, health, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HealthFixRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/health/dismiss:
+    post:
+      summary: Dismiss findings (fine as they are) or bring them back
+      operationId: dismissHealthFindings
+      tags: [v1, health]
+      x-mangal-scope: write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DismissRequest'
+      responses:
+        '200':
+          description: what was dismissed and undismissed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DismissResponse'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/jobs:
+    get:
+      summary: The server's jobs (downloads, scans), the running and queued first
+      operationId: listJobs
+      tags: [v1, jobs]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/jobs/clear:
+    post:
+      summary: Cancel the queued jobs (of a provider)
+      operationId: clearJobQueue
+      tags: [v1, jobs]
+      x-mangal-scope: write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClearJobsRequest'
+      responses:
+        '200':
+          description: how many were cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Count'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/jobs/{id}:
+    get:
+      summary: A job
+      operationId: getJob
+      tags: [v1, jobs]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '200':
+          description: the job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      summary: Remove a finished job from the list
+      operationId: removeJob
+      tags: [v1, jobs]
+      x-mangal-scope: write
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '204':
+          description: removed
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/jobs/{id}/cancel:
+    post:
+      summary: Cancel a queued or running job
+      operationId: cancelJob
+      tags: [v1, jobs]
+      x-mangal-scope: write
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '202':
+          description: cancelled (a running one stops soon)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/jobs/{id}/retry:
+    post:
+      summary: Retry a finished download's failed chapters, as a new job
+      operationId: retryJob
+      tags: [v1, jobs]
+      x-mangal-scope: write
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '202':
+          description: the new job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/downloads:
+    post:
+      summary: Download chapters of a provider's manga (a job)
+      operationId: startDownload
+      tags: [v1, jobs]
+      x-mangal-scope: write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DownloadRequest'
+      responses:
+        '202':
+          description: the download's job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/logs:
+    get:
+      summary: The log files' entries, oldest first (the last `limit`)
+      operationId: listLogs
+      tags: [v1, logs]
+      x-mangal-scope: read
+      parameters:
+        - name: since
+          in: query
+          description: a time (RFC 3339) or a duration ago (30m, 7d)
+          schema:
+            type: string
+        - name: until
+          in: query
+          description: a time (RFC 3339) or a duration ago
+          schema:
+            type: string
+        - name: level
+          in: query
+          description: the lowest level (debug, info, warn, error)
+          schema:
+            type: string
+        - name: grep
+          in: query
+          description: a regexp the message matches (case-insensitive unless it has a capital)
+          schema:
+            type: string
+        - name: file
+          in: query
+          description: only this file (a name of /v1/logs/files)
+          schema:
+            type: string
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: the entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogEntry'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/logs/files:
+    get:
+      summary: The log files, oldest first
+      operationId: listLogFiles
+      tags: [v1, logs]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogFile'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/providers:
+    get:
+      summary: The installed providers
+      operationId: listProviders
+      tags: [v1, providers]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Provider'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/providers/{provider}:
+    get:
+      summary: A provider (an old id of it works too)
+      operationId: getProviderInfo
+      tags: [v1, providers]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/ProviderPathParam'
+      responses:
+        '200':
+          description: the provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Provider'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/providers/{provider}/search:
+    get:
+      summary: Search a provider's mangas
+      operationId: searchProvider
+      tags: [v1, providers]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/ProviderPathParam'
+        - name: q
+          in: query
+          required: true
+          description: the query (`mid:<id>` gets the manga with the id)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: the mangas found
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Manga'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/providers/{provider}/manga:
+    get:
+      summary: A provider's manga by id
+      description: By the provider's id lookup (MangaByID), or a search of `q` picking the manga with the id.
+      operationId: getProviderManga
+      tags: [v1, providers]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/ProviderPathParam'
+        - $ref: '#/components/parameters/MangaIDRequiredParam'
+        - name: q
+          in: query
+          description: a title to search when the provider can't get a manga by id
+          schema:
+            type: string
+      responses:
+        '200':
+          description: the manga, its watch and bindings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderManga'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/providers/{provider}/chapters:
+    get:
+      summary: A provider's manga's chapters, with what the library has
+      operationId: listProviderChapters
+      tags: [v1, providers]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/ProviderPathParam'
+        - $ref: '#/components/parameters/MangaIDRequiredParam'
+        - name: q
+          in: query
+          description: a title to search when the provider can't get a manga by id
+          schema:
+            type: string
+      responses:
+        '200':
+          description: the chapters, by volume and number
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProviderChapter'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/formats:
+    get:
+      summary: The download formats
+      operationId: listFormats
+      tags: [v1, providers]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the formats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Format'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/image:
+    get:
+      summary: An image of a public http(s) url (raster images only)
+      operationId: proxyImage
+      tags: [v1, providers]
+      x-mangal-scope: read
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: referer
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: the image
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/bindings:
+    get:
+      summary: The metadata bindings (of a provider, or its manga)
+      operationId: listBindings
+      tags: [v1, bindings]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/ProviderParam'
+        - $ref: '#/components/parameters/MangaIDParam'
+      responses:
+        '200':
+          description: the bindings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Binding'
+        default:
+          $ref: '#/components/responses/Error'
+    put:
+      summary: Bind a provider's manga to a metadata id
+      operationId: setBinding
+      tags: [v1, bindings, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BindRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      summary: Remove a binding
+      operationId: removeBinding
+      tags: [v1, bindings, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/MangaIDRequiredParam'
+        - name: source
+          in: query
+          required: true
+          description: the metadata source's code (al, kt, mal)
+          schema:
+            type: string
+        - name: expect
+          in: query
+          description: the hash of the plan confirmed (needed with apply)
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/history:
+    get:
+      summary: The read chapters, last read first
+      operationId: listHistory
+      tags: [v1, history]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/ProviderParam'
+        - $ref: '#/components/parameters/MangaIDParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        '200':
+          description: the reads
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadList'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/history/clear:
+    post:
+      summary: Forget the read history (of a provider, or its manga)
+      operationId: clearHistory
+      tags: [v1, history, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HistoryClearRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/config:
+    get:
+      summary: The config, secrets masked
+      operationId: listConfig
+      tags: [v1, config]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: every key
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConfigEntry'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/config/{key}:
+    put:
+      summary: Set a key in the config file (not secrets)
+      description: |
+        `applies` says when the server uses it: now (the watch.* keys, from the next
+        scheduler cycle) or restart. Secret keys aren't set over HTTP (403).
+      operationId: setConfig
+      tags: [v1, config]
+      x-mangal-scope: write
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigSetRequest'
+      responses:
+        '200':
+          description: the key as set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigEntry'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/accounts:
+    get:
+      summary: The accounts' status (no logins over HTTP)
+      description: The providers' accounts as last fetched (no request to the sites).
+      operationId: listAccounts
+      tags: [v1, accounts]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Account'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/watches:
+    get:
+      summary: The watches
+      description: Also GET /api/watches.
+      operationId: listWatches
+      tags: [v1, watches]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the watches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Watch'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      summary: Watch a manga
+      operationId: addWatch
+      tags: [v1, watches]
+      x-mangal-scope: watch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddWatchRequest'
+      responses:
+        '201':
+          description: the watch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Watch'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/watches/stale:
+    get:
+      summary: The watches without a new chapter for a while
+      operationId: listStaleWatches
+      tags: [v1, watches]
+      x-mangal-scope: read
+      parameters:
+        - name: since
+          in: query
+          description: a duration (90d by default)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: the watches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Watch'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/watches/{id}:
+    get:
+      summary: A watch
+      operationId: getWatch
+      tags: [v1, watches]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '200':
+          description: the watch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Watch'
+        default:
+          $ref: '#/components/responses/Error'
+    patch:
+      summary: Pause, resume or change a watch
+      operationId: updateWatch
+      tags: [v1, watches]
+      x-mangal-scope: watch
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchWatchRequest'
+      responses:
+        '200':
+          description: the watch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Watch'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      summary: Stop watching (the history stays)
+      operationId: removeWatch
+      tags: [v1, watches]
+      x-mangal-scope: watch
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '204':
+          description: removed
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/watches/{id}/relink:
+    post:
+      summary: Point a watch to another manga
+      operationId: relinkWatch
+      tags: [v1, watches]
+      x-mangal-scope: watch
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelinkRequest'
+      responses:
+        '200':
+          description: the watch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Watch'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/check:
+    post:
+      summary: Check watches now
+      description: A dry run answers 200 with the report, a check 202 with its run (409 when every provider is busy).
+      operationId: checkWatches
+      tags: [v1, watches]
+      x-mangal-scope: watch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckRequest'
+      responses:
+        '200':
+          description: the dry run's report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckReport'
+        '202':
+          description: the check run started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckResponse'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/runs:
+    get:
+      summary: The check runs, newest first
+      operationId: listRuns
+      tags: [v1, watches]
+      x-mangal-scope: read
+      parameters:
+        - name: since
+          in: query
+          description: a time (RFC 3339) or a duration ago (7d, 12h)
+          schema:
+            type: string
+        - name: watch
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - $ref: '#/components/parameters/ProviderParam'
+        - $ref: '#/components/parameters/MangaIDParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: the runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CheckRun'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/runs/{id}:
+    get:
+      summary: A check run with its watches' results
+      operationId: getRun
+      tags: [v1, watches]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '200':
+          description: the run (finished once finished is set)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckRun'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/runs/{id}/cancel:
+    post:
+      summary: Cancel a check asked through the API
+      operationId: cancelRun
+      tags: [v1, watches]
+      x-mangal-scope: watch
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '202':
+          description: cancelled
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/watch-runs/{id}:
+    delete:
+      summary: Remove a watch's run from the history
+      operationId: removeWatchRun
+      tags: [v1, watches]
+      x-mangal-scope: watch
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '200':
+          description: what was removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemovedRun'
+        default:
+          $ref: '#/components/responses/Error'
+
 components:
+  parameters:
+    IDParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    ApplyParam:
+      name: apply
+      in: query
+      description: apply the change (needs `expect`, the hash of the plan confirmed), else only plan it
+      schema:
+        type: boolean
+    LimitParam:
+      name: limit
+      in: query
+      description: at most this many (0 for all)
+      schema:
+        type: integer
+        minimum: 0
+    OffsetParam:
+      name: offset
+      in: query
+      description: skip this many first
+      schema:
+        type: integer
+        minimum: 0
+    ProviderParam:
+      name: provider
+      in: query
+      description: a provider id
+      schema:
+        type: string
+    MangaIDParam:
+      name: manga_id
+      in: query
+      description: a provider's manga id (with provider)
+      schema:
+        type: string
+    MangaIDRequiredParam:
+      name: manga_id
+      in: query
+      required: true
+      description: the provider's manga id
+      schema:
+        type: string
+    ProviderPathParam:
+      name: provider
+      in: path
+      required: true
+      description: a provider id
+      schema:
+        type: string
+
+  responses:
+    Error:
+      description: |
+        An error: invalid 400, unauthorized 401, forbidden 403 (missing scope, refused
+        origin), not_found 404, plan_changed 409 (with the new plan), refused 409 (with
+        reasons), busy 409, exists 409, unprocessable 422, confirm_required 428,
+        rate_limited 429, unavailable 503.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Change:
+      description: the plan (applied false), or what the apply did
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ChangeResponse'
+
   schemas:
     Image:
       type: string
@@ -380,4 +1800,1241 @@ components:
           type: integer
           format: int32
         message:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          description: invalid, unauthorized, forbidden, not_found, exists, busy, plan_changed, refused, confirm_required, nothing_to_do, unprocessable, rate_limited, unavailable, run_not_found, run_unfinished
+        reasons:
+          type: array
+          items:
+            type: string
+        plan:
+          $ref: '#/components/schemas/Plan'
+        confirm:
+          type: string
+          description: what `confirm` has to say (confirm_required)
+
+    Index:
+      type: object
+      required: [api_version, version, operations]
+      properties:
+        api_version:
+          type: string
+        version:
+          type: string
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexOperation'
+    IndexOperation:
+      type: object
+      required: [method, path, operation_id, scope, summary]
+      properties:
+        method:
+          type: string
+        path:
+          type: string
+        operation_id:
+          type: string
+        scope:
+          type: string
+        plan:
+          type: boolean
+          description: a plan/apply operation (the scope is for apply)
+        summary:
+          type: string
+
+    Status:
+      type: object
+      required: [server, checking, api_version, features, scopes, auth]
+      properties:
+        server:
+          type: boolean
+        address:
+          type: string
+        version:
+          type: string
+        started:
+          type: string
+          format: date-time
+        checking:
+          type: boolean
+        since:
+          type: string
+          format: date-time
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderStatus'
+        run:
+          type: integer
+          format: int64
+        runs:
+          type: array
+          items:
+            type: integer
+            format: int64
+        next_check:
+          type: string
+          format: date-time
+        api_version:
+          type: string
+        features:
+          type: array
+          description: the features (core.Features names) the API has
+          items:
+            type: string
+        scopes:
+          type: array
+          description: the scopes of this request
+          items:
+            type: string
+        auth:
+          type: string
+          description: how this request is authorized (token <name>, loopback, none)
+    ProviderStatus:
+      type: object
+      x-go-type: watch.ProviderStatus
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/client/watch
+      properties:
+        provider:
+          type: string
+        since:
+          type: string
+          format: date-time
+        pid:
+          type: integer
+        host:
+          type: string
+        run:
+          type: integer
+          format: int64
+        watch:
+          type: integer
+          format: int64
+        title:
+          type: string
+        state:
+          type: string
+
+    Event:
+      type: object
+      required: [seq, time, topic, kind]
+      properties:
+        seq:
+          type: integer
+          format: uint64
+        time:
+          type: string
+          format: date-time
+        topic:
+          type: string
+          description: watch, job, op, health or log
+        kind:
+          type: string
+          description: |
+            watch and health: the watch.LiveEvent kind; job: added, changed, removed; op:
+            done, undone; log: the level
+        message:
+          type: string
+        data:
+          description: the topic's object (watch.LiveEvent, Job, Op, LogEntry)
+
+    MetadataID:
+      type: object
+      required: [source, id]
+      properties:
+        source:
+          type: string
+          description: the source's code (al, kt, mal, mu, ...)
+        id:
+          type: string
+    LibrarySource:
+      type: object
+      required: [provider, manga_id, title, current]
+      properties:
+        provider:
+          type: string
+        manga_id:
+          type: string
+        title:
+          type: string
+        moved:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+    LibraryManga:
+      type: object
+      required: [id, title, path, chapters, metadata_ids, sources]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        path:
+          type: string
+          description: the folder
+        dir:
+          type: string
+          description: the folder's name
+        chapters:
+          type: integer
+        status:
+          type: string
+          description: the publication status, empty when unknown
+        status_updated:
+          type: string
+          format: date-time
+        metadata_ids:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetadataID'
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/LibrarySource'
+        watched:
+          type: boolean
+    LibraryMangaList:
+      type: object
+      required: [total, mangas]
+      properties:
+        total:
+          type: integer
+          description: how many match, before limit and offset
+        mangas:
+          type: array
+          items:
+            $ref: '#/components/schemas/LibraryManga'
+    LibraryMangaDetail:
+      type: object
+      required: [manga, bindings, watches, marker, missing]
+      properties:
+        manga:
+          $ref: '#/components/schemas/LibraryManga'
+        bindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Binding'
+        watches:
+          type: array
+          items:
+            $ref: '#/components/schemas/Watch'
+        marker:
+          type: boolean
+          description: the folder has a .libmangal.json
+        missing:
+          type: boolean
+          description: the folder is gone
+    Download:
+      type: object
+      required: [path, provider, manga_id, manga_title, volume, chapter, chapter_title, format, pages, downloaded]
+      properties:
+        path:
+          type: string
+        provider:
+          type: string
+        manga_id:
+          type: string
+        manga_title:
+          type: string
+        volume:
+          type: number
+          format: float
+        chapter:
+          type: number
+          format: float
+        chapter_title:
+          type: string
+        chapter_url:
+          type: string
+        format:
+          type: string
+        pages:
+          type: integer
+        downloaded:
+          type: string
+          format: date-time
+    DownloadList:
+      type: object
+      required: [total, downloads]
+      properties:
+        total:
+          type: integer
+        downloads:
+          type: array
+          items:
+            $ref: '#/components/schemas/Download'
+    LibraryChapter:
+      type: object
+      required: [download, reads]
+      properties:
+        download:
+          $ref: '#/components/schemas/Download'
+        reads:
+          type: integer
+          description: how many times it was opened (the read history)
+        last_read:
+          type: string
+          format: date-time
+    Duplicate:
+      type: object
+      required: [source, id, mangas]
+      properties:
+        source:
+          type: string
+        id:
+          type: string
+        mangas:
+          type: array
+          description: the suggested one to keep first
+          items:
+            $ref: '#/components/schemas/LibraryManga'
+    Trash:
+      type: object
+      required: [batches, files, size]
+      properties:
+        batches:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrashBatch'
+        files:
+          type: integer
+        size:
+          type: integer
+          format: int64
+    TrashBatch:
+      type: object
+      required: [name, path, files, size]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        files:
+          type: integer
+        size:
+          type: integer
+          format: int64
+    Op:
+      type: object
+      required: [id, kind, summary, started, steps]
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+        summary:
+          type: string
+        started:
+          type: string
+          format: date-time
+        finished:
+          type: string
+          format: date-time
+        error:
+          type: string
+        snapshot:
+          type: string
+        undone:
+          type: string
+          format: date-time
+        steps:
+          type: integer
+        interfered:
+          type: string
+
+    Plan:
+      type: object
+      x-go-type: core.Plan
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/core
+      required: [kind, lines, hash]
+      properties:
+        kind:
+          type: string
+        summary:
+          type: string
+        lines:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        blocked:
+          type: array
+          items:
+            type: string
+        forceable:
+          type: boolean
+        nothing:
+          type: boolean
+        irreversible:
+          type: boolean
+        hash:
+          type: string
+    OpResult:
+      type: object
+      x-go-type: core.OpResult
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/core
+      required: [kind]
+      properties:
+        kind:
+          type: string
+        op:
+          type: integer
+          format: int64
+        snapshot:
+          type: string
+        summary:
+          type: string
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+              warn:
+                type: boolean
+    ChangeResponse:
+      type: object
+      required: [applied]
+      properties:
+        applied:
+          type: boolean
+        plan:
+          $ref: '#/components/schemas/Plan'
+        result:
+          $ref: '#/components/schemas/OpResult'
+        undo:
+          type: string
+          description: how to undo it (POST /api/v1/ops/{op}/undo, mangal library undo)
+    ApplyFields:
+      type: object
+      properties:
+        expect:
+          type: string
+          description: the hash of the plan confirmed, needed with apply
+        force:
+          type: boolean
+          description: apply a forceable plan with blocked reasons
+        confirm:
+          type: string
+          description: empty-trash for an irreversible plan, force-undo for a forced undo
+    MergeRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          required: [keep, other]
+          properties:
+            keep:
+              type: integer
+              format: int64
+            other:
+              type: integer
+              format: int64
+    MoveRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          required: [manga, provider]
+          properties:
+            manga:
+              type: integer
+              format: int64
+            provider:
+              type: string
+            manga_id:
+              type: string
+              description: the provider's manga to move to
+            query:
+              type: string
+              description: a search, when the provider can't get a manga by id (or without manga_id)
+            selector:
+              type: string
+              description: the manga selector of the search (exact by default)
+            full:
+              type: boolean
+              description: adopt the new provider's title and folder name
+    LinkRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          required: [manga, links]
+          properties:
+            manga:
+              type: integer
+              format: int64
+            links:
+              type: object
+              description: source code (al, kt, mal, mu) to id, "" removes it
+              additionalProperties:
+                type: string
+            rename:
+              type: boolean
+            watches:
+              type: boolean
+    BackupsRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          properties:
+            mangas:
+              type: array
+              items:
+                type: integer
+                format: int64
+            replace:
+              type: array
+              items:
+                type: integer
+                format: int64
+            replace_all:
+              type: boolean
+    MarkRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          properties:
+            mangas:
+              type: array
+              description: none for every folder without a marker
+              items:
+                type: integer
+                format: int64
+    RenameRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          properties:
+            refresh:
+              type: boolean
+            chapters:
+              type: boolean
+            fallback:
+              type: boolean
+            cached:
+              type: boolean
+            paths:
+              type: array
+              items:
+                type: string
+            only:
+              type: array
+              items:
+                type: string
+    ForgetRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          required: [mangas]
+          properties:
+            mangas:
+              type: array
+              items:
+                type: integer
+                format: int64
+    DeleteRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          required: [manga]
+          properties:
+            manga:
+              type: integer
+              format: int64
+            chapter:
+              type: string
+              description: a chapter's number or path, none for the whole manga
+    HistoryClearRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          properties:
+            provider:
+              type: string
+            manga_id:
+              type: string
+    BindRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          required: [provider, manga_id, source, id]
+          properties:
+            provider:
+              type: string
+            manga_id:
+              type: string
+            source:
+              type: string
+            id:
+              type: string
+    HealthFixRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+              description: the finding's (or a summary item's) key, e.g. M1/manga/5
+            choice:
+              type: string
+              description: the id to link, or the manga to keep, when the fix has several
+    ScanRequest:
+      type: object
+      properties:
+        check:
+          type: boolean
+        statuses:
+          type: boolean
+
+    HealthReport:
+      type: object
+      x-go-type: health.Report
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/health
+      required: [findings, counts, network]
+      properties:
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthFinding'
+        counts:
+          type: object
+          properties:
+            info:
+              type: integer
+            warning:
+              type: integer
+            error:
+              type: integer
+            by_category:
+              type: object
+              additionalProperties:
+                type: integer
+        network:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: string
+        dismissed:
+          type: integer
+    HealthFinding:
+      type: object
+      x-go-type: health.Finding
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/health
+      required: [check, category, severity, subject, message, fix, key]
+      properties:
+        check:
+          type: string
+        category:
+          type: string
+        severity:
+          type: string
+        subject:
+          type: object
+          properties:
+            kind:
+              type: string
+            id:
+              type: integer
+              format: int64
+            name:
+              type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
+        fix:
+          type: object
+          properties:
+            commands:
+              type: array
+              items:
+                type: string
+            note:
+              type: string
+            tui:
+              type: string
+            action:
+              type: object
+              additionalProperties: true
+        items:
+          type: array
+          description: a summary's findings (HealthFinding)
+          items:
+            type: object
+            additionalProperties: true
+        part:
+          type: string
+        key:
+          type: string
+        dismissed:
+          type: boolean
+        network:
+          type: boolean
+    HealthJob:
+      type: object
+      required: [id, started, running]
+      properties:
+        id:
+          type: integer
+          format: int64
+        started:
+          type: string
+          format: date-time
+        finished:
+          type: string
+          format: date-time
+        running:
+          type: boolean
+        status:
+          type: string
+        error:
+          type: string
+        report:
+          $ref: '#/components/schemas/HealthReport'
+    DismissRequest:
+      type: object
+      properties:
+        dismiss:
+          type: array
+          description: keys of findings there now
+          items:
+            type: string
+        undismiss:
+          type: array
+          items:
+            type: string
+        network:
+          type: boolean
+          description: look the findings up with the network checks too
+    DismissResponse:
+      type: object
+      required: [dismissed, undismissed]
+      properties:
+        dismissed:
+          type: array
+          items:
+            type: string
+        undismissed:
+          type: array
+          items:
+            type: string
+
+    Job:
+      type: object
+      required: [id, kind, title, providers, status, added]
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+          description: download, check or scan
+        title:
+          type: string
+        providers:
+          type: array
+          items:
+            type: string
+        manga_id:
+          type: string
+        status:
+          type: string
+          description: queued, waiting, running, done, failed, cancelled
+        message:
+          type: string
+        note:
+          type: string
+        done:
+          type: integer
+        total:
+          type: integer
+        part:
+          type: number
+          format: double
+        error:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobResult'
+        added:
+          type: string
+          format: date-time
+        started:
+          type: string
+          format: date-time
+        finished:
+          type: string
+          format: date-time
+        ahead:
+          type: integer
+        behind:
+          type: string
+    JobResult:
+      type: object
+      required: [chapter, title]
+      properties:
+        chapter:
+          type: number
+          format: float
+        title:
+          type: string
+        path:
+          type: string
+        skipped:
+          type: string
+        unavailable:
+          type: string
+        error:
+          type: string
+    ClearJobsRequest:
+      type: object
+      properties:
+        provider:
+          type: string
+    Count:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+    DownloadRequest:
+      type: object
+      required: [provider, chapters]
+      properties:
+        provider:
+          type: string
+        manga_id:
+          type: string
+        query:
+          type: string
+          description: a search, when the provider can't get a manga by id (or without manga_id)
+        selector:
+          type: string
+          description: the manga selector of the search (exact by default)
+        chapters:
+          type: string
+          description: a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...)
+        format:
+          type: string
+          description: the download format, download.format by default
+
+    LogEntry:
+      type: object
+      required: [time, level, message, file]
+      properties:
+        time:
+          type: string
+          format: date-time
+        level:
+          type: string
+        message:
+          type: string
+        file:
+          type: string
+    LogFile:
+      type: object
+      required: [name, path, size, modified, closed, compressed]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        size:
+          type: integer
+          format: int64
+        modified:
+          type: string
+          format: date-time
+        closed:
+          type: boolean
+        compressed:
+          type: boolean
+
+    ProviderManga:
+      type: object
+      required: [provider, manga, bindings]
+      properties:
+        provider:
+          type: string
+        manga:
+          $ref: '#/components/schemas/Manga'
+        watch:
+          type: integer
+          format: int64
+          description: the watch of the manga, if any
+        library:
+          type: integer
+          format: int64
+          description: the library manga it's downloaded into, if any
+        bindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Binding'
+    ProviderChapter:
+      type: object
+      required: [volume, number, title, downloaded, reads]
+      properties:
+        volume:
+          type: number
+          format: float
+        number:
+          type: number
+          format: float
+        title:
+          type: string
+        url:
+          type: string
+        downloaded:
+          type: boolean
+        path:
+          type: string
+        reads:
+          type: integer
+
+    Binding:
+      type: object
+      x-go-type: storage.Binding
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/storage
+      required: [source, id, default]
+      properties:
+        provider:
+          type: string
+        manga_id:
+          type: string
+        source:
+          type: string
+        id:
+          type: string
+        default:
+          type: boolean
+        updated:
+          type: string
+          format: date-time
+
+    Read:
+      type: object
+      required: [provider, manga_id, manga_title, volume, chapter, chapter_title, count, first, last]
+      properties:
+        provider:
+          type: string
+        manga_id:
+          type: string
+        manga_title:
+          type: string
+        volume:
+          type: number
+          format: float
+        chapter:
+          type: number
+          format: float
+        chapter_title:
+          type: string
+        chapter_url:
+          type: string
+        library_manga:
+          type: integer
+          format: int64
+        count:
+          type: integer
+        first:
+          type: string
+          format: date-time
+        last:
+          type: string
+          format: date-time
+    ReadList:
+      type: object
+      required: [total, reads]
+      properties:
+        total:
+          type: integer
+        reads:
+          type: array
+          items:
+            $ref: '#/components/schemas/Read'
+
+    ConfigEntry:
+      type: object
+      required: [key, value, default, description, secret, applies]
+      properties:
+        key:
+          type: string
+        value:
+          description: the value (masked for a secret)
+        default:
+          description: the default value
+        description:
+          type: string
+        secret:
+          type: boolean
+        env:
+          type: string
+          description: the environment variable that sets it, when it does now (it wins over the file)
+        applies:
+          type: string
+          description: when a change applies in the server, now or restart
+    ConfigSetRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          description: the value, as the config file has it (a string, number, bool or list)
+
+    Account:
+      type: object
+      required: [service, status]
+      properties:
+        service:
+          type: string
+        provider:
+          type: string
+        user:
+          type: string
+        status:
+          type: string
+        url:
+          type: string
+        expires:
+          type: string
+          format: date-time
+        details:
+          type: array
+          items:
+            type: string
+        checked:
+          type: string
+          format: date-time
+        error:
+          type: string
+
+    Watch:
+      type: object
+      x-go-type: watch.Watch
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/client/watch
+      description: a watch (client/watch.Watch)
+      required: [id, provider, manga_id, title, enabled]
+      properties:
+        id:
+          type: integer
+          format: int64
+        provider:
+          type: string
+        manga_id:
+          type: string
+        title:
+          type: string
+        enabled:
+          type: boolean
+        library_manga:
+          type: integer
+          format: int64
+        schedule:
+          type: string
+        gaps:
+          type: boolean
+        last_checked:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+        failures:
+          type: integer
+        needs_relink:
+          type: boolean
+        last_downloaded:
+          type: number
+          format: float
+        next_check:
+          type: string
+          format: date-time
+        next_scheduled:
+          type: string
+          format: date-time
+        next_gap_check:
+          type: string
+          format: date-time
+        provider_missing:
+          type: boolean
+        bindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Binding'
+        library_issue:
+          type: string
+        library_note:
+          type: string
+        status:
+          type: string
+      additionalProperties: true
+    AddWatchRequest:
+      type: object
+      x-go-type: watch.AddRequest
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/client/watch
+      required: [provider]
+      properties:
+        provider:
+          type: string
+        manga_id:
+          type: string
+        query:
+          type: string
+        selector:
+          type: string
+        title:
+          type: string
+        offline:
+          type: boolean
+        enabled:
+          type: boolean
+        anilist_id:
+          type: integer
+        from:
+          type: number
+          format: float
+        gaps:
+          type: boolean
+        schedule:
+          type: string
+    PatchWatchRequest:
+      type: object
+      x-go-type: watch.PatchRequest
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/client/watch
+      properties:
+        enabled:
+          type: boolean
+        schedule:
+          type: string
+        gaps:
+          type: boolean
+        anilist_id:
+          type: integer
+        from:
+          type: number
+          format: float
+        skip:
+          type: array
+          items:
+            type: number
+            format: float
+    RelinkRequest:
+      type: object
+      x-go-type: watch.RelinkOptions
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/client/watch
+      properties:
+        provider:
+          type: string
+        manga_id:
+          type: string
+        query:
+          type: string
+        selector:
+          type: string
+        anilist_id:
+          type: integer
+    CheckRequest:
+      type: object
+      x-go-type: watch.CheckRequest
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/client/watch
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        gaps:
+          type: boolean
+        dry_run:
+          type: boolean
+    CheckResponse:
+      type: object
+      x-go-type: watch.CheckResponse
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/client/watch
+      required: [run]
+      properties:
+        run:
+          type: integer
+          format: int64
+        busy:
+          type: array
+          items:
+            type: string
+    CheckReport:
+      type: object
+      x-go-type: watch.Report
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/client/watch
+      description: a check's report (client/watch.Report)
+      additionalProperties: true
+    CheckRun:
+      type: object
+      x-go-type: storage.CheckRun
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/storage
+      required: [id, kind, started, watches, new_chapters, errors]
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+        started:
+          type: string
+          format: date-time
+        finished:
+          type: string
+          format: date-time
+        watches:
+          type: integer
+        new_chapters:
+          type: integer
+        errors:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    RemovedRun:
+      type: object
+      x-go-type: watch.RemovedRun
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/client/watch
+      properties:
+        run:
+          type: object
+          additionalProperties: true
+        check_run_removed:
+          type: boolean
+        snapshot:
           type: string

@@ -1,0 +1,6 @@
+package: apiv1
+generate:
+  models: true
+output-options:
+  include-tags: [v1]
+output: types.gen.go

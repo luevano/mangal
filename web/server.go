@@ -147,17 +147,17 @@ func (s *Server) SearchMangas(ctx context.Context, request api.SearchMangasReque
 	})
 }
 
-// newHandler is the API under /api and the UI.
-func newHandler(server *Server) (*echo.Echo, error) {
+// Register adds the browse API under /api (its strict handlers go through middlewares)
+// and the UI on / to e, which should use ImageHeaders and APIError for them.
+func (s *Server) Register(e *echo.Echo, middlewares []api.StrictMiddlewareFunc) error {
 	ui, err := frontend()
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	e := echo.New()
-	e.HTTPErrorHandler = apiError
-	e.Use(imageHeaders)
-	api.RegisterHandlersWithBaseURL(e, api.NewStrictHandler(server, nil), "api")
+	api.RegisterHandlersWithBaseURL(e, api.NewStrictHandler(s, middlewares), "/api")
 	e.StaticFS("/", ui)
-	return e, nil
+	return nil
 }
+
+// Loaders are the providers.
+func (s *Server) Loaders() []libmangal.ProviderLoader { return s.loaders }

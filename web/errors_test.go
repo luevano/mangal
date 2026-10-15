@@ -30,7 +30,7 @@ func TestAPIErrorStatus(t *testing.T) {
 		{fmt.Errorf("broken"), http.StatusInternalServerError, ""},
 	} {
 		w := httptest.NewRecorder()
-		apiError(echo.New().NewContext(httptest.NewRequest(http.MethodGet, "/api/x", nil), w), c.err)
+		APIError(echo.New().NewContext(httptest.NewRequest(http.MethodGet, "/api/x", nil), w), c.err)
 		if w.Code != c.status || w.Header().Get("Retry-After") != c.retryAfter {
 			t.Errorf("%v: %d, Retry-After %q", c.err, w.Code, w.Header().Get("Retry-After"))
 		}

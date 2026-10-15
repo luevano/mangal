@@ -15,16 +15,16 @@ import (
 )
 
 var (
-	// errNotFound is matched by the errors about a provider, manga or volume that isn't there.
-	errNotFound = errors.New("not found")
-	// errBadRequest is matched by the errors about an invalid parameter.
-	errBadRequest = errors.New("bad request")
-	// errUpstream is matched by the errors about what a site answered (e.g. not an image).
-	errUpstream = errors.New("bad upstream response")
+	// ErrNotFound is matched by the errors about a provider, manga or volume that isn't there.
+	ErrNotFound = errors.New("not found")
+	// ErrBadRequest is matched by the errors about an invalid parameter.
+	ErrBadRequest = errors.New("bad request")
+	// ErrUpstream is matched by the errors about what a site answered (e.g. not an image).
+	ErrUpstream = errors.New("bad upstream response")
 )
 
-// apiError writes the handler's error as an api.Error, with the status it matches.
-func apiError(c *echo.Context, err error) {
+// APIError writes the handler's error as an api.Error, with the status it matches.
+func APIError(c *echo.Context, err error) {
 	if resp, _ := echo.UnwrapResponse(c.Response()); resp != nil && resp.Committed {
 		return
 	}
@@ -38,16 +38,16 @@ func apiError(c *echo.Context, err error) {
 	case echo.StatusCode(err) != 0:
 		// echo's own: no route, method not allowed
 		status = echo.StatusCode(err)
-	case errors.Is(err, errNotFound), errors.Is(err, libmangal.ErrNotFound):
+	case errors.Is(err, ErrNotFound), errors.Is(err, libmangal.ErrNotFound):
 		status = http.StatusNotFound
 	case limited:
 		status = http.StatusTooManyRequests
 		if wait > 0 {
 			c.Response().Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 		}
-	case errors.Is(err, errBadRequest):
+	case errors.Is(err, ErrBadRequest):
 		status = http.StatusBadRequest
-	case errors.Is(err, errUpstream):
+	case errors.Is(err, ErrUpstream):
 		status = http.StatusBadGateway
 	case errors.Is(err, context.Canceled):
 		// the client left or the server is stopping
