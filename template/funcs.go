@@ -7,6 +7,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/util/string/path"
 	"github.com/spf13/cast"
@@ -27,11 +28,11 @@ var Funcs = []Func{
 	{"lower", strings.ToLower, "Returns s with all Unicode letters mapped to their lower case."},
 	{"replace", strings.Replace, "Returns a copy of the string s with the first n non-overlapping instances of old replaced by new."},
 	{"replaceAll", strings.ReplaceAll, "Returns a copy of the string s with all non-overlapping instances of old replaced by new."},
-	{"sanitize", path.SanitizeOS, fmt.Sprintf("Remove invalid path chars (%s) on host OS (%s), and control chars; caps the length and avoids empty, . and .. names.", path.InvalidPathCharsOS, runtime.GOOS)},
-	{"sanitizeDarwin", path.SanitizeDarwin, fmt.Sprintf("Remove invalid Darwin path chars (%s), as sanitize.", path.InvalidPathCharsDarwin)},
-	{"sanitizeUNIX", path.SanitizeUNIX, fmt.Sprintf("Remove invalid UNIX path chars (%s), as sanitize.", path.InvalidPathCharsUNIX)},
+	{"sanitize", path.SanitizeOS, fmt.Sprintf("Remove invalid path chars (%s) on host OS (%s), and control chars; caps the length and avoids empty, . and .. names.", libmangal.InvalidPathCharsOS, runtime.GOOS)},
+	{"sanitizeDarwin", path.SanitizeDarwin, fmt.Sprintf("Remove invalid Darwin path chars (%s), as sanitize.", libmangal.InvalidPathCharsDarwin)},
+	{"sanitizeUNIX", path.SanitizeUNIX, fmt.Sprintf("Remove invalid UNIX path chars (%s), as sanitize.", libmangal.InvalidPathCharsUNIX)},
 	{"sanitizeWhitespace", path.SanitizeWhitespace, "Replace all whitespace (as defined by Unicode's White Space property) chars with underscores."},
-	{"sanitizeWindows", path.SanitizeWindows, fmt.Sprintf("Remove invalid Windows path chars (%s), as sanitize, and prefix reserved names (CON, NUL, ...).", path.InvalidPathCharsWindows)},
+	{"sanitizeWindows", path.SanitizeWindows, fmt.Sprintf("Remove invalid Windows path chars (%s), as sanitize, and prefix reserved names (CON, NUL, ...).", libmangal.InvalidPathCharsWindows)},
 	// strings.ToTitle is the Unicode title case of each letter, the same as upper for most scripts
 	{"title", strings.ToTitle, `Returns s with all letters in Unicode title case, which for most scripts is upper case ("one piece" gives "ONE PIECE"); it doesn't capitalize words.`},
 	{"upper", strings.ToUpper, "Returns s with all Unicode letters mapped to their upper case."},

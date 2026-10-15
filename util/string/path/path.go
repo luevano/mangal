@@ -1,16 +1,11 @@
 package path
 
 import (
+	"runtime"
 	"strings"
 	"unicode"
 
 	"github.com/luevano/libmangal"
-)
-
-const (
-	InvalidPathCharsUNIX    = `/`
-	InvalidPathCharsDarwin  = `/:`
-	InvalidPathCharsWindows = `<>:"/\|?*`
 )
 
 func SanitizePath(path string, isInvalid func(rune) bool) string {
@@ -58,13 +53,18 @@ func SanitizeWhitespace(path string) string {
 }
 
 func SanitizeUNIX(path string) string {
-	return sanitizeName(path, InvalidPathCharsUNIX, false)
+	return sanitizeName(path, libmangal.InvalidPathCharsUNIX, false)
 }
 
 func SanitizeDarwin(path string) string {
-	return sanitizeName(path, InvalidPathCharsDarwin, false)
+	return sanitizeName(path, libmangal.InvalidPathCharsDarwin, false)
+}
+
+// SanitizeOS is SanitizeUNIX, SanitizeDarwin or SanitizeWindows, for this OS.
+func SanitizeOS(path string) string {
+	return sanitizeName(path, libmangal.InvalidPathCharsOS, runtime.GOOS == "windows")
 }
 
 func SanitizeWindows(path string) string {
-	return sanitizeName(path, InvalidPathCharsWindows, true)
+	return sanitizeName(path, libmangal.InvalidPathCharsWindows, true)
 }
