@@ -60,11 +60,16 @@ type Kind int
 const (
 	KindDownload Kind = iota
 	KindCheck
+	// KindScan is a library scan (mangal serve's).
+	KindScan
 )
 
 func (k Kind) String() string {
-	if k == KindCheck {
+	switch k {
+	case KindCheck:
 		return "check"
+	case KindScan:
+		return "scan"
 	}
 	return "download"
 }

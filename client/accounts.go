@@ -68,6 +68,35 @@ func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
 	return append(entries, DiscordAccount()), nil
 }
 
+// AccountsCached is Accounts without asking the providers: their accounts as last
+// fetched ("not checked" when not in the last accountsTTL). The metadata logins are
+// checked once per process, as Accounts does.
+func AccountsCached(ctx context.Context) ([]AccountEntry, error) {
+	entries := metadataAccounts(ctx, false)
+	mango, err := loader.MangoLoaders()
+	if err != nil {
+		return nil, err
+	}
+	lua, _, err := loader.LuaLoaders()
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range append(mango, lua...) {
+		a, ok := l.(interface{ HasAccount() bool })
+		if !ok || !a.HasAccount() {
+			continue
+		}
+		info := l.Info()
+		account, checked, found, err := CachedAccount(info.ID)
+		entry := AccountEntry{Account: account, Provider: info.ID, Checked: checked, Err: err}
+		if !found {
+			entry.Account = libmangal.Account{Service: info.Name, Status: "not checked"}
+		}
+		entries = append(entries, entry)
+	}
+	return append(entries, DiscordAccount()), nil
+}
+
 // DiscordAccount is the Discord webhook of the notifications: saved (mangal notify webhook),
 // from the config or not set.
 func DiscordAccount() AccountEntry {

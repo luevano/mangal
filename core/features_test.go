@@ -15,7 +15,7 @@ func TestFeatures(t *testing.T) {
 			t.Errorf("%s twice", f.Name)
 		}
 		names[f.Name] = true
-		for _, m := range []Mode{ModeCLI, ModeTUI, ModeScript} {
+		for _, m := range Modes {
 			if !f.Has(m) && f.NotApplicable[m] == "" {
 				t.Errorf("%s: not in %s, and no reason", f.Name, m)
 			}
