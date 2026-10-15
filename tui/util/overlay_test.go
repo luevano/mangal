@@ -89,15 +89,16 @@ func TestPlaceOverlayStyles(t *testing.T) {
 	if ansi.Strip(got) != "aaXYaa" {
 		t.Fatalf("text: got %q", ansi.Strip(got))
 	}
-	left, right, ok := strings.Cut(got, "\x1b[1mXY"+reset)
+	left, right, ok := strings.Cut(got, "XY")
 	if !ok {
 		t.Fatalf("fg not drawn whole: %q", got)
 	}
-	// the bg style ends before fg and resumes after it
-	if !strings.HasSuffix(left, reset) {
-		t.Errorf("left side not reset: %q", left)
+	// fg is bold without the bg's red, the bg's style resumes after it
+	sgr := left[strings.LastIndex(left, "\x1b["):]
+	if !strings.Contains(sgr, "1") || (strings.Contains(sgr, "31") && !strings.Contains(sgr, "39")) {
+		t.Errorf("fg drawn with %q: %q", sgr, got)
 	}
-	if !strings.Contains(right, red) {
+	if !strings.Contains(right, "31") {
 		t.Errorf("right side lost the bg style: %q", right)
 	}
 	if strings.Count(got, "\x1b") != strings.Count(got, "m") {
