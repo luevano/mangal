@@ -127,3 +127,55 @@ func TestLibraryScanMergeTrash(t *testing.T) {
 		t.Errorf("removed without asking: %v, %v", ok, err)
 	}
 }
+
+// library rm: a dry run, then the chapter and the manga to the trash, undone by library undo
+func TestLibraryRm(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "dl")
+	touchFile(t, filepath.Join(root, "Rm", "Chapter 1.cbz"))
+	touchFile(t, filepath.Join(root, "Rm", "Chapter 2.cbz"))
+	old := config.Download.Path.Get()
+	if err := config.Download.Path.Set(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = config.Download.Path.Set(old) })
+	if _, err := runCmd(t, libraryScanCmd, func() error { return libraryScanCmd.RunE(libraryScanCmd, nil) }); err != nil {
+		t.Fatal(err)
+	}
+	lib, err := cache.Library()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, ok, err := lib.MangaByFolder(root, "Rm")
+	if err != nil || !ok {
+		t.Fatalf("manga %v %v", ok, err)
+	}
+	id := strconv.FormatInt(m.ID, 10)
+
+	out, err := runCmd(t, libraryRmCmd, func() error { return libraryRmCmd.RunE(libraryRmCmd, []string{id, "2"}) })
+	if err != nil || !strings.Contains(out, "trash Rm/Chapter 2.cbz") || !strings.Contains(out, "--apply") {
+		t.Fatalf("dry run: %v\n%s", err, out)
+	}
+	libraryRmArgs.Apply = true
+	t.Cleanup(func() { libraryRmArgs.Apply = false })
+	if out, err := runCmd(t, libraryRmCmd, func() error { return libraryRmCmd.RunE(libraryRmCmd, []string{id, "2"}) }); err != nil || !strings.Contains(out, "deleted") {
+		t.Fatalf("rm chapter: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Rm", "Chapter 2.cbz")); !os.IsNotExist(err) {
+		t.Errorf("chapter 2 left: %v", err)
+	}
+	if out, err := runCmd(t, libraryRmCmd, func() error { return libraryRmCmd.RunE(libraryRmCmd, []string{id}) }); err != nil || !strings.Contains(out, "database snapshot") {
+		t.Fatalf("rm: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Rm")); !os.IsNotExist(err) {
+		t.Errorf("folder left: %v", err)
+	}
+
+	libraryUndoArgs.Apply = true
+	t.Cleanup(func() { libraryUndoArgs.Apply = false })
+	if out, err := runCmd(t, libraryUndoCmd, func() error { return libraryUndoCmd.RunE(libraryUndoCmd, nil) }); err != nil || !strings.Contains(out, "undone") {
+		t.Fatalf("undo: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Rm", "Chapter 1.cbz")); err != nil {
+		t.Errorf("not back: %v", err)
+	}
+}

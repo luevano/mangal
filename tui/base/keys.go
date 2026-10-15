@@ -92,6 +92,8 @@ var (
 	KeyLiveChecks      = util.Bind("every live check", "T")
 	KeyRuns            = util.Bind("every check run", "V")
 	KeyProviderHistory = util.Bind("provider history", "alt+h")
+	KeyReadHistory     = util.Bind("read history", "alt+h")
+	KeyClearAll        = util.Bind("clear all", "backspace")
 	KeyNextProvider    = util.Bind("next provider", "tab")
 	KeyPickProvider    = util.Bind("provider", "tab")
 	KeyNext            = util.Bind("next", "tab")
@@ -147,11 +149,13 @@ var keyConcepts = map[string][]string{
 	// delete; download is the chapters' old key (no delete there)
 	"d": {"delete", "remove", "stop watching", "empty", "delete check", "download", "cancel"},
 	// clear
-	"backspace": {"close all", "unselect all", "reset to default", "clear its queue"},
-	" ":         {"toggle", "change", "on/off"},
-	"tab":       {"next provider", "provider", "next", "level"},
-	"n":         {"new login", "add"},
-	"e":         {"edit", "API client"},
+	"backspace": {"close all", "unselect all", "reset to default", "clear its queue", "clear all"},
+	// the past: a provider's checks, the chapters read
+	"alt+h": {"provider history", "read history"},
+	" ":     {"toggle", "change", "on/off"},
+	"tab":   {"next provider", "provider", "next", "level"},
+	"n":     {"new login", "add"},
+	"e":     {"edit", "API client"},
 	// look for new chapters: on the provider (a watch), in the folders (the library)
 	"u": {"check now", "scan"},
 	"L": {"library manga", "library"},
@@ -177,7 +181,7 @@ func Keys() (old, newer []key.Binding) {
 		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,
 		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel, KeyNarrow,
 		KeyLogFiles, KeyPrevPeriod, KeyNextPeriod, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
-		KeyRename, KeyChapterFiles, KeyFallback,
+		KeyRename, KeyChapterFiles, KeyFallback, KeyReadHistory, KeyClearAll,
 	}
 }
 
