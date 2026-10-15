@@ -68,6 +68,8 @@ type Env struct {
 	// CheckLink is the metadata of a source's id, to check it before linking a library
 	// manga to it (nil metadata: not checked).
 	CheckLink func(ctx context.Context, code lmmeta.IDCode, id string) (lmmeta.Metadata, error)
+	// BindMetadata is the metadata of a source's id to bind a provider's manga to.
+	BindMetadata func(ctx context.Context, code lmmeta.IDCode, id string) (lmmeta.Metadata, error)
 	// BackupFinder finds the Kitsu and MyAnimeList links of mangas linked to AniList (its
 	// Files are the Env's).
 	BackupFinder func() (library.BackupFinder, error)
@@ -124,6 +126,9 @@ func (e Env) withDefaults() (Env, error) {
 	}
 	if e.CheckLink == nil {
 		e.CheckLink = client.LinkMetadata
+	}
+	if e.BindMetadata == nil {
+		e.BindMetadata = client.BindMetadata
 	}
 	if e.BackupFinder == nil {
 		e.BackupFinder = client.LibraryBackups

@@ -8,6 +8,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/selector"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
@@ -112,19 +113,24 @@ manga) share the bindings.`,
 		if err != nil {
 			return err
 		}
+		app, err := newCore()
+		if err != nil {
+			return err
+		}
 		for _, s := range sets {
-			meta, err := client.Bind(ctx, c, provider, mangaID, nil, s.src.Code, s.id)
+			res, err := app.Changes.Apply(ctx, core.BindReq{Provider: provider, MangaID: mangaID, Code: s.src.Code, ID: s.id}, core.ApplyOpts{})
 			if err != nil {
 				return err
 			}
-			successf(cmd, "bound to %s %s: %s", s.src.Name, s.id, meta)
+			successf(cmd, "bound to %s %s: %s", s.src.Name, s.id, res.Detail)
 		}
 		for _, code := range remove {
-			removed, err := client.Unbind(provider, mangaID, code)
-			if err != nil {
+			_, err := app.Changes.Apply(ctx, core.UnbindReq{Provider: provider, MangaID: mangaID, Code: code}, core.ApplyOpts{})
+			switch {
+			case errors.Is(err, core.ErrNothingToDo):
+			case err != nil:
 				return err
-			}
-			if removed {
+			default:
 				successf(cmd, "removed the %s binding", client.SourceName(code))
 			}
 		}

@@ -149,6 +149,15 @@ var (
 	srcKitsu, _   = MetadataSourceOf(metadata.IDCodeKitsu)
 )
 
+// bind binds as core.BindReq does: the metadata checked, then set.
+func bind(ctx context.Context, bindings storage.Bindings, c metadataProvider, provider, mangaID string, manga mangadata.Manga, code metadata.IDCode, id string) (metadata.Metadata, error) {
+	meta, err := boundMetadata(ctx, c, code, id)
+	if err != nil {
+		return nil, err
+	}
+	return meta, SetBound(bindings, provider, mangaID, manga, code, id, meta)
+}
+
 func TestApplyBinding(t *testing.T) {
 	ctx := context.Background()
 	failed.at = map[string]time.Time{}
@@ -267,46 +276,5 @@ func TestFirstBoundRateLimited(t *testing.T) {
 	_, err := firstBound(context.Background(), newFakeMetaProviders(t, ani, kitsu), bindings, "One Piece")
 	if !errors.Is(err, libmangal.ErrRateLimited) || len(kitsu.ids) != 0 {
 		t.Errorf("%v, kitsu asked %v", err, kitsu.ids)
-	}
-}
-
-// TestBindOverwriteIsAnOperation: replacing or removing a binding goes through an undoable
-// operation (a snapshot first), a new one doesn't need it.
-func TestBindOverwriteIsAnOperation(t *testing.T) {
-	ctx := context.Background()
-	bindings := openBindings(t)
-	ani := &fakeMetaProvider{src: srcAnilist, byID: map[int]string{1: "A", 2: "B"}}
-	providers := newFakeMetaProviders(t, ani)
-	var ops []string
-	old := bindOperation
-	t.Cleanup(func() { bindOperation = old })
-	bindOperation = func(summary string, do func() error) error {
-		ops = append(ops, summary)
-		return do()
-	}
-
-	if _, err := bind(ctx, bindings, providers, "p", "m", nil, metadata.IDCodeAnilist, "1"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := bind(ctx, bindings, providers, "p", "m", nil, metadata.IDCodeAnilist, "1"); err != nil {
-		t.Fatal(err)
-	}
-	if len(ops) != 0 {
-		t.Fatalf("operations for a new/same binding: %q", ops)
-	}
-	if _, err := bind(ctx, bindings, providers, "p", "m", nil, metadata.IDCodeAnilist, "2"); err != nil {
-		t.Fatal(err)
-	}
-	if len(ops) != 1 {
-		t.Fatalf("overwrite: operations %q", ops)
-	}
-	if removed, err := unbind(bindings, "p", "m", metadata.IDCodeAnilist); err != nil || !removed {
-		t.Fatalf("unbind: %v %v", removed, err)
-	}
-	if removed, err := unbind(bindings, "p", "m", metadata.IDCodeAnilist); err != nil || removed {
-		t.Fatalf("unbind again: %v %v", removed, err)
-	}
-	if len(ops) != 2 {
-		t.Errorf("remove: operations %q", ops)
 	}
 }

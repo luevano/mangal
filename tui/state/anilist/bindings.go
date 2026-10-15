@@ -2,6 +2,7 @@ package anilist
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -12,6 +13,7 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -128,7 +130,10 @@ func (s *bindingsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case removeMsg:
 		src := msg.src
 		return s.change(ctx, func(b storage.Bindings) (string, error) {
-			_, err := client.Unbind(s.client.Info().ID, s.manga.Info().ID, src.Code)
+			_, err := base.ApplyChange(ctx, core.UnbindReq{Provider: s.client.Info().ID, MangaID: s.manga.Info().ID, Code: src.Code}, func(string) {})
+			if errors.Is(err, core.ErrNothingToDo) {
+				err = nil
+			}
 			return fmt.Sprintf("Removed the %s binding", src.Name), err
 		})
 	case loadedMsg:

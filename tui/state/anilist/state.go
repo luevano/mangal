@@ -17,6 +17,7 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
@@ -163,7 +164,8 @@ func (s *state) bindCmd(ctx context.Context, meta lmmeta.Metadata) tea.Cmd {
 	return base.Load(ctx, fmt.Sprintf("Binding %s %q", src.Name, meta), func(ctx context.Context) (boundMsg, error) {
 		// no manga: its metadata is only set in Update (a download may be reading it), the
 		// bindings screen sets the default one when it's shown again
-		bound, err := client.Bind(ctx, c, c.Info().ID, manga.Info().ID, nil, src.Code, meta.ID().Raw)
+		res, err := base.ApplyChange(ctx, core.BindReq{Provider: c.Info().ID, MangaID: manga.Info().ID, Code: src.Code, ID: meta.ID().Raw}, func(string) {})
+		bound, _ := res.Detail.(lmmeta.Metadata)
 		return boundMsg{src: src, meta: bound}, err
 	}, func(msg boundMsg) tea.Msg { return msg })
 }
