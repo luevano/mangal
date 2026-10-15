@@ -560,7 +560,7 @@ var Serve = configServe{
 	Port: intEntry("serve.port", 6977, 1, 65535, "Port `mangal serve` listens on, one per instance."),
 	Token: reg(entry[string, string]{
 		Key:         "serve.token",
-		Description: "Token the `mangal serve` API asks for (Authorization: Bearer <token>) when it listens on an address that isn't loopback, where it's required (on loopback too with serve.token_on_loopback). mangal's own commands and TUI send it. A token saved with `mangal serve token` (kept with the logins) is used instead.",
+		Description: "A token of the `mangal serve` API with every scope (Authorization: Bearer <token>), needed when it listens on an address that isn't loopback (see serve.auth, serve.loopback_scopes). mangal's own commands and TUI send the token saved with `mangal serve token` (kept with the logins) instead when there's one; the server takes both.",
 		Secret:      true,
 	}),
 	TokenOnLoopback: boolEntry("serve.token_on_loopback", false, "Require a token from the same machine too, as serve.loopback_scopes = \"\" does (kept for older configs)."),

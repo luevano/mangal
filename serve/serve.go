@@ -33,9 +33,9 @@ type Args struct {
 	Port int
 	// Web also serves the web UI.
 	Web bool
-	// Token has every scope (as a bearer token), TokenName says where it's from (default:
-	// saved, config: serve.token).
-	Token, TokenName string
+	// Token has every scope (as a bearer token): serve.token. The saved tokens (`mangal
+	// serve token`) are read from the logins while the server runs.
+	Token string
 	// TokenOnLoopback requires a token on loopback too (as LoopbackScopes empty).
 	TokenOnLoopback bool
 	// Auth is AuthToken or AuthNone, LoopbackScopes the scopes of the requests from the
@@ -245,7 +245,7 @@ func newAuth(args Args, loopback bool, lg logger) (*Auth, error) {
 	if args.TokenOnLoopback {
 		scopes = nil
 	}
-	return &Auth{Mode: mode, Token: args.Token, TokenName: cmp.Or(args.TokenName, "config"), LoopbackScopes: scopes, Named: cache.ServeTokens}, nil
+	return &Auth{Mode: mode, Token: args.Token, TokenName: "config", LoopbackScopes: scopes, Saved: cache.ServeToken, Named: cache.ServeTokens}, nil
 }
 
 // describe says how the requests are authenticated, for the start line.

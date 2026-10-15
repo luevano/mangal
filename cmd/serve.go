@@ -53,20 +53,11 @@ data.path and serve.port.`,
 	GroupID: groupMode,
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		saved, err := cache.ServeToken()
-		if err != nil {
-			return err
-		}
-		token, name := saved, "default"
-		if token == "" {
-			token, name = config.Serve.Token.Get(), "config"
-		}
 		return serve.Run(cmd.Context(), serve.Args{
 			Host:            config.Serve.Host.Get(),
 			Port:            config.Serve.Port.Get(),
 			Web:             config.Serve.Web.Get(),
-			Token:           token,
-			TokenName:       name,
+			Token:           config.Serve.Token.Get(),
 			TokenOnLoopback: config.Serve.TokenOnLoopback.Get(),
 			Auth:            config.Serve.Auth.Get(),
 			LoopbackScopes:  config.Serve.LoopbackScopes.Get(),
@@ -229,7 +220,7 @@ func listServeTokens(cmd *cobra.Command) error {
 	if config.Serve.Token.Get() != "" {
 		note := "(serve.token)"
 		if saved != "" {
-			note = "(serve.token, not used: a token is saved)"
+			note = "(serve.token; mangal's own commands send the saved one)"
 		}
 		cmd.Printf("config  %s  %s\n", all, note)
 	}

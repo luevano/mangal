@@ -281,6 +281,7 @@ func TestV1Scopes(t *testing.T) {
 	s.api.Auth.Named = func() ([]cache.ServeTokenEntry, error) {
 		return []cache.ServeTokenEntry{{Name: "claude", Hash: HashToken("r3ad"), Scopes: []string{ScopeRead}}}, nil
 	}
+	s.api.Auth.Saved = func() (string, error) { return "sav3d", nil }
 	h := s.handler(t)
 	do := func(method, path, body, remote, token string) (int, ErrorResponse) {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -307,6 +308,7 @@ func TestV1Scopes(t *testing.T) {
 		{"GET", "/api/v1/watches", "", remote, "nope", http.StatusUnauthorized},
 		{"GET", "/api/v1/watches", "", remote, "r3ad", http.StatusOK},
 		{"GET", "/api/v1/watches", "", remote, "s3cret", http.StatusOK},
+		{"GET", "/api/v1/watches", "", remote, "sav3d", http.StatusOK},
 		// a plan is a read
 		{"POST", "/api/v1/history/clear", `{}`, remote, "r3ad", http.StatusOK},
 		{"POST", "/api/v1/history/clear?apply=1", `{"expect":"x"}`, remote, "r3ad", http.StatusForbidden},

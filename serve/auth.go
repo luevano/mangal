@@ -115,9 +115,11 @@ func identityOf(ctx context.Context) (identity, bool) {
 type Auth struct {
 	// Mode is AuthToken or AuthNone.
 	Mode string
-	// Token has every scope (serve.token, or the one saved with `mangal serve token`),
-	// TokenName says which.
+	// Token has every scope (serve.token), TokenName says where it's from.
 	Token, TokenName string
+	// Saved is the token saved with `mangal serve token` (every scope), re-read with the
+	// named ones so one saved while the server runs works; nil for none.
+	Saved func() (string, error)
 	// LoopbackScopes are the scopes of a request from the same machine without a token.
 	LoopbackScopes []string
 	// Named are the named tokens (`mangal serve token --name`), re-read every few
@@ -127,6 +129,7 @@ type Auth struct {
 	TrustedProxies []*net.IPNet
 
 	mu       sync.Mutex
+	saved    string
 	named    []cache.ServeTokenEntry
 	namedAt  time.Time
 	namedErr error
@@ -138,23 +141,27 @@ type Auth struct {
 // namedEvery is how long the named tokens are kept before they're read again.
 const namedEvery = 5 * time.Second
 
-func (a *Auth) namedTokens() ([]cache.ServeTokenEntry, error) {
-	if a.Named == nil {
-		return nil, nil
-	}
+// tokens are the saved token and the named ones, read again every few seconds.
+func (a *Auth) tokens() (string, []cache.ServeTokenEntry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.namedAt.IsZero() || time.Since(a.namedAt) > namedEvery {
-		a.named, a.namedErr = a.Named()
+		a.saved, a.named, a.namedErr = "", nil, nil
+		if a.Saved != nil {
+			a.saved, a.namedErr = a.Saved()
+		}
+		if a.Named != nil && a.namedErr == nil {
+			a.named, a.namedErr = a.Named()
+		}
 		a.namedAt = time.Now()
 	}
-	return a.named, a.namedErr
+	return a.saved, a.named, a.namedErr
 }
 
 // HasTokens is true when some token is accepted.
 func (a *Auth) HasTokens() bool {
-	named, _ := a.namedTokens()
-	return a.Token != "" || len(named) != 0
+	saved, named, _ := a.tokens()
+	return a.Token != "" || saved != "" || len(named) != 0
 }
 
 // errUnauthorized is a missing or wrong token.
@@ -171,9 +178,12 @@ func (a *Auth) identify(r *http.Request) (identity, error) {
 		if a.Token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(a.Token)) == 1 {
 			return identity{Name: a.TokenName, Scopes: Scopes}, nil
 		}
-		named, err := a.namedTokens()
+		saved, named, err := a.tokens()
 		if err != nil {
 			return identity{}, err
+		}
+		if saved != "" && subtle.ConstantTimeCompare([]byte(token), []byte(saved)) == 1 {
+			return identity{Name: "default", Scopes: Scopes}, nil
 		}
 		hash := HashToken(token)
 		for _, t := range named {

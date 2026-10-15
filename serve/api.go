@@ -164,6 +164,8 @@ func orEmpty[T any](list []T) []T {
 	return list
 }
 
+func ptr[T any](v T) *T { return &v }
+
 func deref[T any](p *T) T {
 	var zero T
 	if p == nil {
@@ -209,7 +211,7 @@ func (a *API) GetStatus(ctx context.Context, _ apiv1.GetStatusRequestObject) (ap
 	}
 	resp := apiv1.GetStatus200JSONResponse{
 		Server: true, Address: &a.Info.Address, Version: &a.Info.Version, Started: &a.Info.Started,
-		Checking: st.Checking, Providers: &st.Providers, NextCheck: optTime(st.NextCheck), Since: optTime(st.Since),
+		Checking: st.Checking, Providers: ptr(orEmpty(st.Providers)), NextCheck: optTime(st.NextCheck), Since: optTime(st.Since),
 		ApiVersion: APIVersion, Features: core.APIFeatures(), Scopes: []string{},
 	}
 	runs := a.Runs.running()
