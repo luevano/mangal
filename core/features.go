@@ -135,6 +135,7 @@ var ModeCommands = map[string]string{
 	"script doc":  "the script mode's docs",
 	"serve":       "the serve mode",
 	"serve token": "the serve mode's token",
+	"api":         "the serve API's client",
 	"web":         "the web mode",
 	"version":     "mangal's version",
 	"help":        "cobra's help",
