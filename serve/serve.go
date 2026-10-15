@@ -93,6 +93,7 @@ func (l logger) Errorf(format string, a ...any) {
 // It logs to out and the log file.
 func Run(ctx context.Context, args Args, out io.Writer) error {
 	// stopped by the caller, a lost lock or a failed server
+	parent := ctx
 	ctx, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
 	lg := newLogger(out)
@@ -209,7 +210,8 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	}()
 
 	err = web.Serve(ctx, server, listener, func() {
-		if context.Cause(ctx) == context.Canceled {
+		// stopped by the caller (its cause may be the signal), not a failure
+		if parent.Err() != nil {
 			lg.Infof("stopping")
 		}
 		// a failed server stops the scheduler too: systemd restarts the whole thing
@@ -217,7 +219,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		<-schedDone
 		api.Wait()
 	})
-	if cause := context.Cause(ctx); err == nil && cause != context.Canceled {
+	if cause := context.Cause(ctx); err == nil && parent.Err() == nil && cause != context.Canceled {
 		err = cause
 	}
 	if err != nil {
