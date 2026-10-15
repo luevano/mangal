@@ -310,7 +310,7 @@ Each result has the manga's `metadata` and its `metadata_source` (`anilist`, `ki
 when it's valid, the AniList manga of `-a`, the manga's binding (`mangal bind`), else the closest
 match on AniList, then Kitsu and MyAnimeList when configured. `anilist` (and `anilist_bad_match`,
 the closest AniList manga when it's too unlike) are kept for older scripts: AniList only.
-`--anilist-disable` skips the metadata search.
+`--no-metadata` skips the metadata search (`--anilist-disable` still works).
 
 For more, use the `-h` flag.
 

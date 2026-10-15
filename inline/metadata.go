@@ -53,7 +53,7 @@ func (a Args) warn(format string, v ...any) {
 // of each metadata provider in priority order (AniList, then Kitsu and MyAnimeList when
 // configured), the next one only for the mangas the previous didn't match well.
 //
-// --anilist-disable leaves out all but the provider's metadata. It's only a preview, the download does its own search.
+// --no-metadata (--anilist-disable) leaves out all but the provider's metadata. It's only a preview, the download does its own search.
 func assignMetadata(ctx context.Context, c *libmangal.Client, args Args, results []MangaResult) error {
 	var pending []int
 	for i, r := range results {
