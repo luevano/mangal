@@ -222,6 +222,9 @@ func (a *API) GetStatus(ctx context.Context, _ apiv1.GetStatusRequestObject) (ap
 	if id, ok := identityOf(ctx); ok {
 		resp.Scopes, resp.Auth = id.Scopes, id.String()
 	}
+	if a.Events != nil {
+		resp.EventSeq = ptr(a.Events.Seq())
+	}
 	return resp, nil
 }
 

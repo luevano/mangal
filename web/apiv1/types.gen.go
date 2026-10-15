@@ -662,6 +662,15 @@ type RenameRequest struct {
 	Refresh *bool     `json:"refresh,omitempty"`
 }
 
+// RunChapter defines model for RunChapter.
+type RunChapter struct {
+	Number float32 `json:"number"`
+	Path   string  `json:"path"`
+	Title  string  `json:"title"`
+	Url    string  `json:"url"`
+	Volume float32 `json:"volume"`
+}
+
 // ScanRequest defines model for ScanRequest.
 type ScanRequest struct {
 	Check    *bool `json:"check,omitempty"`
@@ -676,6 +685,9 @@ type Status struct {
 	// Auth how this request is authorized (token <name>, loopback, none)
 	Auth     string `json:"auth"`
 	Checking bool   `json:"checking"`
+
+	// EventSeq the seq of the last event, where a new events subscriber starts (since)
+	EventSeq *uint64 `json:"event_seq,omitempty"`
 
 	// Features the features (core.Features names) the API has
 	Features  []string          `json:"features"`
@@ -709,6 +721,28 @@ type TrashBatch struct {
 
 // Watch a watch (client/watch.Watch)
 type Watch = watch.Watch
+
+// WatchRun the check of a watch in a run (storage.WatchRun)
+type WatchRun struct {
+	Chapters    *[]RunChapter `json:"chapters,omitempty"`
+	CheckRun    int64         `json:"check_run"`
+	Error       *string       `json:"error,omitempty"`
+	Finished    time.Time     `json:"finished"`
+	From        *float32      `json:"from,omitempty"`
+	Id          int64         `json:"id"`
+	MangaId     string        `json:"manga_id"`
+	NewChapters int           `json:"new_chapters"`
+	Provider    string        `json:"provider"`
+	Skipped     *[]float32    `json:"skipped,omitempty"`
+	Started     time.Time     `json:"started"`
+
+	// Status new, none, error or skipped
+	Status string `json:"status"`
+	Title  string `json:"title"`
+
+	// Watch 0 once the watch is removed
+	Watch int64 `json:"watch"`
+}
 
 // ApplyParam defines model for ApplyParam.
 type ApplyParam = bool

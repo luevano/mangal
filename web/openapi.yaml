@@ -2096,6 +2096,10 @@ components:
         auth:
           type: string
           description: how this request is authorized (token <name>, loopback, none)
+        event_seq:
+          type: integer
+          format: uint64
+          description: the seq of the last event, where a new events subscriber starts (since)
     ProviderStatus:
       type: object
       x-go-type: watch.ProviderStatus
@@ -3289,8 +3293,106 @@ components:
         results:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: '#/components/schemas/WatchRun'
+    WatchRun:
+      type: object
+      description: the check of a watch in a run (storage.WatchRun)
+      required: [id, check_run, watch, provider, manga_id, title, status, started, finished, new_chapters]
+      properties:
+        id:
+          type: integer
+          format: int64
+        check_run:
+          type: integer
+          format: int64
+        watch:
+          type: integer
+          format: int64
+          description: 0 once the watch is removed
+        provider:
+          type: string
+        manga_id:
+          type: string
+        title:
+          type: string
+        from:
+          type: number
+          format: float
+        status:
+          type: string
+          description: new, none, error or skipped
+        error:
+          type: string
+        started:
+          type: string
+          format: date-time
+        finished:
+          type: string
+          format: date-time
+        chapters:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunChapter'
+        new_chapters:
+          type: integer
+        skipped:
+          type: array
+          items:
+            type: number
+            format: float
+    RunChapter:
+      type: object
+      required: [number, title, volume, path, url]
+      properties:
+        number:
+          type: number
+          format: float
+        title:
+          type: string
+        volume:
+          type: number
+          format: float
+        path:
+          type: string
+        url:
+          type: string
+    LiveEvent:
+      type: object
+      description: a watch event (the data of the watch and health topics, client/watch.LiveEvent)
+      required: [seq, time, run, kind, message]
+      properties:
+        seq:
+          type: integer
+          format: uint64
+        time:
+          type: string
+          format: date-time
+        run:
+          type: integer
+          format: int64
+        job:
+          type: integer
+          format: int64
+        kind:
+          type: string
+        provider:
+          type: string
+        watch:
+          type: integer
+          format: int64
+        title:
+          type: string
+        chapter:
+          type: number
+          format: float
+        message:
+          type: string
+        status:
+          type: string
+        pages:
+          type: integer
+        pages_done:
+          type: integer
     RemovedRun:
       type: object
       x-go-type: watch.RemovedRun

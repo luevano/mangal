@@ -1411,6 +1411,11 @@ export interface components {
             scopes: string[];
             /** @description how this request is authorized (token <name>, loopback, none) */
             auth: string;
+            /**
+             * Format: uint64
+             * @description the seq of the last event, where a new events subscriber starts (since)
+             */
+            event_seq?: number;
         };
         ProviderStatus: {
             provider?: string;
@@ -2011,9 +2016,65 @@ export interface components {
             watches: number;
             new_chapters: number;
             errors: number;
-            results?: {
-                [key: string]: unknown;
-            }[];
+            results?: components["schemas"]["WatchRun"][];
+        };
+        /** @description the check of a watch in a run (storage.WatchRun) */
+        WatchRun: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            check_run: number;
+            /**
+             * Format: int64
+             * @description 0 once the watch is removed
+             */
+            watch: number;
+            provider: string;
+            manga_id: string;
+            title: string;
+            /** Format: float */
+            from?: number;
+            /** @description new, none, error or skipped */
+            status: string;
+            error?: string;
+            /** Format: date-time */
+            started: string;
+            /** Format: date-time */
+            finished: string;
+            chapters?: components["schemas"]["RunChapter"][];
+            new_chapters: number;
+            skipped?: number[];
+        };
+        RunChapter: {
+            /** Format: float */
+            number: number;
+            title: string;
+            /** Format: float */
+            volume: number;
+            path: string;
+            url: string;
+        };
+        /** @description a watch event (the data of the watch and health topics, client/watch.LiveEvent) */
+        LiveEvent: {
+            /** Format: uint64 */
+            seq: number;
+            /** Format: date-time */
+            time: string;
+            /** Format: int64 */
+            run: number;
+            /** Format: int64 */
+            job?: number;
+            kind: string;
+            provider?: string;
+            /** Format: int64 */
+            watch?: number;
+            title?: string;
+            /** Format: float */
+            chapter?: number;
+            message: string;
+            status?: string;
+            pages?: number;
+            pages_done?: number;
         };
         RemovedRun: {
             run?: {
