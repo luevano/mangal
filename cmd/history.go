@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/luevano/mangal/v5/client"
-	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/sanitize"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -104,40 +104,33 @@ var historyClearCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(2),
 	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		history, err := cache.History()
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
 		provider, mangaID := providerManga(args)
-		reads, err := history.List(provider, mangaID)
+		plan, err := c.Changes.Plan(ctxOf(cmd), core.HistoryClearReq{Provider: provider, MangaID: mangaID})
 		if err != nil {
 			return err
 		}
-		if len(reads) == 0 {
+		if plan.Nothing {
 			cmd.Println("no history")
 			return nil
 		}
+		reads := plan.Detail.([]storage.Read)
 		if !historyClearArgs.Yes && !confirm(cmd, fmt.Sprintf("Forget %s?", stringutil.Quantify(len(reads), "read chapter", "read chapters"))) {
 			cmd.Println("nothing cleared (--yes clears without asking)")
 			return nil
 		}
-		what := "every read chapter"
-		switch {
-		case mangaID != "":
-			what = fmt.Sprintf("the read chapters of %s %s", provider, mangaID)
-		case provider != "":
-			what = "the read chapters of " + provider
-		}
-		var n int64
-		snapshot, err := client.Operation("history-clear", "forget "+what, func(library.Journal) error {
-			n, err = history.Clear(provider, mangaID)
-			return err
-		})
-		undoHint(cmd, snapshot, err)
+		st := newStatus(cmd)
+		defer st.Done()
+		res, err := c.Changes.ApplyPlan(ctxOf(cmd), plan, applyOpts(st))
+		st.Done()
+		undoHint(cmd, res.Snapshot, err)
 		if err != nil {
 			return err
 		}
-		cmd.Printf("forgot %s\n", stringutil.Quantify(int(n), "read chapter", "read chapters"))
+		printResultLines(cmd, res.Lines)
 		return nil
 	},
 }

@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"fmt"
 	"slices"
 
 	"github.com/luevano/libmangal"
@@ -32,22 +31,6 @@ func LibraryFiles() (library.Files, error) {
 		Root:    path.Downloads(),
 		Modes:   LibraryModes(),
 	}, nil
-}
-
-// RemoveMissing forgets the library mangas whose folders are gone, as one operation
-// ("mangal library undo" brings them back). It returns the snapshot.
-func RemoveMissing(lib storage.Library, missing []storage.Manga) (string, error) {
-	summary := fmt.Sprintf("remove %d missing mangas", len(missing))
-	if len(missing) == 1 {
-		summary = fmt.Sprintf("remove missing %d %q", missing[0].ID, missing[0].Title)
-	}
-	return Operation("remove", summary, func(library.Journal) error {
-		ids := make([]int64, len(missing))
-		for i, m := range missing {
-			ids[i] = m.ID
-		}
-		return lib.RemoveMangas(ids...)
-	})
 }
 
 // LibraryModes are download.mode_file and download.mode_dir.

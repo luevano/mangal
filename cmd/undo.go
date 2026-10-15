@@ -3,13 +3,11 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"time"
 
-	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
-	"github.com/luevano/mangal/v5/path"
 	"github.com/spf13/cobra"
 )
 
@@ -46,12 +44,12 @@ library. Emptying the trash can't be undone.
 Only lists what would happen unless --apply is set.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		undoer, err := client.LibraryUndoer()
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
 		if libraryUndoArgs.List {
-			return listOperations(cmd, undoer)
+			return listOperations(cmd, c)
 		}
 		var id int64
 		if len(args) == 1 {
@@ -59,7 +57,10 @@ Only lists what would happen unless --apply is set.`,
 				return fmt.Errorf("invalid operation id %q", args[0])
 			}
 		}
-		plan, err := undoer.Plan(id)
+		st := newStatus(cmd)
+		defer st.Done()
+		ctx := changeCtx(cmd, st)
+		plan, err := c.Changes.Plan(ctx, core.UndoReq{ID: id})
 		if errors.Is(err, library.ErrNothingToUndo) {
 			cmd.Println("nothing to undo")
 			return nil
@@ -67,17 +68,8 @@ Only lists what would happen unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		root := path.Downloads()
-		rel := func(p string) string {
-			if r, err := filepath.Rel(root, p); err == nil && isInsideRel(r) {
-				return r
-			}
-			return p
-		}
-		for _, line := range plan.Lines(rel) {
-			cmd.Println(line)
-		}
-		refusal := plan.Refusal(libraryUndoArgs.Force)
+		printLines(cmd, plan.Lines)
+		refusal := plan.Detail.(library.UndoPlan).Refusal(libraryUndoArgs.Force)
 		if !libraryUndoArgs.Apply {
 			if refusal != nil {
 				cmd.PrintErrf("can't undo it: %s\n", refusal)
@@ -89,39 +81,24 @@ Only lists what would happen unless --apply is set.`,
 		if refusal != nil {
 			return refusal
 		}
-		st := newStatus(cmd)
-		defer st.Done()
-		undoer.OnProgress = st.Progress
-		res, snapshot, err := client.UndoContext(st.Context(cmd.Context()), undoer, plan, libraryUndoArgs.Force)
+		opts := applyOpts(st)
+		opts.Force = libraryUndoArgs.Force
+		res, err := c.Changes.ApplyPlan(ctx, plan, opts)
 		st.Done()
-		if snapshot != "" {
-			cmd.PrintErrf("database snapshot before the undo: %s\n", snapshot)
+		if res.Snapshot != "" {
+			cmd.PrintErrf("database snapshot before the undo: %s\n", res.Snapshot)
 		}
-		for _, s := range res.Skipped {
-			cmd.PrintErrf("skipped %s\n", s.Line(rel))
-		}
-		for _, dir := range res.Kept {
-			cmd.Printf("kept %s: not empty\n", rel(dir))
-		}
+		printResultLines(cmd, res.Lines)
 		if err != nil {
 			return err
 		}
-		restored := "the database restored from " + plan.Op.Snapshot
-		if !res.Restored {
-			restored = "the database not restored (no snapshot), \"mangal library scan\" fixes the library"
-		}
-		cmd.Printf("undone %d %s: %d steps, %s\n", plan.Op.ID, plan.Op.Kind, res.Undone, restored)
+		cmd.Println(res.Detail.(core.UndoDone).Line())
 		return nil
 	},
 }
 
-// isInsideRel is true for a relative path that doesn't leave its directory.
-func isInsideRel(rel string) bool {
-	return rel != ".." && !filepath.IsAbs(rel) && (len(rel) < 3 || rel[:3] != ".."+string(filepath.Separator))
-}
-
-func listOperations(cmd *cobra.Command, undoer library.Undoer) error {
-	ops, err := undoer.Journal.Ops(0)
+func listOperations(cmd *cobra.Command, c *core.Core) error {
+	ops, err := c.Library.Ops(0)
 	if err != nil {
 		return err
 	}

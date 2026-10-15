@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
@@ -292,15 +293,9 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			if base.Busy(ctx) {
 				return base.Notify(busyNotice)
 			}
-			files, manga, dl, title := s.files, s.manga, item.download, item.Title()
+			dl, title := item.download, item.Title()
 			message := fmt.Sprintf("Delete chapter %s (%s)? The file goes to the trash.", title, dl.Format)
-			s.Confirm.AskDelete("Delete", message, s.View(), action("Deleting chapter "+title, func() (string, error) {
-				summary := fmt.Sprintf("delete chapter %s of %d %q", title, manga.ID, manga.Title)
-				return journaled("delete", summary, fmt.Sprintf("deleted chapter %s (in the trash until emptied)", title), func(j library.Journal) error {
-					files.Journal = j
-					return files.DeleteDownload(manga, dl)
-				})
-			}))
+			s.Confirm.AskDelete("Delete", message, s.View(), change("Deleting chapter "+title, core.DeleteReq{Manga: s.manga.ID, Chapter: dl.Path}, fmt.Sprintf("deleted chapter %s (in the trash until emptied)", title)))
 			return nil
 		case key.Matches(msg, s.open):
 			if item, ok := s.List.SelectedItem().(*downloadItem); ok {

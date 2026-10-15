@@ -17,6 +17,7 @@ import (
 	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
@@ -113,7 +114,7 @@ type scannedMsg struct {
 
 type mergePlannedMsg struct {
 	keep, other storage.Manga
-	plan        library.MergePlan
+	plan        core.Plan
 }
 
 // setRootMsg is the confirmed new download.path, check the id check of the scan to redo.
@@ -374,22 +375,12 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, b
 		if m.Dir == "" {
 			message = fmt.Sprintf("Delete %q? Its %d chapters go to the trash and it leaves the library.", m.Title, m.Chapters)
 		}
-		s.Confirm.AskDelete("Delete", message, s.View(), action("Deleting "+m.Title, func() (string, error) {
-			return journaled("delete", fmt.Sprintf("delete %d %q", m.ID, m.Title), fmt.Sprintf("deleted %s (in the trash until emptied)", m.Title), func(j library.Journal) error {
-				files.Journal = j
-				return files.DeleteManga(m)
-			})
-		}))
+		s.Confirm.AskDelete("Delete", message, s.View(), change("Deleting "+m.Title, core.DeleteReq{Manga: m.ID}, fmt.Sprintf("deleted %s (in the trash until emptied)", m.Title)))
 		return nil, true
 	case key.Matches(msg, s.keys.delete):
 		// its folder is gone: delete forgets it
 		m := item.manga
-		s.Confirm.AskDelete("Remove", fmt.Sprintf("Forget %q? Its folder is gone.", m.Title), s.View(), action("Removing "+m.Title, func() (string, error) {
-			if _, err := client.RemoveMissing(files.Library, []storage.Manga{m}); err != nil {
-				return "", err
-			}
-			return undoNotice("removed " + m.Title), nil
-		}))
+		s.Confirm.AskDelete("Remove", fmt.Sprintf("Forget %q? Its folder is gone.", m.Title), s.View(), change("Removing "+m.Title, core.ForgetReq{Mangas: []int64{m.ID}}, "removed "+m.Title))
 		return nil, true
 	}
 	return nil, false
@@ -588,26 +579,23 @@ func (s *mangasState) merge(ctx context.Context, item *mangaItem) tea.Cmd {
 			keep, i.keep = i.manga, true
 		}
 	}
-	files, other := s.files, item.manga
-	return base.Load(ctx, "Planning the merge", func(context.Context) (mergePlannedMsg, error) {
-		plan, err := files.PlanMerge(keep, other)
-		return mergePlannedMsg{keep: keep, other: other, plan: plan}, err
-	}, func(msg mergePlannedMsg) tea.Msg { return msg })
+	other := item.manga
+	return base.PlanChange(ctx, "Planning the merge", core.MergeReq{Keep: keep.ID, Other: other.ID}, func(p core.Plan) tea.Msg {
+		return mergePlannedMsg{keep: keep, other: other, plan: p}
+	})
 }
 
 func (s *mangasState) askMerge(msg mergePlannedMsg) {
+	mp := msg.plan.Detail.(library.MergePlan)
 	message := fmt.Sprintf("Merge %q into %q? %d chapters move, %d already there go to the trash.",
-		msg.other.Title, msg.keep.Title, len(msg.plan.Moves), len(msg.plan.Trashed))
-	files := s.files
+		msg.other.Title, msg.keep.Title, len(mp.Moves), len(mp.Trashed))
+	plan := msg.plan
 	s.Confirm.Ask("Merge", message, s.View(), func() tea.Msg {
 		return actionMsg{label: "Merging", do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
-			files.OnProgress = func(p library.Progress) { status(p.String()) }
-			summary := fmt.Sprintf("merge %d %q into %d %q", msg.other.ID, msg.other.Title, msg.keep.ID, msg.keep.Title)
-			notify, err := journaled("merge", summary, "merged into "+msg.keep.Title, func(j library.Journal) error {
-				files.Journal = j
-				return files.ApplyMergeContext(ctx, msg.plan)
-			})
-			return reloadMsg{notify: notify, merged: true}, err
+			if _, err := base.ApplyPlan(ctx, plan, status); err != nil {
+				return reloadMsg{merged: true}, err
+			}
+			return reloadMsg{notify: undoNotice("merged into " + msg.keep.Title), merged: true}, nil
 		}}
 	})
 }

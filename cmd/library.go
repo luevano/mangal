@@ -17,6 +17,7 @@ import (
 	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/manager"
@@ -373,9 +374,7 @@ existing .libmangal.json is never replaced.`,
 				cmd.Printf("  %d  %s  %s\n", m.ID, m.Title, m.Path())
 			}
 			if confirm(cmd, "Remove them from the library?") {
-				snapshot, err := client.RemoveMissing(lib, res.Missing)
-				undoHint(cmd, snapshot, err)
-				if err != nil {
+				if err := forgetMissing(cmd, st, res.Missing); err != nil {
 					return err
 				}
 				cmd.Println("removed")
@@ -398,6 +397,21 @@ existing .libmangal.json is never replaced.`,
 		printTrash(cmd)
 		return nil
 	},
+}
+
+// forgetMissing forgets the library mangas whose folders are gone, as one operation.
+func forgetMissing(cmd *cobra.Command, st *status, missing []storage.Manga) error {
+	c, err := newCore()
+	if err != nil {
+		return err
+	}
+	ids := make([]int64, len(missing))
+	for i, m := range missing {
+		ids[i] = m.ID
+	}
+	res, err := c.Changes.Apply(changeCtx(cmd, st), core.ForgetReq{Mangas: ids}, applyOpts(st))
+	undoHint(cmd, res.Snapshot, err)
+	return err
 }
 
 // printDuplicates lists the library mangas that share a metadata id.
@@ -625,53 +639,33 @@ other's copy goes to the trash, as does what's left of other's folder.
 Only lists what would happen unless --apply is set.`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		lib, err := cache.Library()
-		if err != nil {
-			return err
-		}
-		var mangas [2]storage.Manga
+		var ids [2]int64
 		for i, arg := range args {
-			id, err := strconv.ParseInt(arg, 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid manga id %q", arg)
-			}
-			m, ok, err := lib.MangaByID(id)
+			id, err := parseMangaID(arg)
 			if err != nil {
 				return err
 			}
-			if !ok {
-				return fmt.Errorf("no manga %d in the library", id)
-			}
-			mangas[i] = m
+			ids[i] = id
 		}
-		files, err := libraryFiles()
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
 		st := newStatus(cmd)
 		defer st.Done()
-		files.OnProgress = st.Progress
-		plan, err := files.PlanMerge(mangas[0], mangas[1])
+		ctx := changeCtx(cmd, st)
+		plan, err := c.Changes.Plan(ctx, core.MergeReq{Keep: ids[0], Other: ids[1]})
 		if err != nil {
 			return err
 		}
-		cmd.Printf("keep %q (%s), merge %q (%s) into it:\n", plan.Keep.Title, plan.Keep.Path(), plan.Other.Title, plan.Other.Path())
-		for _, m := range plan.Moves {
-			cmd.Printf("  move   %s\n", filepath.Base(m.From))
-		}
-		for _, p := range plan.Trashed {
-			cmd.Printf("  trash  %s (already in %q)\n", filepath.Base(p), plan.Keep.Title)
-		}
+		printLines(cmd, plan.Lines)
 		if !libraryMergeArgs.Apply {
 			cmd.Println("run with --apply to merge")
 			return nil
 		}
-		snapshot, err := client.Operation("merge", fmt.Sprintf("merge %d %q into %d %q", plan.Other.ID, plan.Other.Title, plan.Keep.ID, plan.Keep.Title), func(j library.Journal) error {
-			files.Journal = j
-			return files.ApplyMergeContext(st.Context(cmd.Context()), plan)
-		})
+		res, err := c.Changes.ApplyPlan(ctx, plan, applyOpts(st))
 		st.Done()
-		undoHint(cmd, snapshot, err)
+		undoHint(cmd, res.Snapshot, err)
 		if err != nil {
 			return err
 		}
@@ -809,42 +803,31 @@ undone after it ("mangal library undo"): they're listed before asking (--yes doe
 without a terminal it's needed).`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		root := path.Downloads()
-		batches, err := library.Trash(afs.Afero, root)
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
-		if len(batches) == 0 {
+		st := newStatus(cmd)
+		defer st.Done()
+		plan, err := c.Changes.Plan(ctxOf(cmd), core.EmptyTrashReq{})
+		if err != nil {
+			return err
+		}
+		if plan.Nothing {
 			cmd.Println("the trash is empty")
 			return nil
 		}
-		files := 0
-		for _, b := range batches {
-			files += b.Files
-		}
-		undoer, err := client.LibraryUndoer()
-		if err != nil {
-			return err
-		}
-		blocked, err := undoer.NeedTrash(root)
-		if err != nil {
-			return err
-		}
-		if len(blocked) > 0 {
-			cmd.Printf("these operations can't be undone after it:\n")
-			for _, op := range blocked {
-				cmd.Printf("  %d  %s  %s  %s\n", op.ID, op.Started.Format(time.DateTime), op.Kind, op.Summary)
-			}
-		}
-		if !libraryTrashEmptyArgs.Yes && !confirm(cmd, fmt.Sprintf("Delete the %d files in the trash?", files)) {
+		trash := plan.Detail.(core.EmptyTrashPlan)
+		printLines(cmd, trash.BlockedLines())
+		if !libraryTrashEmptyArgs.Yes && !confirm(cmd, fmt.Sprintf("Delete the %d files in the trash?", trash.Files)) {
 			return nil
 		}
-		snapshot, err := client.Snapshot("empty-trash")
-		if err != nil {
-			return err
+		res, err := c.Changes.ApplyPlan(ctxOf(cmd), plan, applyOpts(st))
+		st.Done()
+		if res.Snapshot != "" {
+			cmd.PrintErrf("database snapshot: %s\n", res.Snapshot)
 		}
-		cmd.PrintErrf("database snapshot: %s\n", snapshot)
-		if err := library.EmptyTrash(afs.Afero, root); err != nil {
+		if err != nil {
 			return err
 		}
 		cmd.Println("emptied (can't be undone)")

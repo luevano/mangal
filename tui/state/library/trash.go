@@ -10,9 +10,8 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/util"
@@ -94,53 +93,53 @@ func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if base.Busy(ctx) {
 			return base.Notify(busyNotice)
 		}
-		return CheckTrash(ctx, s.files.Root)
+		return PlanEmptyTrash(ctx)
 	case TrashCheckedMsg:
-		files := s.files
-		s.Confirm.AskDelete("Empty the trash", EmptyTrashQuestion("Delete everything in the trash? It can't be undone.", msg), s.View(), action("Emptying the trash", func() (string, error) {
-			return EmptyTrash(files)
-		}))
+		if msg.Plan.Nothing {
+			return tea.Batch(s.reload(ctx), base.Notify("the trash is empty"))
+		}
+		plan := msg.Plan
+		s.Confirm.AskDelete("Empty the trash", EmptyTrashQuestion("Delete everything in the trash? It can't be undone.", msg), s.View(), func() tea.Msg {
+			return actionMsg{label: "Emptying the trash", do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
+				notify, err := EmptyTrash(ctx, plan, status)
+				return reloadMsg{notify: notify}, err
+			}}
+		})
 		return nil
 	}
 	return s.List.Update(msg)
 }
 
-// TrashCheckedMsg are the operations whose undo emptying the trash blocks.
-type TrashCheckedMsg []storage.Op
-
-// CheckTrash looks for the operations whose undo needs the trash of root, to confirm emptying it.
-func CheckTrash(ctx context.Context, root string) tea.Cmd {
-	return base.Load(ctx, "Checking the undos", func(context.Context) (TrashCheckedMsg, error) {
-		return TrashBlocks(root)
-	}, func(msg TrashCheckedMsg) tea.Msg { return msg })
+// TrashCheckedMsg is emptying the trash planned: the operations whose undo it blocks.
+type TrashCheckedMsg struct {
+	Plan core.Plan
 }
 
-// TrashBlocks are the operations whose undo needs the trash of root.
-func TrashBlocks(root string) (TrashCheckedMsg, error) {
-	undoer, err := client.LibraryUndoer()
-	if err != nil {
-		return nil, err
-	}
-	return undoer.NeedTrash(root)
+// PlanEmptyTrash plans emptying the trash (the operations whose undo needs it), to
+// confirm it.
+func PlanEmptyTrash(ctx context.Context) tea.Cmd {
+	return base.PlanChange(ctx, "Checking the undos", core.EmptyTrashReq{}, func(p core.Plan) tea.Msg { return TrashCheckedMsg{Plan: p} })
 }
 
 // EmptyTrashQuestion is question with the undos emptying the trash blocks listed before it.
-func EmptyTrashQuestion(question string, blocked TrashCheckedMsg) string {
-	if len(blocked) == 0 {
+func EmptyTrashQuestion(question string, msg TrashCheckedMsg) string {
+	trash, _ := msg.Plan.Detail.(core.EmptyTrashPlan)
+	if len(trash.Blocked) == 0 {
 		return question
 	}
 	var b strings.Builder
 	b.WriteString("These operations can't be undone after it:\n")
-	for _, op := range blocked {
+	for _, op := range trash.Blocked {
 		fmt.Fprintf(&b, "  %d  %s  %s  %s\n", op.ID, op.Started.Format(time.DateTime), op.Kind, op.Summary)
 	}
 	return b.String() + "\n" + question
 }
 
-// EmptyTrash deletes what's in the trash for good, after a snapshot of the database.
-func EmptyTrash(files library.Files) (string, error) {
-	if _, err := client.Snapshot("empty-trash"); err != nil {
+// EmptyTrash deletes what's in the trash for good (the confirmed plan), after a snapshot
+// of the database.
+func EmptyTrash(ctx context.Context, plan core.Plan, status func(string)) (string, error) {
+	if _, err := base.ApplyPlan(ctx, plan, status); err != nil {
 		return "", err
 	}
-	return "trash emptied", library.EmptyTrash(files.FS, files.Root)
+	return "trash emptied", nil
 }

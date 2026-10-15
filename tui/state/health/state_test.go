@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
-	tuilibrary "github.com/luevano/mangal/v5/tui/state/library"
 )
 
 func TestKeys(t *testing.T) {
@@ -85,7 +86,7 @@ func TestCategoriesAndNetworkKept(t *testing.T) {
 func TestEmptyTrashListsBlockedUndos(t *testing.T) {
 	s := newState(nil)
 	s.Resize(base.Size{Width: 120, Height: 40})
-	s.Update(context.Background(), trashCheckedMsg{message: "3 files in the trash", blocked: tuilibrary.TrashCheckedMsg{{ID: 7, Kind: "delete", Summary: "delete Berserk"}}})
+	s.Update(context.Background(), trashCheckedMsg{message: "3 files in the trash", plan: core.Plan{Detail: core.EmptyTrashPlan{Files: 3, Blocked: []storage.Op{{ID: 7, Kind: "delete", Summary: "delete Berserk"}}}}})
 	view := s.Confirm.View()
 	for _, want := range []string{"3 files in the trash", "These operations can't be undone", "delete Berserk", "Delete them for good?"} {
 		if !strings.Contains(view, want) {

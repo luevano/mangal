@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -29,6 +30,19 @@ func action(label string, do func() (string, error)) tea.Cmd {
 		return actionMsg{label: label, do: func(context.Context, func(string)) (reloadMsg, error) {
 			notify, err := do()
 			return reloadMsg{notify: notify}, err
+		}}
+	}
+}
+
+// change is a confirmed change, planned again and applied by the core (the screen's
+// question said what it does), notify the notification.
+func change(label string, ch core.Change, notify string) tea.Cmd {
+	return func() tea.Msg {
+		return actionMsg{label: label, do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
+			if _, err := base.ApplyChange(ctx, ch, status); err != nil {
+				return reloadMsg{}, err
+			}
+			return reloadMsg{notify: undoNotice(notify)}, nil
 		}}
 	}
 }

@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -242,7 +243,7 @@ func TestEmptyTrashListsBlockedUndos(t *testing.T) {
 		t.Fatal("d asks before checking the undos")
 	}
 	started := time.Date(2026, 10, 12, 9, 30, 0, 0, time.Local)
-	s.Update(ctx, TrashCheckedMsg{{ID: 7, Started: started, Kind: "delete", Summary: "delete Berserk"}})
+	s.Update(ctx, TrashCheckedMsg{Plan: core.Plan{Detail: core.EmptyTrashPlan{Files: 3, Blocked: []storage.Op{{ID: 7, Started: started, Kind: "delete", Summary: "delete Berserk"}}}}})
 	if !s.Confirm.Active() {
 		t.Fatal("no confirm")
 	}
@@ -253,7 +254,7 @@ func TestEmptyTrashListsBlockedUndos(t *testing.T) {
 		}
 	}
 	s.Update(ctx, press("n"))
-	s.Update(ctx, TrashCheckedMsg{})
+	s.Update(ctx, TrashCheckedMsg{Plan: core.Plan{Detail: core.EmptyTrashPlan{Files: 3}}})
 	if view := s.Confirm.View(); strings.Contains(view, "These operations") {
 		t.Errorf("nothing blocked, still lists:\n%s", view)
 	}

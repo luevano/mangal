@@ -10,8 +10,8 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	watchpkg "github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
-	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
@@ -126,32 +126,31 @@ func (s *state) applyLibrary(ctx context.Context, f health.Finding) (tea.Cmd, bo
 		}, func(msg fixPlannedMsg) tea.Msg { return msg }), true
 	case health.ActionEmptyTrash:
 		message := f.Message
-		return base.Load(ctx, "Checking the undos", func(context.Context) (trashCheckedMsg, error) {
-			blocked, err := tuilibrary.TrashBlocks(path.Downloads())
-			return trashCheckedMsg{message: message, blocked: blocked}, err
-		}, func(msg trashCheckedMsg) tea.Msg { return msg }), true
+		return base.PlanChange(ctx, "Checking the undos", core.EmptyTrashReq{}, func(p core.Plan) tea.Msg {
+			return trashCheckedMsg{message: message, plan: p}
+		}), true
 	default:
 		return nil, false
 	}
 	return nil, true
 }
 
-// trashCheckedMsg is a finding's message and the undos emptying the trash blocks, to confirm.
+// trashCheckedMsg is a finding's message and emptying the trash planned, to confirm.
 type trashCheckedMsg struct {
 	message string
-	blocked tuilibrary.TrashCheckedMsg
+	plan    core.Plan
 }
 
 // askEmptyTrash asks to empty the trash.
 func (s *state) askEmptyTrash(msg trashCheckedMsg) tea.Cmd {
-	question := tuilibrary.EmptyTrashQuestion("Delete them for good? It can't be undone.", msg.blocked)
+	if msg.plan.Nothing {
+		return base.Notify("The trash is empty")
+	}
+	question := tuilibrary.EmptyTrashQuestion("Delete them for good? It can't be undone.", tuilibrary.TrashCheckedMsg{Plan: msg.plan})
+	plan := msg.plan
 	s.Confirm.AskDelete("Empty the trash", msg.message+"\n\n"+question, s.View(),
-		libChange("Emptying the trash", func(context.Context, func(string)) (string, error) {
-			files, err := client.LibraryFiles()
-			if err != nil {
-				return "", err
-			}
-			return tuilibrary.EmptyTrash(files)
+		libChange("Emptying the trash", func(ctx context.Context, status func(string)) (string, error) {
+			return tuilibrary.EmptyTrash(ctx, plan, status)
 		}))
 	return nil
 }
