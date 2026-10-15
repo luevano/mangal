@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -143,7 +143,7 @@ func (s *editState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		s.w.NeedsRelink, s.w.RelinkReason, s.w.ProviderMissing = msg.w.NeedsRelink, msg.w.RelinkReason, msg.w.ProviderMissing
 		s.manga.Display = mangaDisplay(s.w)
 		return nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if base.Busy(ctx) {
 			return nil
 		}

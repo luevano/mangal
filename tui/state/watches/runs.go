@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -153,7 +153,7 @@ func (s *runsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case base.RestoredMsg:
 		// e.g. a check deleted in a run's results
 		return s.reload(ctx, "")
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.List.Filtering() {
 			break
 		}
@@ -253,7 +253,7 @@ func (s *runState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case base.RestoredMsg:
 		// e.g. a check deleted on a watch's screen
 		return s.Init(ctx)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.List.Filtering() {
 			break
 		}
@@ -266,7 +266,7 @@ func (s *runState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 // runItemKey handles the keys on the selected check of a list of checks: open shows it,
 // library opens its library manga, history its provider's history.
-func runItemKey(ctx context.Context, msg tea.KeyMsg, l *list.Model, m watch.Manager, open, library, history key.Binding) (tea.Cmd, bool) {
+func runItemKey(ctx context.Context, msg tea.KeyPressMsg, l *list.Model, m watch.Manager, open, library, history key.Binding) (tea.Cmd, bool) {
 	i, ok := l.SelectedItem().(*runItem)
 	if !ok {
 		return nil, key.Matches(msg, open, library, history)

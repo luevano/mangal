@@ -1,8 +1,10 @@
 package style
 
 import (
-	"github.com/charmbracelet/lipgloss"
-	"github.com/luevano/mangal/v5/theme/color"
+	"image/color"
+
+	"charm.land/lipgloss/v2"
+	mcolor "github.com/luevano/mangal/v5/theme/color"
 )
 
 type styles struct {
@@ -26,19 +28,19 @@ var (
 func newStyles(base lipgloss.Style) styles {
 	return styles{
 		Base:       base,
-		Accent:     newStyle(base, color.Accent),
-		Secondary:  newStyle(base, color.Secondary),
-		Background: newStyle(base, color.Background),
-		Success:    newStyle(base, color.Success),
-		Warning:    newStyle(base, color.Warning),
-		Error:      newStyle(base, color.Error),
-		Loading:    newStyle(base, color.Loading),
-		Viewport:   newStyle(base, color.Viewport),
+		Accent:     newStyle(base, mcolor.Accent),
+		Secondary:  newStyle(base, mcolor.Secondary),
+		Background: newStyle(base, mcolor.Background),
+		Success:    newStyle(base, mcolor.Success),
+		Warning:    newStyle(base, mcolor.Warning),
+		Error:      newStyle(base, mcolor.Error),
+		Loading:    newStyle(base, mcolor.Loading),
+		Viewport:   newStyle(base, mcolor.Viewport),
 	}
 }
 
-func newStyle(base lipgloss.Style, color lipgloss.TerminalColor) lipgloss.Style {
-	return base.Foreground(color)
+func newStyle(base lipgloss.Style, c color.Color) lipgloss.Style {
+	return base.Foreground(c)
 }
 
 func FlipGrounds(style lipgloss.Style) lipgloss.Style {

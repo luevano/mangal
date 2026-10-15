@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -20,20 +20,20 @@ import (
 
 var ctx = context.Background()
 
-func press(k string) tea.KeyMsg {
+func press(k string) tea.KeyPressMsg {
 	switch k {
 	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
+		return util.KeyPress("esc")
 	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return util.KeyPress("enter")
 	case "tab":
-		return tea.KeyMsg{Type: tea.KeyTab}
+		return util.KeyPress("tab")
 	case "ctrl+n":
-		return tea.KeyMsg{Type: tea.KeyCtrlN}
+		return util.KeyPress("ctrl+n")
 	case "ctrl+p":
-		return tea.KeyMsg{Type: tea.KeyCtrlP}
+		return util.KeyPress("ctrl+p")
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+	return util.KeyPress(k)
 }
 
 // run gives the state the msgs of cmd, and of what they start; the rest are returned.
@@ -52,7 +52,7 @@ func run(s base.State, cmd tea.Cmd) []tea.Msg {
 
 func typeIn(s base.State, text string) {
 	for _, r := range text {
-		run(s, s.Update(ctx, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}))
+		run(s, s.Update(ctx, util.KeyPress(string(r))))
 	}
 }
 

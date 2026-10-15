@@ -4,8 +4,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
 	"github.com/luevano/mangal/v5/tui/util"
 )
 
@@ -25,7 +25,7 @@ var (
 	KeyNewLogin      = util.Bind("new login", "n")
 	KeyForget        = util.Bind("forget", "ctrl+d")
 	KeyCloseAll      = util.Bind("close all", "backspace")
-	KeyToggle        = util.Bind("toggle", " ")
+	KeyToggle        = util.Bind("toggle", "space")
 	KeyRead          = util.Bind("read", "r")
 	KeyDownload      = util.Bind("download", "d")
 	KeyFormat        = util.Bind("change format", "f")
@@ -68,8 +68,8 @@ var (
 	KeyOrigin          = util.Bind("its screen", "o")
 	KeyReset           = util.Bind("reset to default", "backspace")
 	KeyExpandAll       = util.Bind("expand/collapse all", "E")
-	KeyChange          = util.BindNamedKey("enter/space", "change", "enter", " ")
-	KeyOnOff           = util.Bind("on/off", " ")
+	KeyChange          = util.BindNamedKey("enter/space", "change", "enter", "space")
+	KeyOnOff           = util.Bind("on/off", "space")
 	KeyScan            = util.Bind("scan", "u")
 	KeyScanIDs         = util.Bind("scan and check ids", "S")
 	KeyMerge           = util.Bind("merge", "J")
@@ -152,7 +152,7 @@ var keyConcepts = map[string][]string{
 	"backspace": {"close all", "unselect all", "reset to default", "clear its queue", "clear all"},
 	// the past: a provider's checks, the chapters read
 	"alt+h": {"provider history", "read history"},
-	" ":     {"toggle", "change", "on/off"},
+	"space": {"toggle", "change", "on/off"},
 	"tab":   {"next provider", "provider", "next", "level"},
 	"n":     {"new login", "add"},
 	"e":     {"edit", "API client"},

@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -112,7 +112,7 @@ func newViewer(k kind) *viewer {
 			up:         util.BindNamedKey("↑/k", "up", "up", "k"),
 			down:       util.BindNamedKey("↓/j", "down", "down", "j"),
 			pageUp:     util.BindNamedKey("pgup/b", "page up", "pgup", "b"),
-			pageDown:   util.BindNamedKey("pgdn/f/space", "page down", "pgdown", "f", " "),
+			pageDown:   util.BindNamedKey("pgdn/f/space", "page down", "pgdown", "f", "space"),
 			top:        util.BindNamedKey("g/home", "top", "g", "home"),
 			bottom:     util.BindNamedKey("G/end", "end", "G", "end"),
 			find:       util.Bind("find", "/"),
@@ -577,7 +577,7 @@ func (v *viewer) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case search.SearchCancelMsg:
 		v.layout()
 		return nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if v.find.Searching() {
 			return v.find.Update(msg)
 		}
@@ -589,7 +589,7 @@ func (v *viewer) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func (v *viewer) key(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
+func (v *viewer) key(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 	k := v.keys
 	page := max(1, v.height()-1)
 	switch {

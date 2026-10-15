@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -66,7 +66,7 @@ func (s *mirrorsState) Title() base.Title   { return base.Title{Text: s.info.Nam
 func (s *mirrorsState) Subtitle() string    { return "tried in order when the preferred one is down" }
 
 func (s *mirrorsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && !s.List.Filtering() && key.Matches(msg, s.choose) {
+	if msg, ok := msg.(tea.KeyPressMsg); ok && !s.List.Filtering() && key.Matches(msg, s.choose) {
 		i, ok := s.List.SelectedItem().(mirrorItem)
 		if !ok {
 			return nil

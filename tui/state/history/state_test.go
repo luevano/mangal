@@ -1,12 +1,14 @@
 package history
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"context"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -59,11 +61,11 @@ func TestClear(t *testing.T) {
 	}
 	s.List.Select(0)
 	selected := s.List.SelectedItem().(*item)
-	run(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	run(util.KeyPress("d"))
 	if !s.Confirm.Active() || !strings.Contains(s.Confirm.View(), "forget") {
 		t.Fatalf("no question:\n%s", s.Confirm.View())
 	}
-	run(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	run(util.KeyPress("y"))
 	if reads, _ := history.List(selected.provider, selected.mangaID); len(reads) != 0 {
 		t.Fatalf("not forgotten: %+v", reads)
 	}

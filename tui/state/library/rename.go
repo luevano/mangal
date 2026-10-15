@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
@@ -237,7 +237,7 @@ func (s *renameState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return msg.run(ctx)
 	case reloadMsg:
 		return withNotify(s.replan(ctx, false), msg.notify)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.List.Filtering() {
 			break
 		}
@@ -248,7 +248,7 @@ func (s *renameState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return s.List.Update(msg)
 }
 
-func (s *renameState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
+func (s *renameState) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	k := s.keys
 	switch {
 	case key.Matches(msg, k.chapters), key.Matches(msg, k.fallback), key.Matches(msg, k.refresh):

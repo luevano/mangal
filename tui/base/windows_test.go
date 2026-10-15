@@ -1,16 +1,18 @@
 package base
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"context"
 	"strings"
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
-func ctrlW() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyCtrlW} }
+func ctrlW() tea.KeyPressMsg { return util.KeyPress("ctrl+w") }
 
 // chain is home, library, manga, chapters, with chapters shown.
 func chain(t *testing.T) (*model, []*keyedState) {
@@ -23,7 +25,7 @@ func chain(t *testing.T) (*model, []*keyedState) {
 	return m, windows
 }
 
-func press(m *model, keys ...tea.KeyMsg) tea.Cmd {
+func press(m *model, keys ...tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 	for _, k := range keys {
 		_, cmd = m.Update(k)
@@ -37,14 +39,14 @@ func TestSwitcherJumpKeepsWindowsAhead(t *testing.T) {
 	if m.switcher == nil {
 		t.Fatal("ctrl+w didn't open the switcher")
 	}
-	view := ansi.Strip(m.View())
+	view := ansi.Strip(m.View().Content)
 	for _, want := range []string{"Windows", "Home", "  Library", "    Manga", "Chapters (shown)"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("switcher view lacks %q:\n%s", want, view)
 		}
 	}
 	// up twice: Library
-	press(m, keyMsg("k"), tea.KeyMsg{Type: tea.KeyUp}, tea.KeyMsg{Type: tea.KeyEnter})
+	press(m, keyMsg("k"), util.KeyPress("up"), util.KeyPress("enter"))
 	if m.switcher != nil {
 		t.Error("the switcher stayed open")
 	}
@@ -65,7 +67,7 @@ func TestSwitcherJumpKeepsWindowsAhead(t *testing.T) {
 	}
 
 	// and forward again: the window is restored, with a new ctx
-	press(m, ctrlW(), keyMsg("j"), keyMsg("l"), tea.KeyMsg{Type: tea.KeyEnter})
+	press(m, ctrlW(), keyMsg("j"), keyMsg("l"), util.KeyPress("enter"))
 	checkTitles(t, m, "Home", "Library", "Manga", "Chapters")
 	if len(m.forward) != 0 {
 		t.Errorf("%d ahead, want none", len(m.forward))
@@ -105,7 +107,7 @@ func TestNewWindowAsksToCloseWindowsAhead(t *testing.T) {
 		t.Fatal("a new window opened without asking")
 	}
 	checkTitles(t, m, "Home", "Library")
-	if view := ansi.Strip(m.View()); !strings.Contains(view, "Close 2 windows ahead?") {
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Close 2 windows ahead?") {
 		t.Errorf("no question:\n%s", view)
 	}
 	// other keys don't reach the state
@@ -126,7 +128,7 @@ func TestNewWindowAsksToCloseWindowsAhead(t *testing.T) {
 
 	// esc cancels too
 	m.Update(State(keyed("Trash", "trash")))
-	press(m, tea.KeyMsg{Type: tea.KeyEsc})
+	press(m, util.KeyPress("esc"))
 	checkTitles(t, m, "Home", "Library")
 	if m.aheadAsk != nil || len(m.forward) != 2 {
 		t.Error("esc didn't cancel")
@@ -185,7 +187,7 @@ func TestSwitcherClosesAbove(t *testing.T) {
 	if req, ok := restoredWith(&w[1].fakeState); !ok || req != nil {
 		t.Error("the library wasn't restored")
 	}
-	press(m, tea.KeyMsg{Type: tea.KeyEsc})
+	press(m, util.KeyPress("esc"))
 	if m.switcher != nil {
 		t.Error("esc didn't close the switcher")
 	}
@@ -243,15 +245,15 @@ func TestQuitAsksWhileJobsRun(t *testing.T) {
 	withActivity(t, a)
 	home := &fakeState{title: "home"}
 	m := newTestModel(t, home)
-	if !strings.Contains(ansi.Strip(m.View()), "1 running") {
+	if !strings.Contains(ansi.Strip(m.View().Content), "1 running") {
 		t.Error("the header lacks the activity")
 	}
 
-	cmd := press(m, tea.KeyMsg{Type: tea.KeyCtrlC})
+	cmd := press(m, util.KeyPress("ctrl+c"))
 	if cmd != nil || m.quitAsk == nil {
 		t.Fatal("ctrl+c quit without asking")
 	}
-	if view := ansi.Strip(m.View()); !strings.Contains(view, "Quit?") || !strings.Contains(view, "One Piece") {
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Quit?") || !strings.Contains(view, "One Piece") {
 		t.Errorf("the question doesn't list the jobs:\n%s", view)
 	}
 	// other keys don't reach the state
@@ -263,7 +265,7 @@ func TestQuitAsksWhileJobsRun(t *testing.T) {
 	if m.quitAsk != nil {
 		t.Fatal("n didn't stay")
 	}
-	press(m, tea.KeyMsg{Type: tea.KeyCtrlC})
+	press(m, util.KeyPress("ctrl+c"))
 	cmd = press(m, keyMsg("y"))
 	if cmd == nil {
 		t.Fatal("y didn't quit")
@@ -279,7 +281,7 @@ func TestQuitAsksWhileJobsRun(t *testing.T) {
 	// nothing running: no question
 	a.running = nil
 	m = newTestModel(t, &fakeState{title: "home"})
-	if cmd := press(m, tea.KeyMsg{Type: tea.KeyCtrlC}); cmd == nil {
+	if cmd := press(m, util.KeyPress("ctrl+c")); cmd == nil {
 		t.Error("ctrl+c asked without jobs")
 	}
 }
@@ -307,7 +309,7 @@ func TestDownloadsKey(t *testing.T) {
 	m, _ := chain(t)
 	press(m, keyMsg("Q"))
 	checkTitles(t, m, "Home", "Library", "Manga", "Chapters", "Downloads")
-	press(m, ctrlW(), keyMsg("k"), tea.KeyMsg{Type: tea.KeyEnter}, keyMsg("Q"))
+	press(m, ctrlW(), keyMsg("k"), util.KeyPress("enter"), keyMsg("Q"))
 	checkTitles(t, m, "Home", "Library", "Manga", "Chapters", "Downloads")
 }
 
@@ -316,7 +318,7 @@ func TestLogsKey(t *testing.T) {
 	NewLogs = func() State { return keyed("Logs", "logs") }
 	t.Cleanup(func() { NewLogs = old })
 	m, _ := chain(t)
-	press(m, tea.KeyMsg{Type: tea.KeyCtrlL})
+	press(m, util.KeyPress("ctrl+l"))
 	checkTitles(t, m, "Home", "Library", "Manga", "Chapters", "Logs")
 	if m.inViewport {
 		t.Error("ctrl+l shows the recent lines")

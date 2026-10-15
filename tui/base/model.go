@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/theme/color"
 	mhelp "github.com/luevano/mangal/v5/tui/model/help"
@@ -134,10 +134,11 @@ func (m *model) shutdown(timeout time.Duration) {
 
 // Init implements tea.Model.
 func (m *model) Init() tea.Cmd {
-	if len(m.notices) == 0 {
-		return tea.Batch(m.state.Init(m.ctx), m.listenActivity())
+	cmds := []tea.Cmd{tea.RequestBackgroundColor, m.state.Init(m.ctx), m.listenActivity()}
+	if len(m.notices) > 0 {
+		cmds = append(cmds, Viewport("Notice", strings.Join(m.notices, "\n\n"), color.Warning))
 	}
-	return tea.Batch(m.state.Init(m.ctx), m.listenActivity(), Viewport("Notice", strings.Join(m.notices, "\n\n"), color.Warning))
+	return tea.Batch(cmds...)
 }
 
 // stateSize returns the usable size of the state viewport (everything but the header/footer).

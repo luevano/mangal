@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
+	"charm.land/bubbles/v2/key"
 	"github.com/charmbracelet/x/ansi"
 )
 

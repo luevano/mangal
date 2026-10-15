@@ -1,11 +1,13 @@
 package pick
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"context"
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
@@ -39,16 +41,16 @@ func fakes(t *testing.T) *[]string {
 	return &searched
 }
 
-func keyMsg(k string) tea.KeyMsg {
+func keyMsg(k string) tea.KeyPressMsg {
 	switch k {
 	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return util.KeyPress("enter")
 	case "tab":
-		return tea.KeyMsg{Type: tea.KeyTab}
+		return util.KeyPress("tab")
 	case "down":
-		return tea.KeyMsg{Type: tea.KeyDown}
+		return util.KeyPress("down")
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+	return util.KeyPress(k)
 }
 
 // run gives the screen the msgs of cmd, and of what they start.

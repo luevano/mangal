@@ -1,18 +1,20 @@
 package myanimelist
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"context"
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/client/myanimelist"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
 // press sends the keys, running what they start.
-func press(s base.State, keys ...tea.KeyMsg) {
+func press(s base.State, keys ...tea.KeyPressMsg) {
 	ctx := context.Background()
 	for _, k := range keys {
 		msgs := base.Drain(s.Update(ctx, k))
@@ -26,7 +28,7 @@ func press(s base.State, keys ...tea.KeyMsg) {
 	}
 }
 
-func text(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+func text(s string) tea.KeyPressMsg { return util.KeyPress(s) }
 
 func TestSetupSavesClient(t *testing.T) {
 	ctx := context.Background()
@@ -42,11 +44,11 @@ func TestSetupSavesClient(t *testing.T) {
 	}
 
 	// "e" and "i" are typed, not the client and login keys
-	press(s, text("my-id-ei"), tea.KeyMsg{Type: tea.KeyTab}, text("my-secret"))
+	press(s, text("my-id-ei"), util.KeyPress("tab"), text("my-secret"))
 	if view := s.View(); !strings.Contains(view, "my-id-ei") || !strings.Contains(view, "*********") || strings.Contains(view, "my-secret") {
 		t.Errorf("view:\n%s", view)
 	}
-	press(s, tea.KeyMsg{Type: tea.KeyEnter})
+	press(s, util.KeyPress("enter"))
 	if id, secret, err := cache.MyAnimeListClient(); err != nil || id != "my-id-ei" || secret != "my-secret" {
 		t.Fatalf("saved %q %q, %v", id, secret, err)
 	}
@@ -59,7 +61,7 @@ func TestSetupSavesClient(t *testing.T) {
 	if !s.Inputting() || s.Backable() || !strings.Contains(s.View(), "my-id-ei") {
 		t.Fatalf("edit:\n%s", s.View())
 	}
-	press(s, tea.KeyMsg{Type: tea.KeyEsc})
+	press(s, util.KeyPress("esc"))
 	if s.Inputting() {
 		t.Fatal("esc doesn't cancel the edit")
 	}
@@ -67,9 +69,9 @@ func TestSetupSavesClient(t *testing.T) {
 	// an empty id removes it
 	press(s, text("e"))
 	for range len("my-id-ei") {
-		press(s, tea.KeyMsg{Type: tea.KeyBackspace})
+		press(s, util.KeyPress("backspace"))
 	}
-	press(s, tea.KeyMsg{Type: tea.KeyEnter})
+	press(s, util.KeyPress("enter"))
 	if id, secret, err := cache.MyAnimeListClient(); err != nil || id != "" || secret != "" {
 		t.Errorf("after removing: %q %q, %v", id, secret, err)
 	}
@@ -89,7 +91,7 @@ func TestSetupRequiresID(t *testing.T) {
 	}
 	s.Update(ctx, st)
 	var msgs []tea.Msg
-	for _, m := range base.Drain(s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter})) {
+	for _, m := range base.Drain(s.Update(ctx, util.KeyPress("enter"))) {
 		msgs = append(msgs, m)
 		msgs = append(msgs, base.Drain(s.Update(ctx, m))...)
 	}

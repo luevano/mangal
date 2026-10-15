@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	mconfig "github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
@@ -82,9 +82,12 @@ type mapEditor struct {
 func New(filter string) base.State {
 	keys := mconfig.Keys()
 	l := list.New(2, 0, "key", "keys", sortedItems(keys), func(i item) _list.DefaultItem { return i })
-	input := textinput.New()
+	input := util.NewInput()
 	input.Prompt = icon.Item.Raw() + " "
-	input.PromptStyle = style.Bold.Accent
+	inputStyles := input.Styles()
+	inputStyles.Focused.Prompt = style.Bold.Accent
+	inputStyles.Blurred.Prompt = style.Bold.Accent
+	input.SetStyles(inputStyles)
 	s := &state{
 		list:     l,
 		expanded: map[string]bool{},
@@ -234,7 +237,7 @@ func (s *state) keyMap() help.KeyMap {
 
 func (s *state) Resize(size base.Size) tea.Cmd {
 	s.size = size
-	s.input.Width = max(10, size.Width-4)
+	s.input.SetWidth(max(10, size.Width-4))
 	return s.Host.Resize(size, func(size base.Size) tea.Cmd {
 		return s.list.Resize(base.Size{Width: size.Width, Height: max(2, size.Height-detailsHeight)})
 	})
@@ -263,7 +266,7 @@ func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
 	case mapping:
 		return s.updateMapping(msg)
 	}
-	if msg, ok := msg.(tea.KeyMsg); ok && !s.list.Filtering() {
+	if msg, ok := msg.(tea.KeyPressMsg); ok && !s.list.Filtering() {
 		if section, ok := s.list.SelectedItem().(sectionItem); ok && key.Matches(msg, s.keys.change) {
 			s.expanded[section.name] = !s.expanded[section.name]
 			return s.showRows()
@@ -393,7 +396,7 @@ func errorText(key string, err error) string {
 }
 
 func (s *state) updateEditing(msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok {
+	if msg, ok := msg.(tea.KeyPressMsg); ok {
 		switch {
 		case key.Matches(msg, s.keys.save):
 			cmd, ok := s.set(s.key, s.input.Value())
@@ -422,7 +425,7 @@ func (s *state) closeInput() {
 }
 
 func (s *state) updateMapping(msg tea.Msg) tea.Cmd {
-	keyMsg, ok := msg.(tea.KeyMsg)
+	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if s.maps.inputting {
 		if ok && key.Matches(keyMsg, s.keys.save) {
 			return s.saveEntry()

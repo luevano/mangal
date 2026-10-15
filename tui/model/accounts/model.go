@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	mconfig "github.com/luevano/mangal/v5/config"
@@ -67,10 +67,11 @@ func New(refresh bool) base.State {
 		}),
 	)
 	util.TableKeys(&t.KeyMap)
-	secret := textinput.New()
+	util.FitTable(&t, style.Normal.Base)
+	secret := util.NewInput()
 	secret.Prompt = "MangaPlus secret: "
 	secret.EchoMode = textinput.EchoPassword
-	secret.Width = 50
+	secret.SetWidth(50)
 
 	return &state{
 		refresh: refresh,
@@ -131,7 +132,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case base.RestoredMsg:
 		// e.g. after a login
 		return s.load(ctx, false)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.inputting {
 			return s.updateSecret(ctx, msg)
 		}
@@ -201,7 +202,7 @@ func (s *state) login() tea.Cmd {
 	return base.Notify("Nothing to log into for " + entry.Service)
 }
 
-func (s *state) updateSecret(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
+func (s *state) updateSecret(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, s.keys.cancel):
 		s.inputting = false

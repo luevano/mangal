@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/list"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/list"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/theme/icon"
 	_style "github.com/luevano/mangal/v5/theme/style"

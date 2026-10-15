@@ -4,9 +4,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -106,7 +106,7 @@ func (m *model) openSwitcher() {
 	m.switcher = &switcher{selected: m.current()}
 }
 
-func (m *model) updateSwitcher(msg tea.KeyMsg) tea.Cmd {
+func (m *model) updateSwitcher(msg tea.KeyPressMsg) tea.Cmd {
 	k, sw := switcherKeys, m.switcher
 	last := len(m.windows()) - 1
 	switch {
@@ -170,7 +170,7 @@ var (
 	aheadNo  = key.NewBinding(key.WithKeys("n", "esc"), key.WithHelp("n/esc", "cancel"))
 )
 
-func (m *model) answerAhead(msg tea.KeyMsg) tea.Cmd {
+func (m *model) answerAhead(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, m.keyMap.quit):
 		return m.quit()

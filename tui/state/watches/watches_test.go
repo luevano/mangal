@@ -13,11 +13,11 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/client/watch"
@@ -127,11 +127,11 @@ func (f *fakeManager) RemoveRun(ctx context.Context, id int64) (watch.RemovedRun
 
 var _ watch.Manager = (*fakeManager)(nil)
 
-func press(k string) tea.KeyMsg {
+func press(k string) tea.KeyPressMsg {
 	if r, ok := strings.CutPrefix(k, "alt+"); ok {
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(r), Alt: true}
+		return util.KeyPress("alt+" + r)
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+	return util.KeyPress(k)
 }
 
 var now = time.Date(2026, 10, 11, 12, 0, 0, 0, time.Local)
@@ -187,7 +187,7 @@ func TestRows(t *testing.T) {
 	}
 	for i, w := range want {
 		it := items[i].(*item)
-		if it.Title() != w.title || it.Description() != w.desc {
+		if ansi.Strip(it.Title()) != w.title || it.Description() != w.desc {
 			t.Errorf("row %d:\n got %q / %q\nwant %q / %q", i, it.Title(), it.Description(), w.title, w.desc)
 		}
 	}
@@ -313,7 +313,7 @@ func TestCheckProvider(t *testing.T) {
 	jm := withJobs(t)
 	s := loaded(t, m)
 	s.List.Select(2)
-	base.Drain(s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c"), Alt: true}))
+	base.Drain(s.Update(context.Background(), util.KeyPress("alt+c")))
 	list := jobsOver(t, jm)
 	// the enabled watches of mangaplus: Frieren, not the paused Dandadan
 	checked := m.checks()
@@ -404,7 +404,7 @@ func TestLiveLog(t *testing.T) {
 	all.Resize(base.Size{Width: 80, Height: 10})
 	all.Update(ctx, feedMsg{feed: f})
 	all.Update(ctx, liveMsg{feed: f, e: watch.LiveEvent{Kind: watch.LiveFound, Watch: 3, Title: "Frieren", Message: "found 12 chapters, nothing new", Time: now}})
-	if !strings.Contains(all.View(), "Frieren: found 12 chapters") {
+	if !strings.Contains(ansi.Strip(all.View()), "Frieren: found 12 chapters") {
 		t.Errorf("every check:\n%s", all.View())
 	}
 	// the page progress rewrites its line
@@ -659,11 +659,11 @@ func TestProviderHistory(t *testing.T) {
 		t.Errorf("history screen: %d items, subtitle %q", len(h.List.Items()), h.Subtitle())
 	}
 	// tab: every provider after the last one, then the first
-	h.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
+	h.Update(ctx, util.KeyPress("tab"))
 	if h.provider != "" {
 		t.Errorf("tab: %q", h.provider)
 	}
-	h.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
+	h.Update(ctx, util.KeyPress("tab"))
 	if h.provider != "mango-mangapill" {
 		t.Errorf("tab again: %q", h.provider)
 	}
@@ -686,15 +686,15 @@ func TestProviderFilter(t *testing.T) {
 		}
 		return titles
 	}
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
+	s.Update(ctx, util.KeyPress("tab"))
 	if got := titles(); !slices.Equal(got, []string{"Berserk", "Akira"}) || !strings.Contains(s.Subtitle(), "mango-mangapill") {
 		t.Errorf("mangapill: %v, %q", got, s.Subtitle())
 	}
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
+	s.Update(ctx, util.KeyPress("tab"))
 	if got := titles(); !slices.Equal(got, []string{"Dandadan", "Frieren"}) {
 		t.Errorf("mangaplus: %v", got)
 	}
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyTab})
+	s.Update(ctx, util.KeyPress("tab"))
 	s.Update(ctx, press("alt+o"))
 	if got := titles(); !slices.Equal(got, []string{"Akira", "Berserk", "Dandadan", "Frieren"}) || !strings.Contains(s.Subtitle(), "by provider") {
 		t.Errorf("by provider: %v, %q", got, s.Subtitle())
@@ -766,7 +766,7 @@ func TestRelink(t *testing.T) {
 	if res, _ := r.Results(ctx, "mango-mangaplus", "Dandadan"); !res.Items[1].(*pick.MangaItem).Current {
 		t.Error("the watch's manga isn't marked")
 	}
-	if cmd := r.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+	if cmd := r.Update(ctx, util.KeyPress("enter")); cmd == nil {
 		t.Error("enter: no cmd")
 	}
 	done, err := relink(ctx, m, 2, r.Provider(), r.List.Items()[0].(*pick.MangaItem).Manga)
@@ -779,8 +779,8 @@ func TestRelink(t *testing.T) {
 	if e.form.Focused() != e.schedule {
 		t.Error("the edit screen doesn't start on the schedule")
 	}
-	e.Update(ctx, tea.KeyMsg{Type: tea.KeyShiftTab})
-	if cmd := e.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+	e.Update(ctx, util.KeyPress("shift+tab"))
+	if cmd := e.Update(ctx, util.KeyPress("enter")); cmd == nil {
 		t.Fatal("enter on the manga: no cmd")
 	} else if _, ok := cmd().(*relinkState); !ok {
 		t.Error("enter on the manga doesn't open the search")
@@ -1007,9 +1007,9 @@ func TestLiveLogCapScrolled(t *testing.T) {
 		event(i)
 	}
 	s.Update(ctx, press("g"))
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyPgUp})
+	s.Update(ctx, util.KeyPress("pgup"))
 	for range maxLiveLines {
-		s.Update(ctx, tea.KeyMsg{Type: tea.KeyPgUp})
+		s.Update(ctx, util.KeyPress("pgup"))
 	}
 	top := s.View()
 	for i := range 50 {

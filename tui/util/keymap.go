@@ -4,8 +4,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
 )
 
 // Bind is a convenience function to create key bindings easily.
@@ -16,9 +16,6 @@ func Bind(help string, primaryKey string, extraKeys ...string) key.Binding {
 
 // BindNamedKey creates a keybind with specified help and list of keys.
 func BindNamedKey(keyHelp, help string, keys ...string) key.Binding {
-	if keyHelp == " " {
-		keyHelp = "space"
-	}
 	return key.NewBinding(
 		key.WithKeys(keys...),
 		key.WithHelp(keyHelp, help),

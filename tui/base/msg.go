@@ -1,9 +1,9 @@
 package base
 
 import (
-	"time"
+	"image/color"
 
-	"github.com/charmbracelet/lipgloss"
+	"time"
 )
 
 type BackMsg struct {
@@ -37,7 +37,7 @@ type ShowViewportMsg struct {
 	Content string
 	// Render, if set, lays the content out for the viewport's width instead of Content
 	Render func(width int) string
-	Color  lipgloss.Color
+	Color  color.Color
 	// ConfigKey fixes the error shown, a key opens the config window on it
 	ConfigKey string
 }

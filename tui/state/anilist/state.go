@@ -3,16 +3,17 @@
 package anilist
 
 import (
+	gocolor "image/color"
+
 	"context"
 	"fmt"
 	"regexp"
 	"strconv"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
@@ -59,7 +60,7 @@ type boundMsg struct {
 }
 
 // sourceColor is the title color of the source's screens.
-func sourceColor(code lmmeta.IDCode) lipgloss.Color {
+func sourceColor(code lmmeta.IDCode) gocolor.Color {
 	switch code {
 	case lmmeta.IDCodeKitsu:
 		return color.Kitsu
@@ -135,7 +136,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return tea.Sequence(base.Back, base.Notify(fmt.Sprintf("Bound %s %q", msg.src.Name, msg.meta)))
 	case search.SearchMsg:
 		return tea.Batch(s.Screen.Update(msg), s.searchCmd(ctx, string(msg)))
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.Inputting() {
 			break
 		}

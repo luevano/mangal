@@ -1,10 +1,10 @@
 package base
 
-import "github.com/charmbracelet/lipgloss"
+import "image/color"
 
 type Title struct {
 	Text string
 
 	Background,
-	Foreground lipgloss.Color
+	Foreground color.Color
 }

@@ -1,6 +1,8 @@
 package health
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"context"
 	"errors"
 	"os"
@@ -9,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
@@ -60,7 +62,7 @@ func answer(t *testing.T, s *state, k string) []tea.Msg {
 	if !s.Confirm.Active() {
 		t.Fatal("not asking")
 	}
-	return base.Drain(s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}))
+	return base.Drain(s.Update(context.Background(), util.KeyPress(k)))
 }
 
 // update gives msgs to the screen, the msgs of what they run.

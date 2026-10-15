@@ -1,8 +1,10 @@
 package format
 
 import (
-	_list "github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/lipgloss"
+	"image/color"
+
+	_list "charm.land/bubbles/v2/list"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -11,7 +13,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/model/list"
 )
 
-func New(accentColor lipgloss.Color) *Model {
+func New(accentColor color.Color) *Model {
 	list := list.New(
 		2, 0,
 		"format", "formats",

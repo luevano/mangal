@@ -1,7 +1,7 @@
 package help
 
 import (
-	"github.com/charmbracelet/bubbles/help"
+	"charm.land/bubbles/v2/help"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
 )

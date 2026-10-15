@@ -3,8 +3,8 @@ package list
 import (
 	"context"
 
-	"github.com/charmbracelet/bubbles/help"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 )
@@ -26,7 +26,7 @@ import (
 //	func (s *state) Title() base.Title { return base.Title{Text: "Things"} }
 //
 //	func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-//		if msg, ok := msg.(tea.KeyMsg); ok && !s.List.Filtering() {
+//		if msg, ok := msg.(tea.KeyPressMsg); ok && !s.List.Filtering() {
 //			// the state's keys
 //		}
 //		return s.List.Update(msg)

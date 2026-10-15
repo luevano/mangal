@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/log"
@@ -147,7 +147,7 @@ func newLiveState(m watch.Manager, w *watch.Watch) *liveState {
 		up:       util.BindNamedKey("↑/k", "up", "up", "k"),
 		down:     util.BindNamedKey("↓/j", "down", "down", "j"),
 		pageUp:   util.BindNamedKey("pgup/b", "page up", "pgup", "b"),
-		pageDown: util.BindNamedKey("pgdn/f/space", "page down", "pgdown", "f", " "),
+		pageDown: util.BindNamedKey("pgdn/f/space", "page down", "pgdown", "f", "space"),
 		follow:   util.BindNamedKey("G/end", "follow", "G", "end"),
 	}
 }
@@ -224,7 +224,7 @@ func (s *liveState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			s.onEvent(msg.e)
 		}
 		return s.feed.next()
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		s.anchor, s.pinned = "", -1
 		page := max(1, s.height()-1)
 		switch {

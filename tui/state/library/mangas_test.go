@@ -1,12 +1,14 @@
 package library
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"context"
 	"strings"
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
@@ -15,8 +17,8 @@ import (
 	"github.com/luevano/mangal/v5/tui/state/pick"
 )
 
-func press(k string) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+func press(k string) tea.KeyPressMsg {
+	return util.KeyPress(k)
 }
 
 func TestOnScanned(t *testing.T) {

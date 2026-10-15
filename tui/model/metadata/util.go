@@ -1,6 +1,6 @@
 package metadata
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 func jH(strs ...string) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, insertSpacesInbetween(strs)...)

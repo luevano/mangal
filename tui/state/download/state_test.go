@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
@@ -58,7 +58,7 @@ func waitStatus(t *testing.T, m *jobs.Manager, id int64, status jobs.Status) {
 	}
 }
 
-func press(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+func press(s string) tea.KeyPressMsg { return util.KeyPress(s) }
 
 func TestJobView(t *testing.T) {
 	m := withManager(t)

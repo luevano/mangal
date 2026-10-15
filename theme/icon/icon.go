@@ -1,13 +1,15 @@
 package icon
 
 import (
-	"github.com/charmbracelet/lipgloss"
+	gocolor "image/color"
+
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/style"
 )
 
 type icon struct {
-	color   lipgloss.TerminalColor
+	color   gocolor.Color
 	symbols symbols
 }
 

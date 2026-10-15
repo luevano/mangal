@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
@@ -248,7 +248,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case cancelAllMsg:
 		n := m.CancelAll()
 		return base.Notify("Cancelled " + stringutil.Quantify(n, "job", "jobs"))
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.List.Filtering() {
 			break
 		}

@@ -1,12 +1,14 @@
 package accounts
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"context"
 	"strings"
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -16,13 +18,13 @@ import (
 func press(s *state, k string) tea.Cmd {
 	switch k {
 	case "enter":
-		return s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyEnter})
+		return s.Update(context.Background(), util.KeyPress("enter"))
 	case "esc":
-		return s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyEsc})
+		return s.Update(context.Background(), util.KeyPress("esc"))
 	case "down":
-		return s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyDown})
+		return s.Update(context.Background(), util.KeyPress("down"))
 	}
-	return s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)})
+	return s.Update(context.Background(), util.KeyPress(k))
 }
 
 func loaded() *state {

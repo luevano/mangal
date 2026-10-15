@@ -5,10 +5,10 @@ package searchlist
 import (
 	"context"
 
-	"github.com/charmbracelet/bubbles/help"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/model/search"
@@ -38,7 +38,7 @@ type History struct {
 //				return nil
 //			}
 //			return s.SetResults(msg.items)
-//		case tea.KeyMsg:
+//		case tea.KeyPressMsg:
 //			if !s.Inputting() {
 //				// the state's keys
 //			}

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/model/viewport"
@@ -27,8 +27,11 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.resize(Size{Width: msg.Width, Height: msg.Height})
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.updateKey(msg)
+	case tea.BackgroundColorMsg:
+		// the colors that differ on a light background (color.LightDark) and the lists'
+		color.SetDark(msg.IsDark())
 	case tea.MouseMsg:
 		if m.inViewport {
 			return m.viewport.Update(msg)
@@ -110,7 +113,7 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	return m.state.Update(m.ctx, msg)
 }
 
-func (m *model) updateKey(msg tea.KeyMsg) tea.Cmd {
+func (m *model) updateKey(msg tea.KeyPressMsg) tea.Cmd {
 	if m.quitAsk != nil {
 		return m.answerQuit(msg)
 	}
@@ -175,7 +178,7 @@ func (m *model) updateKeybinds() {
 // resize the program
 func (m *model) resize(size Size) tea.Cmd {
 	m.size = size
-	m.help.Width = size.Width
+	m.help.SetWidth(size.Width)
 	return m.resizeState()
 }
 

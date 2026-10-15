@@ -1,12 +1,13 @@
 package migrate
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"context"
 	"fmt"
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -25,7 +26,7 @@ func TestPlanScrolls(t *testing.T) {
 	if v := s.View(); !strings.Contains(v, "manga 00") || strings.Contains(v, "manga 39") {
 		t.Fatalf("view:\n%s", v)
 	}
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	s.Update(ctx, util.KeyPress("G"))
 	if v := s.View(); !strings.Contains(v, "manga 39") {
 		t.Errorf("G didn't scroll to the end:\n%s", v)
 	}
@@ -45,7 +46,7 @@ func TestNothingToMigrate(t *testing.T) {
 	if !strings.Contains(s.View(), "Nothing to migrate") || s.keyMap.apply.Enabled() {
 		t.Errorf("empty plan: enter %v\n%s", s.keyMap.apply.Enabled(), s.View())
 	}
-	if cmd := s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter}); cmd != nil {
+	if cmd := s.Update(ctx, util.KeyPress("enter")); cmd != nil {
 		t.Error("enter migrates nothing")
 	}
 }

@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/table"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/table"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/util"
@@ -19,6 +20,7 @@ var _ base.State = (*state)(nil)
 
 type state struct {
 	table table.Model
+	cell  lipgloss.Style
 	copy  key.Binding
 }
 
@@ -48,6 +50,7 @@ func New() base.State {
 		}),
 	)
 	util.TableKeys(&t.KeyMap)
+	util.FitTable(&t, _styles.cell)
 	return &state{
 		table: t,
 		copy:  util.Bind("copy", "c", "enter"),
@@ -75,11 +78,12 @@ func (s *state) Resize(size base.Size) tea.Cmd {
 	cols := s.table.Columns()
 	cols[1].Width = max(10, size.Width-cols[0].Width-4)
 	s.table.SetColumns(cols)
+	util.FitTable(&s.table, defaultStyles().cell)
 	return nil
 }
 
 func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, s.copy) {
+	if msg, ok := msg.(tea.KeyPressMsg); ok && key.Matches(msg, s.copy) {
 		row := s.table.SelectedRow()
 		if row == nil {
 			return nil

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/tui/util"
 )
@@ -61,8 +61,8 @@ func newTestModel(t *testing.T, state State) *model {
 	return m
 }
 
-func keyMsg(s string) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+func keyMsg(s string) tea.KeyPressMsg {
+	return util.KeyPress(s)
 }
 
 // splitLoad returns the start and work cmds of a Load (a tea.Sequence).
@@ -293,7 +293,7 @@ func TestViewSanitized(t *testing.T) {
 	m := newTestModel(t, &fakeState{title: "home"})
 	m.Update(State(&fakeState{title: "One Piece\x1b]52;c;ZWNobyBoaQ==\x07"}))
 	m.Update(NotificationMsg{Message: "Downloaded \x1b[2J\"ch 1\""})
-	v := m.View()
+	v := m.View().Content
 	if strings.Contains(v, "\x1b]52") || strings.Contains(v, "\x1b[2J") {
 		t.Errorf("escape sequences in the view: %q", v)
 	}

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	_list "github.com/charmbracelet/bubbles/list"
+	_list "charm.land/bubbles/v2/list"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/model/search"
 	"github.com/luevano/mangal/v5/util/cache"

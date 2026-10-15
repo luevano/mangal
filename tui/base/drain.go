@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // Drain runs cmd as the TUI would, for tests: the cmds of batches and sequences too, the

@@ -2,16 +2,17 @@ package config
 
 import (
 	"context"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/luevano/mangal/v5/tui/util"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	"github.com/luevano/mangal/v5/tui/util"
+
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	mconfig "github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/tui/base"
 )
@@ -71,16 +72,16 @@ func read(t *testing.T, path string) string {
 
 func press(s *state, keys ...string) {
 	for _, k := range keys {
-		var msg tea.KeyMsg
+		var msg tea.KeyPressMsg
 		switch k {
 		case "enter":
-			msg = tea.KeyMsg{Type: tea.KeyEnter}
+			msg = util.KeyPress("enter")
 		case "esc":
-			msg = tea.KeyMsg{Type: tea.KeyEsc}
+			msg = util.KeyPress("esc")
 		case "backspace":
-			msg = tea.KeyMsg{Type: tea.KeyBackspace}
+			msg = util.KeyPress("backspace")
 		default:
-			msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+			msg = util.KeyPress(k)
 		}
 		s.Update(context.Background(), msg)
 	}
@@ -205,7 +206,7 @@ func TestMirrors(t *testing.T) {
 	if !s.Confirm.Active() || len(mconfig.Providers.Mirrors.Get()) != 2 {
 		t.Fatal("d removed without asking")
 	}
-	yes := s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	yes := s.Update(context.Background(), util.KeyPress("d"))
 	if yes == nil {
 		t.Fatal("d didn't confirm")
 	}
@@ -346,7 +347,7 @@ func TestSecretReadableWarns(t *testing.T) {
 	s, _, _ := newTest(t, "notification.discord.webhook_url")
 	press(s, "enter")
 	s.input.SetValue("https://discord.com/api/webhooks/1/tok")
-	cmd := s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyEnter})
+	cmd := s.Update(context.Background(), util.KeyPress("enter"))
 	if cmd == nil {
 		t.Fatal("not saved")
 	}

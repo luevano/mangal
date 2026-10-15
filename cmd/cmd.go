@@ -119,7 +119,7 @@ func Execute() {
 
 	err := rootCmd.ExecuteContext(ctx)
 	if err != nil {
-		rootCmd.PrintErrf("%s %s\n", icon.Cross.Colored(), util.ErrorTree(err))
+		fmt.Fprintf(styled(rootCmd.ErrOrStderr()), "%s %s\n", icon.Cross.Colored(), util.ErrorTree(err))
 	}
 	util.RunExitHooks()
 	stop()

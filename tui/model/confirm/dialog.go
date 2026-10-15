@@ -1,10 +1,12 @@
 package confirm
 
 import (
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"image/color"
+
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/util"
 )
@@ -14,7 +16,7 @@ import (
 // key are the dialog's):
 //
 //	if s.confirm.Active() {
-//		if msg, ok := msg.(tea.KeyMsg); ok {
+//		if msg, ok := msg.(tea.KeyPressMsg); ok {
 //			return s.confirm.Update(msg)
 //		}
 //	}
@@ -32,7 +34,7 @@ type Dialog struct {
 }
 
 // NewDialog makes a dialog with a message width wide, in color.
-func NewDialog(width int, color lipgloss.Color) *Dialog {
+func NewDialog(width int, color color.Color) *Dialog {
 	return &Dialog{
 		model: New(width, color),
 		box:   lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(color).Padding(0, 1),
@@ -109,7 +111,7 @@ func (d *Dialog) answers() []key.Binding {
 
 // scrolled handles the scroll keys of an overflowing message.
 func (d *Dialog) scrolled(msg tea.Msg) bool {
-	keyMsg, ok := msg.(tea.KeyMsg)
+	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if !ok || !d.model.overflows() {
 		return false
 	}
@@ -136,7 +138,7 @@ func (d *Dialog) Update(msg tea.Msg) tea.Cmd {
 		return nil
 	}
 	if len(d.choices) != 0 {
-		msg, ok := msg.(tea.KeyMsg)
+		msg, ok := msg.(tea.KeyPressMsg)
 		if !ok {
 			return nil
 		}

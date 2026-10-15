@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -83,7 +83,7 @@ func (s *trashState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return msg.run(ctx)
 	case reloadMsg:
 		return withNotify(s.reload(ctx), msg.notify)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.List.Filtering() || !key.Matches(msg, s.empty) {
 			break
 		}

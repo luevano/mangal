@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/log"
@@ -159,7 +159,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return tea.Batch(s.load(ctx), s.checkHealth(ctx))
 		}
 		return s.checkHealth(ctx)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, s.confirm):
 			if s.providers == nil {

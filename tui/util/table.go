@@ -1,8 +1,9 @@
 package util
 
 import (
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/table"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/table"
+	"charm.land/lipgloss/v2"
 )
 
 // TableKeys sets a table's keys like the lists': pages with h/l (and the arrows,
@@ -21,4 +22,14 @@ func TableKeys(k *table.KeyMap) {
 // TableBrowsing are a table's keys, to check a screen's against them.
 func TableBrowsing(k table.KeyMap) []key.Binding {
 	return []key.Binding{k.LineUp, k.LineDown, k.PageUp, k.PageDown, k.HalfPageUp, k.HalfPageDown, k.GotoTop, k.GotoBottom}
+}
+
+// FitTable sets a table as wide as its columns (cell is its Cell style): bubbles v2's
+// table shows nothing without a width.
+func FitTable(t *table.Model, cell lipgloss.Style) {
+	width := 0
+	for _, c := range t.Columns() {
+		width += c.Width + cell.GetHorizontalFrameSize()
+	}
+	t.SetWidth(width)
 }

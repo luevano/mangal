@@ -1,13 +1,14 @@
 package list
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
@@ -142,7 +143,7 @@ func TestSetItemsKeepWhileTyping(t *testing.T) {
 
 func TestSetItemsKeepReversed(t *testing.T) {
 	m := newKeyed(t, "a apple", "b banana", "c cherry")
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	m.Update(util.KeyPress("R"))
 	if got := selectedKey(m); got != "a" {
 		t.Errorf("reverse moved the selection to %q", got)
 	}

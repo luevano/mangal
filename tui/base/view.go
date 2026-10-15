@@ -4,20 +4,27 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/tui/util"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/util/sanitize"
 )
 
 const newline = "\n"
 
-// View implements tea.Model.
-func (m *model) View() string {
+// View implements tea.Model: the full TUI is on the alt screen with the mouse wheel
+// (viewports scroll), a standalone screen inline without the mouse.
+func (m *model) View() tea.View {
+	var v tea.View
+	if !m.standalone {
+		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 	// clears the inline standalone view
 	if m.quitting && m.standalone {
-		return ""
+		return v
 	}
 	header := m.viewHeader()
 	state := m.viewState()
@@ -25,7 +32,8 @@ func (m *model) View() string {
 
 	// provider titles, groups and errors are everywhere in it: only the styles' sequences
 	// reach the terminal
-	return sanitize.Styled(lipgloss.JoinVertical(lipgloss.Left, header, state, footer))
+	v.SetContent(sanitize.Styled(lipgloss.JoinVertical(lipgloss.Left, header, state, footer)))
+	return v
 }
 
 func (m *model) viewBreadcrumb() string {
@@ -60,10 +68,10 @@ func (m *model) viewHeader() string {
 	}
 	titleStyle := m.styles.title
 
-	if title.Background != "" {
+	if title.Background != nil {
 		titleStyle = titleStyle.Background(title.Background)
 	}
-	if title.Foreground != "" {
+	if title.Foreground != nil {
 		titleStyle = titleStyle.Foreground(title.Foreground)
 	}
 	header.WriteString(titleStyle.MaxWidth(m.size.Width / 2).Render(title.Text))

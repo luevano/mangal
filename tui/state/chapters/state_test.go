@@ -1,6 +1,8 @@
 package chapters
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"context"
 	"errors"
 	"fmt"
@@ -9,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/logger"
 	"github.com/luevano/libmangal/mangadata"
@@ -51,11 +53,11 @@ func (c fakeChapter) Info() mangadata.ChapterInfo {
 }
 func (c fakeChapter) Volume() mangadata.Volume { return c.volume }
 
-func press(k string) tea.KeyMsg {
+func press(k string) tea.KeyPressMsg {
 	if k == " " {
-		return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")}
+		return util.KeyPress("space")
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+	return util.KeyPress(k)
 }
 
 func chapters(n int) (*fakeManga, []mangadata.Chapter) {

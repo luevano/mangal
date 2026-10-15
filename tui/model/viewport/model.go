@@ -1,12 +1,14 @@
 package viewport
 
 import (
+	"image/color"
+
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/mangal/v5/tui/util"
 )
@@ -18,7 +20,7 @@ type Model struct {
 	content string
 	// render lays the content out for a width, nil wraps content
 	render func(width int) string
-	color  lipgloss.Color
+	color  color.Color
 
 	borderHorizontalSize,
 	borderVerticalSize int
@@ -31,7 +33,7 @@ func (m *Model) Title() string {
 	return m.title
 }
 
-func (m *Model) Color() lipgloss.Color {
+func (m *Model) Color() color.Color {
 	return m.color
 }
 
@@ -51,32 +53,32 @@ func (m *Model) SetRender(render func(width int) string) {
 
 // wrap breaks the long lines (e.g. notices) at the viewport's width.
 func (m *Model) wrap(content string) string {
-	if m.Width <= 0 {
+	if m.Width() <= 0 {
 		return content
 	}
 	if m.render != nil {
-		content = m.render(m.Width)
+		content = m.render(m.Width())
 	}
-	return lipgloss.NewStyle().Width(m.Width).Render(content)
+	return lipgloss.NewStyle().Width(m.Width()).Render(content)
 }
 
-func (m *Model) SetData(title, content string, color lipgloss.Color) {
-	m.setData(title, color)
+func (m *Model) SetData(title, content string, c color.Color) {
+	m.setData(title, c)
 	m.SetContent(content)
 	m.GotoTop()
 }
 
 // SetDataRender is SetData with SetRender.
-func (m *Model) SetDataRender(title string, render func(width int) string, color lipgloss.Color) {
-	m.setData(title, color)
+func (m *Model) SetDataRender(title string, render func(width int) string, c color.Color) {
+	m.setData(title, c)
 	m.SetRender(render)
 	m.GotoTop()
 }
 
-func (m *Model) setData(title string, color lipgloss.Color) {
+func (m *Model) setData(title string, c color.Color) {
 	m.title = title
-	m.color = color
-	m.style = m.style.BorderForeground(color)
+	m.color = c
+	m.style = m.style.BorderForeground(c)
 }
 
 func (m *Model) Status() string {
@@ -85,8 +87,8 @@ func (m *Model) Status() string {
 
 // Resize fits the viewport, with its border, in size.
 func (m *Model) Resize(size util.Size) tea.Cmd {
-	m.Width = size.Width - m.borderHorizontalSize
-	m.Height = size.Height - m.borderVerticalSize
+	m.SetWidth(size.Width - m.borderHorizontalSize)
+	m.SetHeight(size.Height - m.borderVerticalSize)
 	if m.content != "" {
 		m.Model.SetContent(m.wrap(m.content))
 		m.updateKeybinds()
@@ -96,7 +98,7 @@ func (m *Model) Resize(size util.Size) tea.Cmd {
 
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, m.KeyMap.Copy):
 			return copyCmd(ansi.Strip(m.content))

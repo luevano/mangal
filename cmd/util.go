@@ -7,10 +7,14 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/provider/manager"
+	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
@@ -18,7 +22,26 @@ import (
 )
 
 func successf(cmd *cobra.Command, format string, a ...any) {
-	cmd.Printf("%s %s\n", icon.Check.Colored(), fmt.Sprintf(format, a...))
+	fmt.Fprintf(styled(cmd.OutOrStderr()), "%s %s\n", icon.Check.Colored(), fmt.Sprintf(format, a...))
+}
+
+// styled is w for styled text (theme styles, colored icons). lipgloss v2 renders full
+// colors: the writer brings them down to what w shows, none when it's not a terminal.
+func styled(w io.Writer) io.Writer {
+	return colorprofile.NewWriter(w, os.Environ())
+}
+
+var detectBackground sync.Once
+
+// styledAdaptive is styled for text with colors that depend on the background
+// (color.LightDark): a terminal's is asked once. Get it before rendering.
+func styledAdaptive(w io.Writer) io.Writer {
+	if f, ok := w.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		detectBackground.Do(func() {
+			color.SetDark(lipgloss.HasDarkBackground(os.Stdin, f))
+		})
+	}
+	return styled(w)
 }
 
 // completionProviderIDs completes a provider id (a flag's value).

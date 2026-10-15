@@ -1,14 +1,16 @@
 package base
 
 import (
+	gocolor "image/color"
+
 	"context"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/util"
 )
@@ -92,7 +94,7 @@ var (
 	quitNo  = key.NewBinding(key.WithKeys("n", "esc"), key.WithHelp("n/esc", "stay"))
 )
 
-func (m *model) answerQuit(msg tea.KeyMsg) tea.Cmd {
+func (m *model) answerQuit(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, quitYes):
 		m.quitting = true
@@ -122,7 +124,7 @@ func (m *model) viewQuitAsk(behind string) string {
 }
 
 // dialog draws content in a box over behind.
-func (m *model) dialog(content string, c lipgloss.Color, behind string) string {
+func (m *model) dialog(content string, c gocolor.Color, behind string) string {
 	size := m.stateSize()
 	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(c).Padding(0, 1).
 		MaxWidth(max(20, size.Width-2)).Render(content)

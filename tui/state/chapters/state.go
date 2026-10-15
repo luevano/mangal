@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/client/watch"
@@ -231,7 +231,7 @@ func (s *state) watchedCmd(ctx context.Context) tea.Cmd {
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return s.updateKey(ctx, msg)
 	case filesMsg:
 		s.setFiles(msg)
@@ -277,7 +277,7 @@ func (s *state) updateChild(msg tea.Msg) tea.Cmd {
 	return s.List.Update(msg)
 }
 
-func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
+func (s *state) updateKey(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case s.Asking():
 		return s.Confirm.Update(msg)
@@ -329,7 +329,7 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 }
 
 // updateItemKey handles the keys on the hovered (or toggled) chapter.
-func (s *state) updateItemKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
+func (s *state) updateItemKey(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 	i, ok := s.List.SelectedItem().(*item)
 	if !ok {
 		return s.List.Update(msg)

@@ -9,11 +9,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
@@ -182,7 +182,7 @@ func (s *files) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case search.SearchCancelMsg:
 		s.Resize(s.size)
 		return nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.search.Searching() {
 			return s.search.Update(msg)
 		}

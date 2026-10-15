@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
@@ -266,7 +266,7 @@ func (s *addState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return nil
 	case addedMsg:
 		return tea.Sequence(base.Back, base.Notify("Watching "+msg.w.Title))
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if base.Busy(ctx) {
 			return nil
 		}

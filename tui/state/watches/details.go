@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -148,7 +148,7 @@ func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return base.Load(ctx, msg.label, msg.do, func(notify string) tea.Msg { return changedMsg{notify: notify} })
 	case changedMsg:
 		return tea.Batch(s.reload(ctx, ""), base.Notify(msg.notify))
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.List.Filtering() {
 			break
 		}

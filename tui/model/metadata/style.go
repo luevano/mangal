@@ -1,8 +1,10 @@
 package metadata
 
 import (
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/list"
+	gocolor "image/color"
+
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/list"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
@@ -27,7 +29,7 @@ func newStyles(meta metaStyle) styles {
 }
 
 type metaStyle struct {
-	Color  lipgloss.Color
+	Color  gocolor.Color
 	Prefix string
 	Code   string
 }

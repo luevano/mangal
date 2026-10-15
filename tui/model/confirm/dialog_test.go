@@ -1,24 +1,26 @@
 package confirm
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
 type yesMsg struct{}
 
-func keyPress(s string) tea.KeyMsg {
+func keyPress(s string) tea.KeyPressMsg {
 	if s == "enter" {
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return util.KeyPress("enter")
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	return util.KeyPress(s)
 }
 
 func TestDialog(t *testing.T) {
@@ -60,7 +62,7 @@ func TestChoose(t *testing.T) {
 	d := NewDialog(30, lipgloss.Color("1"))
 	d.Resize(base.Size{Width: 40, Height: 10})
 	d.Choose("Title", "keep or adopt?", "", Choice{Key: "k", Label: "keep", Cmd: func() tea.Msg { return keepMsg{} }}, Choice{Key: "a", Label: "adopt"})
-	if v := d.View(); !strings.Contains(v, "k keep") || !strings.Contains(v, "esc cancel") || strings.Contains(v, "yes") {
+	if v := ansi.Strip(d.View()); !strings.Contains(v, "k keep") || !strings.Contains(v, "esc cancel") || strings.Contains(v, "yes") {
 		t.Errorf("view:\n%s", v)
 	}
 	if cmd := d.Update(keyPress("y")); cmd != nil || !d.Active() {
@@ -72,7 +74,7 @@ func TestChoose(t *testing.T) {
 		t.Error("the choice's cmd not returned")
 	}
 	d.Choose("Title", "?", "", Choice{Key: "k", Label: "keep"})
-	if d.Update(tea.KeyMsg{Type: tea.KeyEsc}); d.Active() {
+	if d.Update(util.KeyPress("esc")); d.Active() {
 		t.Error("esc didn't cancel")
 	}
 	// back to yes and no
@@ -93,20 +95,20 @@ func TestScroll(t *testing.T) {
 		lines = append(lines, fmt.Sprintf("line %d", i))
 	}
 	d.Ask("Long", strings.Join(lines, "\n"), "", func() tea.Msg { return yesMsg{} })
-	v := d.View()
+	v := ansi.Strip(d.View())
 	if !strings.Contains(v, "line 0") || strings.Contains(v, "line 9") || !strings.Contains(v, "↓ more") || !strings.Contains(v, "y yes") {
 		t.Fatalf("view:\n%s", v)
 	}
 	d.Update(keyPress("j"))
-	d.Update(tea.KeyMsg{Type: tea.KeyPgDown})
-	d.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	d.Update(util.KeyPress("pgdown"))
+	d.Update(util.KeyPress("pgdown"))
 	if v := d.View(); !strings.Contains(v, "line 9") || strings.Contains(v, "line 0") || !strings.Contains(v, "↑ more") {
 		t.Errorf("scrolled:\n%s", v)
 	}
 	// k is an answer here: it chooses, down scrolls
 	d.Update(keyPress("n"))
 	d.Choose("Long", strings.Join(lines, "\n"), "", Choice{Key: "k", Label: "keep", Cmd: func() tea.Msg { return keepMsg{} }})
-	if cmd := d.Update(tea.KeyMsg{Type: tea.KeyDown}); cmd != nil || !d.Active() || !strings.Contains(d.View(), "line 4") {
+	if cmd := d.Update(util.KeyPress("down")); cmd != nil || !d.Active() || !strings.Contains(d.View(), "line 4") {
 		t.Errorf("down didn't scroll:\n%s", d.View())
 	}
 	if cmd := d.Update(keyPress("k")); cmd == nil || d.Active() {

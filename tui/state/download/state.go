@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbles/spinner"
-	bviewport "github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/spinner"
+	bviewport "charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -49,8 +49,11 @@ type state struct {
 // New is the view of the download job with the id.
 func New(id int64) base.State {
 	_styles := defaultStyles()
+	// full blocks, as before bubbles v2 (it fills with half blocks)
+	bar := progress.New()
+	bar.Full = progress.DefaultFullCharFullBlock
 	s := &state{
-		progress: progress.New(),
+		progress: bar,
 		spinner: spinner.New(
 			spinner.WithSpinner(base.DotSpinner),
 			spinner.WithStyle(style.Normal.Accent),
@@ -123,7 +126,7 @@ func (s *state) load() {
 
 func (s *state) Resize(size base.Size) tea.Cmd {
 	s.size = size
-	s.progress.Width = s.size.Width
+	s.progress.SetWidth(s.size.Width)
 	h := 0
 	if s.job.Status.Active() {
 		h = lipgloss.Height(s.viewActive())
@@ -148,7 +151,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return s.Resize(s.size)
 		}
 		return nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, s.cancel):
 			if tuijobs.Manager().Cancel(s.id) {

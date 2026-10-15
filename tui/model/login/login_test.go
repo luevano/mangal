@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -69,20 +69,20 @@ func (f *fake) service(withClient bool) Service {
 	return svc
 }
 
-func keyMsg(k string) tea.KeyMsg {
+func keyMsg(k string) tea.KeyPressMsg {
 	switch k {
 	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return util.KeyPress("enter")
 	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
+		return util.KeyPress("esc")
 	case "tab":
-		return tea.KeyMsg{Type: tea.KeyTab}
+		return util.KeyPress("tab")
 	case "shift+tab":
-		return tea.KeyMsg{Type: tea.KeyShiftTab}
+		return util.KeyPress("shift+tab")
 	case "ctrl+d":
-		return tea.KeyMsg{Type: tea.KeyCtrlD}
+		return util.KeyPress("ctrl+d")
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+	return util.KeyPress(k)
 }
 
 // run runs cmd, giving the screen its msgs.

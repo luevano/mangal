@@ -1,6 +1,6 @@
 package viewport
 
-import tea "github.com/charmbracelet/bubbletea"
+import tea "charm.land/bubbletea/v2"
 
 func backCmd() tea.Msg {
 	return BackMsg{}

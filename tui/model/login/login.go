@@ -4,17 +4,19 @@
 package login
 
 import (
+	gocolor "image/color"
+
 	"context"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -48,7 +50,7 @@ type Service struct {
 	// ID is the window's ("login/<ID>")
 	ID    string
 	Name  string
-	Color lipgloss.Color
+	Color gocolor.Color
 
 	// Check refreshes the login on open; an error is logged, the screen stays usable
 	Check func(ctx context.Context) error
@@ -172,7 +174,7 @@ func New(svc Service) *Screen {
 	return s
 }
 
-func newForm(c lipgloss.Color, submit string, inputs []Input) *form.Form {
+func newForm(c gocolor.Color, submit string, inputs []Input) *form.Form {
 	fields := make([]*form.Field, len(inputs))
 	for i, in := range inputs {
 		var validate func(string) error
@@ -184,7 +186,7 @@ func newForm(c lipgloss.Color, submit string, inputs []Input) *form.Form {
 			f = form.Secret(in.Label, "", "", validate)
 		}
 		f.Input.Placeholder = in.Placeholder
-		f.Input.Width = 60
+		f.Input.SetWidth(60)
 		fields[i] = f
 	}
 	f := form.New(fields...)
@@ -270,7 +272,7 @@ func (s *Screen) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		cmd := s.openClient(msg.values)
 		s.updateKeybinds()
 		return cmd
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		cmd, ok := s.updateKey(ctx, msg)
 		s.updateKeybinds()
 		if ok {
@@ -374,7 +376,7 @@ func (s *Screen) openClient(values []string) tea.Cmd {
 	return s.client.Focus(0)
 }
 
-func (s *Screen) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
+func (s *Screen) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	selected, _ := s.list.SelectedItem().(item)
 	switch {
 	case key.Matches(msg, s.keys.cancel):

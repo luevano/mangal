@@ -4,10 +4,10 @@ import (
 	"context"
 	"slices"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
@@ -157,7 +157,7 @@ func (s *historyState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return s.reload(ctx, "Loading the history of "+providerName(s.provider))
 		}
 		return s.reload(ctx, "")
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.List.Filtering() {
 			break
 		}

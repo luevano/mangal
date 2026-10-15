@@ -3,8 +3,8 @@ package base
 import (
 	"context"
 
-	"github.com/charmbracelet/bubbles/help"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	tea "charm.land/bubbletea/v2"
 )
 
 // State is a screen of the TUI, shown one at a time: pushing a State (returning it as a

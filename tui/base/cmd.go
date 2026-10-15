@@ -1,10 +1,11 @@
 package base
 
 import (
+	"image/color"
+
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
 )
 
 // Back goes back to the previous state if available.
@@ -39,7 +40,7 @@ func NotifyWithDuration(message string, duration time.Duration) tea.Cmd {
 }
 
 // Viewport shows content in a scrollable box over the State, esc closes it.
-func Viewport(title, content string, color lipgloss.Color) tea.Cmd {
+func Viewport(title, content string, color color.Color) tea.Cmd {
 	return func() tea.Msg {
 		return ShowViewportMsg{
 			Title:   title,
@@ -51,7 +52,7 @@ func Viewport(title, content string, color lipgloss.Color) tea.Cmd {
 
 // ViewportRender is Viewport with content laid out for the viewport's width (again on a
 // resize).
-func ViewportRender(title string, render func(width int) string, color lipgloss.Color) tea.Cmd {
+func ViewportRender(title string, render func(width int) string, color color.Color) tea.Cmd {
 	return func() tea.Msg {
 		return ShowViewportMsg{Title: title, Render: render, Color: color}
 	}

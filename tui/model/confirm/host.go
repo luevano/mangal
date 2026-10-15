@@ -1,9 +1,10 @@
 package confirm
 
 import (
-	"github.com/charmbracelet/bubbles/help"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"image/color"
+
+	"charm.land/bubbles/v2/help"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
@@ -28,7 +29,7 @@ type Host struct {
 }
 
 // NewHost is a Host with a dialog width wide, in color.
-func NewHost(width int, color lipgloss.Color) Host {
+func NewHost(width int, color color.Color) Host {
 	return Host{Confirm: NewDialog(width, color)}
 }
 
@@ -38,7 +39,7 @@ func (h *Host) Asking() bool { return h.Confirm != nil && h.Confirm.Active() }
 // Answer gives a key msg to the dialog while it's asking, ok is false when it isn't (the
 // msg is the State's).
 func (h *Host) Answer(msg tea.Msg) (cmd tea.Cmd, ok bool) {
-	if msg, isKey := msg.(tea.KeyMsg); isKey && h.Asking() {
+	if msg, isKey := msg.(tea.KeyPressMsg); isKey && h.Asking() {
 		return h.Confirm.Update(msg), true
 	}
 	return nil, false

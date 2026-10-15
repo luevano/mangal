@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -41,7 +41,7 @@ type (
 // the screen's after it. Not handled: false.
 func (rr *runRemover) update(ctx context.Context, msg tea.Msg, l *list.Model, m watch.Manager, behind func() string, reload func(checkRunGone bool) tea.Cmd) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if rr.confirm.Active() {
 			return rr.confirm.Update(msg), true
 		}

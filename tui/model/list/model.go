@@ -1,12 +1,13 @@
 package list
 
 import (
+	"image/color"
+
 	"slices"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/tui/base"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
@@ -62,7 +63,8 @@ func (m *Model) Status() string {
 	if v := m.FilterValue(); v != "" {
 		// not the input's view: it's as wide as the list, the notifications would be cut off
 		in := m.FilterInput
-		return m.Paginator.View() + " " + in.PromptStyle.Render(in.Prompt) + in.TextStyle.Render(v)
+		st := in.Styles().Focused
+		return m.Paginator.View() + " " + st.Prompt.Render(in.Prompt) + st.Text.Render(v)
 	}
 
 	return p
@@ -75,7 +77,7 @@ func (m *Model) Resize(size base.Size) tea.Cmd {
 }
 
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && m.FilterState() != list.Filtering && key.Matches(msg, m.KeyMap.Reverse) {
+	if msg, ok := msg.(tea.KeyPressMsg); ok && m.FilterState() != list.Filtering && key.Matches(msg, m.KeyMap.Reverse) {
 		m.reversed = !m.reversed
 		items := slices.Clone(m.Items())
 		slices.Reverse(items)
@@ -169,7 +171,7 @@ func (m *Model) SetItemHeight(height int) {
 	m.SetDelegate(m.delegate)
 }
 
-func (m *Model) SetAccentColor(color lipgloss.Color) {
+func (m *Model) SetAccentColor(color color.Color) {
 	m.delegate.Styles.SelectedTitle = m.delegate.Styles.SelectedTitle.Foreground(color).BorderForeground(color)
 	m.delegate.Styles.SelectedDesc = m.delegate.Styles.SelectedDesc.BorderForeground(color)
 	m.SetDelegate(m.delegate)

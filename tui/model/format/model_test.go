@@ -1,9 +1,10 @@
 package format
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/theme/color"
 )
 
@@ -16,11 +17,11 @@ func TestNoMatch(t *testing.T) {
 		t.Fatal("a format matches")
 	}
 	for _, k := range []string{"r", "d"} {
-		if cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}); cmd != nil {
+		if cmd := m.Update(util.KeyPress(k)); cmd != nil {
 			if _, ok := cmd().(error); ok {
 				t.Errorf("%s: an error", k)
 			}
 		}
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.Update(util.KeyPress("enter"))
 }

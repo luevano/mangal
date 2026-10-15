@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -81,7 +81,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 				base.KeyWatches.Help().Key, base.KeyNeedsRelink.Help().Key, base.KeyRelink.Help().Key), 10*time.Second))
 		}
 		return tea.Sequence(base.Back, base.Notify("Migrated, folders keep their names (mangal library rename renames them)"))
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if !key.Matches(msg, s.keyMap.apply) {
 			return s.plan.Update(msg)
 		}

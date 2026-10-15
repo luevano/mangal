@@ -3,10 +3,10 @@ package search
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
@@ -57,7 +57,7 @@ func (m *Model) Focus() tea.Cmd {
 // Resize fits the input in size.Width, up to its max width.
 func (m *Model) Resize(size base.Size) tea.Cmd {
 	// the cursor takes a cell after the text
-	m.input.Width = max(1, min(m.maxWidth, size.Width-lipgloss.Width(m.input.Prompt)-1))
+	m.input.SetWidth(max(1, min(m.maxWidth, size.Width-lipgloss.Width(m.input.Prompt)-1)))
 	return nil
 }
 
@@ -67,7 +67,7 @@ func (m *Model) Init() tea.Cmd {
 
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, m.keyMap.confirm):
 			// Remove all surrounding whitespace
@@ -109,7 +109,7 @@ func (m *Model) View() string {
 // SuggestionBox returns the rendered suggestions box with styling applied.
 func (m *Model) SuggestionBox() string {
 	// as wide as the input, with the box's margin and borders
-	width := max(1, lipgloss.Width(m.input.Prompt)+m.input.Width+1-3)
+	width := max(1, lipgloss.Width(m.input.Prompt)+m.input.Width()+1-3)
 
 	sugs, idx := m.suggestions()
 	if len(sugs) == 0 {

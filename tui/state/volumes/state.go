@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -65,7 +65,7 @@ func (s *state) Status() string {
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
-	if msg, ok := msg.(tea.KeyMsg); ok && !s.List.Filtering() {
+	if msg, ok := msg.(tea.KeyPressMsg); ok && !s.List.Filtering() {
 		i, ok := s.List.SelectedItem().(*item)
 		if !ok {
 			return s.List.Update(msg)

@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/util"
@@ -46,7 +45,7 @@ func TestRows(t *testing.T) {
 		t.Errorf("view:\n%s", s.View())
 	}
 	// the copy itself isn't run: it would write the clipboard
-	if cmd := s.Update(context.Background(), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")}); cmd == nil {
+	if cmd := s.Update(context.Background(), util.KeyPress("c")); cmd == nil {
 		t.Error("c doesn't copy")
 	}
 }

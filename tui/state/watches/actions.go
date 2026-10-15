@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/tui/base"
 	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
-func (s *listState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
+func (s *listState) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	m := s.manager
 	switch {
 	case key.Matches(msg, s.keys.refresh):

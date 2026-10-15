@@ -2,10 +2,11 @@
 package metadata
 
 import (
+	gocolor "image/color"
+
 	"strconv"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -39,7 +40,7 @@ func Title(meta metadata.Metadata) string {
 }
 
 // Color is the metadata source's color.
-func Color(meta metadata.Metadata) lipgloss.Color {
+func Color(meta metadata.Metadata) gocolor.Color {
 	return metaIDStyle(meta.ID()).Color
 }
 

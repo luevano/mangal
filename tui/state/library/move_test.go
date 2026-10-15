@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
@@ -80,7 +81,7 @@ func TestMove(t *testing.T) {
 		t.Fatalf("planned %+v, %v", asked, err)
 	}
 	ms.Update(ctx, asked)
-	view := ms.View()
+	view := ansi.Strip(ms.View())
 	for _, want := range []string{`"Berserk" -> "Berserk Deluxe"`, "Weeb Central/Berserk Deluxe", "k keep the title", "a adopt the new title"} {
 		if !strings.Contains(strings.Join(strings.Fields(view), " "), want) {
 			t.Errorf("question misses %q:\n%s", want, view)

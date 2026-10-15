@@ -1,10 +1,11 @@
 package search
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
@@ -15,8 +16,8 @@ func TestResizeGrowsBack(t *testing.T) {
 		t.Errorf("input %d wide in 20 cols", w)
 	}
 	m.Resize(base.Size{Width: 200, Height: 10})
-	if m.input.Width != 64 {
-		t.Errorf("input didn't grow back to its max width: %d", m.input.Width)
+	if m.input.Width() != 64 {
+		t.Errorf("input didn't grow back to its max width: %d", m.input.Width())
 	}
 }
 
@@ -26,7 +27,7 @@ func TestSuggestionBoxAsWideAsInput(t *testing.T) {
 	m.Focus()
 	m.Resize(base.Size{Width: 100, Height: 10})
 	// the placeholder is a bit narrower than a typed text
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("xyz")})
+	m.Update(util.KeyPress("xyz"))
 	if in, box := lipgloss.Width(m.View()), lipgloss.Width(m.SuggestionBox()); in != box {
 		t.Errorf("input %d wide, suggestion box %d", in, box)
 	}
@@ -40,7 +41,7 @@ func TestSuggestionsMatched(t *testing.T) {
 		t.Errorf("empty input: got %v %d", sugs, idx)
 	}
 	for _, r := range "hun" {
-		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m.Update(util.KeyPress(string(r)))
 	}
 	sugs, idx := m.suggestions()
 	if len(sugs) != 2 || idx != 0 {

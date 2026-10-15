@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
@@ -307,7 +307,7 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			s.keep = 0
 		}
 		return withNotify(s.reload(ctx), msg.notify)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.List.Filtering() || s.err != nil {
 			break
 		}
@@ -318,7 +318,7 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return s.List.Update(msg)
 }
 
-func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
+func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, s.keys.scan), key.Matches(msg, s.keys.check):
 		if base.Busy(ctx) {

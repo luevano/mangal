@@ -1,6 +1,10 @@
 package confirm
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"image/color"
+
+	"charm.land/lipgloss/v2"
+)
 
 type styles struct {
 	title,
@@ -8,7 +12,7 @@ type styles struct {
 	more lipgloss.Style
 }
 
-func defaultStyles(width int, color lipgloss.Color) styles {
+func defaultStyles(width int, color color.Color) styles {
 	return styles{
 		title:   lipgloss.NewStyle().Padding(0, 1).Background(color),
 		message: lipgloss.NewStyle().Width(width).MaxWidth(width),

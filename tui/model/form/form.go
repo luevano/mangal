@@ -3,12 +3,14 @@
 package form
 
 import (
+	gocolor "image/color"
+
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -33,9 +35,9 @@ type Field struct {
 }
 
 func Text(label, value, hint string, validate func(string) error) *Field {
-	in := textinput.New()
+	in := util.NewInput()
 	in.Prompt = ""
-	in.Width = 30
+	in.SetWidth(30)
 	in.SetValue(value)
 	return &Field{Label: label, Hint: hint, Input: in, Validate: validate}
 }
@@ -89,7 +91,7 @@ func New(fields ...*Field) *Form {
 func (f *Form) SetSubmit(help string) { f.submit.SetHelp("enter", help) }
 
 // SetAccent sets the color of the labels.
-func (f *Form) SetAccent(c lipgloss.Color) { f.label = f.label.Foreground(c) }
+func (f *Form) SetAccent(c gocolor.Color) { f.label = f.label.Foreground(c) }
 
 // Focused is the focused field.
 func (f *Form) Focused() *Field { return f.Fields[f.current] }
@@ -144,7 +146,7 @@ func (f *Form) Valid() bool {
 // Update handles a msg, submitted is true on enter with valid fields.
 func (f *Form) Update(msg tea.Msg) (submitted bool, cmd tea.Cmd) {
 	cur := f.Fields[f.current]
-	if msg, ok := msg.(tea.KeyMsg); ok {
+	if msg, ok := msg.(tea.KeyPressMsg); ok {
 		switch {
 		case key.Matches(msg, f.submit):
 			return f.Valid(), nil

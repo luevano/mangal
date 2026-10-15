@@ -30,10 +30,11 @@ var templatesFuncsCmd = &cobra.Command{
 	Short: "Show available functions",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, _ []string) {
+		w := styledAdaptive(cmd.OutOrStderr())
 		for _, f := range template.Funcs {
-			cmd.Println(style.Bold.Accent.Render(f.Name))
-			cmd.Println(style.Normal.Secondary.Render(f.Description))
-			cmd.Println()
+			fmt.Fprintln(w, style.Bold.Accent.Render(f.Name))
+			fmt.Fprintln(w, style.Normal.Secondary.Render(f.Description))
+			fmt.Fprintln(w)
 		}
 	},
 }

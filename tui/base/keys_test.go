@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
 	"github.com/luevano/mangal/v5/tui/util"
 )
 

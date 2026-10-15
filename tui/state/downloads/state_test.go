@@ -1,12 +1,14 @@
 package downloads
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"context"
 	"strings"
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -64,7 +66,7 @@ func titles(s *state) []string {
 	return list
 }
 
-func press(k string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)} }
+func press(k string) tea.KeyPressMsg { return util.KeyPress(k) }
 
 func TestGroupedByQueue(t *testing.T) {
 	m := withManager(t)
@@ -102,7 +104,7 @@ func TestGroupedByQueue(t *testing.T) {
 		t.Fatal("o did nothing")
 	}
 	// backspace clears p's queue, not the running one
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyBackspace})
+	s.Update(ctx, util.KeyPress("backspace"))
 	waitStatus(t, m, c.ID, jobs.Cancelled)
 	if j, _ := m.Get(a.ID); j.Status != jobs.Running {
 		t.Errorf("A is %s", j.Status)
@@ -116,7 +118,7 @@ func TestGroupedByQueue(t *testing.T) {
 	}
 
 	// alt+d asks, then cancels everything
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d"), Alt: true})
+	s.Update(ctx, util.KeyPress("alt+d"))
 	if !s.Asking() {
 		t.Fatal("alt+d didn't ask")
 	}
@@ -185,7 +187,7 @@ func TestSelectsTheNewJob(t *testing.T) {
 	if j, _ := s.selected(); j.Title != "C" {
 		t.Errorf("selected %q, want the new job C", j.Title)
 	}
-	cmd := s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter})
+	cmd := s.Update(ctx, util.KeyPress("enter"))
 	if cmd == nil {
 		t.Fatal("enter did nothing")
 	}

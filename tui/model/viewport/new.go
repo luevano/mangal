@@ -1,12 +1,12 @@
 package viewport
 
 import (
-	"github.com/charmbracelet/bubbles/viewport"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/viewport"
+	"charm.land/lipgloss/v2"
 )
 
 func New() *Model {
-	v := viewport.New(0, 0)
+	v := viewport.New()
 	b := lipgloss.RoundedBorder()
 	s := &Model{
 		Model:                v,

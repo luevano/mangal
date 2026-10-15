@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync/atomic"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // NewConfigWindow makes the config window (set by the tui package, the window needs

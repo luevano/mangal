@@ -3,17 +3,19 @@
 package health
 
 import (
+	gocolor "image/color"
+
 	"context"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/health"
@@ -34,7 +36,7 @@ import (
 
 var _ base.State = (*state)(nil)
 
-var severityColors = map[health.Severity]lipgloss.TerminalColor{
+var severityColors = map[health.Severity]gocolor.Color{
 	health.Error:   color.Error,
 	health.Warning: color.Warning,
 	health.Info:    color.Secondary,
@@ -376,7 +378,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case choiceMsg:
 		s.Confirm.Choose(msg.title, msg.message, s.View(), msg.choices...)
 		return nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.List.Filtering() {
 			break
 		}
@@ -429,7 +431,7 @@ func (s *state) nextCategory() health.Category {
 	return ""
 }
 
-func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
+func (s *state) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if s.summary == nil {
 		switch {
 		case key.Matches(msg, s.keys.refresh):
@@ -479,7 +481,7 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-func severityColor(sev health.Severity) lipgloss.Color {
+func severityColor(sev health.Severity) gocolor.Color {
 	switch sev {
 	case health.Error:
 		return color.Error

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	_list "github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	_list "charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
@@ -200,7 +200,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		// e.g. watched with w
 		return watchedCmd(ctx)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if s.Inputting() {
 			break
 		}
@@ -211,7 +211,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return s.Screen.Update(msg)
 }
 
-func (s *state) updateKey(ctx context.Context, msg tea.KeyMsg) (tea.Cmd, bool) {
+func (s *state) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, s.keys.search):
 		s.List.ResetFilter()

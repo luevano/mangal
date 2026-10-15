@@ -1,12 +1,13 @@
 package library
 
 import (
+	"github.com/luevano/mangal/v5/tui/util"
+
 	"context"
 	"slices"
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
@@ -55,17 +56,17 @@ func TestRename(t *testing.T) {
 
 	// the skipped one can't be selected; Berserk unselected
 	s.List.Select(2)
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")})
+	s.Update(ctx, util.KeyPress("space"))
 	if items[2].selected {
 		t.Error("a skipped rename selected")
 	}
 	s.List.Select(0)
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")})
+	s.Update(ctx, util.KeyPress("space"))
 	if items[0].selected {
 		t.Fatal("space didn't unselect")
 	}
 
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter})
+	s.Update(ctx, util.KeyPress("enter"))
 	if !s.Confirm.Active() {
 		t.Fatal("enter didn't ask")
 	}
@@ -86,7 +87,7 @@ func TestRename(t *testing.T) {
 	}
 
 	// alt+f plans the chapter files too, Berserk stays unselected
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f"), Alt: true})
+	s.Update(ctx, util.KeyPress("alt+f"))
 	if !s.opts.Chapters || !strings.Contains(s.Subtitle(), "chapter files on") {
 		t.Fatalf("alt+f: %+v, %q", s.opts, s.Subtitle())
 	}
@@ -97,7 +98,7 @@ func TestRename(t *testing.T) {
 	}
 	// a selects all, the chapter file goes first
 	s.Update(ctx, press("a"))
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter})
+	s.Update(ctx, util.KeyPress("enter"))
 	act = s.Update(ctx, press("y"))().(actionMsg)
 	if _, err := act.do(ctx, func(string) {}); err != nil {
 		t.Fatal(err)
@@ -107,8 +108,8 @@ func TestRename(t *testing.T) {
 	}
 
 	// backspace unselects all: nothing to ask
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyBackspace})
-	s.Update(ctx, tea.KeyMsg{Type: tea.KeyEnter})
+	s.Update(ctx, util.KeyPress("backspace"))
+	s.Update(ctx, util.KeyPress("enter"))
 	if s.Confirm.Active() {
 		t.Error("asked with nothing selected")
 	}

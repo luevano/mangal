@@ -6,11 +6,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/paginator"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/paginator"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
@@ -44,7 +44,8 @@ func newPicker(items []string) *picker {
 		listItems[i] = item(it)
 	}
 
-	l := list.New(listItems, newDelegate(), 80, 20)
+	l := list.New(listItems, newDelegate(true), 80, 20)
+	l.FilterInput.SetStyles(l.Styles.Filter)
 	l.FilterInput.Prompt = icon.Filter.Raw() + " "
 	l.SetShowHelp(false)
 	l.SetShowTitle(false)
@@ -61,9 +62,9 @@ func newPicker(items []string) *picker {
 // delegate draws the cursor while filtering, the default one only does after
 type delegate struct{ styles list.DefaultItemStyles }
 
-func newDelegate() delegate {
+func newDelegate(isDark bool) delegate {
 	// the TUI lists' style (tui/model/list)
-	styles := list.NewDefaultItemStyles()
+	styles := list.NewDefaultItemStyles(isDark)
 	styles.NormalTitle = styles.NormalTitle.Bold(true)
 	styles.SelectedTitle = styles.SelectedTitle.Bold(true).
 		Foreground(color.Accent).
@@ -90,13 +91,17 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, it list.Item) {
 	fmt.Fprint(w, style.Render(title))
 }
 
-func (p *picker) Init() tea.Cmd { return nil }
+func (p *picker) Init() tea.Cmd { return tea.RequestBackgroundColor }
 
 func (p *picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		p.list.SetSize(msg.Width, msg.Height)
-	case tea.KeyMsg:
+	case tea.BackgroundColorMsg:
+		p.setDark(msg.IsDark())
+	case tea.PasteMsg:
+		p.input(msg)
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, keyPick):
 			if p.list.SelectedItem() == nil {
@@ -125,9 +130,16 @@ func (p *picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return p, nil
 }
 
-// input edits the filter and filters right away, not through the list's async command, so
-// a slow filter can't land after a newer one
-func (p *picker) input(msg tea.KeyMsg) {
+// setDark styles the list for the terminal's background.
+func (p *picker) setDark(isDark bool) {
+	p.list.SetDelegate(newDelegate(isDark))
+	p.list.Styles = list.DefaultStyles(isDark)
+	p.list.FilterInput.SetStyles(p.list.Styles.Filter)
+}
+
+// input edits the filter (a key or a paste) and filters right away, not through the list's
+// async command, so a slow filter can't land after a newer one
+func (p *picker) input(msg tea.Msg) {
 	input, _ := p.list.FilterInput.Update(msg)
 	if input.Value() == p.list.FilterInput.Value() {
 		p.list.FilterInput = input
@@ -139,7 +151,11 @@ func (p *picker) input(msg tea.KeyMsg) {
 	p.list.FilterInput.SetCursor(pos)
 }
 
-func (p *picker) View() string { return p.list.View() }
+func (p *picker) View() tea.View {
+	v := tea.NewView(p.list.View())
+	v.AltScreen = true
+	return v
+}
 
 // pick shows the picker, ok is false when cancelled.
 func pick(ctx context.Context, items []string) (index int, ok bool, err error) {
@@ -148,7 +164,7 @@ func pick(ctx context.Context, items []string) (index int, ok bool, err error) {
 	}
 	p := newPicker(items)
 	// stderr: a script's stdout may be piped
-	_, err = tea.NewProgram(p, tea.WithContext(ctx), tea.WithAltScreen(), tea.WithOutput(os.Stderr)).Run()
+	_, err = tea.NewProgram(p, tea.WithContext(ctx), tea.WithOutput(os.Stderr)).Run()
 	if ctx.Err() != nil {
 		return 0, false, ctx.Err()
 	}

@@ -72,25 +72,26 @@ var configInfoCmd = &cobra.Command{
 			return nil
 		}
 
+		w := styledAdaptive(cmd.OutOrStderr())
 		for _, key := range keys {
 			entry := configEntries[key]
 			if configInfoArgs.Short {
-				cmd.Printf("%s:%s\n",
+				fmt.Fprintf(w, "%s:%s\n",
 					style.Normal.Viewport.Render(key),
 					style.Normal.Secondary.Render(fmt.Sprintf("%v", entry.Value)),
 				)
 				continue
 			}
-			cmd.Println(style.Bold.Accent.Render(key))
-			cmd.Printf("  %s %s\n",
+			fmt.Fprintln(w, style.Bold.Accent.Render(key))
+			fmt.Fprintf(w, "  %s %s\n",
 				style.Normal.Viewport.Render("Description:"),
 				style.Normal.Secondary.Render(entry.Description),
 			)
-			cmd.Printf("  %s %s\n",
+			fmt.Fprintf(w, "  %s %s\n",
 				style.Normal.Viewport.Render("Value:"),
 				style.Normal.Secondary.Render(fmt.Sprintf("%v", entry.Value)),
 			)
-			cmd.Printf("  %s %s\n",
+			fmt.Fprintf(w, "  %s %s\n",
 				style.Normal.Viewport.Render("Default:"),
 				style.Normal.Secondary.Render(fmt.Sprintf("%v", entry.Default)),
 			)
