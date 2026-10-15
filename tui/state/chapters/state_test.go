@@ -234,12 +234,14 @@ func (p *fakeProvider) Close() error                 { return nil }
 func TestDownloadQueues(t *testing.T) {
 	m := jobs.New(context.Background())
 	tuijobs.SetManager(m)
+	// the queued download must never start (the fake provider has no pages): cancel every
+	// job before the blocker could end the check
 	t.Cleanup(func() {
+		m.CancelAll()
 		m.Shutdown(time.Second)
 		tuijobs.SetManager(nil)
 	})
 	blocker := make(chan struct{})
-	defer close(blocker)
 	m.Add(jobs.Spec{Kind: jobs.KindCheck, Title: "check", Providers: []string{"fake"}, Run: func(ctx context.Context, p *jobs.Progress) error {
 		select {
 		case <-blocker:
