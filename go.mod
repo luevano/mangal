@@ -13,7 +13,7 @@ require (
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/disgoorg/disgo v0.19.6
-	github.com/dustin/go-humanize v1.0.1
+	github.com/dustin/go-humanize v1.1.0
 	github.com/getkin/kin-openapi v0.150.0
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/itchyny/gojq v0.12.19
