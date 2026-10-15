@@ -146,6 +146,13 @@ func Current() string {
 	return file.Name()
 }
 
+// Enabled: Whether lines of level are logged.
+func Enabled(level Level) bool {
+	mu.Lock()
+	defer mu.Unlock()
+	return level >= options.Level
+}
+
 func Debug(format string, a ...any) { logf(LevelDebug, format, a...) }
 func Info(format string, a ...any)  { logf(LevelInfo, format, a...) }
 func Warn(format string, a ...any)  { logf(LevelWarn, format, a...) }

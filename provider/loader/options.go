@@ -2,25 +2,45 @@ package loader
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
+	"github.com/luevano/libmangal/netutil"
 	"github.com/luevano/luaprovider"
 	sdk "github.com/luevano/luaprovider/lib"
 	luaoptions "github.com/luevano/luaprovider/lib/options"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/util/cache"
+	"github.com/luevano/mangoplus"
 )
 
 // HTTPTimeout is the timeout of every HTTP request mangal and the providers make.
 const HTTPTimeout = time.Minute
 
-// HTTPClient is a new client with HTTPTimeout.
+// HTTPClient is a new client with HTTPTimeout, its requests logged with --debug.
 func HTTPClient() *http.Client {
-	return &http.Client{Timeout: HTTPTimeout}
+	return &http.Client{Timeout: HTTPTimeout, Transport: DebugTransport(nil)}
+}
+
+// DebugTransport is next (nil: http.DefaultTransport) logging every request at debug level
+// (--debug), secrets in the url redacted (MangaPlus' unless MANGOPLUS_UNSAFE_SHOW_SECRET=1),
+// headers never logged. Without --debug it's next as is.
+func DebugTransport(next http.RoundTripper) http.RoundTripper {
+	if !log.Enabled(log.LevelDebug) {
+		return next
+	}
+	return netutil.NewLoggingTransport(next, func(format string, a ...any) {
+		log.Debug("http: %s", fmt.Sprintf(format, a...))
+	}, redactURL)
+}
+
+func redactURL(u *url.URL) string {
+	return mangoplus.RedactURL(netutil.RedactURL(u))
 }
 
 // common are the options every kind of provider takes from the config.

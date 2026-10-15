@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -46,6 +47,8 @@ func mangoOptions() mango.Options {
 	o.Filter = c.Filter
 	o.Headless.UseFlaresolverr = config.Providers.Headless.UseFlaresolverr.Get()
 	o.Headless.FlaresolverrURL = config.Providers.Headless.FlaresolverrURL.Get()
+	// no timeout, each solve has its own
+	o.Headless.FlaresolverrClient = &http.Client{Transport: DebugTransport(nil)}
 	o.Mirrors = config.Providers.Mirrors.Get()
 	o.MangaDex.DataSaver = config.Providers.MangaDex.DataSaver.Get()
 	o.MangaDex.ExcludeGroups = config.Providers.MangaDex.ExcludeGroups.Get()

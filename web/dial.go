@@ -38,6 +38,6 @@ func imageClient() *http.Client {
 	transport.Proxy = nil
 	transport.DialContext = dialer.DialContext
 	c := loader.HTTPClient()
-	c.Transport = transport
+	c.Transport = loader.DebugTransport(transport)
 	return c
 }
