@@ -1,21 +1,15 @@
 package oauth
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/luevano/libmangal/metadata/anilist"
 	"golang.org/x/oauth2"
 )
-
-// Reference docs:
-// https://anilist.gitbook.io/anilist-apiv2-docs/overview/oauth/getting-started
 
 const (
 	// AnilistServerAddr is where the callback server listens. The AniList API client must
@@ -27,16 +21,7 @@ const (
 
 	anilistLoginPath    = "/oauth/al/login"
 	anilistCallbackPath = "/oauth/al/callback"
-
-	// anilistImplicitExpiry is how long AniList's implicit grant tokens last.
-	anilistImplicitExpiry = 365 * 24 * time.Hour
 )
-
-var AnilistEndpoint = oauth2.Endpoint{
-	AuthURL:   anilist.OAuthAuthorizeURL,
-	TokenURL:  anilist.OAuthTokenURL,
-	AuthStyle: oauth2.AuthStyleInParams,
-}
 
 // AnilistLoginOption logs in to AniList with OAuth2.
 //
@@ -72,40 +57,16 @@ func NewAnilistLoginOption(clientID, clientSecret string) (*AnilistLoginOption, 
 }
 
 func (o *AnilistLoginOption) getOAuthConfig() *oauth2.Config {
-	return &oauth2.Config{
-		ClientID:     o.ClientID,
-		ClientSecret: o.ClientSecret,
-		Endpoint:     AnilistEndpoint,
-		RedirectURL:  AnilistServerCallbackURL,
-	}
+	return anilist.OAuthConfig(o.ClientID, o.ClientSecret, AnilistServerCallbackURL)
 }
 
 func (o *AnilistLoginOption) implicit() bool {
 	return o.ClientSecret == ""
 }
 
-// getImplicitGrantURL is the implicit grant url: response_type token and no redirect uri.
-func (o *AnilistLoginOption) getImplicitGrantURL(state string) string {
-	var buf bytes.Buffer
-	c := o.getOAuthConfig()
-	buf.WriteString(c.Endpoint.AuthURL)
-	v := url.Values{
-		"response_type": {"token"},
-		"client_id":     {o.ClientID},
-		"state":         {state},
-	}
-	if strings.Contains(c.Endpoint.AuthURL, "?") {
-		buf.WriteByte('&')
-	} else {
-		buf.WriteByte('?')
-	}
-	buf.WriteString(v.Encode())
-	return buf.String()
-}
-
 func (o *AnilistLoginOption) authURL(state string) string {
 	if o.implicit() {
-		return o.getImplicitGrantURL(state)
+		return anilist.ImplicitGrantURL(o.ClientID, state)
 	}
 	return o.getOAuthConfig().AuthCodeURL(state)
 }
@@ -162,11 +123,7 @@ func (o *AnilistLoginOption) handler(ctx context.Context, state string, done fun
 }
 
 func (o *AnilistLoginOption) exchange(ctx context.Context, code string) (*oauth2.Token, error) {
-	token, err := o.getOAuthConfig().Exchange(ctx, code)
-	if err != nil {
-		return nil, fmt.Errorf("exchange the access code: %w", err)
-	}
-	return token, nil
+	return anilist.ExchangeCodeContext(ctx, o.getOAuthConfig(), code)
 }
 
 func (o *AnilistLoginOption) paste(ctx context.Context, state, input string) (*oauth2.Token, error) {
@@ -175,20 +132,9 @@ func (o *AnilistLoginOption) paste(ctx context.Context, state, input string) (*o
 		return nil, err
 	}
 	if o.implicit() {
-		return implicitToken(p.token, p.expiresIn), nil
+		return anilist.ImplicitToken(p.token, p.expiresIn), nil
 	}
 	return o.exchange(ctx, p.code)
-}
-
-func implicitToken(accessToken string, expiresIn time.Duration) *oauth2.Token {
-	if expiresIn <= 0 {
-		expiresIn = anilistImplicitExpiry
-	}
-	return &oauth2.Token{
-		AccessToken: accessToken,
-		TokenType:   "Bearer",
-		Expiry:      time.Now().Add(expiresIn),
-	}
 }
 
 // implicitGrantHandler handles the login and callback of an implicit grant (ClientSecret
@@ -196,7 +142,7 @@ func implicitToken(accessToken string, expiresIn time.Duration) *oauth2.Token {
 func (o *AnilistLoginOption) implicitGrantHandler(state string, done func(result)) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(anilistLoginPath, func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, o.getImplicitGrantURL(state), http.StatusTemporaryRedirect)
+		http.Redirect(w, r, anilist.ImplicitGrantURL(o.ClientID, state), http.StatusTemporaryRedirect)
 	})
 	handle := callback(state, func(w http.ResponseWriter, r *http.Request) {
 		if e := r.FormValue("error"); e != "" {
@@ -213,7 +159,7 @@ func (o *AnilistLoginOption) implicitGrantHandler(state string, done func(result
 			expiresIn = time.Duration(secs) * time.Second
 		}
 		_, _ = w.Write([]byte("successfully got access token (implicit grant)" + closeMsg))
-		done(result{token: implicitToken(accessToken, expiresIn)})
+		done(result{token: anilist.ImplicitToken(accessToken, expiresIn)})
 	})
 	mux.HandleFunc(anilistCallbackPath, func(w http.ResponseWriter, r *http.Request) {
 		// the token comes in the url fragment, which only the browser sees: a page resends

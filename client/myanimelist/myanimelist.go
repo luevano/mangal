@@ -14,7 +14,6 @@ import (
 
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/metadata/myanimelist"
-	"github.com/luevano/mangal/v5/auth/oauth"
 	"github.com/luevano/mangal/v5/client/internal/logins"
 	"github.com/luevano/mangal/v5/config"
 	mlog "github.com/luevano/mangal/v5/log"
@@ -219,7 +218,7 @@ func checkLogin(ctx context.Context) error {
 
 // rejected is a token or refresh token MyAnimeList rejected.
 func rejected(err error) bool {
-	return errors.Is(err, metadata.ErrUnauthorized) || errors.Is(err, oauth.ErrRefreshRejected)
+	return errors.Is(err, metadata.ErrUnauthorized) || errors.Is(err, myanimelist.ErrRefreshRejected)
 }
 
 // logInSaved logs in with the saved token of the user, refreshed first when it expires
@@ -259,8 +258,8 @@ func refresh(ctx context.Context, user string, token *oauth2.Token) error {
 	if err != nil {
 		return fmt.Errorf("get the myanimelist client: %w", err)
 	}
-	fresh, err := oauth.RefreshMyAnimeList(oauthContext(ctx), id, secret, token.RefreshToken)
-	if errors.Is(err, oauth.ErrRefreshRejected) {
+	fresh, err := myanimelist.RefreshTokenContext(oauthContext(ctx), id, secret, token.RefreshToken)
+	if errors.Is(err, myanimelist.ErrRefreshRejected) {
 		if err := cache.ExpireMyAnimeListAuthData(user); err != nil {
 			return err
 		}

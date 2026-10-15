@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"sync"
 	"testing"
+
+	"github.com/luevano/libmangal/metadata/myanimelist"
 )
 
 // malTokens is a fake MyAnimeList token endpoint that wants the code and its PKCE verifier.
@@ -40,10 +42,10 @@ func newMALTokens(t *testing.T) *malTokens {
 			_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
 		}
 	}))
-	endpoint := MyAnimeListEndpoint
-	MyAnimeListEndpoint.TokenURL = m.URL
+	endpoint := myanimelist.OAuthEndpoint
+	myanimelist.OAuthEndpoint.TokenURL = m.URL
 	t.Cleanup(func() {
-		MyAnimeListEndpoint = endpoint
+		myanimelist.OAuthEndpoint = endpoint
 		m.Close()
 	})
 	return m
@@ -171,19 +173,5 @@ func TestMyAnimeListManual(t *testing.T) {
 	}
 	if len(bad) != 2 || !errors.Is(bad[0], ErrBadPaste) || !errors.Is(bad[1], ErrInvalidState) {
 		t.Errorf("bad pastes %v", bad)
-	}
-}
-
-func TestRefreshMyAnimeList(t *testing.T) {
-	newMALTokens(t)
-	token, err := RefreshMyAnimeList(context.Background(), "id", "", "good-refresh")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if token.AccessToken != "refreshed" || token.RefreshToken != "new-refresh" {
-		t.Errorf("token %+v", token)
-	}
-	if _, err := RefreshMyAnimeList(context.Background(), "id", "", "revoked"); !errors.Is(err, ErrRefreshRejected) {
-		t.Errorf("got %v, want ErrRefreshRejected", err)
 	}
 }

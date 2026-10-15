@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/luevano/libmangal/metadata/anilist"
 )
 
 // testLogin is a login option on a free local port whose "browser" runs browse with the
@@ -106,9 +108,9 @@ func TestCodeGrant(t *testing.T) {
 		_, _ = w.Write([]byte(`{"access_token":"exchanged","token_type":"Bearer","expires_in":3600}`))
 	}))
 	defer tokens.Close()
-	endpoint := AnilistEndpoint
-	AnilistEndpoint.TokenURL = tokens.URL
-	defer func() { AnilistEndpoint = endpoint }()
+	endpoint := anilist.OAuthEndpoint
+	anilist.OAuthEndpoint.TokenURL = tokens.URL
+	defer func() { anilist.OAuthEndpoint = endpoint }()
 
 	o, _ := testLogin(t, "secret", func(base string) {
 		state := loginState(t, base)

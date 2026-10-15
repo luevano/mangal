@@ -233,7 +233,7 @@ func TestEnsureLoginExpiresRejectedRefresh(t *testing.T) {
 	fake.reset(nil, nil)
 	save(t, oauth2.Token{AccessToken: "old", RefreshToken: "r0", Expiry: time.Now().Add(-time.Hour)})
 
-	if err := EnsureLogin(context.Background()); !errors.Is(err, oauth.ErrRefreshRejected) {
+	if err := EnsureLogin(context.Background()); !errors.Is(err, myanimelist.ErrRefreshRejected) {
 		t.Fatalf("got %v", err)
 	}
 	login, found, err := SavedLogin()

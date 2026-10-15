@@ -2,18 +2,11 @@ package oauth
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/luevano/libmangal/metadata/myanimelist"
 	"golang.org/x/oauth2"
 )
-
-// Reference docs:
-// https://myanimelist.net/apiconfig/references/authorization
-// https://myanimelist.net/blog.php?eid=835707
 
 const (
 	// MyAnimeListServerCallbackURL must be the App Redirect URL of the MyAnimeList API client.
@@ -24,12 +17,6 @@ const (
 	myAnimeListLoginPath    = "/oauth/mal/login"
 	myAnimeListCallbackPath = "/oauth/mal/callback"
 )
-
-var MyAnimeListEndpoint = oauth2.Endpoint{
-	AuthURL:   myanimelist.OAuthAuthorizeURL,
-	TokenURL:  myanimelist.OAuthTokenURL,
-	AuthStyle: oauth2.AuthStyleInParams,
-}
 
 // MyAnimeListLoginOption logs in to MyAnimeList with an OAuth2 code grant with PKCE.
 // MyAnimeList only supports the plain code challenge (the challenge is the verifier).
@@ -56,17 +43,8 @@ func NewMyAnimeListLoginOption(clientID, clientSecret string) (*MyAnimeListLogin
 	return &MyAnimeListLoginOption{ClientID: clientID, ClientSecret: clientSecret}, nil
 }
 
-func myAnimeListConfig(clientID, clientSecret string) *oauth2.Config {
-	return &oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		Endpoint:     MyAnimeListEndpoint,
-		RedirectURL:  MyAnimeListServerCallbackURL,
-	}
-}
-
 func (o *MyAnimeListLoginOption) getOAuthConfig() *oauth2.Config {
-	return myAnimeListConfig(o.ClientID, o.ClientSecret)
+	return myanimelist.OAuthConfig(o.ClientID, o.ClientSecret, MyAnimeListServerCallbackURL)
 }
 
 // String the name of the login option, for logging purposes.
@@ -75,10 +53,7 @@ func (o *MyAnimeListLoginOption) String() string {
 }
 
 func (o *MyAnimeListLoginOption) authURL(state string) string {
-	return o.getOAuthConfig().AuthCodeURL(state,
-		oauth2.SetAuthURLParam("code_challenge", o.verifier),
-		oauth2.SetAuthURLParam("code_challenge_method", "plain"),
-	)
+	return myanimelist.AuthCodeURL(o.getOAuthConfig(), state, o.verifier)
 }
 
 // Authorize obtains the oauth2 Token: it starts an http server on ServerAddr to get
@@ -117,11 +92,7 @@ func (o *MyAnimeListLoginOption) authorize(ctx context.Context, manual *Manual) 
 }
 
 func (o *MyAnimeListLoginOption) exchange(ctx context.Context, code string) (*oauth2.Token, error) {
-	token, err := o.getOAuthConfig().Exchange(ctx, code, oauth2.VerifierOption(o.verifier))
-	if err != nil {
-		return nil, fmt.Errorf("exchange the access code: %w", err)
-	}
-	return token, nil
+	return myanimelist.ExchangeCodeContext(ctx, o.getOAuthConfig(), code, o.verifier)
 }
 
 func (o *MyAnimeListLoginOption) paste(ctx context.Context, state, input string) (*oauth2.Token, error) {
@@ -135,25 +106,4 @@ func (o *MyAnimeListLoginOption) paste(ctx context.Context, state, input string)
 // Token returns the authorization token (useful for caching).
 func (o *MyAnimeListLoginOption) Token() *oauth2.Token {
 	return o.token
-}
-
-// ErrRefreshRejected is a refresh token MyAnimeList rejected: the login has to be done again.
-var ErrRefreshRejected = errors.New("oauth: refresh token rejected")
-
-// RefreshMyAnimeList gets a new token with the refresh token. The http client used is
-// ctx's oauth2.HTTPClient, if any. A rejected refresh token matches ErrRefreshRejected.
-func RefreshMyAnimeList(ctx context.Context, clientID, clientSecret, refreshToken string) (*oauth2.Token, error) {
-	if clientID == "" {
-		return nil, ErrEmptyClientID
-	}
-	expired := &oauth2.Token{RefreshToken: refreshToken, Expiry: time.Now().Add(-time.Hour)}
-	token, err := myAnimeListConfig(clientID, clientSecret).TokenSource(ctx, expired).Token()
-	if err != nil {
-		var re *oauth2.RetrieveError
-		if errors.As(err, &re) && re.Response != nil && (re.Response.StatusCode == http.StatusBadRequest || re.Response.StatusCode == http.StatusUnauthorized) {
-			return nil, fmt.Errorf("%w: %w", ErrRefreshRejected, err)
-		}
-		return nil, fmt.Errorf("refresh the token: %w", err)
-	}
-	return token, nil
 }
