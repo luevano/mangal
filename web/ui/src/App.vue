@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
 import AppCrumbs from '@/components/AppCrumbs.vue'
@@ -12,6 +12,7 @@ import { useEvents } from '@/stores/events'
 import { useJobs } from '@/stores/jobs'
 import { useWatches } from '@/stores/watches'
 import { useChanges } from '@/stores/changes'
+import { usePlan } from '@/stores/plan'
 
 const route = useRoute()
 const st = useStatus()
@@ -19,6 +20,15 @@ const events = useEvents()
 const jobs = useJobs()
 const watches = useWatches()
 let timer: ReturnType<typeof setInterval> | undefined
+
+// a finished plan dialog doesn't follow to another page
+const plan = usePlan()
+watch(
+  () => route.fullPath,
+  () => {
+    if (plan.step === 'done' || plan.step === 'error') plan.close()
+  }
+)
 
 onMounted(async () => {
   jobs.listen()

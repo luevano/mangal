@@ -16,6 +16,7 @@ require (
 	github.com/dustin/go-humanize v1.1.0
 	github.com/getkin/kin-openapi v0.150.0
 	github.com/go-git/go-git/v5 v5.19.3
+	github.com/go-rod/rod v0.116.2
 	github.com/itchyny/gojq v0.12.19
 	github.com/ivanpirog/coloredcobra v1.0.1
 	github.com/json-iterator/go v1.1.12
@@ -82,7 +83,6 @@ require (
 	github.com/go-git/go-billy/v5 v5.9.2 // indirect
 	github.com/go-openapi/jsonpointer v0.23.1 // indirect
 	github.com/go-openapi/swag/jsonname v0.26.0 // indirect
-	github.com/go-rod/rod v0.116.2 // indirect
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
