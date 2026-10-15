@@ -296,6 +296,9 @@ func (c *changes) apply(ctx context.Context, ch Change, prep *prepared, opts App
 		}
 	}
 	if prep == nil {
+		if f, ok := ch.(interface{ forApply() Change }); ok {
+			ch = f.forApply()
+		}
 		var err error
 		if prep, err = c.prepare(ctx, ch); err != nil {
 			return OpResult{}, err

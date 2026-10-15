@@ -4,15 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/luevano/mangal/v5/client"
-	"github.com/luevano/mangal/v5/config"
-	"github.com/luevano/mangal/v5/library"
-	"github.com/luevano/mangal/v5/path"
-	"github.com/luevano/mangal/v5/provider/manager"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
-	"github.com/luevano/mangal/v5/util/afs"
-	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/sanitize"
 	"github.com/spf13/cobra"
 )
@@ -41,47 +35,37 @@ skips them until a check finds the manga ("mangal watch check <id>") or they're 
 Only lists what would change unless --apply is set.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		loaders, err := manager.Loaders()
-		if err != nil {
-			return err
-		}
-		st, err := cache.Storage()
-		if err != nil {
-			return err
-		}
-		root, err := path.ExistingDownloads()
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
 		status := newStatus(cmd)
 		defer status.Done()
-		migration, err := library.FindMigration(afs.Afero, st, root, config.Download.Provider.CreateDir.Get(), loaders, status.Progress)
+		ctx := changeCtx(cmd, status)
+		plan, err := c.Changes.Plan(ctx, core.MigrateReq{})
 		status.Clear()
 		if err != nil {
 			return err
 		}
-		if migration.Empty() {
+		if plan.Nothing {
 			cmd.Println("nothing to migrate")
 			return nil
 		}
-		for _, line := range migration.Lines() {
+		for _, line := range plan.Lines {
 			cmd.Println(sanitize.Text(line))
 		}
 		if !migrateArgs.Apply {
 			cmd.Println("run with --apply to migrate")
 			return nil
 		}
-		migration.OnProgress = status.Progress
-		snapshot, err := client.Operation("migrate", fmt.Sprintf("migrate %d old provider ids, %d markers", len(migration.OldIDs), len(migration.Markers)), func(j library.Journal) error {
-			return migration.ApplyTo(afs.Afero, j, st, client.LibraryModes())
-		})
+		res, err := c.Changes.ApplyPlan(ctx, plan, applyOpts(status))
 		status.Done()
-		undoHint(cmd, snapshot, err)
+		undoHint(cmd, res.Snapshot, err)
 		if err != nil {
 			return err
 		}
 		cmd.Println("migrated")
-		return relinkWarning(cmd, st.Watches())
+		return relinkWarning(cmd, c.Env().Storage.Watches())
 	},
 }
 

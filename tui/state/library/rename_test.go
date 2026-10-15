@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -18,38 +19,29 @@ import (
 // was unselected
 func TestRename(t *testing.T) {
 	ctx := context.Background()
-	var asked []client.RenameOptions
-	var applied []library.Rename
-	oldPlan, oldApply := planLibraryRename, applyLibraryRename
-	t.Cleanup(func() { planLibraryRename, applyLibraryRename = oldPlan, oldApply })
-	planLibraryRename = func(_ context.Context, _ storage.Library, opts client.RenameOptions) (client.RenamePlan, error) {
-		asked = append(asked, opts)
+	var applied []core.RenameReq
+	old := applyChange
+	t.Cleanup(func() { applyChange = old })
+	applyChange = func(_ context.Context, ch core.Change, _ func(string)) (core.OpResult, error) {
+		req := ch.(core.RenameReq)
+		applied = append(applied, req)
+		return core.OpResult{Detail: client.RenameResult{Folders: len(req.Only)}}, nil
+	}
+	planned := func(chapters bool) renamePlannedMsg {
 		plan := client.RenamePlan{Root: "/dl", Unmarked: 2, Renames: []library.Rename{
 			{From: "/dl/Berserk", To: "/dl/Berserk (1989)"},
 			{From: "/dl/Vagabond", To: "/dl/Vagabond (1998)"},
 			{From: "/dl/Kagurabachi", To: "/dl/Kagurabachi", Skip: "no metadata", NoMetadata: true},
 		}}
-		if opts.Chapters {
+		if chapters {
 			plan.Renames = append([]library.Rename{{From: "/dl/Berserk/1.cbz", To: "/dl/Berserk/[1] The Black Swordsman.cbz", Chapter: true}}, plan.Renames...)
 		}
-		return plan, nil
-	}
-	applyLibraryRename = func(_ context.Context, _ storage.Library, renames []library.Rename, _ func(library.Progress), _ func(int, error)) (client.RenameResult, error) {
-		applied = renames
-		return client.RenameResult{Folders: len(renames)}, nil
+		return renamePlannedMsg{plan: plan}
 	}
 
 	s := newRenameState(storage.Library{}, nil)
 	s.Resize(base.Size{Width: 120, Height: 40})
-	planned := func(paths []string) renamePlannedMsg {
-		t.Helper()
-		msg, err := planRenames(ctx, storage.Library{}, paths, s.opts)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return msg
-	}
-	s.Update(ctx, planned(nil))
+	s.Update(ctx, planned(false))
 	items := s.items()
 	if len(items) != 3 || !items[0].selected || !items[1].selected || items[2].selected {
 		t.Fatalf("items %+v", items)
@@ -89,7 +81,7 @@ func TestRename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(applied) != 1 || applied[0].From != "/dl/Vagabond" || !strings.Contains(reload.notify, "renamed 1 folder") || !strings.Contains(reload.notify, "U undoes it") {
+	if len(applied) != 1 || !slices.Equal(applied[0].Only, []string{"/dl/Vagabond"}) || !strings.Contains(reload.notify, "renamed 1 folder") || !strings.Contains(reload.notify, "U undoes it") {
 		t.Errorf("applied %+v, notify %q", applied, reload.notify)
 	}
 
@@ -98,7 +90,7 @@ func TestRename(t *testing.T) {
 	if !s.opts.Chapters || !strings.Contains(s.Subtitle(), "chapter files on") {
 		t.Fatalf("alt+f: %+v, %q", s.opts, s.Subtitle())
 	}
-	s.Update(ctx, planned(nil))
+	s.Update(ctx, planned(true))
 	items = s.items()
 	if len(items) != 4 || !items[0].r.Chapter || !items[0].selected || items[1].selected || !items[2].selected {
 		t.Fatalf("with the chapters %+v", items)
@@ -110,11 +102,8 @@ func TestRename(t *testing.T) {
 	if _, err := act.do(ctx, func(string) {}); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(applied); got != 3 || !applied[0].Chapter {
-		t.Errorf("applied %+v", applied)
-	}
-	if last := asked[len(asked)-1]; !last.Chapters || last.Fallback || last.Refresh {
-		t.Errorf("asked %+v", last)
+	if last := applied[len(applied)-1]; len(last.Only) != 3 || last.Only[0] != "/dl/Berserk/1.cbz" || !last.Chapters || last.Fallback || last.Refresh {
+		t.Errorf("applied %+v", last)
 	}
 
 	// backspace unselects all: nothing to ask
@@ -125,24 +114,8 @@ func TestRename(t *testing.T) {
 	}
 }
 
-// a health finding's paths keep only their renames
+// a health finding's paths are its own window
 func TestRenamePaths(t *testing.T) {
-	oldPlan := planLibraryRename
-	t.Cleanup(func() { planLibraryRename = oldPlan })
-	planLibraryRename = func(context.Context, storage.Library, client.RenameOptions) (client.RenamePlan, error) {
-		return client.RenamePlan{Root: "/dl", Renames: []library.Rename{
-			{From: "/dl/MangaDex/Berserk", To: "/dl/Weeb Central/Berserk", ProviderDir: "/dl/MangaDex"},
-			{From: "/dl/MangaDex", RemoveEmpty: true, ProviderDir: "/dl/MangaDex"},
-			{From: "/dl/Vagabond", To: "/dl/Vagabond (1998)"},
-		}}, nil
-	}
-	msg, err := planRenames(context.Background(), storage.Library{}, []string{"/dl/MangaDex"}, client.RenameOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := msg.plan.Renames; len(got) != 2 || slices.ContainsFunc(got, func(r library.Rename) bool { return r.From == "/dl/Vagabond" }) {
-		t.Errorf("renames %+v", got)
-	}
 	if s := newRenameState(storage.Library{}, []string{"/dl/MangaDex"}); s.Key() == newRenameState(storage.Library{}, nil).Key() {
 		t.Error("a finding's renames are the whole library's window")
 	}

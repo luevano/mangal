@@ -1,12 +1,10 @@
 package cmd
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -20,9 +18,7 @@ import (
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
-	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/template"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -76,19 +72,20 @@ the year and the id tags) and is listed as a warning; --fallback renames it anyw
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
 		defer st.Done()
-		index, err := cache.Library()
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
-		plan, err := client.PlanLibraryRename(st.Context(cmd.Context()), index, client.RenameOptions{
-			Refresh:    libraryRenameArgs.Refresh,
-			Chapters:   libraryRenameArgs.Chapters,
-			Fallback:   libraryRenameArgs.Fallback,
-			OnProgress: st.Progress,
+		ctx := changeCtx(cmd, st)
+		p, err := c.Changes.Plan(ctx, core.RenameReq{
+			Refresh:  libraryRenameArgs.Refresh,
+			Chapters: libraryRenameArgs.Chapters,
+			Fallback: libraryRenameArgs.Fallback,
 		})
 		if err != nil {
 			return err
 		}
+		plan := p.Detail.(client.RenamePlan)
 		rel, renames := plan.Rel, plan.Renames
 		st.Clear()
 		if len(plan.Disagree) != 0 {
@@ -115,29 +112,17 @@ the year and the id tags) and is listed as a warning; --fallback renames it anyw
 		}
 
 		if !libraryRenameArgs.Apply {
-			for _, r := range renames {
-				if r.NoMetadata && r.Skip != "" {
-					// listed in the warning above
-					continue
-				}
-				cmd.Println(plan.Line(r))
-			}
+			printLines(cmd, p.Lines)
 			cmd.Println("run with --apply to rename")
 			return nil
 		}
-		res, err := client.ApplyLibraryRename(st.Context(cmd.Context()), index, renames, st.Progress, func(i int, err error) {
-			r := renames[i]
-			switch {
-			case errors.Is(err, library.ErrNotEmpty):
-				st.Print(func() { cmd.Printf("kept %s: not empty\n", rel(r.From)) })
-			case err != nil:
-				st.Print(func() { cmd.PrintErrf("skipped %s: %s\n", rel(r.From), err) })
-			case r.RemoveEmpty:
-				st.Print(func() { cmd.Printf("removed %s\n", rel(r.From)) })
-			default:
-				st.Print(func() { cmd.Println(plan.Line(r)) })
-			}
-		})
+		if p.Nothing {
+			printLines(cmd, p.Lines)
+			return nil
+		}
+		opts := applyOpts(st)
+		opts.OnLine = func(l core.Line) { st.Print(func() { printResultLines(cmd, []core.Line{l}) }) }
+		res, err := c.Changes.ApplyPlan(ctx, p, opts)
 		st.Done()
 		undoHint(cmd, res.Snapshot, err)
 		return err
@@ -215,14 +200,6 @@ func init() {
 	libraryCmd.AddCommand(libraryTrashCmd)
 	libraryTrashCmd.AddCommand(libraryTrashEmptyCmd)
 	libraryTrashEmptyCmd.Flags().BoolVarP(&libraryTrashEmptyArgs.Yes, "yes", "y", false, "Empty it without asking")
-}
-
-// libraryFiles is client.LibraryFiles, an error when download.path doesn't exist.
-func libraryFiles() (library.Files, error) {
-	if _, err := path.ExistingDownloads(); err != nil {
-		return library.Files{}, err
-	}
-	return client.LibraryFiles()
 }
 
 var libraryLsArgs = struct {
@@ -384,7 +361,7 @@ existing .libmangal.json is never replaced.`,
 			return err
 		}
 		if libraryScanArgs.Mark {
-			if err := markFolders(cmd, st, lib, root, libraryScanArgs.Apply); err != nil {
+			if err := markFolders(cmd, st, libraryScanArgs.Apply); err != nil {
 				return err
 			}
 		}
@@ -428,42 +405,34 @@ func printDuplicates(cmd *cobra.Command, lib storage.Library, root string) error
 
 // markFolders writes (apply) or lists the missing .libmangal.json of the folders, from
 // what's known.
-func markFolders(cmd *cobra.Command, st *status, lib storage.Library, root string, apply bool) error {
-	loaders, err := manager.Loaders()
+func markFolders(cmd *cobra.Command, st *status, apply bool) error {
+	c, err := newCore()
 	if err != nil {
 		return err
 	}
-	files := library.Files{FS: afs.Afero, Library: lib, Root: root, Modes: client.LibraryModes(), OnProgress: st.Progress}
-	verb, count := "would mark", "to mark"
+	ctx := changeCtx(cmd, st)
+	count := "to mark"
 	if apply {
-		verb, count = "marked", "marked"
+		count = "marked"
 	}
-	var res library.MarkResult
-	mark := func(j library.Journal, dryRun, tell bool) error {
-		files.Journal = j
-		res, err = files.MarkContext(cmd.Context(), library.MarkOptions{
-			Loaders: loaders, ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider,
-			DryRun: dryRun,
-			OnMarked: func(m library.Marked) {
-				if !tell {
-					return
-				}
-				as := cmp.Or(m.Info.Provider, "no provider")
-				if m.Info.Manga.ID != "" {
-					as += " " + m.Info.Manga.ID
-				}
-				st.Print(func() { cmd.Printf("%s %s as %s (%s)\n", verb, m.Manga.Path(), as, m.Evidence) })
-			},
-		})
+	plan, err := c.Changes.Plan(ctx, core.MarkReq{})
+	if err != nil {
 		return err
 	}
-	// a dry run first: no snapshot nor journal when there's nothing to mark
-	err = mark(nil, true, !apply)
+	res := plan.Detail.(core.MarkDetail).Result
+	if !apply {
+		st.Print(func() { printLines(cmd, plan.Lines) })
+	}
 	snapshot := ""
-	if apply && err == nil && len(res.Marked) != 0 {
-		snapshot, err = client.Operation("mark", fmt.Sprintf("mark %d folders", len(res.Marked)), func(j library.Journal) error {
-			return mark(j, false, true)
-		})
+	if apply && !plan.Nothing {
+		opts := applyOpts(st)
+		opts.OnLine = func(l core.Line) { st.Print(func() { cmd.Println(l.Text) }) }
+		var done core.OpResult
+		done, err = c.Changes.ApplyPlan(ctx, plan, opts)
+		snapshot = done.Snapshot
+		if r, ok := done.Detail.(library.MarkResult); ok {
+			res = r
+		}
 	}
 	st.Clear()
 	undoHint(cmd, snapshot, err)
@@ -509,70 +478,44 @@ other sources; one that agrees is left. Only lists what it would write unless --
   mangal library mark 12 15 --apply`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		files, err := libraryFiles()
-		if err != nil {
-			return err
-		}
-		opts, err := client.LibraryMarkOptions()
-		if err != nil {
-			return err
-		}
-		var mangas []storage.Manga
+		var ids []int64
 		for _, arg := range args {
-			id, err := strconv.ParseInt(arg, 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid manga id %q", arg)
-			}
-			m, ok, err := files.Library.MangaByID(id)
+			id, err := parseMangaID(arg)
 			if err != nil {
 				return err
 			}
-			if !ok {
-				return fmt.Errorf("no manga %d in the library", id)
-			}
-			mangas = append(mangas, m)
+			ids = append(ids, id)
 		}
-		verb := "would mark"
-		mark := func(dryRun bool) (int, error) {
-			n := 0
-			opts.DryRun = dryRun
-			for _, m := range mangas {
-				marked, done, err := files.MarkManga(m, opts)
-				if err != nil {
-					return n, err
-				}
-				if !done {
-					if dryRun {
-						cmd.Printf("%d %s: nothing to do (its %s agrees, or no folder, or nothing to go by)\n", m.ID, m.Title, libmangal.FilenameMangaDirInfo)
-					}
-					continue
-				}
-				n++
-				as := cmp.Or(marked.Info.Provider, "no provider")
-				if marked.Info.Manga.ID != "" {
-					as += " " + marked.Info.Manga.ID
-				}
-				if dryRun == !libraryMarkArgs.Apply {
-					cmd.Printf("%s %s as %s (%s)\n", verb, m.Path(), as, marked.Evidence)
-				}
-			}
-			return n, nil
-		}
-		n, err := mark(true)
-		if err != nil || n == 0 {
+		c, err := newCore()
+		if err != nil {
 			return err
+		}
+		st := newStatus(cmd)
+		defer st.Done()
+		ctx := changeCtx(cmd, st)
+		plan, err := c.Changes.Plan(ctx, core.MarkReq{Mangas: ids})
+		st.Clear()
+		if err != nil {
+			return err
+		}
+		for _, line := range plan.Lines {
+			if libraryMarkArgs.Apply && strings.HasPrefix(line, "would mark ") {
+				continue
+			}
+			cmd.Println(line)
+		}
+		if plan.Nothing {
+			return nil
 		}
 		if !libraryMarkArgs.Apply {
 			cmd.Println("run with --apply to write them")
 			return nil
 		}
-		verb = "marked"
-		snapshot, err := client.Operation("mark", fmt.Sprintf("mark %d folders", n), func(j library.Journal) error {
-			files.Journal = j
-			_, err := mark(false)
-			return err
-		})
-		undoHint(cmd, snapshot, err)
+		opts := applyOpts(st)
+		opts.OnLine = func(l core.Line) { st.Print(func() { cmd.Println(l.Text) }) }
+		res, err := c.Changes.ApplyPlan(ctx, plan, opts)
+		st.Done()
+		undoHint(cmd, res.Snapshot, err)
 		return err
 	},
 }

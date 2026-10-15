@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/tui/base"
 )
@@ -20,7 +21,7 @@ func TestPlanScrolls(t *testing.T) {
 		markers = append(markers, library.OldMarker{Dir: fmt.Sprintf("manga %02d", i), Old: "old", New: "new"})
 	}
 	ctx := context.Background()
-	s.Update(ctx, plannedMsg{migration: library.Migration{Markers: markers}})
+	s.Update(ctx, plannedMsg{plan: core.Plan{Lines: library.Migration{Markers: markers}.Lines()}})
 	if v := s.View(); !strings.Contains(v, "manga 00") || strings.Contains(v, "manga 39") {
 		t.Fatalf("view:\n%s", v)
 	}

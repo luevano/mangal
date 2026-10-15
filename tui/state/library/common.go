@@ -34,12 +34,15 @@ func action(label string, do func() (string, error)) tea.Cmd {
 	}
 }
 
+// applyChange applies a change through the core. Swapped in tests.
+var applyChange = base.ApplyChange
+
 // change is a confirmed change, planned again and applied by the core (the screen's
 // question said what it does), notify the notification.
 func change(label string, ch core.Change, notify string) tea.Cmd {
 	return func() tea.Msg {
 		return actionMsg{label: label, do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
-			if _, err := base.ApplyChange(ctx, ch, status); err != nil {
+			if _, err := applyChange(ctx, ch, status); err != nil {
 				return reloadMsg{}, err
 			}
 			return reloadMsg{notify: undoNotice(notify)}, nil

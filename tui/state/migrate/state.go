@@ -10,30 +10,25 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/v5/client"
-	"github.com/luevano/mangal/v5/config"
-	"github.com/luevano/mangal/v5/library"
-	"github.com/luevano/mangal/v5/path"
-	"github.com/luevano/mangal/v5/provider/manager"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/viewport"
 	"github.com/luevano/mangal/v5/tui/util"
-	"github.com/luevano/mangal/v5/util/afs"
-	"github.com/luevano/mangal/v5/util/cache"
 )
 
 var _ base.State = (*state)(nil)
 
 type state struct {
-	migration *library.Migration
+	// migration is the plan, nil until it's made
+	migration *core.Plan
 	// plan shows the migration, it can be long
 	plan   *viewport.Model
 	keyMap keyMap
 }
 
 type plannedMsg struct {
-	migration library.Migration
+	plan core.Plan
 }
 
 // migratedMsg is a migration done, relink how many watches need a re-link then.
@@ -61,37 +56,23 @@ func (s *state) Subtitle() string {
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	providerDirs := config.Download.Provider.CreateDir.Get()
-	return base.LoadWithStatus(ctx, "Looking for old provider ids", func(_ context.Context, status func(string)) (plannedMsg, error) {
-		root, err := path.ExistingDownloads()
-		if err != nil {
-			return plannedMsg{}, err
-		}
-		loaders, err := manager.Loaders()
-		if err != nil {
-			return plannedMsg{}, err
-		}
-		st, err := cache.Storage()
-		if err != nil {
-			return plannedMsg{}, err
-		}
-		migration, err := library.FindMigration(afs.Afero, st, root, providerDirs, loaders, func(p library.Progress) { status(p.String()) })
-		if err != nil {
-			return plannedMsg{}, err
-		}
-		return plannedMsg{migration: migration}, nil
-	}, func(msg plannedMsg) tea.Msg { return msg })
+	return base.PlanChange(ctx, "Looking for old provider ids", core.MigrateReq{}, func(p core.Plan) tea.Msg { return plannedMsg{plan: p} })
+}
+
+// empty is true for a plan with nothing to migrate.
+func empty(p *core.Plan) bool {
+	return p == nil || p.Nothing || len(p.Lines) == 0
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case plannedMsg:
-		s.migration = &msg.migration
-		s.keyMap.apply.SetEnabled(!msg.migration.Empty())
-		if msg.migration.Empty() {
+		s.migration = &msg.plan
+		s.keyMap.apply.SetEnabled(!empty(s.migration))
+		if empty(s.migration) {
 			s.plan.SetContent(style.Normal.Secondary.Render("Nothing to migrate."))
 		} else {
-			s.plan.SetContent(strings.Join(msg.migration.Lines(), "\n"))
+			s.plan.SetContent(strings.Join(msg.plan.Lines, "\n"))
 		}
 	case migratedMsg:
 		if msg.relink > 0 {
@@ -104,24 +85,19 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if !key.Matches(msg, s.keyMap.apply) {
 			return s.plan.Update(msg)
 		}
-		if s.migration == nil || s.migration.Empty() || base.Busy(ctx) {
+		if empty(s.migration) || base.Busy(ctx) {
 			return nil
 		}
-		migration := *s.migration
-		modes := client.LibraryModes()
-		return base.LoadWithStatus(ctx, "Migrating", func(_ context.Context, status func(string)) (migratedMsg, error) {
-			migration.OnProgress = func(p library.Progress) { status(p.String()) }
-			st, err := cache.Storage()
+		plan := *s.migration
+		return base.LoadWithStatus(ctx, "Migrating", func(ctx context.Context, status func(string)) (migratedMsg, error) {
+			if _, err := base.ApplyPlan(ctx, plan, status); err != nil {
+				return migratedMsg{}, err
+			}
+			c, err := base.Core()
 			if err != nil {
 				return migratedMsg{}, err
 			}
-			summary := fmt.Sprintf("migrate %d old provider ids, %d markers", len(migration.OldIDs), len(migration.Markers))
-			if _, err := client.Operation("migrate", summary, func(j library.Journal) error {
-				return migration.ApplyTo(afs.Afero, j, st, modes)
-			}); err != nil {
-				return migratedMsg{}, err
-			}
-			watches, err := st.Watches().List()
+			watches, err := c.Env().Storage.Watches().List()
 			msg := migratedMsg{}
 			for _, w := range watches {
 				if w.NeedsRelink {

@@ -2,10 +2,8 @@ package library
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -15,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -24,13 +23,6 @@ import (
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
-)
-
-// planLibraryRename and applyLibraryRename are library rename's (cmd/library.go). Swapped
-// in tests.
-var (
-	planLibraryRename  = client.PlanLibraryRename
-	applyLibraryRename = client.ApplyLibraryRename
 )
 
 var _ base.State = (*renameState)(nil)
@@ -80,7 +72,7 @@ type renameState struct {
 	// paths keep only the renames of these folders and provider directories (a health
 	// finding's), nil keeps every one
 	paths  []string
-	opts   client.RenameOptions
+	opts   core.RenameReq
 	plan   client.RenamePlan
 	loaded bool
 	// unselected are the renames (by From) the user unselected: they stay so on a new plan
@@ -183,30 +175,23 @@ func (s *renameState) Init(ctx context.Context) tea.Cmd {
 
 // replan plans again, with fresh AniList metadata with refresh.
 func (s *renameState) replan(ctx context.Context, refresh bool) tea.Cmd {
-	lib, paths, opts := s.lib, s.paths, s.opts
-	opts.Refresh = refresh
+	req := s.opts
+	req.Refresh, req.Paths = refresh, s.paths
 	label := "Planning the renames"
 	if refresh {
 		label = "Planning the renames (fresh metadata)"
 	}
 	return base.LoadWithStatus(ctx, label, func(ctx context.Context, status func(string)) (renamePlannedMsg, error) {
-		opts.OnProgress = func(p library.Progress) { status(p.String()) }
-		return planRenames(ctx, lib, paths, opts)
+		changes, err := base.Changes()
+		if err != nil {
+			return renamePlannedMsg{}, err
+		}
+		p, err := changes.Plan(base.WithStatus(ctx, status), req)
+		if err != nil {
+			return renamePlannedMsg{}, err
+		}
+		return renamePlannedMsg{plan: p.Detail.(client.RenamePlan)}, nil
 	}, func(msg renamePlannedMsg) tea.Msg { return msg })
-}
-
-// planRenames plans library rename, only the renames of paths when not nil.
-func planRenames(ctx context.Context, lib storage.Library, paths []string, opts client.RenameOptions) (renamePlannedMsg, error) {
-	plan, err := planLibraryRename(ctx, lib, opts)
-	if err != nil {
-		return renamePlannedMsg{}, err
-	}
-	if paths != nil {
-		plan.Renames = slices.DeleteFunc(plan.Renames, func(r library.Rename) bool {
-			return !slices.Contains(paths, r.From) && !slices.Contains(paths, r.ProviderDir)
-		})
-	}
-	return renamePlannedMsg{plan: plan}, nil
 }
 
 func (s *renameState) items() []*renameItem {
@@ -360,7 +345,12 @@ func (s *renameState) ask(ctx context.Context) tea.Cmd {
 		}
 		return base.Notify("Nothing selected to rename")
 	}
-	plan, lib := s.plan, s.lib
+	plan := s.plan
+	req := s.opts
+	req.Paths, req.Only = s.paths, []string{}
+	for _, r := range renames {
+		req.Only = append(req.Only, r.From)
+	}
 	var lines []string
 	for _, r := range renames {
 		lines = append(lines, plan.Line(r))
@@ -375,16 +365,19 @@ func (s *renameState) ask(ctx context.Context) tea.Cmd {
 	question := fmt.Sprintf("Rename %s? %s in the library undoes it.", strings.Join(what, " and "), base.KeyUndo.Help().Key)
 	s.Confirm.Ask("Rename", strings.Join(append(lines, "", question), "\n"), s.View(), func() tea.Msg {
 		return actionMsg{label: "Renaming", do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
-			var failed []string
-			res, err := applyLibraryRename(ctx, lib, renames, func(p library.Progress) { status(p.String()) }, func(i int, err error) {
-				if err != nil && !errors.Is(err, library.ErrNotEmpty) {
-					failed = append(failed, fmt.Sprintf("%s: %s", plan.Rel(renames[i].From), err))
-				}
-			})
+			// only the selected ones, planned again
+			res, err := applyChange(ctx, req, status)
 			if err != nil {
 				return reloadMsg{}, err
 			}
-			return reloadMsg{notify: renamedNotice(res, failed)}, nil
+			var failed []string
+			for _, l := range res.Lines {
+				if l.Warn {
+					failed = append(failed, strings.TrimPrefix(l.Text, "skipped "))
+				}
+			}
+			done, _ := res.Detail.(client.RenameResult)
+			return reloadMsg{notify: renamedNotice(done, failed)}, nil
 		}}
 	})
 	return nil
