@@ -3,2392 +3,3696 @@
  * Do not make direct changes to the file.
  */
 
-
 export interface paths {
-  "/image": {
-    /** @description Get an image from an http(s) URL, bypassing the CORS policy */
-    get: operations["getImage"];
-  };
-  "/mangalInfo": {
-    /** @description Get information about installed Mangal app */
-    get: operations["getMangalInfo"];
-  };
-  "/providers": {
-    /** @description Get available providers */
-    get: operations["getProviders"];
-  };
-  "/searchMangas": {
-    /** @description Search for mangas */
-    get: operations["searchMangas"];
-  };
-  "/mangaVolumes": {
-    /** @description Get manga volumes */
-    get: operations["getMangaVolumes"];
-  };
-  "/volumeChapters": {
-    /** @description Get volume chapters */
-    get: operations["getVolumeChapters"];
-  };
-  "/provider": {
-    /** @description Get provider */
-    get: operations["getProvider"];
-  };
-  "/mangaPage": {
-    /** @description Get manga page with volumes and chapters */
-    get: operations["getMangaPage"];
-  };
-  "/formats": {
-    /** @description Get available formats */
-    get: operations["getFormats"];
-  };
-  "/v1/": {
-    /** The operations of the API v1 */
-    get: operations["getIndex"];
-  };
-  "/v1/openapi.yaml": {
-    /** This spec */
-    get: operations["getSpec"];
-  };
-  "/v1/status": {
-    /**
-     * The server, its checks, the API version and features
-     * @description Also GET /api/status (what watch.Remote reads).
-     */
-    get: operations["getStatus"];
-  };
-  "/v1/events": {
-    /**
-     * Server-sent events of the topics
-     * @description `id:` is the event's seq, `data:` the Event JSON, `: ping` every 30 s. The recent
-     * events come first, after `since` or Last-Event-ID. A subscriber too far behind is
-     * disconnected (it reconnects from its last seq). GET /api/events stays the watch
-     * events only, as watch.LiveEvent (watch.Remote).
-     */
-    get: operations["getEvents"];
-  };
-  "/v1/library/mangas": {
-    /** The library's mangas */
-    get: operations["listLibraryMangas"];
-  };
-  "/v1/library/mangas/{id}": {
-    /** A library manga with its bindings, watches and marker */
-    get: operations["getLibraryManga"];
-  };
-  "/v1/library/mangas/{id}/chapters": {
-    /** A library manga's downloaded chapters, with how often each was read */
-    get: operations["listLibraryChapters"];
-  };
-  "/v1/library/downloads": {
-    /** The downloaded chapters, newest first */
-    get: operations["listDownloads"];
-  };
-  "/v1/library/duplicates": {
-    /** The library mangas sharing a metadata id (to merge) */
-    get: operations["listDuplicates"];
-  };
-  "/v1/library/trash": {
-    /** What's in the trash */
-    get: operations["getTrash"];
-  };
-  "/v1/library/scan": {
-    /**
-     * Scan the download directory (a job)
-     * @description Reconciles the library with the files (rows only, as a download does). Answers 202 with the job.
-     */
-    post: operations["scanLibrary"];
-  };
-  "/v1/library/merge": {
-    /** Merge a library manga into another */
-    post: operations["mergeLibraryMangas"];
-  };
-  "/v1/library/move": {
-    /** Move a library manga to another provider's manga */
-    post: operations["moveLibraryManga"];
-  };
-  "/v1/library/links": {
-    /** Set a library manga's metadata links */
-    post: operations["linkLibraryManga"];
-  };
-  "/v1/library/backups": {
-    /** Fill the Kitsu and MyAnimeList links of mangas linked to AniList */
-    post: operations["fillBackupLinks"];
-  };
-  "/v1/library/mark": {
-    /** Write the .libmangal.json of folders without one */
-    post: operations["markLibraryMangas"];
-  };
-  "/v1/library/rename": {
-    /** Rename the library's folders (and chapters) to the name templates */
-    post: operations["renameLibrary"];
-  };
-  "/v1/library/forget": {
-    /** Forget library mangas (rows only, the files stay) */
-    post: operations["forgetLibraryMangas"];
-  };
-  "/v1/library/delete": {
-    /** Delete a library manga or one of its chapters (to the trash) */
-    post: operations["deleteLibraryManga"];
-  };
-  "/v1/library/trash/empty": {
-    /**
-     * Empty the trash (irreversible)
-     * @description Applying needs `"confirm":"empty-trash"` too, else 428 confirm_required.
-     */
-    post: operations["emptyTrash"];
-  };
-  "/v1/library/migrate": {
-    /** Migrate the library's old provider ids */
-    post: operations["migrateLibrary"];
-  };
-  "/v1/ops": {
-    /** The journal's operations, newest first */
-    get: operations["listOps"];
-  };
-  "/v1/ops/{id}/undo": {
-    /**
-     * Undo an operation
-     * @description A forced undo (force, when the plan is forceable) loses what it blocks, it needs `"confirm":"force-undo"` too.
-     */
-    post: operations["undoOp"];
-  };
-  "/v1/health": {
-    /**
-     * The health report (offline checks), or a job with the network ones
-     * @description Also GET /api/health.
-     */
-    get: operations["getHealth"];
-  };
-  "/v1/health/jobs/{id}": {
-    /** A health job, with its report once done */
-    get: operations["getHealthJob"];
-  };
-  "/v1/health/fix": {
-    /**
-     * Fix a finding (by key)
-     * @description The finding is looked up now (an offline run of its check, else the last network
-     * job's report). 422 for a finding without a fix that can be applied here (a merge
-     * without a choice, a scan).
-     */
-    post: operations["fixHealthFinding"];
-  };
-  "/v1/health/dismiss": {
-    /** Dismiss findings (fine as they are) or bring them back */
-    post: operations["dismissHealthFindings"];
-  };
-  "/v1/jobs": {
-    /** The server's jobs (downloads, scans), the running and queued first */
-    get: operations["listJobs"];
-  };
-  "/v1/jobs/clear": {
-    /** Cancel the queued jobs (of a provider) */
-    post: operations["clearJobQueue"];
-  };
-  "/v1/jobs/{id}": {
-    /** A job */
-    get: operations["getJob"];
-    /** Remove a finished job from the list */
-    delete: operations["removeJob"];
-  };
-  "/v1/jobs/{id}/cancel": {
-    /** Cancel a queued or running job */
-    post: operations["cancelJob"];
-  };
-  "/v1/jobs/{id}/retry": {
-    /** Retry a finished download's failed chapters, as a new job */
-    post: operations["retryJob"];
-  };
-  "/v1/downloads": {
-    /** Download chapters of a provider's manga (a job) */
-    post: operations["startDownload"];
-  };
-  "/v1/logs": {
-    /** The log files' entries, oldest first (the last `limit`) */
-    get: operations["listLogs"];
-  };
-  "/v1/logs/files": {
-    /** The log files, oldest first */
-    get: operations["listLogFiles"];
-  };
-  "/v1/providers": {
-    /** The installed providers */
-    get: operations["listProviders"];
-  };
-  "/v1/providers/{provider}": {
-    /** A provider (an old id of it works too) */
-    get: operations["getProviderInfo"];
-  };
-  "/v1/providers/{provider}/search": {
-    /** Search a provider's mangas */
-    get: operations["searchProvider"];
-  };
-  "/v1/providers/{provider}/manga": {
-    /**
-     * A provider's manga by id
-     * @description By the provider's id lookup (MangaByID), or a search of `q` picking the manga with the id.
-     */
-    get: operations["getProviderManga"];
-  };
-  "/v1/providers/{provider}/chapters": {
-    /** A provider's manga's chapters, with what the library has */
-    get: operations["listProviderChapters"];
-  };
-  "/v1/formats": {
-    /** The download formats */
-    get: operations["listFormats"];
-  };
-  "/v1/image": {
-    /** An image of a public http(s) url (raster images only) */
-    get: operations["proxyImage"];
-  };
-  "/v1/bindings": {
-    /** The metadata bindings (of a provider, or its manga) */
-    get: operations["listBindings"];
-    /** Bind a provider's manga to a metadata id */
-    put: operations["setBinding"];
-    /** Remove a binding */
-    delete: operations["removeBinding"];
-  };
-  "/v1/history": {
-    /** The read chapters, last read first */
-    get: operations["listHistory"];
-  };
-  "/v1/history/clear": {
-    /** Forget the read history (of a provider, or its manga) */
-    post: operations["clearHistory"];
-  };
-  "/v1/config": {
-    /** The config, secrets masked */
-    get: operations["listConfig"];
-  };
-  "/v1/config/{key}": {
-    /**
-     * Set a key in the config file (not secrets)
-     * @description `applies` says when the server uses it: now (the watch.* keys, from the next
-     * scheduler cycle) or restart. Secret keys aren't set over HTTP (403).
-     */
-    put: operations["setConfig"];
-  };
-  "/v1/accounts": {
-    /**
-     * The accounts' status (no logins over HTTP)
-     * @description The providers' accounts as last fetched (no request to the sites).
-     */
-    get: operations["listAccounts"];
-  };
-  "/v1/watches": {
-    /**
-     * The watches
-     * @description Also GET /api/watches.
-     */
-    get: operations["listWatches"];
-    /** Watch a manga */
-    post: operations["addWatch"];
-  };
-  "/v1/watches/stale": {
-    /** The watches without a new chapter for a while */
-    get: operations["listStaleWatches"];
-  };
-  "/v1/watches/{id}": {
-    /** A watch */
-    get: operations["getWatch"];
-    /** Stop watching (the history stays) */
-    delete: operations["removeWatch"];
-    /** Pause, resume or change a watch */
-    patch: operations["updateWatch"];
-  };
-  "/v1/watches/{id}/relink": {
-    /** Point a watch to another manga */
-    post: operations["relinkWatch"];
-  };
-  "/v1/check": {
-    /**
-     * Check watches now
-     * @description A dry run answers 200 with the report, a check 202 with its run (409 when every provider is busy).
-     */
-    post: operations["checkWatches"];
-  };
-  "/v1/runs": {
-    /** The check runs, newest first */
-    get: operations["listRuns"];
-  };
-  "/v1/runs/{id}": {
-    /** A check run with its watches' results */
-    get: operations["getRun"];
-  };
-  "/v1/runs/{id}/cancel": {
-    /** Cancel a check asked through the API */
-    post: operations["cancelRun"];
-  };
-  "/v1/watch-runs/{id}": {
-    /** Remove a watch's run from the history */
-    delete: operations["removeWatchRun"];
-  };
+    "/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Get an image from an http(s) URL, bypassing the CORS policy */
+        get: operations["getImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mangalInfo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Get information about installed Mangal app */
+        get: operations["getMangalInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Get available providers */
+        get: operations["getProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/searchMangas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Search for mangas */
+        get: operations["searchMangas"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mangaVolumes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Get manga volumes */
+        get: operations["getMangaVolumes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/volumeChapters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Get volume chapters */
+        get: operations["getVolumeChapters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Get provider */
+        get: operations["getProvider"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mangaPage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Get manga page with volumes and chapters */
+        get: operations["getMangaPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/formats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Get available formats */
+        get: operations["getFormats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The operations of the API v1 */
+        get: operations["getIndex"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/openapi.yaml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This spec */
+        get: operations["getSpec"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The server, its checks, the API version and features
+         * @description Also GET /api/status (what watch.Remote reads).
+         */
+        get: operations["getStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Server-sent events of the topics
+         * @description `id:` is the event's seq, `data:` the Event JSON, `: ping` every 30 s. The recent
+         *     events come first, after `since` or Last-Event-ID. A subscriber too far behind is
+         *     disconnected (it reconnects from its last seq). GET /api/events stays the watch
+         *     events only, as watch.LiveEvent (watch.Remote).
+         */
+        get: operations["getEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/mangas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The library's mangas */
+        get: operations["listLibraryMangas"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/mangas/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A library manga with its bindings, watches and marker */
+        get: operations["getLibraryManga"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/mangas/{id}/chapters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A library manga's downloaded chapters, with how often each was read */
+        get: operations["listLibraryChapters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The downloaded chapters, newest first */
+        get: operations["listDownloads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The library mangas sharing a metadata id (to merge) */
+        get: operations["listDuplicates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What's in the trash */
+        get: operations["getTrash"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan the download directory (a job)
+         * @description Reconciles the library with the files (rows only, as a download does). Answers 202 with the job.
+         */
+        post: operations["scanLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Merge a library manga into another */
+        post: operations["mergeLibraryMangas"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move a library manga to another provider's manga */
+        post: operations["moveLibraryManga"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set a library manga's metadata links */
+        post: operations["linkLibraryManga"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fill the Kitsu and MyAnimeList links of mangas linked to AniList */
+        post: operations["fillBackupLinks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/mark": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Write the .libmangal.json of folders without one */
+        post: operations["markLibraryMangas"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rename the library's folders (and chapters) to the name templates */
+        post: operations["renameLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/forget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget library mangas (rows only, the files stay) */
+        post: operations["forgetLibraryMangas"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete a library manga or one of its chapters (to the trash) */
+        post: operations["deleteLibraryManga"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/trash/empty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Empty the trash (irreversible)
+         * @description Applying needs `"confirm":"empty-trash"` too, else 428 confirm_required.
+         */
+        post: operations["emptyTrash"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/migrate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Migrate the library's old provider ids */
+        post: operations["migrateLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The journal's operations, newest first */
+        get: operations["listOps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo an operation
+         * @description A forced undo (force, when the plan is forceable) loses what it blocks, it needs `"confirm":"force-undo"` too.
+         */
+        post: operations["undoOp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The health report (offline checks), or a job with the network ones
+         * @description Also GET /api/health.
+         */
+        get: operations["getHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/health/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A health job, with its report once done */
+        get: operations["getHealthJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/health/fix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fix a finding (by key)
+         * @description The finding is looked up now (an offline run of its check, else the last network
+         *     job's report). 422 for a finding without a fix that can be applied here (a merge
+         *     without a choice, a scan).
+         */
+        post: operations["fixHealthFinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/health/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss findings (fine as they are) or bring them back */
+        post: operations["dismissHealthFindings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The server's jobs (downloads, scans), the running and queued first */
+        get: operations["listJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel the queued jobs (of a provider) */
+        post: operations["clearJobQueue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A job */
+        get: operations["getJob"];
+        put?: never;
+        post?: never;
+        /** Remove a finished job from the list */
+        delete: operations["removeJob"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a queued or running job */
+        post: operations["cancelJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry a finished download's failed chapters, as a new job */
+        post: operations["retryJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Download chapters of a provider's manga (a job) */
+        post: operations["startDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The log files' entries, oldest first (the last `limit`) */
+        get: operations["listLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logs/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The log files, oldest first */
+        get: operations["listLogFiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The installed providers */
+        get: operations["listProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/providers/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A provider (an old id of it works too) */
+        get: operations["getProviderInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/providers/{provider}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search a provider's mangas */
+        get: operations["searchProvider"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/providers/{provider}/manga": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A provider's manga by id
+         * @description By the provider's id lookup (MangaByID), or a search of `q` picking the manga with the id.
+         */
+        get: operations["getProviderManga"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/providers/{provider}/chapters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A provider's manga's chapters, with what the library has */
+        get: operations["listProviderChapters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/formats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The download formats */
+        get: operations["listFormats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An image of a public http(s) url (raster images only) */
+        get: operations["proxyImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The metadata bindings (of a provider, or its manga) */
+        get: operations["listBindings"];
+        /** Bind a provider's manga to a metadata id */
+        put: operations["setBinding"];
+        post?: never;
+        /** Remove a binding */
+        delete: operations["removeBinding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The read chapters, last read first */
+        get: operations["listHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/history/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget the read history (of a provider, or its manga) */
+        post: operations["clearHistory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The config, secrets masked */
+        get: operations["listConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/config/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a key in the config file (not secrets)
+         * @description `applies` says when the server uses it: now (the watch.* keys, from the next
+         *     scheduler cycle) or restart. Secret keys aren't set over HTTP (403).
+         */
+        put: operations["setConfig"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The accounts' status (no logins over HTTP)
+         * @description The providers' accounts as last fetched (no request to the sites).
+         */
+        get: operations["listAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/watches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The watches
+         * @description Also GET /api/watches.
+         */
+        get: operations["listWatches"];
+        put?: never;
+        /** Watch a manga */
+        post: operations["addWatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/watches/stale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The watches without a new chapter for a while */
+        get: operations["listStaleWatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/watches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A watch */
+        get: operations["getWatch"];
+        put?: never;
+        post?: never;
+        /** Stop watching (the history stays) */
+        delete: operations["removeWatch"];
+        options?: never;
+        head?: never;
+        /** Pause, resume or change a watch */
+        patch: operations["updateWatch"];
+        trace?: never;
+    };
+    "/v1/watches/{id}/relink": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Point a watch to another manga */
+        post: operations["relinkWatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check watches now
+         * @description A dry run answers 200 with the report, a check 202 with its run (409 when every provider is busy).
+         */
+        post: operations["checkWatches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The check runs, newest first */
+        get: operations["listRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A check run with its watches' results */
+        get: operations["getRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a check asked through the API */
+        post: operations["cancelRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/watch-runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a watch's run from the history */
+        delete: operations["removeWatchRun"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
-
 export type webhooks = Record<string, never>;
-
 export interface components {
-  schemas: {
-    /** Format: binary */
-    Image: string;
-    Provider: {
-      name: string;
-      id: string;
-      description?: string;
-      version: string;
-    };
-    Manga: {
-      id: string;
-      title: string;
-      url?: string;
-      banner?: string;
-      cover?: string;
-    };
-    CoverImage: {
-      extraLarge: string;
-      large: string;
-      medium: string;
-      color: string;
-    };
-    AnilistManga: {
-      coverImage: components["schemas"]["CoverImage"];
-      bannerImage?: string;
-      description?: string;
-    };
-    Volume: {
-      /** Format: float */
-      number: number;
-    };
-    Chapter: {
-      title: string;
-      /** Format: float */
-      number: number;
-      url?: string;
-    };
-    VolumeWithChapters: {
-      volume: components["schemas"]["Volume"];
-      chapters: components["schemas"]["Chapter"][];
-    };
-    MangaPage: {
-      manga: components["schemas"]["Manga"];
-      anilistManga?: components["schemas"]["AnilistManga"];
-      volumes: components["schemas"]["VolumeWithChapters"][];
-    };
-    MangalInfo: {
-      version: string;
-    };
-    Format: {
-      name: string;
-      extension?: string;
-    };
-    Error: {
-      /** Format: int32 */
-      code: number;
-      message: string;
-    };
-    ErrorResponse: {
-      error: string;
-      /** @description invalid, unauthorized, forbidden, not_found, exists, busy, plan_changed, refused, confirm_required, nothing_to_do, unprocessable, rate_limited, unavailable, run_not_found, run_unfinished */
-      code?: string;
-      reasons?: string[];
-      plan?: components["schemas"]["Plan"];
-      /** @description what `confirm` has to say (confirm_required) */
-      confirm?: string;
-    };
-    Index: {
-      api_version: string;
-      version: string;
-      operations: components["schemas"]["IndexOperation"][];
-    };
-    IndexOperation: {
-      method: string;
-      path: string;
-      operation_id: string;
-      scope: string;
-      /** @description a plan/apply operation (the scope is for apply) */
-      plan?: boolean;
-      summary: string;
-    };
-    Status: {
-      server: boolean;
-      address?: string;
-      version?: string;
-      /** Format: date-time */
-      started?: string;
-      checking: boolean;
-      /** Format: date-time */
-      since?: string;
-      providers?: components["schemas"]["ProviderStatus"][];
-      /** Format: int64 */
-      run?: number;
-      runs?: number[];
-      /** Format: date-time */
-      next_check?: string;
-      api_version: string;
-      /** @description the features (core.Features names) the API has */
-      features: string[];
-      /** @description the scopes of this request */
-      scopes: string[];
-      /** @description how this request is authorized (token <name>, loopback, none) */
-      auth: string;
-    };
-    ProviderStatus: {
-      provider?: string;
-      /** Format: date-time */
-      since?: string;
-      pid?: number;
-      host?: string;
-      /** Format: int64 */
-      run?: number;
-      /** Format: int64 */
-      watch?: number;
-      title?: string;
-      state?: string;
-    };
-    Event: {
-      /** Format: uint64 */
-      seq: number;
-      /** Format: date-time */
-      time: string;
-      /** @description watch, job, op, health or log */
-      topic: string;
-      /**
-       * @description watch and health: the watch.LiveEvent kind; job: added, changed, removed; op:
-       * done, undone; log: the level
-       */
-      kind: string;
-      message?: string;
-      /** @description the topic's object (watch.LiveEvent, Job, Op, LogEntry) */
-      data?: unknown;
-    };
-    MetadataID: {
-      /** @description the source's code (al, kt, mal, mu, ...) */
-      source: string;
-      id: string;
-    };
-    LibrarySource: {
-      provider: string;
-      manga_id: string;
-      title: string;
-      /** Format: date-time */
-      moved?: string;
-      current: boolean;
-    };
-    LibraryManga: {
-      /** Format: int64 */
-      id: number;
-      title: string;
-      /** @description the folder */
-      path: string;
-      /** @description the folder's name */
-      dir?: string;
-      chapters: number;
-      /** @description the publication status, empty when unknown */
-      status?: string;
-      /** Format: date-time */
-      status_updated?: string;
-      metadata_ids: components["schemas"]["MetadataID"][];
-      sources: components["schemas"]["LibrarySource"][];
-      watched?: boolean;
-    };
-    LibraryMangaList: {
-      /** @description how many match, before limit and offset */
-      total: number;
-      mangas: components["schemas"]["LibraryManga"][];
-    };
-    LibraryMangaDetail: {
-      manga: components["schemas"]["LibraryManga"];
-      bindings: components["schemas"]["Binding"][];
-      watches: components["schemas"]["Watch"][];
-      /** @description the folder has a .libmangal.json */
-      marker: boolean;
-      /** @description the folder is gone */
-      missing: boolean;
-    };
-    Download: {
-      path: string;
-      provider: string;
-      manga_id: string;
-      manga_title: string;
-      /** Format: float */
-      volume: number;
-      /** Format: float */
-      chapter: number;
-      chapter_title: string;
-      chapter_url?: string;
-      format: string;
-      pages: number;
-      /** Format: date-time */
-      downloaded: string;
-    };
-    DownloadList: {
-      total: number;
-      downloads: components["schemas"]["Download"][];
-    };
-    LibraryChapter: {
-      download: components["schemas"]["Download"];
-      /** @description how many times it was opened (the read history) */
-      reads: number;
-      /** Format: date-time */
-      last_read?: string;
-    };
-    Duplicate: {
-      source: string;
-      id: string;
-      /** @description the suggested one to keep first */
-      mangas: components["schemas"]["LibraryManga"][];
-    };
-    Trash: {
-      batches: components["schemas"]["TrashBatch"][];
-      files: number;
-      /** Format: int64 */
-      size: number;
-    };
-    TrashBatch: {
-      name: string;
-      path: string;
-      files: number;
-      /** Format: int64 */
-      size: number;
-    };
-    Op: {
-      /** Format: int64 */
-      id: number;
-      kind: string;
-      summary: string;
-      /** Format: date-time */
-      started: string;
-      /** Format: date-time */
-      finished?: string;
-      error?: string;
-      snapshot?: string;
-      /** Format: date-time */
-      undone?: string;
-      steps: number;
-      interfered?: string;
-    };
-    Plan: {
-      kind: string;
-      summary?: string;
-      lines: string[];
-      warnings?: string[];
-      blocked?: string[];
-      forceable?: boolean;
-      nothing?: boolean;
-      irreversible?: boolean;
-      hash: string;
-    };
-    OpResult: {
-      kind: string;
-      /** Format: int64 */
-      op?: number;
-      snapshot?: string;
-      summary?: string;
-      lines?: {
-          text?: string;
-          warn?: boolean;
-        }[];
-    };
-    ChangeResponse: {
-      applied: boolean;
-      plan?: components["schemas"]["Plan"];
-      result?: components["schemas"]["OpResult"];
-      /** @description how to undo it (POST /api/v1/ops/{op}/undo, mangal library undo) */
-      undo?: string;
-    };
-    ApplyFields: {
-      /** @description the hash of the plan confirmed, needed with apply */
-      expect?: string;
-      /** @description apply a forceable plan with blocked reasons */
-      force?: boolean;
-      /** @description empty-trash for an irreversible plan, force-undo for a forced undo */
-      confirm?: string;
-    };
-    MergeRequest: components["schemas"]["ApplyFields"] & {
-      /** Format: int64 */
-      keep: number;
-      /** Format: int64 */
-      other: number;
-    };
-    MoveRequest: components["schemas"]["ApplyFields"] & {
-      /** Format: int64 */
-      manga: number;
-      provider: string;
-      /** @description the provider's manga to move to */
-      manga_id?: string;
-      /** @description a search, when the provider can't get a manga by id (or without manga_id) */
-      query?: string;
-      /** @description the manga selector of the search (exact by default) */
-      selector?: string;
-      /** @description adopt the new provider's title and folder name */
-      full?: boolean;
-    };
-    LinkRequest: components["schemas"]["ApplyFields"] & {
-      /** Format: int64 */
-      manga: number;
-      /** @description source code (al, kt, mal, mu) to id, "" removes it */
-      links: {
-        [key: string]: string;
-      };
-      rename?: boolean;
-      watches?: boolean;
-    };
-    BackupsRequest: components["schemas"]["ApplyFields"] & {
-      mangas?: number[];
-      replace?: number[];
-      replace_all?: boolean;
-    };
-    MarkRequest: components["schemas"]["ApplyFields"] & {
-      /** @description none for every folder without a marker */
-      mangas?: number[];
-    };
-    RenameRequest: components["schemas"]["ApplyFields"] & {
-      refresh?: boolean;
-      chapters?: boolean;
-      fallback?: boolean;
-      cached?: boolean;
-      paths?: string[];
-      only?: string[];
-    };
-    ForgetRequest: components["schemas"]["ApplyFields"] & {
-      mangas: number[];
-    };
-    DeleteRequest: components["schemas"]["ApplyFields"] & {
-      /** Format: int64 */
-      manga: number;
-      /** @description a chapter's number or path, none for the whole manga */
-      chapter?: string;
-    };
-    HistoryClearRequest: components["schemas"]["ApplyFields"] & {
-      provider?: string;
-      manga_id?: string;
-    };
-    BindRequest: components["schemas"]["ApplyFields"] & {
-      provider: string;
-      manga_id: string;
-      source: string;
-      id: string;
-    };
-    HealthFixRequest: components["schemas"]["ApplyFields"] & {
-      /** @description the finding's (or a summary item's) key, e.g. M1/manga/5 */
-      key: string;
-      /** @description the id to link, or the manga to keep, when the fix has several */
-      choice?: string;
-    };
-    ScanRequest: {
-      check?: boolean;
-      statuses?: boolean;
-    };
-    HealthReport: {
-      findings: components["schemas"]["HealthFinding"][];
-      counts: {
-        info?: number;
-        warning?: number;
-        error?: number;
-        by_category?: {
-          [key: string]: number;
+    schemas: {
+        /** Format: binary */
+        Image: string;
+        Provider: {
+            name: string;
+            id: string;
+            description?: string;
+            version: string;
         };
-      };
-      network: boolean;
-      errors?: string[];
-      dismissed?: number;
-    };
-    HealthFinding: {
-      check: string;
-      category: string;
-      severity: string;
-      subject: {
-        kind?: string;
-        /** Format: int64 */
-        id?: number;
-        name?: string;
-      };
-      message: string;
-      details?: string[];
-      fix: {
-        commands?: string[];
-        note?: string;
-        tui?: string;
-        action?: {
-          [key: string]: unknown;
+        Manga: {
+            id: string;
+            title: string;
+            url?: string;
+            banner?: string;
+            cover?: string;
         };
-      };
-      /** @description a summary's findings (HealthFinding) */
-      items?: {
-          [key: string]: unknown;
-        }[];
-      part?: string;
-      key: string;
-      dismissed?: boolean;
-      network?: boolean;
+        CoverImage: {
+            extraLarge: string;
+            large: string;
+            medium: string;
+            color: string;
+        };
+        AnilistManga: {
+            coverImage: components["schemas"]["CoverImage"];
+            bannerImage?: string;
+            description?: string;
+        };
+        Volume: {
+            /** Format: float */
+            number: number;
+        };
+        Chapter: {
+            title: string;
+            /** Format: float */
+            number: number;
+            url?: string;
+        };
+        VolumeWithChapters: {
+            volume: components["schemas"]["Volume"];
+            chapters: components["schemas"]["Chapter"][];
+        };
+        MangaPage: {
+            manga: components["schemas"]["Manga"];
+            anilistManga?: components["schemas"]["AnilistManga"];
+            volumes: components["schemas"]["VolumeWithChapters"][];
+        };
+        MangalInfo: {
+            version: string;
+        };
+        Format: {
+            name: string;
+            extension?: string;
+        };
+        Error: {
+            /** Format: int32 */
+            code: number;
+            message: string;
+        };
+        ErrorResponse: {
+            error: string;
+            /** @description invalid, unauthorized, forbidden, not_found, exists, busy, plan_changed, refused, confirm_required, nothing_to_do, unprocessable, rate_limited, unavailable, run_not_found, run_unfinished */
+            code?: string;
+            reasons?: string[];
+            plan?: components["schemas"]["Plan"];
+            /** @description what `confirm` has to say (confirm_required) */
+            confirm?: string;
+        };
+        Index: {
+            api_version: string;
+            version: string;
+            operations: components["schemas"]["IndexOperation"][];
+        };
+        IndexOperation: {
+            method: string;
+            path: string;
+            operation_id: string;
+            scope: string;
+            /** @description a plan/apply operation (the scope is for apply) */
+            plan?: boolean;
+            summary: string;
+        };
+        Status: {
+            server: boolean;
+            address?: string;
+            version?: string;
+            /** Format: date-time */
+            started?: string;
+            checking: boolean;
+            /** Format: date-time */
+            since?: string;
+            providers?: components["schemas"]["ProviderStatus"][];
+            /** Format: int64 */
+            run?: number;
+            runs?: number[];
+            /** Format: date-time */
+            next_check?: string;
+            api_version: string;
+            /** @description the features (core.Features names) the API has */
+            features: string[];
+            /** @description the scopes of this request */
+            scopes: string[];
+            /** @description how this request is authorized (token <name>, loopback, none) */
+            auth: string;
+        };
+        ProviderStatus: {
+            provider?: string;
+            /** Format: date-time */
+            since?: string;
+            pid?: number;
+            host?: string;
+            /** Format: int64 */
+            run?: number;
+            /** Format: int64 */
+            watch?: number;
+            title?: string;
+            state?: string;
+        };
+        Event: {
+            /** Format: uint64 */
+            seq: number;
+            /** Format: date-time */
+            time: string;
+            /** @description watch, job, op, health or log */
+            topic: string;
+            /**
+             * @description watch and health: the watch.LiveEvent kind; job: added, changed, removed; op:
+             *     done, undone; log: the level
+             */
+            kind: string;
+            message?: string;
+            /** @description the topic's object (watch.LiveEvent, Job, Op, LogEntry) */
+            data?: unknown;
+        };
+        MetadataID: {
+            /** @description the source's code (al, kt, mal, mu, ...) */
+            source: string;
+            id: string;
+        };
+        LibrarySource: {
+            provider: string;
+            manga_id: string;
+            title: string;
+            /** Format: date-time */
+            moved?: string;
+            current: boolean;
+        };
+        LibraryManga: {
+            /** Format: int64 */
+            id: number;
+            title: string;
+            /** @description the folder */
+            path: string;
+            /** @description the folder's name */
+            dir?: string;
+            chapters: number;
+            /** @description the publication status, empty when unknown */
+            status?: string;
+            /** Format: date-time */
+            status_updated?: string;
+            metadata_ids: components["schemas"]["MetadataID"][];
+            sources: components["schemas"]["LibrarySource"][];
+            watched?: boolean;
+        };
+        LibraryMangaList: {
+            /** @description how many match, before limit and offset */
+            total: number;
+            mangas: components["schemas"]["LibraryManga"][];
+        };
+        LibraryMangaDetail: {
+            manga: components["schemas"]["LibraryManga"];
+            bindings: components["schemas"]["Binding"][];
+            watches: components["schemas"]["Watch"][];
+            /** @description the folder has a .libmangal.json */
+            marker: boolean;
+            /** @description the folder is gone */
+            missing: boolean;
+        };
+        Download: {
+            path: string;
+            provider: string;
+            manga_id: string;
+            manga_title: string;
+            /** Format: float */
+            volume: number;
+            /** Format: float */
+            chapter: number;
+            chapter_title: string;
+            chapter_url?: string;
+            format: string;
+            pages: number;
+            /** Format: date-time */
+            downloaded: string;
+        };
+        DownloadList: {
+            total: number;
+            downloads: components["schemas"]["Download"][];
+        };
+        LibraryChapter: {
+            download: components["schemas"]["Download"];
+            /** @description how many times it was opened (the read history) */
+            reads: number;
+            /** Format: date-time */
+            last_read?: string;
+        };
+        Duplicate: {
+            source: string;
+            id: string;
+            /** @description the suggested one to keep first */
+            mangas: components["schemas"]["LibraryManga"][];
+        };
+        Trash: {
+            batches: components["schemas"]["TrashBatch"][];
+            files: number;
+            /** Format: int64 */
+            size: number;
+        };
+        TrashBatch: {
+            name: string;
+            path: string;
+            files: number;
+            /** Format: int64 */
+            size: number;
+        };
+        Op: {
+            /** Format: int64 */
+            id: number;
+            kind: string;
+            summary: string;
+            /** Format: date-time */
+            started: string;
+            /** Format: date-time */
+            finished?: string;
+            error?: string;
+            snapshot?: string;
+            /** Format: date-time */
+            undone?: string;
+            steps: number;
+            interfered?: string;
+        };
+        Plan: {
+            kind: string;
+            summary?: string;
+            lines: string[];
+            warnings?: string[];
+            blocked?: string[];
+            forceable?: boolean;
+            nothing?: boolean;
+            irreversible?: boolean;
+            hash: string;
+        };
+        OpResult: {
+            kind: string;
+            /** Format: int64 */
+            op?: number;
+            snapshot?: string;
+            summary?: string;
+            lines?: {
+                text?: string;
+                warn?: boolean;
+            }[];
+        };
+        ChangeResponse: {
+            applied: boolean;
+            plan?: components["schemas"]["Plan"];
+            result?: components["schemas"]["OpResult"];
+            /** @description how to undo it (POST /api/v1/ops/{op}/undo, mangal library undo) */
+            undo?: string;
+        };
+        ApplyFields: {
+            /** @description the hash of the plan confirmed, needed with apply */
+            expect?: string;
+            /** @description apply a forceable plan with blocked reasons */
+            force?: boolean;
+            /** @description empty-trash for an irreversible plan, force-undo for a forced undo */
+            confirm?: string;
+        };
+        MergeRequest: components["schemas"]["ApplyFields"] & {
+            /** Format: int64 */
+            keep: number;
+            /** Format: int64 */
+            other: number;
+        };
+        MoveRequest: components["schemas"]["ApplyFields"] & {
+            /** Format: int64 */
+            manga: number;
+            provider: string;
+            /** @description the provider's manga to move to */
+            manga_id?: string;
+            /** @description a search, when the provider can't get a manga by id (or without manga_id) */
+            query?: string;
+            /** @description the manga selector of the search (exact by default) */
+            selector?: string;
+            /** @description adopt the new provider's title and folder name */
+            full?: boolean;
+        };
+        LinkRequest: components["schemas"]["ApplyFields"] & {
+            /** Format: int64 */
+            manga: number;
+            /** @description source code (al, kt, mal, mu) to id, "" removes it */
+            links: {
+                [key: string]: string;
+            };
+            rename?: boolean;
+            watches?: boolean;
+        };
+        BackupsRequest: components["schemas"]["ApplyFields"] & {
+            mangas?: number[];
+            replace?: number[];
+            replace_all?: boolean;
+        };
+        MarkRequest: components["schemas"]["ApplyFields"] & {
+            /** @description none for every folder without a marker */
+            mangas?: number[];
+        };
+        RenameRequest: components["schemas"]["ApplyFields"] & {
+            refresh?: boolean;
+            chapters?: boolean;
+            fallback?: boolean;
+            cached?: boolean;
+            paths?: string[];
+            only?: string[];
+        };
+        ForgetRequest: components["schemas"]["ApplyFields"] & {
+            mangas: number[];
+        };
+        DeleteRequest: components["schemas"]["ApplyFields"] & {
+            /** Format: int64 */
+            manga: number;
+            /** @description a chapter's number or path, none for the whole manga */
+            chapter?: string;
+        };
+        HistoryClearRequest: components["schemas"]["ApplyFields"] & {
+            provider?: string;
+            manga_id?: string;
+        };
+        BindRequest: components["schemas"]["ApplyFields"] & {
+            provider: string;
+            manga_id: string;
+            source: string;
+            id: string;
+        };
+        HealthFixRequest: components["schemas"]["ApplyFields"] & {
+            /** @description the finding's (or a summary item's) key, e.g. M1/manga/5 */
+            key: string;
+            /** @description the id to link, or the manga to keep, when the fix has several */
+            choice?: string;
+        };
+        ScanRequest: {
+            check?: boolean;
+            statuses?: boolean;
+        };
+        HealthReport: {
+            findings: components["schemas"]["HealthFinding"][];
+            counts: {
+                info?: number;
+                warning?: number;
+                error?: number;
+                by_category?: {
+                    [key: string]: number;
+                };
+            };
+            network: boolean;
+            errors?: string[];
+            dismissed?: number;
+        };
+        HealthFinding: {
+            check: string;
+            category: string;
+            severity: string;
+            subject: {
+                kind?: string;
+                /** Format: int64 */
+                id?: number;
+                name?: string;
+            };
+            message: string;
+            details?: string[];
+            fix: {
+                commands?: string[];
+                note?: string;
+                tui?: string;
+                action?: {
+                    [key: string]: unknown;
+                };
+            };
+            /** @description a summary's findings (HealthFinding) */
+            items?: {
+                [key: string]: unknown;
+            }[];
+            part?: string;
+            key: string;
+            dismissed?: boolean;
+            network?: boolean;
+        };
+        HealthJob: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            started: string;
+            /** Format: date-time */
+            finished?: string;
+            running: boolean;
+            status?: string;
+            error?: string;
+            report?: components["schemas"]["HealthReport"];
+        };
+        DismissRequest: {
+            /** @description keys of findings there now */
+            dismiss?: string[];
+            undismiss?: string[];
+            /** @description look the findings up with the network checks too */
+            network?: boolean;
+        };
+        DismissResponse: {
+            dismissed: string[];
+            undismissed: string[];
+        };
+        Job: {
+            /** Format: int64 */
+            id: number;
+            /** @description download, check or scan */
+            kind: string;
+            title: string;
+            providers: string[];
+            manga_id?: string;
+            /** @description queued, waiting, running, done, failed, cancelled */
+            status: string;
+            message?: string;
+            note?: string;
+            done?: number;
+            total?: number;
+            /** Format: double */
+            part?: number;
+            error?: string;
+            results?: components["schemas"]["JobResult"][];
+            /** Format: date-time */
+            added: string;
+            /** Format: date-time */
+            started?: string;
+            /** Format: date-time */
+            finished?: string;
+            ahead?: number;
+            behind?: string;
+        };
+        JobResult: {
+            /** Format: float */
+            chapter: number;
+            title: string;
+            path?: string;
+            skipped?: string;
+            unavailable?: string;
+            error?: string;
+        };
+        ClearJobsRequest: {
+            provider?: string;
+        };
+        Count: {
+            count: number;
+        };
+        DownloadRequest: {
+            provider: string;
+            manga_id?: string;
+            /** @description a search, when the provider can't get a manga by id (or without manga_id) */
+            query?: string;
+            /** @description the manga selector of the search (exact by default) */
+            selector?: string;
+            /** @description a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...) */
+            chapters: string;
+            /** @description the download format, download.format by default */
+            format?: string;
+        };
+        LogEntry: {
+            /** Format: date-time */
+            time: string;
+            level: string;
+            message: string;
+            file: string;
+        };
+        LogFile: {
+            name: string;
+            path: string;
+            /** Format: int64 */
+            size: number;
+            /** Format: date-time */
+            modified: string;
+            closed: boolean;
+            compressed: boolean;
+        };
+        ProviderManga: {
+            provider: string;
+            manga: components["schemas"]["Manga"];
+            /**
+             * Format: int64
+             * @description the watch of the manga, if any
+             */
+            watch?: number;
+            /**
+             * Format: int64
+             * @description the library manga it's downloaded into, if any
+             */
+            library?: number;
+            bindings: components["schemas"]["Binding"][];
+        };
+        ProviderChapter: {
+            /** Format: float */
+            volume: number;
+            /** Format: float */
+            number: number;
+            title: string;
+            url?: string;
+            downloaded: boolean;
+            path?: string;
+            reads: number;
+        };
+        Binding: {
+            provider?: string;
+            manga_id?: string;
+            source: string;
+            id: string;
+            default: boolean;
+            /** Format: date-time */
+            updated?: string;
+        };
+        Read: {
+            provider: string;
+            manga_id: string;
+            manga_title: string;
+            /** Format: float */
+            volume: number;
+            /** Format: float */
+            chapter: number;
+            chapter_title: string;
+            chapter_url?: string;
+            /** Format: int64 */
+            library_manga?: number;
+            count: number;
+            /** Format: date-time */
+            first: string;
+            /** Format: date-time */
+            last: string;
+        };
+        ReadList: {
+            total: number;
+            reads: components["schemas"]["Read"][];
+        };
+        ConfigEntry: {
+            key: string;
+            /** @description the value (masked for a secret) */
+            value: unknown;
+            /** @description the default value */
+            default: unknown;
+            description: string;
+            secret: boolean;
+            /** @description the environment variable that sets it, when it does now (it wins over the file) */
+            env?: string;
+            /** @description when a change applies in the server, now or restart */
+            applies: string;
+        };
+        ConfigSetRequest: {
+            /** @description the value, as the config file has it (a string, number, bool or list) */
+            value: unknown;
+        };
+        Account: {
+            service: string;
+            provider?: string;
+            user?: string;
+            status: string;
+            url?: string;
+            /** Format: date-time */
+            expires?: string;
+            details?: string[];
+            /** Format: date-time */
+            checked?: string;
+            error?: string;
+        };
+        /** @description a watch (client/watch.Watch) */
+        Watch: {
+            /** Format: int64 */
+            id: number;
+            provider: string;
+            manga_id: string;
+            title: string;
+            enabled: boolean;
+            /** Format: int64 */
+            library_manga?: number;
+            schedule?: string;
+            gaps?: boolean;
+            /** Format: date-time */
+            last_checked?: string;
+            last_error?: string;
+            failures?: number;
+            needs_relink?: boolean;
+            /** Format: float */
+            last_downloaded?: number;
+            /** Format: date-time */
+            next_check?: string;
+            /** Format: date-time */
+            next_scheduled?: string;
+            /** Format: date-time */
+            next_gap_check?: string;
+            provider_missing?: boolean;
+            bindings?: components["schemas"]["Binding"][];
+            library_issue?: string;
+            library_note?: string;
+            status?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AddWatchRequest: {
+            provider: string;
+            manga_id?: string;
+            query?: string;
+            selector?: string;
+            title?: string;
+            offline?: boolean;
+            enabled?: boolean;
+            anilist_id?: number;
+            /** Format: float */
+            from?: number;
+            gaps?: boolean;
+            schedule?: string;
+        };
+        PatchWatchRequest: {
+            enabled?: boolean;
+            schedule?: string;
+            gaps?: boolean;
+            anilist_id?: number;
+            /** Format: float */
+            from?: number;
+            skip?: number[];
+        };
+        RelinkRequest: {
+            provider?: string;
+            manga_id?: string;
+            query?: string;
+            selector?: string;
+            anilist_id?: number;
+        };
+        CheckRequest: {
+            ids?: number[];
+            gaps?: boolean;
+            dry_run?: boolean;
+        };
+        CheckResponse: {
+            /** Format: int64 */
+            run: number;
+            busy?: string[];
+        };
+        /** @description a check's report (client/watch.Report) */
+        CheckReport: {
+            [key: string]: unknown;
+        };
+        CheckRun: {
+            /** Format: int64 */
+            id: number;
+            kind: string;
+            /** Format: date-time */
+            started: string;
+            /** Format: date-time */
+            finished?: string;
+            watches: number;
+            new_chapters: number;
+            errors: number;
+            results?: {
+                [key: string]: unknown;
+            }[];
+        };
+        RemovedRun: {
+            run?: {
+                [key: string]: unknown;
+            };
+            check_run_removed?: boolean;
+            snapshot?: string;
+        };
     };
-    HealthJob: {
-      /** Format: int64 */
-      id: number;
-      /** Format: date-time */
-      started: string;
-      /** Format: date-time */
-      finished?: string;
-      running: boolean;
-      status?: string;
-      error?: string;
-      report?: components["schemas"]["HealthReport"];
+    responses: {
+        /**
+         * @description An error: invalid 400, unauthorized 401, forbidden 403 (missing scope, refused
+         *     origin), not_found 404, plan_changed 409 (with the new plan), refused 409 (with
+         *     reasons), busy 409, exists 409, unprocessable 422, confirm_required 428,
+         *     rate_limited 429, unavailable 503.
+         */
+        Error: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description the plan (applied false), or what the apply did */
+        Change: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ChangeResponse"];
+            };
+        };
     };
-    DismissRequest: {
-      /** @description keys of findings there now */
-      dismiss?: string[];
-      undismiss?: string[];
-      /** @description look the findings up with the network checks too */
-      network?: boolean;
+    parameters: {
+        IDParam: number;
+        /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+        ApplyParam: boolean;
+        /** @description at most this many (0 for all) */
+        LimitParam: number;
+        /** @description skip this many first */
+        OffsetParam: number;
+        /** @description a provider id */
+        ProviderParam: string;
+        /** @description a provider's manga id (with provider) */
+        MangaIDParam: string;
+        /** @description the provider's manga id */
+        MangaIDRequiredParam: string;
+        /** @description a provider id */
+        ProviderPathParam: string;
     };
-    DismissResponse: {
-      dismissed: string[];
-      undismissed: string[];
-    };
-    Job: {
-      /** Format: int64 */
-      id: number;
-      /** @description download, check or scan */
-      kind: string;
-      title: string;
-      providers: string[];
-      manga_id?: string;
-      /** @description queued, waiting, running, done, failed, cancelled */
-      status: string;
-      message?: string;
-      note?: string;
-      done?: number;
-      total?: number;
-      /** Format: double */
-      part?: number;
-      error?: string;
-      results?: components["schemas"]["JobResult"][];
-      /** Format: date-time */
-      added: string;
-      /** Format: date-time */
-      started?: string;
-      /** Format: date-time */
-      finished?: string;
-      ahead?: number;
-      behind?: string;
-    };
-    JobResult: {
-      /** Format: float */
-      chapter: number;
-      title: string;
-      path?: string;
-      skipped?: string;
-      unavailable?: string;
-      error?: string;
-    };
-    ClearJobsRequest: {
-      provider?: string;
-    };
-    Count: {
-      count: number;
-    };
-    DownloadRequest: {
-      provider: string;
-      manga_id?: string;
-      /** @description a search, when the provider can't get a manga by id (or without manga_id) */
-      query?: string;
-      /** @description the manga selector of the search (exact by default) */
-      selector?: string;
-      /** @description a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...) */
-      chapters: string;
-      /** @description the download format, download.format by default */
-      format?: string;
-    };
-    LogEntry: {
-      /** Format: date-time */
-      time: string;
-      level: string;
-      message: string;
-      file: string;
-    };
-    LogFile: {
-      name: string;
-      path: string;
-      /** Format: int64 */
-      size: number;
-      /** Format: date-time */
-      modified: string;
-      closed: boolean;
-      compressed: boolean;
-    };
-    ProviderManga: {
-      provider: string;
-      manga: components["schemas"]["Manga"];
-      /**
-       * Format: int64
-       * @description the watch of the manga, if any
-       */
-      watch?: number;
-      /**
-       * Format: int64
-       * @description the library manga it's downloaded into, if any
-       */
-      library?: number;
-      bindings: components["schemas"]["Binding"][];
-    };
-    ProviderChapter: {
-      /** Format: float */
-      volume: number;
-      /** Format: float */
-      number: number;
-      title: string;
-      url?: string;
-      downloaded: boolean;
-      path?: string;
-      reads: number;
-    };
-    Binding: {
-      provider?: string;
-      manga_id?: string;
-      source: string;
-      id: string;
-      default: boolean;
-      /** Format: date-time */
-      updated?: string;
-    };
-    Read: {
-      provider: string;
-      manga_id: string;
-      manga_title: string;
-      /** Format: float */
-      volume: number;
-      /** Format: float */
-      chapter: number;
-      chapter_title: string;
-      chapter_url?: string;
-      /** Format: int64 */
-      library_manga?: number;
-      count: number;
-      /** Format: date-time */
-      first: string;
-      /** Format: date-time */
-      last: string;
-    };
-    ReadList: {
-      total: number;
-      reads: components["schemas"]["Read"][];
-    };
-    ConfigEntry: {
-      key: string;
-      /** @description the value (masked for a secret) */
-      value: unknown;
-      /** @description the default value */
-      default: unknown;
-      description: string;
-      secret: boolean;
-      /** @description the environment variable that sets it, when it does now (it wins over the file) */
-      env?: string;
-      /** @description when a change applies in the server, now or restart */
-      applies: string;
-    };
-    ConfigSetRequest: {
-      /** @description the value, as the config file has it (a string, number, bool or list) */
-      value: unknown;
-    };
-    Account: {
-      service: string;
-      provider?: string;
-      user?: string;
-      status: string;
-      url?: string;
-      /** Format: date-time */
-      expires?: string;
-      details?: string[];
-      /** Format: date-time */
-      checked?: string;
-      error?: string;
-    };
-    /** @description a watch (client/watch.Watch) */
-    Watch: {
-      /** Format: int64 */
-      id: number;
-      provider: string;
-      manga_id: string;
-      title: string;
-      enabled: boolean;
-      /** Format: int64 */
-      library_manga?: number;
-      schedule?: string;
-      gaps?: boolean;
-      /** Format: date-time */
-      last_checked?: string;
-      last_error?: string;
-      failures?: number;
-      needs_relink?: boolean;
-      /** Format: float */
-      last_downloaded?: number;
-      /** Format: date-time */
-      next_check?: string;
-      /** Format: date-time */
-      next_scheduled?: string;
-      /** Format: date-time */
-      next_gap_check?: string;
-      provider_missing?: boolean;
-      bindings?: components["schemas"]["Binding"][];
-      library_issue?: string;
-      library_note?: string;
-      status?: string;
-      [key: string]: unknown;
-    };
-    AddWatchRequest: {
-      provider: string;
-      manga_id?: string;
-      query?: string;
-      selector?: string;
-      title?: string;
-      offline?: boolean;
-      enabled?: boolean;
-      anilist_id?: number;
-      /** Format: float */
-      from?: number;
-      gaps?: boolean;
-      schedule?: string;
-    };
-    PatchWatchRequest: {
-      enabled?: boolean;
-      schedule?: string;
-      gaps?: boolean;
-      anilist_id?: number;
-      /** Format: float */
-      from?: number;
-      skip?: number[];
-    };
-    RelinkRequest: {
-      provider?: string;
-      manga_id?: string;
-      query?: string;
-      selector?: string;
-      anilist_id?: number;
-    };
-    CheckRequest: {
-      ids?: number[];
-      gaps?: boolean;
-      dry_run?: boolean;
-    };
-    CheckResponse: {
-      /** Format: int64 */
-      run: number;
-      busy?: string[];
-    };
-    /** @description a check's report (client/watch.Report) */
-    CheckReport: {
-      [key: string]: unknown;
-    };
-    CheckRun: {
-      /** Format: int64 */
-      id: number;
-      kind: string;
-      /** Format: date-time */
-      started: string;
-      /** Format: date-time */
-      finished?: string;
-      watches: number;
-      new_chapters: number;
-      errors: number;
-      results?: {
-          [key: string]: unknown;
-        }[];
-    };
-    RemovedRun: {
-      run?: {
-        [key: string]: unknown;
-      };
-      check_run_removed?: boolean;
-      snapshot?: string;
-    };
-  };
-  responses: {
-    /**
-     * @description An error: invalid 400, unauthorized 401, forbidden 403 (missing scope, refused
-     * origin), not_found 404, plan_changed 409 (with the new plan), refused 409 (with
-     * reasons), busy 409, exists 409, unprocessable 422, confirm_required 428,
-     * rate_limited 429, unavailable 503.
-     */
-    Error: {
-      content: {
-        "application/json": components["schemas"]["ErrorResponse"];
-      };
-    };
-    /** @description the plan (applied false), or what the apply did */
-    Change: {
-      content: {
-        "application/json": components["schemas"]["ChangeResponse"];
-      };
-    };
-  };
-  parameters: {
-    IDParam: number;
-    /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
-    ApplyParam?: boolean;
-    /** @description at most this many (0 for all) */
-    LimitParam?: number;
-    /** @description skip this many first */
-    OffsetParam?: number;
-    /** @description a provider id */
-    ProviderParam?: string;
-    /** @description a provider's manga id (with provider) */
-    MangaIDParam?: string;
-    /** @description the provider's manga id */
-    MangaIDRequiredParam: string;
-    /** @description a provider id */
-    ProviderPathParam: string;
-  };
-  requestBodies: never;
-  headers: never;
-  pathItems: never;
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
 }
-
 export type $defs = Record<string, never>;
-
-export type external = Record<string, never>;
-
 export interface operations {
-
-  /** @description Get an image from an http(s) URL, bypassing the CORS policy */
-  getImage: {
-    parameters: {
-      query: {
-        /** @description image url to download */
-        url: string;
-        /** @description referer to use to get the image */
-        referer?: string;
-      };
-    };
-    responses: {
-      /** @description image response */
-      200: {
-        content: {
-          "image/*": components["schemas"]["Image"];
-        };
-      };
-      /** @description unexpected error */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** @description Get information about installed Mangal app */
-  getMangalInfo: {
-    responses: {
-      /** @description mangal info response */
-      200: {
-        content: {
-          "application/json": components["schemas"]["MangalInfo"];
-        };
-      };
-      /** @description unexpected error */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** @description Get available providers */
-  getProviders: {
-    responses: {
-      /** @description providers response */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Provider"][];
-        };
-      };
-      /** @description unexpected error */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** @description Search for mangas */
-  searchMangas: {
-    parameters: {
-      query: {
-        /** @description provider id to use */
-        provider: string;
-        /** @description manga search query */
-        query: string;
-      };
-    };
-    responses: {
-      /** @description search results */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Manga"][];
-        };
-      };
-      /** @description unexpected error */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** @description Get manga volumes */
-  getMangaVolumes: {
-    parameters: {
-      query: {
-        /** @description provider id to use */
-        provider: string;
-        /** @description manga search query */
-        query: string;
-        /** @description manga id */
-        manga: string;
-      };
-    };
-    responses: {
-      /** @description manga volumes */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Volume"][];
-        };
-      };
-      /** @description unexpected error */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** @description Get volume chapters */
-  getVolumeChapters: {
-    parameters: {
-      query: {
-        /** @description provider id to use */
-        provider: string;
-        /** @description manga search query */
-        query: string;
-        /** @description manga id */
-        manga: string;
-        /** @description volume number */
-        volume: number;
-      };
-    };
-    responses: {
-      /** @description volume chapters */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Chapter"][];
-        };
-      };
-      /** @description unexpected error */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** @description Get provider */
-  getProvider: {
-    parameters: {
-      query: {
-        /** @description provider id */
-        id: string;
-      };
-    };
-    responses: {
-      /** @description provider response */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Provider"];
-        };
-      };
-      /** @description unexpected error (404 if the provider isn't found) */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** @description Get manga page with volumes and chapters */
-  getMangaPage: {
-    parameters: {
-      query: {
-        /** @description provider id to use */
-        provider: string;
-        /** @description manga search query */
-        query: string;
-        /** @description manga id */
-        manga: string;
-      };
-    };
-    responses: {
-      /** @description manga page response */
-      200: {
-        content: {
-          "application/json": components["schemas"]["MangaPage"];
-        };
-      };
-      /** @description unexpected error */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** @description Get available formats */
-  getFormats: {
-    responses: {
-      /** @description formats response */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Format"][];
-        };
-      };
-      /** @description unexpected error */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** The operations of the API v1 */
-  getIndex: {
-    responses: {
-      /** @description the API version and every operation with its scope */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Index"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** This spec */
-  getSpec: {
-    responses: {
-      /** @description the OpenAPI spec of the API */
-      200: {
-        content: {
-          "application/yaml": string;
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * The server, its checks, the API version and features
-   * @description Also GET /api/status (what watch.Remote reads).
-   */
-  getStatus: {
-    responses: {
-      /** @description the status */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Status"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * Server-sent events of the topics
-   * @description `id:` is the event's seq, `data:` the Event JSON, `: ping` every 30 s. The recent
-   * events come first, after `since` or Last-Event-ID. A subscriber too far behind is
-   * disconnected (it reconnects from its last seq). GET /api/events stays the watch
-   * events only, as watch.LiveEvent (watch.Remote).
-   */
-  getEvents: {
-    parameters: {
-      query?: {
-        /** @description comma separated, every topic when empty */
-        topics?: string;
-        /** @description the seq of the last event seen */
-        since?: number;
-      };
-    };
-    responses: {
-      /** @description the event stream */
-      200: {
-        content: {
-          "text/event-stream": string;
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The library's mangas */
-  listLibraryMangas: {
-    parameters: {
-      query?: {
-        /** @description a text the title, the folder or a source's title has (any case) */
-        q?: string;
-        /** @description publication status (finished, releasing, hiatus, cancelled, not_yet_released; unknown for none) */
-        status?: string;
-        /** @description only the mangas with a source of this provider */
-        provider?: string;
-        /** @description only the mangas sharing a metadata id with another */
-        duplicates?: boolean;
-        /** @description only the watched mangas (true) or the others (false) */
-        watched?: boolean;
-        limit?: components["parameters"]["LimitParam"];
-        offset?: components["parameters"]["OffsetParam"];
-      };
-    };
-    responses: {
-      /** @description the mangas, by title */
-      200: {
-        content: {
-          "application/json": components["schemas"]["LibraryMangaList"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** A library manga with its bindings, watches and marker */
-  getLibraryManga: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description the manga */
-      200: {
-        content: {
-          "application/json": components["schemas"]["LibraryMangaDetail"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** A library manga's downloaded chapters, with how often each was read */
-  listLibraryChapters: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description the chapters */
-      200: {
-        content: {
-          "application/json": components["schemas"]["LibraryChapter"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The downloaded chapters, newest first */
-  listDownloads: {
-    parameters: {
-      query?: {
-        provider?: components["parameters"]["ProviderParam"];
-        manga_id?: components["parameters"]["MangaIDParam"];
-        limit?: components["parameters"]["LimitParam"];
-        offset?: components["parameters"]["OffsetParam"];
-      };
-    };
-    responses: {
-      /** @description the downloads */
-      200: {
-        content: {
-          "application/json": components["schemas"]["DownloadList"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The library mangas sharing a metadata id (to merge) */
-  listDuplicates: {
-    responses: {
-      /** @description the duplicates */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Duplicate"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** What's in the trash */
-  getTrash: {
-    responses: {
-      /** @description the trash */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Trash"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * Scan the download directory (a job)
-   * @description Reconciles the library with the files (rows only, as a download does). Answers 202 with the job.
-   */
-  scanLibrary: {
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["ScanRequest"];
-      };
-    };
-    responses: {
-      /** @description the scan's job */
-      202: {
-        content: {
-          "application/json": components["schemas"]["Job"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Merge a library manga into another */
-  mergeLibraryMangas: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["MergeRequest"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Move a library manga to another provider's manga */
-  moveLibraryManga: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["MoveRequest"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Set a library manga's metadata links */
-  linkLibraryManga: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["LinkRequest"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Fill the Kitsu and MyAnimeList links of mangas linked to AniList */
-  fillBackupLinks: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["BackupsRequest"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Write the .libmangal.json of folders without one */
-  markLibraryMangas: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["MarkRequest"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Rename the library's folders (and chapters) to the name templates */
-  renameLibrary: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["RenameRequest"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Forget library mangas (rows only, the files stay) */
-  forgetLibraryMangas: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ForgetRequest"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Delete a library manga or one of its chapters (to the trash) */
-  deleteLibraryManga: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DeleteRequest"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * Empty the trash (irreversible)
-   * @description Applying needs `"confirm":"empty-trash"` too, else 428 confirm_required.
-   */
-  emptyTrash: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["ApplyFields"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Migrate the library's old provider ids */
-  migrateLibrary: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["ApplyFields"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The journal's operations, newest first */
-  listOps: {
-    parameters: {
-      query?: {
-        limit?: components["parameters"]["LimitParam"];
-      };
-    };
-    responses: {
-      /** @description the operations */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Op"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * Undo an operation
-   * @description A forced undo (force, when the plan is forceable) loses what it blocks, it needs `"confirm":"force-undo"` too.
-   */
-  undoOp: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["ApplyFields"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * The health report (offline checks), or a job with the network ones
-   * @description Also GET /api/health.
-   */
-  getHealth: {
-    parameters: {
-      query?: {
-        /** @description comma separated checks or categories */
-        only?: string;
-        /** @description also the dismissed findings */
-        all?: boolean;
-        /** @description with the network checks, as a job (202) */
-        network?: boolean;
-      };
-    };
-    responses: {
-      /** @description the report */
-      200: {
-        content: {
-          "application/json": components["schemas"]["HealthReport"];
-        };
-      };
-      /** @description the network job (Location has its url) */
-      202: {
-        content: {
-          "application/json": components["schemas"]["HealthJob"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** A health job, with its report once done */
-  getHealthJob: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description the job */
-      200: {
-        content: {
-          "application/json": components["schemas"]["HealthJob"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * Fix a finding (by key)
-   * @description The finding is looked up now (an offline run of its check, else the last network
-   * job's report). 422 for a finding without a fix that can be applied here (a merge
-   * without a choice, a scan).
-   */
-  fixHealthFinding: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["HealthFixRequest"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Dismiss findings (fine as they are) or bring them back */
-  dismissHealthFindings: {
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DismissRequest"];
-      };
-    };
-    responses: {
-      /** @description what was dismissed and undismissed */
-      200: {
-        content: {
-          "application/json": components["schemas"]["DismissResponse"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The server's jobs (downloads, scans), the running and queued first */
-  listJobs: {
-    responses: {
-      /** @description the jobs */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Job"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Cancel the queued jobs (of a provider) */
-  clearJobQueue: {
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["ClearJobsRequest"];
-      };
-    };
-    responses: {
-      /** @description how many were cancelled */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Count"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** A job */
-  getJob: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description the job */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Job"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Remove a finished job from the list */
-  removeJob: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description removed */
-      204: {
-        content: never;
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Cancel a queued or running job */
-  cancelJob: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description cancelled (a running one stops soon) */
-      202: {
-        content: {
-          "application/json": components["schemas"]["Job"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Retry a finished download's failed chapters, as a new job */
-  retryJob: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description the new job */
-      202: {
-        content: {
-          "application/json": components["schemas"]["Job"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Download chapters of a provider's manga (a job) */
-  startDownload: {
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DownloadRequest"];
-      };
-    };
-    responses: {
-      /** @description the download's job */
-      202: {
-        content: {
-          "application/json": components["schemas"]["Job"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The log files' entries, oldest first (the last `limit`) */
-  listLogs: {
-    parameters: {
-      query?: {
-        /** @description a time (RFC 3339) or a duration ago (30m, 7d) */
-        since?: string;
-        /** @description a time (RFC 3339) or a duration ago */
-        until?: string;
-        /** @description the lowest level (debug, info, warn, error) */
-        level?: string;
-        /** @description a regexp the message matches (case-insensitive unless it has a capital) */
-        grep?: string;
-        /** @description only this file (a name of /v1/logs/files) */
-        file?: string;
-        limit?: components["parameters"]["LimitParam"];
-      };
-    };
-    responses: {
-      /** @description the entries */
-      200: {
-        content: {
-          "application/json": components["schemas"]["LogEntry"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The log files, oldest first */
-  listLogFiles: {
-    responses: {
-      /** @description the files */
-      200: {
-        content: {
-          "application/json": components["schemas"]["LogFile"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The installed providers */
-  listProviders: {
-    responses: {
-      /** @description the providers */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Provider"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** A provider (an old id of it works too) */
-  getProviderInfo: {
-    parameters: {
-      path: {
-        provider: components["parameters"]["ProviderPathParam"];
-      };
-    };
-    responses: {
-      /** @description the provider */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Provider"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Search a provider's mangas */
-  searchProvider: {
-    parameters: {
-      query: {
-        /** @description the query (`mid:<id>` gets the manga with the id) */
-        q: string;
-      };
-      path: {
-        provider: components["parameters"]["ProviderPathParam"];
-      };
-    };
-    responses: {
-      /** @description the mangas found */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Manga"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * A provider's manga by id
-   * @description By the provider's id lookup (MangaByID), or a search of `q` picking the manga with the id.
-   */
-  getProviderManga: {
-    parameters: {
-      query: {
-        manga_id: components["parameters"]["MangaIDRequiredParam"];
-        /** @description a title to search when the provider can't get a manga by id */
-        q?: string;
-      };
-      path: {
-        provider: components["parameters"]["ProviderPathParam"];
-      };
-    };
-    responses: {
-      /** @description the manga, its watch and bindings */
-      200: {
-        content: {
-          "application/json": components["schemas"]["ProviderManga"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** A provider's manga's chapters, with what the library has */
-  listProviderChapters: {
-    parameters: {
-      query: {
-        manga_id: components["parameters"]["MangaIDRequiredParam"];
-        /** @description a title to search when the provider can't get a manga by id */
-        q?: string;
-      };
-      path: {
-        provider: components["parameters"]["ProviderPathParam"];
-      };
-    };
-    responses: {
-      /** @description the chapters, by volume and number */
-      200: {
-        content: {
-          "application/json": components["schemas"]["ProviderChapter"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The download formats */
-  listFormats: {
-    responses: {
-      /** @description the formats */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Format"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** An image of a public http(s) url (raster images only) */
-  proxyImage: {
-    parameters: {
-      query: {
-        url: string;
-        referer?: string;
-      };
-    };
-    responses: {
-      /** @description the image */
-      200: {
-        content: {
-          "image/*": string;
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The metadata bindings (of a provider, or its manga) */
-  listBindings: {
-    parameters: {
-      query?: {
-        provider?: components["parameters"]["ProviderParam"];
-        manga_id?: components["parameters"]["MangaIDParam"];
-      };
-    };
-    responses: {
-      /** @description the bindings */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Binding"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Bind a provider's manga to a metadata id */
-  setBinding: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["BindRequest"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Remove a binding */
-  removeBinding: {
-    parameters: {
-      query: {
-        apply?: components["parameters"]["ApplyParam"];
-        provider: string;
-        manga_id: components["parameters"]["MangaIDRequiredParam"];
-        /** @description the metadata source's code (al, kt, mal) */
-        source: string;
-        /** @description the hash of the plan confirmed (needed with apply) */
-        expect?: string;
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The read chapters, last read first */
-  listHistory: {
-    parameters: {
-      query?: {
-        provider?: components["parameters"]["ProviderParam"];
-        manga_id?: components["parameters"]["MangaIDParam"];
-        limit?: components["parameters"]["LimitParam"];
-        offset?: components["parameters"]["OffsetParam"];
-      };
-    };
-    responses: {
-      /** @description the reads */
-      200: {
-        content: {
-          "application/json": components["schemas"]["ReadList"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Forget the read history (of a provider, or its manga) */
-  clearHistory: {
-    parameters: {
-      query?: {
-        apply?: components["parameters"]["ApplyParam"];
-      };
-    };
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["HistoryClearRequest"];
-      };
-    };
-    responses: {
-      200: components["responses"]["Change"];
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The config, secrets masked */
-  listConfig: {
-    responses: {
-      /** @description every key */
-      200: {
-        content: {
-          "application/json": components["schemas"]["ConfigEntry"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * Set a key in the config file (not secrets)
-   * @description `applies` says when the server uses it: now (the watch.* keys, from the next
-   * scheduler cycle) or restart. Secret keys aren't set over HTTP (403).
-   */
-  setConfig: {
-    parameters: {
-      path: {
-        key: string;
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ConfigSetRequest"];
-      };
-    };
-    responses: {
-      /** @description the key as set */
-      200: {
-        content: {
-          "application/json": components["schemas"]["ConfigEntry"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * The accounts' status (no logins over HTTP)
-   * @description The providers' accounts as last fetched (no request to the sites).
-   */
-  listAccounts: {
-    responses: {
-      /** @description the accounts */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Account"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * The watches
-   * @description Also GET /api/watches.
-   */
-  listWatches: {
-    responses: {
-      /** @description the watches */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Watch"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Watch a manga */
-  addWatch: {
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["AddWatchRequest"];
-      };
-    };
-    responses: {
-      /** @description the watch */
-      201: {
-        content: {
-          "application/json": components["schemas"]["Watch"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The watches without a new chapter for a while */
-  listStaleWatches: {
-    parameters: {
-      query?: {
-        /** @description a duration (90d by default) */
-        since?: string;
-      };
-    };
-    responses: {
-      /** @description the watches */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Watch"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** A watch */
-  getWatch: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description the watch */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Watch"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Stop watching (the history stays) */
-  removeWatch: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description removed */
-      204: {
-        content: never;
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Pause, resume or change a watch */
-  updateWatch: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["PatchWatchRequest"];
-      };
-    };
-    responses: {
-      /** @description the watch */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Watch"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Point a watch to another manga */
-  relinkWatch: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["RelinkRequest"];
-      };
-    };
-    responses: {
-      /** @description the watch */
-      200: {
-        content: {
-          "application/json": components["schemas"]["Watch"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /**
-   * Check watches now
-   * @description A dry run answers 200 with the report, a check 202 with its run (409 when every provider is busy).
-   */
-  checkWatches: {
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CheckRequest"];
-      };
-    };
-    responses: {
-      /** @description the dry run's report */
-      200: {
-        content: {
-          "application/json": components["schemas"]["CheckReport"];
-        };
-      };
-      /** @description the check run started */
-      202: {
-        content: {
-          "application/json": components["schemas"]["CheckResponse"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** The check runs, newest first */
-  listRuns: {
-    parameters: {
-      query?: {
-        /** @description a time (RFC 3339) or a duration ago (7d, 12h) */
-        since?: string;
-        watch?: number;
-        provider?: components["parameters"]["ProviderParam"];
-        manga_id?: components["parameters"]["MangaIDParam"];
-        limit?: components["parameters"]["LimitParam"];
-      };
-    };
-    responses: {
-      /** @description the runs */
-      200: {
-        content: {
-          "application/json": components["schemas"]["CheckRun"][];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** A check run with its watches' results */
-  getRun: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description the run (finished once finished is set) */
-      200: {
-        content: {
-          "application/json": components["schemas"]["CheckRun"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Cancel a check asked through the API */
-  cancelRun: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description cancelled */
-      202: {
-        content: never;
-      };
-      default: components["responses"]["Error"];
-    };
-  };
-  /** Remove a watch's run from the history */
-  removeWatchRun: {
-    parameters: {
-      path: {
-        id: components["parameters"]["IDParam"];
-      };
-    };
-    responses: {
-      /** @description what was removed */
-      200: {
-        content: {
-          "application/json": components["schemas"]["RemovedRun"];
-        };
-      };
-      default: components["responses"]["Error"];
-    };
-  };
+    getImage: {
+        parameters: {
+            query: {
+                /** @description image url to download */
+                url: string;
+                /** @description referer to use to get the image */
+                referer?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description image response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": components["schemas"]["Image"];
+                };
+            };
+            /** @description unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMangalInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description mangal info response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MangalInfo"];
+                };
+            };
+            /** @description unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description providers response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Provider"][];
+                };
+            };
+            /** @description unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    searchMangas: {
+        parameters: {
+            query: {
+                /** @description provider id to use */
+                provider: string;
+                /** @description manga search query */
+                query: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description search results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Manga"][];
+                };
+            };
+            /** @description unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMangaVolumes: {
+        parameters: {
+            query: {
+                /** @description provider id to use */
+                provider: string;
+                /** @description manga search query */
+                query: string;
+                /** @description manga id */
+                manga: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description manga volumes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Volume"][];
+                };
+            };
+            /** @description unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getVolumeChapters: {
+        parameters: {
+            query: {
+                /** @description provider id to use */
+                provider: string;
+                /** @description manga search query */
+                query: string;
+                /** @description manga id */
+                manga: string;
+                /** @description volume number */
+                volume: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description volume chapters */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chapter"][];
+                };
+            };
+            /** @description unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getProvider: {
+        parameters: {
+            query: {
+                /** @description provider id */
+                id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description provider response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Provider"];
+                };
+            };
+            /** @description unexpected error (404 if the provider isn't found) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMangaPage: {
+        parameters: {
+            query: {
+                /** @description provider id to use */
+                provider: string;
+                /** @description manga search query */
+                query: string;
+                /** @description manga id */
+                manga: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description manga page response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MangaPage"];
+                };
+            };
+            /** @description unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getFormats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description formats response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Format"][];
+                };
+            };
+            /** @description unexpected error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getIndex: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the API version and every operation with its scope */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Index"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the OpenAPI spec of the API */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/yaml": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Status"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getEvents: {
+        parameters: {
+            query?: {
+                /** @description comma separated, every topic when empty */
+                topics?: string;
+                /** @description the seq of the last event seen */
+                since?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the event stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listLibraryMangas: {
+        parameters: {
+            query?: {
+                /** @description a text the title, the folder or a source's title has (any case) */
+                q?: string;
+                /** @description publication status (finished, releasing, hiatus, cancelled, not_yet_released; unknown for none) */
+                status?: string;
+                /** @description only the mangas with a source of this provider */
+                provider?: string;
+                /** @description only the mangas sharing a metadata id with another */
+                duplicates?: boolean;
+                /** @description only the watched mangas (true) or the others (false) */
+                watched?: boolean;
+                /** @description at most this many (0 for all) */
+                limit?: components["parameters"]["LimitParam"];
+                /** @description skip this many first */
+                offset?: components["parameters"]["OffsetParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the mangas, by title */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryMangaList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getLibraryManga: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the manga */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryMangaDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listLibraryChapters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the chapters */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryChapter"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listDownloads: {
+        parameters: {
+            query?: {
+                /** @description a provider id */
+                provider?: components["parameters"]["ProviderParam"];
+                /** @description a provider's manga id (with provider) */
+                manga_id?: components["parameters"]["MangaIDParam"];
+                /** @description at most this many (0 for all) */
+                limit?: components["parameters"]["LimitParam"];
+                /** @description skip this many first */
+                offset?: components["parameters"]["OffsetParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the downloads */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the duplicates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Duplicate"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getTrash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the trash */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trash"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    scanLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ScanRequest"];
+            };
+        };
+        responses: {
+            /** @description the scan's job */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    mergeLibraryMangas: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    moveLibraryManga: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    linkLibraryManga: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    fillBackupLinks: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BackupsRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    markLibraryMangas: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MarkRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    renameLibrary: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RenameRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    forgetLibraryMangas: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForgetRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteLibraryManga: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    emptyTrash: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApplyFields"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    migrateLibrary: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApplyFields"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listOps: {
+        parameters: {
+            query?: {
+                /** @description at most this many (0 for all) */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the operations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Op"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    undoOp: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApplyFields"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getHealth: {
+        parameters: {
+            query?: {
+                /** @description comma separated checks or categories */
+                only?: string;
+                /** @description also the dismissed findings */
+                all?: boolean;
+                /** @description with the network checks, as a job (202) */
+                network?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthReport"];
+                };
+            };
+            /** @description the network job (Location has its url) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthJob"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getHealthJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the job */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthJob"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    fixHealthFinding: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthFixRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    dismissHealthFindings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DismissRequest"];
+            };
+        };
+        responses: {
+            /** @description what was dismissed and undismissed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DismissResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the jobs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    clearJobQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ClearJobsRequest"];
+            };
+        };
+        responses: {
+            /** @description how many were cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Count"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the job */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    cancelJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description cancelled (a running one stops soon) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    retryJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the new job */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    startDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DownloadRequest"];
+            };
+        };
+        responses: {
+            /** @description the download's job */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listLogs: {
+        parameters: {
+            query?: {
+                /** @description a time (RFC 3339) or a duration ago (30m, 7d) */
+                since?: string;
+                /** @description a time (RFC 3339) or a duration ago */
+                until?: string;
+                /** @description the lowest level (debug, info, warn, error) */
+                level?: string;
+                /** @description a regexp the message matches (case-insensitive unless it has a capital) */
+                grep?: string;
+                /** @description only this file (a name of /v1/logs/files) */
+                file?: string;
+                /** @description at most this many (0 for all) */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogEntry"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listLogFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the files */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogFile"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the providers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Provider"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getProviderInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description a provider id */
+                provider: components["parameters"]["ProviderPathParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the provider */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Provider"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    searchProvider: {
+        parameters: {
+            query: {
+                /** @description the query (`mid:<id>` gets the manga with the id) */
+                q: string;
+            };
+            header?: never;
+            path: {
+                /** @description a provider id */
+                provider: components["parameters"]["ProviderPathParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the mangas found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Manga"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getProviderManga: {
+        parameters: {
+            query: {
+                /** @description the provider's manga id */
+                manga_id: components["parameters"]["MangaIDRequiredParam"];
+                /** @description a title to search when the provider can't get a manga by id */
+                q?: string;
+            };
+            header?: never;
+            path: {
+                /** @description a provider id */
+                provider: components["parameters"]["ProviderPathParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the manga, its watch and bindings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderManga"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listProviderChapters: {
+        parameters: {
+            query: {
+                /** @description the provider's manga id */
+                manga_id: components["parameters"]["MangaIDRequiredParam"];
+                /** @description a title to search when the provider can't get a manga by id */
+                q?: string;
+            };
+            header?: never;
+            path: {
+                /** @description a provider id */
+                provider: components["parameters"]["ProviderPathParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the chapters, by volume and number */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderChapter"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listFormats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the formats */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Format"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    proxyImage: {
+        parameters: {
+            query: {
+                url: string;
+                referer?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listBindings: {
+        parameters: {
+            query?: {
+                /** @description a provider id */
+                provider?: components["parameters"]["ProviderParam"];
+                /** @description a provider's manga id (with provider) */
+                manga_id?: components["parameters"]["MangaIDParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the bindings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Binding"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setBinding: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    removeBinding: {
+        parameters: {
+            query: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+                provider: string;
+                /** @description the provider's manga id */
+                manga_id: components["parameters"]["MangaIDRequiredParam"];
+                /** @description the metadata source's code (al, kt, mal) */
+                source: string;
+                /** @description the hash of the plan confirmed (needed with apply) */
+                expect?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listHistory: {
+        parameters: {
+            query?: {
+                /** @description a provider id */
+                provider?: components["parameters"]["ProviderParam"];
+                /** @description a provider's manga id (with provider) */
+                manga_id?: components["parameters"]["MangaIDParam"];
+                /** @description at most this many (0 for all) */
+                limit?: components["parameters"]["LimitParam"];
+                /** @description skip this many first */
+                offset?: components["parameters"]["OffsetParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the reads */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    clearHistory: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["HistoryClearRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description every key */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigEntry"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigSetRequest"];
+            };
+        };
+        responses: {
+            /** @description the key as set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigEntry"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the accounts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listWatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the watches */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watch"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    addWatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddWatchRequest"];
+            };
+        };
+        responses: {
+            /** @description the watch */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watch"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listStaleWatches: {
+        parameters: {
+            query?: {
+                /** @description a duration (90d by default) */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the watches */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watch"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getWatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the watch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watch"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeWatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateWatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchWatchRequest"];
+            };
+        };
+        responses: {
+            /** @description the watch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watch"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    relinkWatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelinkRequest"];
+            };
+        };
+        responses: {
+            /** @description the watch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watch"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    checkWatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckRequest"];
+            };
+        };
+        responses: {
+            /** @description the dry run's report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckReport"];
+                };
+            };
+            /** @description the check run started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listRuns: {
+        parameters: {
+            query?: {
+                /** @description a time (RFC 3339) or a duration ago (7d, 12h) */
+                since?: string;
+                watch?: number;
+                /** @description a provider id */
+                provider?: components["parameters"]["ProviderParam"];
+                /** @description a provider's manga id (with provider) */
+                manga_id?: components["parameters"]["MangaIDParam"];
+                /** @description at most this many (0 for all) */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the runs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckRun"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the run (finished once finished is set) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckRun"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    cancelRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description cancelled */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeWatchRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description what was removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemovedRun"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
 }
