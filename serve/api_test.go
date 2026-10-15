@@ -2,7 +2,6 @@ package serve
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -170,23 +169,44 @@ func newTestServer(t *testing.T, token string) *testServer {
 	t.Helper()
 	svc, src := newTestService(t)
 	ctx, cancel := context.WithCancel(context.Background())
+	auth := &Auth{Mode: AuthToken, Token: token, TokenName: "config", LoopbackScopes: Scopes}
+	if token != "" {
+		// as off loopback: the token is required
+		auth.LoopbackScopes = nil
+	}
 	api := &API{
 		Manager: func() watch.Manager { return svc },
 		Info:    watch.Status{Server: true, Version: "test", Started: time.Now()},
-		Token:   token,
+		Auth:    auth,
 		Log:     newLogger(io.Discard),
 		Runs:    &runs{},
+		Events:  NewEvents(),
 		ctx:     ctx,
 	}
-	mux := http.NewServeMux()
-	api.Register(mux)
-	srv := httptest.NewServer(mux)
+	go api.Events.forwardWatches(ctx, svc)
+	srv := httptest.NewUnstartedServer(nil)
+	app, err := api.NewApp(AppOptions{Guard: web.GuardOptions{Addr: srv.Listener.Addr()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.Config.Handler = app
+	srv.Start()
 	t.Cleanup(func() {
 		cancel()
 		api.Wait()
 		srv.Close()
 	})
 	return &testServer{Server: srv, api: api, svc: svc, src: src}
+}
+
+// handler is the server's app as served on 127.0.0.1:6977.
+func (s *testServer) handler(t *testing.T) http.Handler {
+	t.Helper()
+	app, err := s.api.NewApp(AppOptions{Guard: web.GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return app
 }
 
 // call sends the request and decodes the answer into out (if not nil), returning the status.
@@ -381,9 +401,7 @@ func TestAPIToken(t *testing.T) {
 // TestAuthWeb: with a token the web UI asks for it (basic auth), the API takes it both ways.
 func TestAuthWeb(t *testing.T) {
 	s := newTestServer(t, "s3cret")
-	mux := http.NewServeMux()
-	s.api.Register(mux)
-	mux.Handle("/", s.api.AuthWeb(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})))
+	mux := s.handler(t)
 	for _, tc := range []struct {
 		path, user, password string
 		want                 int
@@ -391,10 +409,12 @@ func TestAuthWeb(t *testing.T) {
 		{"/", "", "", http.StatusUnauthorized},
 		{"/api/image?url=http://10.0.0.1/", "", "", http.StatusUnauthorized},
 		{"/", "x", "nope", http.StatusUnauthorized},
-		{"/", "x", "s3cret", http.StatusOK},
+		// the web UI is off here
+		{"/", "x", "s3cret", http.StatusNotFound},
 		{"/api/watches", "", "s3cret", http.StatusOK},
 	} {
 		req := httptest.NewRequest("GET", tc.path, nil)
+		req.Host = "127.0.0.1:6977"
 		if tc.password != "" {
 			req.SetBasicAuth(tc.user, tc.password)
 		}
@@ -420,12 +440,10 @@ func TestCheckWhileStopping(t *testing.T) {
 
 func TestHostCheck(t *testing.T) {
 	s := newTestServer(t, "")
-	mux := http.NewServeMux()
-	s.api.Register(mux)
-	h := web.Guard(web.GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}})(mux)
+	h := s.handler(t)
 	for host, want := range map[string]int{"127.0.0.1:6977": http.StatusOK, "localhost:6977": http.StatusOK, "evil.example:6977": http.StatusMisdirectedRequest} {
 		req := httptest.NewRequest("GET", "/api/watches", nil)
-		req.Host = host
+		req.Host, req.RemoteAddr = host, "127.0.0.1:1234"
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		if rec.Code != want {
@@ -437,9 +455,7 @@ func TestHostCheck(t *testing.T) {
 // TestCrossSite: a page of another site can't use the API (no-cors POSTs need no preflight).
 func TestCrossSite(t *testing.T) {
 	s := newTestServer(t, "")
-	mux := http.NewServeMux()
-	s.api.Register(mux)
-	h := web.Guard(web.GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}})(mux)
+	h := s.handler(t)
 	for _, tc := range []struct {
 		method, path, origin, contentType string
 		want                              int
@@ -458,7 +474,7 @@ func TestCrossSite(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		req := httptest.NewRequestWithContext(ctx, tc.method, tc.path, strings.NewReader(`{"dry_run":true,"nope":1}`))
-		req.Host = "127.0.0.1:6977"
+		req.Host, req.RemoteAddr = "127.0.0.1:6977", "127.0.0.1:1234"
 		if tc.origin != "" {
 			req.Header.Set("Origin", tc.origin)
 		}
@@ -609,11 +625,9 @@ func TestRemote(t *testing.T) {
 }
 
 func TestErrorBody(t *testing.T) {
-	rec := httptest.NewRecorder()
-	writeError(rec, fmt.Errorf("check: %w", watch.ErrBusy))
-	var e watch.ErrorResponse
-	if err := json.NewDecoder(bytes.NewReader(rec.Body.Bytes())).Decode(&e); err != nil || rec.Code != http.StatusConflict || e.Code != watch.CodeBusy || !strings.Contains(e.Error, "busy") {
-		t.Errorf("%d %+v %v", rec.Code, e, err)
+	status, e := errorBody(fmt.Errorf("check: %w", watch.ErrBusy))
+	if status != http.StatusConflict || e.Code != watch.CodeBusy || !strings.Contains(e.Error, "busy") {
+		t.Errorf("%d %+v", status, e)
 	}
 }
 
@@ -772,10 +786,7 @@ func TestRefusedLogged(t *testing.T) {
 	log.Init(log.Options{Level: log.LevelDebug})
 	t.Cleanup(func() { log.Init(log.Options{Level: log.LevelInfo}) })
 	s := newTestServer(t, "s3cret")
-	mux := http.NewServeMux()
-	s.api.Register(mux)
-	mux.Handle("/", s.api.AuthWeb(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})))
-	h := web.Guard(web.GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}})(mux)
+	h := s.handler(t)
 	for _, tc := range []struct {
 		method, path, host, origin, contentType, auth string
 		want                                          string

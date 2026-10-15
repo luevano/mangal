@@ -2,14 +2,17 @@ package serve
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/labstack/echo/v5"
+	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/web/apiv1"
 
 	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/client/watch"
@@ -20,8 +23,8 @@ import (
 // keepHealthJobs is how many finished health jobs the server keeps the reports of.
 const keepHealthJobs = 5
 
-// HealthJob is a run of the health checks with the network ones (GET /api/health?network=1),
-// in the background: its events go to /api/events (Job set), GET /api/health/jobs/{id}
+// HealthJob is a run of the health checks with the network ones (GET /api/v1/health?network=1),
+// in the background: its events go to /api/events (Job set), GET /api/v1/health/jobs/{id}
 // has its report once it's done.
 type HealthJob struct {
 	ID       int64     `json:"id"`
@@ -115,13 +118,6 @@ func (j *healthJobs) update(id int64, do func(*HealthJob)) {
 	}
 }
 
-// registerHealth adds the health routes.
-func (a *API) registerHealth(handle func(pattern string, h func(http.ResponseWriter, *http.Request) error)) {
-	handle("GET /api/health", a.health)
-	handle("GET /api/health/jobs/{id}", a.healthJob)
-	handle("POST /api/health/fix", a.healthFix)
-}
-
 // checker is the health checker over the server's watches.
 func (a *API) checker() (health.Checker, error) {
 	newChecker := a.Health
@@ -131,69 +127,60 @@ func (a *API) checker() (health.Checker, error) {
 	return newChecker(a.Manager())
 }
 
-// healthOptions are the options of the query: only (comma separated), all.
-func healthOptions(r *http.Request) (health.Options, error) {
-	q := r.URL.Query()
-	var opts health.Options
-	for _, name := range strings.Split(q.Get("only"), ",") {
-		if name = strings.TrimSpace(name); name != "" {
-			opts.Only = append(opts.Only, name)
+// splitList is a comma separated list, trimmed.
+func splitList(s string) []string {
+	var list []string
+	for item := range strings.SplitSeq(s, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			list = append(list, item)
 		}
 	}
-	var err error
-	if opts.All, err = queryBool(q.Get("all")); err != nil {
-		return opts, badRequest("all: %w", err)
-	}
-	if opts.Network, err = queryBool(q.Get("network")); err != nil {
-		return opts, badRequest("network: %w", err)
-	}
-	return opts, nil
+	return list
 }
 
-func queryBool(s string) (bool, error) {
-	if s == "" {
-		return false, nil
-	}
-	return strconv.ParseBool(s)
+// healthJobResponse is a health job (202) with its url.
+type healthJobResponse struct {
+	job HealthJob
 }
 
-// health answers the offline report; with network=1 it starts a job (or answers the
-// running one) with 202.
-func (a *API) health(w http.ResponseWriter, r *http.Request) error {
-	opts, err := healthOptions(r)
-	if err != nil {
-		return err
-	}
+func (r healthJobResponse) VisitGetHealthResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Location", fmt.Sprintf("/api/v1/health/jobs/%d", r.job.ID))
+	w.WriteHeader(http.StatusAccepted)
+	return json.NewEncoder(w).Encode(r.job)
+}
+
+// GetHealth implements apiv1.StrictServerInterface: the offline report; with network=1
+// it starts a job (or answers the running one) with 202.
+func (a *API) GetHealth(ctx context.Context, request apiv1.GetHealthRequestObject) (apiv1.GetHealthResponseObject, error) {
+	p := request.Params
+	opts := health.Options{Only: splitList(deref(p.Only)), All: deref(p.All), Network: deref(p.Network)}
 	checker, err := a.checker()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !opts.Network {
-		report, err := checker.Run(r.Context(), opts)
+		report, err := checker.Run(ctx, opts)
 		if err != nil {
-			return badRequest("%w", err)
+			return nil, badRequest("%w", err)
 		}
 		report.Findings = orEmpty(report.Findings)
-		writeJSON(w, http.StatusOK, report)
-		return nil
+		return apiv1.GetHealth200JSONResponse(report), nil
 	}
 	// a bad only fails here, not in the job
 	if err := health.Validate(opts); err != nil {
-		return badRequest("%w", err)
+		return nil, badRequest("%w", err)
 	}
 	job, ok := a.healthJobs.start()
 	if !ok {
-		writeJSON(w, http.StatusAccepted, job)
-		return nil
+		return healthJobResponse{job}, nil
 	}
 	if !a.startCheck() {
 		a.healthJobs.update(job.ID, func(j *HealthJob) { j.Running, j.Finished, j.Error = false, time.Now(), "the server is stopping" })
-		return &httpError{http.StatusServiceUnavailable, errors.New("the server is stopping")}
+		return nil, newAPIError(http.StatusServiceUnavailable, CodeUnavailable, "the server is stopping")
 	}
 	go a.runHealth(job.ID, checker, opts)
-	w.Header().Set("Location", fmt.Sprintf("/api/health/jobs/%d", job.ID))
-	writeJSON(w, http.StatusAccepted, job)
-	return nil
+	return healthJobResponse{job}, nil
 }
 
 // runHealth runs the job in the server (not cancelled with the request), its progress as
@@ -244,41 +231,39 @@ func (a *API) runHealth(id int64, checker health.Checker, opts health.Options) {
 	publish(watch.LiveHealthDone, done)
 }
 
-func (a *API) healthJob(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r)
-	if err != nil {
-		return err
-	}
-	job, ok := a.healthJobs.get(id)
+// GetHealthJob implements apiv1.StrictServerInterface.
+func (a *API) GetHealthJob(_ context.Context, request apiv1.GetHealthJobRequestObject) (apiv1.GetHealthJobResponseObject, error) {
+	job, ok := a.healthJobs.get(request.Id)
 	if !ok {
-		return fmt.Errorf("health job %d isn't here (the server keeps the last %d): %w", id, keepHealthJobs, watch.ErrNotFound)
+		return nil, fmt.Errorf("health job %d isn't here (the server keeps the last %d): %w", request.Id, keepHealthJobs, watch.ErrNotFound)
 	}
-	writeJSON(w, http.StatusOK, job)
-	return nil
+	return healthJobResponse{job}, nil
 }
 
-// healthFix plans (or applies) the fix of a finding there now: an offline run of its
-// check, else the last network job's report.
-func (a *API) healthFix(w http.ResponseWriter, r *http.Request) error {
-	var req HealthFixRequest
-	if err := decode(r, &req); err != nil {
-		return err
-	}
-	check, subject, err := health.SplitKey(req.Key)
+func (r healthJobResponse) VisitGetHealthJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	return json.NewEncoder(w).Encode(r.job)
+}
+
+// finding is the finding with the key there now: an offline run of its check, else the
+// last network job's report.
+func (a *API) finding(ctx context.Context, key string) (health.Finding, error) {
+	check, subject, err := health.SplitKey(key)
 	if err != nil {
-		return badRequest("%w", err)
+		return health.Finding{}, badRequest("%w", err)
 	}
-	key := check + "/" + subject
+	key = check + "/" + subject
 	checker, err := a.checker()
 	if err != nil {
-		return err
+		return health.Finding{}, err
 	}
 	var f health.Finding
 	ok := false
 	if !health.IsNetwork(check) {
-		report, err := checker.Run(r.Context(), health.Options{Only: []string{check}, All: true})
+		report, err := checker.Run(ctx, health.Options{Only: []string{check}, All: true})
 		if err != nil {
-			return err
+			return f, err
 		}
 		f, ok = report.Find(key)
 	}
@@ -288,28 +273,111 @@ func (a *API) healthFix(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 	if !ok {
-		return fmt.Errorf("no finding %s now (a network check's needs a GET /api/health?network=1 first): %w", req.Key, watch.ErrNotFound)
+		return f, fmt.Errorf("no finding %s now (a network check's needs a GET /api/v1/health?network=1 first): %w", key, watch.ErrNotFound)
 	}
-	newCore := a.Core
-	if newCore == nil {
-		newCore = func(m watch.Manager) (*core.Core, error) {
-			return core.New(r.Context(), core.Env{Watches: func(context.Context) (watch.Manager, error) { return m, nil }})
+	return f, nil
+}
+
+// FixHealthFinding implements apiv1.StrictServerInterface.
+func (a *API) FixHealthFinding(ctx context.Context, request apiv1.FixHealthFindingRequestObject) (apiv1.FixHealthFindingResponseObject, error) {
+	body := deref(request.Body)
+	f, err := a.finding(ctx, body.Key)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := a.change(ctx, core.HealthFixReq{Finding: f, Choice: deref(body.Choice)}, deref(request.Params.Apply),
+		applyFields{body.Expect, body.Force, body.Confirm})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Applied && (f.Fix.Action.Kind == health.ActionWatch || f.Fix.Action.Kind == health.ActionResume) {
+		a.changed()
+	}
+	return apiv1.FixHealthFinding200JSONResponse{ChangeJSONResponse: apiv1.ChangeJSONResponse(resp)}, nil
+}
+
+// DismissHealthFindings implements apiv1.StrictServerInterface: the findings to dismiss
+// must be there now.
+func (a *API) DismissHealthFindings(ctx context.Context, request apiv1.DismissHealthFindingsRequestObject) (apiv1.DismissHealthFindingsResponseObject, error) {
+	body := deref(request.Body)
+	c, err := a.services(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ignores := storage.HealthIgnores{DB: c.Env().Storage.Data}
+	resp := apiv1.DismissHealthFindings200JSONResponse{Dismissed: []string{}, Undismissed: []string{}}
+	for _, key := range deref(body.Undismiss) {
+		check, subject, err := health.SplitKey(key)
+		if err != nil {
+			return nil, badRequest("%w", err)
 		}
+		ok, err := ignores.Undismiss(check, subject)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("%s isn't dismissed: %w", key, watch.ErrNotFound)
+		}
+		resp.Undismissed = append(resp.Undismissed, key)
 	}
-	c, err := newCore(a.Manager())
+	dismiss := deref(body.Dismiss)
+	if len(dismiss) == 0 {
+		return resp, nil
+	}
+	var only []string
+	for _, key := range dismiss {
+		check, _, err := health.SplitKey(key)
+		if err != nil {
+			return nil, badRequest("%w", err)
+		}
+		only = append(only, check)
+	}
+	checker, err := a.checker()
+	if err != nil {
+		return nil, err
+	}
+	report, err := checker.Run(ctx, health.Options{Only: only, All: true, Network: deref(body.Network)})
+	if err != nil {
+		return nil, err
+	}
+	for _, key := range dismiss {
+		check, subject, _ := health.SplitKey(key)
+		f, ok := report.Find(check + "/" + subject)
+		if !ok {
+			if latest, found := a.healthJobs.latest(); found {
+				f, ok = latest.Find(check + "/" + subject)
+			}
+		}
+		if !ok {
+			return nil, fmt.Errorf("no finding %s now (a network check's needs network): %w", key, watch.ErrNotFound)
+		}
+		if err := ignores.Dismiss(storage.HealthIgnore{Check: check, Subject: subject, Message: f.Message}); err != nil {
+			return nil, err
+		}
+		a.Log.Infof("health finding %s dismissed through the API: %s", f.Key, f.Message)
+		resp.Dismissed = append(resp.Dismissed, f.Key)
+	}
+	return resp, nil
+}
+
+// legacyHealthFix is POST /api/health/fix {"key", "choice", "apply"}: the plan of a
+// finding's fix (health.FixResult), or its change when apply (no plan hash).
+func (a *API) legacyHealthFix(c *echo.Context) error {
+	var req HealthFixRequest
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+	ctx := c.Request().Context()
+	f, err := a.finding(ctx, req.Key)
 	if err != nil {
 		return err
 	}
-	res, err := fixFinding(r.Context(), c, f, req.Choice, req.Apply)
-	var notFixable *health.NotFixableError
-	switch {
-	case errors.As(err, &notFixable):
-		return &httpError{http.StatusUnprocessableEntity, err}
-	case errors.Is(err, health.ErrChoice):
-		return badRequest("%w", err)
-	case errors.Is(err, core.ErrBusy), errors.Is(err, core.ErrPlanChanged):
-		return &httpError{http.StatusConflict, err}
-	case err != nil:
+	cr, err := a.services(ctx)
+	if err != nil {
+		return err
+	}
+	res, err := fixFinding(ctx, cr, f, req.Choice, req.Apply)
+	if err != nil {
 		return err
 	}
 	res.Plan = orEmpty(res.Plan)
@@ -319,8 +387,7 @@ func (a *API) healthFix(w http.ResponseWriter, r *http.Request) error {
 			a.changed()
 		}
 	}
-	writeJSON(w, http.StatusOK, res)
-	return nil
+	return c.JSON(http.StatusOK, res)
 }
 
 // fixFinding plans the finding's fix, applies it with apply (when there's something to do).

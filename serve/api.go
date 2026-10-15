@@ -3,13 +3,11 @@ package serve
 import (
 	"cmp"
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"maps"
-	"mime"
 	"net/http"
 	"slices"
 	"strconv"
@@ -17,13 +15,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/labstack/echo/v5"
+	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/storage"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/luevano/mangal/v5/web"
+	"github.com/luevano/mangal/v5/web/apiv1"
 )
+
+// APIVersion is the version of the API v1 (the spec's).
+const APIVersion = "1.0.0"
 
 // runs tracks the check runs of the server: the running ones and how to cancel the ones
 // asked through the API.
@@ -74,15 +78,16 @@ func (r *runs) cancel(id int64) bool {
 	return ok
 }
 
-// API is the JSON API of `mangal serve` over a watch manager, see watch.Remote for its
-// client and watch's AddRequest etc. for the bodies.
+// API is the HTTP API of `mangal serve` (web/openapi.yaml): the API v1 (apiv1's strict
+// server) over the watch manager, the app's services (core), the jobs and the events;
+// see NewApp for its routes.
 type API struct {
 	// Manager is the manager to use for a request.
 	Manager func() watch.Manager
 	// Info is the server part of the status.
 	Info watch.Status
-	// Token, when set, is required as a bearer token.
-	Token string
+	// Auth authenticates the requests.
+	Auth *Auth
 	// Changed is told when watches are added or changed (to wake the scheduler), may be nil.
 	Changed func()
 	Log     logger
@@ -91,8 +96,15 @@ type API struct {
 	// nil), Core the app's services whose fixes change them (core.New with them when nil).
 	Health func(watch.Manager) (health.Checker, error)
 	Core   func(watch.Manager) (*core.Core, error)
+	// Browser has the providers and the image proxy (and the web UI's browse routes).
+	Browser *web.Server
+	// Jobs are the server's downloads and scans, Events the events of /api/v1/events.
+	Jobs   *jobs.Manager
+	Events *Events
 
 	healthJobs healthJobs
+	coreOnce   sync.Mutex
+	core       *core.Core
 
 	// ctx is the server's, the checks asked through the API run until it's cancelled
 	ctx    context.Context
@@ -101,6 +113,8 @@ type API struct {
 	mu       sync.Mutex
 	stopping bool
 }
+
+var _ apiv1.StrictServerInterface = (*API)(nil)
 
 // Wait refuses new checks and waits for the ones asked through the API to finish.
 func (a *API) Wait() {
@@ -121,135 +135,25 @@ func (a *API) startCheck() bool {
 	return true
 }
 
-// Register adds the API's routes (all under /api/) to the mux.
-func (a *API) Register(mux *http.ServeMux) {
-	handle := func(pattern string, h func(http.ResponseWriter, *http.Request) error) {
-		mux.Handle(pattern, a.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if err := h(w, r); err != nil {
-				writeError(w, err)
-			}
-		})))
+// services are the app's services over the server's watches, made once.
+func (a *API) services(ctx context.Context) (*core.Core, error) {
+	a.coreOnce.Lock()
+	defer a.coreOnce.Unlock()
+	if a.core != nil {
+		return a.core, nil
 	}
-	handle("GET /api/status", a.status)
-	handle("GET /api/watches", a.list)
-	handle("POST /api/watches", a.add)
-	handle("GET /api/watches/stale", a.stale)
-	handle("GET /api/watches/{id}", a.get)
-	handle("PATCH /api/watches/{id}", a.patch)
-	handle("DELETE /api/watches/{id}", a.remove)
-	handle("POST /api/watches/{id}/relink", a.relink)
-	handle("POST /api/check", a.check)
-	handle("GET /api/runs", a.runs)
-	handle("GET /api/runs/{id}", a.run)
-	handle("POST /api/runs/{id}/cancel", a.cancel)
-	handle("DELETE /api/watch-runs/{id}", a.removeRun)
-	handle("GET /api/events", a.events)
-	a.registerHealth(handle)
-}
-
-func (a *API) auth(next http.Handler) http.Handler {
-	if a.Token == "" {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !a.authorized(r) {
-			web.LogRefused(r, tokenProblem(r))
-			w.Header().Set("WWW-Authenticate", "Bearer")
-			writeJSON(w, http.StatusUnauthorized, watch.ErrorResponse{Error: "missing or wrong token (serve.token)"})
-			return
+	newCore := a.Core
+	if newCore == nil {
+		newCore = func(m watch.Manager) (*core.Core, error) {
+			return core.New(ctx, core.Env{Watches: func(context.Context) (watch.Manager, error) { return a.Manager(), nil }})
 		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// AuthWeb puts the web UI behind the token: browsers ask for it (any user name, the token
-// as the password) and send it with the UI's requests.
-func (a *API) AuthWeb(next http.Handler) http.Handler {
-	if a.Token == "" {
-		return next
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !a.authorized(r) {
-			web.LogRefused(r, tokenProblem(r))
-			w.Header().Set("WWW-Authenticate", `Basic realm="mangal serve", charset="UTF-8"`)
-			http.Error(w, "missing or wrong token (serve.token)", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// authorized: the token as a bearer token or as the password of basic auth (the web UI).
-func (a *API) authorized(r *http.Request) bool {
-	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+a.Token)) == 1 {
-		return true
+	c, err := newCore(a.Manager())
+	if err != nil {
+		return nil, err
 	}
-	_, password, ok := r.BasicAuth()
-	return ok && subtle.ConstantTimeCompare([]byte(password), []byte(a.Token)) == 1
-}
-
-// tokenProblem is why the request isn't authorized, for the log.
-func tokenProblem(r *http.Request) string {
-	if r.Header.Get("Authorization") == "" {
-		return "missing token"
-	}
-	return "wrong token"
-}
-
-// httpError is an error with its status code.
-type httpError struct {
-	status int
-	err    error
-}
-
-func (e *httpError) Error() string { return e.err.Error() }
-func (e *httpError) Unwrap() error { return e.err }
-
-func badRequest(format string, a ...any) error {
-	return &httpError{http.StatusBadRequest, fmt.Errorf(format, a...)}
-}
-
-func writeError(w http.ResponseWriter, err error) {
-	code := watch.ErrorCode(err)
-	status := http.StatusInternalServerError
-	var he *httpError
-	switch {
-	case errors.As(err, &he):
-		status = he.status
-	case watch.NotFound(code):
-		status = http.StatusNotFound
-	case code == watch.CodeExists, watch.Busy(code):
-		status = http.StatusConflict
-	}
-	writeJSON(w, status, watch.ErrorResponse{Error: err.Error(), Code: code})
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func decode(r *http.Request, v any) error {
-	// a page of another site can only send simple content types without a CORS preflight
-	if mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mediaType != "application/json" {
-		web.LogRefused(r, fmt.Sprintf("content type %q, not JSON", r.Header.Get("Content-Type")))
-		return &httpError{http.StatusUnsupportedMediaType, errors.New("the body has to be JSON (Content-Type: application/json)")}
-	}
-	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(v); err != nil {
-		return badRequest("decode the body: %w", err)
-	}
-	return nil
-}
-
-func pathID(r *http.Request) (int64, error) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil || id <= 0 {
-		return 0, badRequest("%q isn't an id", r.PathValue("id"))
-	}
-	return id, nil
+	a.core = c
+	return c, nil
 }
 
 // orEmpty makes a nil list [] in JSON.
@@ -260,205 +164,211 @@ func orEmpty[T any](list []T) []T {
 	return list
 }
 
+func deref[T any](p *T) T {
+	var zero T
+	if p == nil {
+		return zero
+	}
+	return *p
+}
+
 func (a *API) changed() {
 	if a.Changed != nil {
 		a.Changed()
 	}
 }
 
-func (a *API) status(w http.ResponseWriter, r *http.Request) error {
-	st, err := a.Manager().Status(r.Context())
+// GetIndex implements apiv1.StrictServerInterface.
+func (a *API) GetIndex(context.Context, apiv1.GetIndexRequestObject) (apiv1.GetIndexResponseObject, error) {
+	ops, err := web.Operations()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	st.Server, st.Address, st.Version, st.Started = true, a.Info.Address, a.Info.Version, a.Info.Started
-	st.Runs = a.Runs.running()
-	if len(st.Runs) > 0 {
-		st.Run = st.Runs[0]
+	index := apiv1.GetIndex200JSONResponse{ApiVersion: APIVersion, Version: a.Info.Version, Operations: []apiv1.IndexOperation{}}
+	for _, o := range ops {
+		if !o.V1 {
+			continue
+		}
+		plan := o.Plan
+		index.Operations = append(index.Operations, apiv1.IndexOperation{Method: o.Method, Path: o.Path, OperationId: o.ID,
+			Scope: o.Scope, Plan: &plan, Summary: o.Summary})
 	}
-	writeJSON(w, http.StatusOK, st)
-	return nil
+	return index, nil
 }
 
-func (a *API) list(w http.ResponseWriter, r *http.Request) error {
-	list, err := a.Manager().List(r.Context())
-	if err != nil {
-		return err
-	}
-	writeJSON(w, http.StatusOK, orEmpty(list))
-	return nil
+// GetSpec implements apiv1.StrictServerInterface.
+func (a *API) GetSpec(context.Context, apiv1.GetSpecRequestObject) (apiv1.GetSpecResponseObject, error) {
+	return apiv1.GetSpec200ApplicationyamlResponse{Body: strings.NewReader(string(web.Spec)), ContentLength: int64(len(web.Spec))}, nil
 }
 
-func (a *API) add(w http.ResponseWriter, r *http.Request) error {
-	var req watch.AddRequest
-	if err := decode(r, &req); err != nil {
-		return err
+// GetStatus implements apiv1.StrictServerInterface.
+func (a *API) GetStatus(ctx context.Context, _ apiv1.GetStatusRequestObject) (apiv1.GetStatusResponseObject, error) {
+	st, err := a.Manager().Status(ctx)
+	if err != nil {
+		return nil, err
 	}
+	resp := apiv1.GetStatus200JSONResponse{
+		Server: true, Address: &a.Info.Address, Version: &a.Info.Version, Started: &a.Info.Started,
+		Checking: st.Checking, Providers: &st.Providers, NextCheck: optTime(st.NextCheck), Since: optTime(st.Since),
+		ApiVersion: APIVersion, Features: core.APIFeatures(), Scopes: []string{},
+	}
+	runs := a.Runs.running()
+	if len(runs) > 0 {
+		resp.Runs, resp.Run = &runs, &runs[0]
+	}
+	if id, ok := identityOf(ctx); ok {
+		resp.Scopes, resp.Auth = id.Scopes, id.String()
+	}
+	return resp, nil
+}
+
+func optTime(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
+// ListWatches implements apiv1.StrictServerInterface.
+func (a *API) ListWatches(ctx context.Context, _ apiv1.ListWatchesRequestObject) (apiv1.ListWatchesResponseObject, error) {
+	list, err := a.Manager().List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.ListWatches200JSONResponse(orEmpty(list)), nil
+}
+
+// AddWatch implements apiv1.StrictServerInterface.
+func (a *API) AddWatch(ctx context.Context, request apiv1.AddWatchRequestObject) (apiv1.AddWatchResponseObject, error) {
+	req := deref(request.Body)
 	if req.Provider == "" || (req.MangaID == "" && req.Query == "") {
-		return badRequest("provider and manga_id or query are needed")
+		return nil, badRequest("provider and manga_id or query are needed")
 	}
 	if _, err := watch.ParseSchedule(req.Schedule); err != nil {
-		return badRequest("%w", err)
+		return nil, badRequest("%w", err)
 	}
-	added, err := a.Manager().Add(r.Context(), req.Options())
+	added, err := a.Manager().Add(ctx, req.Options())
 	if err != nil {
-		if watch.ErrorCode(err) == "" {
-			// the provider or the manga, not the server
-			err = &httpError{http.StatusUnprocessableEntity, err}
-		}
-		return err
+		return nil, unprocessable(err)
 	}
 	a.Log.Infof("watching %q from %s (id %d)", added.Title, added.Provider, added.ID)
 	a.changed()
-	writeJSON(w, http.StatusCreated, added)
-	return nil
+	return apiv1.AddWatch201JSONResponse(added), nil
 }
 
-func (a *API) stale(w http.ResponseWriter, r *http.Request) error {
+// ListStaleWatches implements apiv1.StrictServerInterface.
+func (a *API) ListStaleWatches(ctx context.Context, request apiv1.ListStaleWatchesRequestObject) (apiv1.ListStaleWatchesResponseObject, error) {
 	since := 90 * 24 * time.Hour
-	if s := r.URL.Query().Get("since"); s != "" {
+	if s := deref(request.Params.Since); s != "" {
 		var err error
 		if since, err = parseDuration(s); err != nil {
-			return badRequest("since: %w", err)
+			return nil, badRequest("since: %w", err)
 		}
 	}
-	list, err := a.Manager().Stale(r.Context(), since)
+	list, err := a.Manager().Stale(ctx, since)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	writeJSON(w, http.StatusOK, orEmpty(list))
-	return nil
+	return apiv1.ListStaleWatches200JSONResponse(orEmpty(list)), nil
 }
 
-func (a *API) get(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r)
+// GetWatch implements apiv1.StrictServerInterface.
+func (a *API) GetWatch(ctx context.Context, request apiv1.GetWatchRequestObject) (apiv1.GetWatchResponseObject, error) {
+	got, err := a.Manager().Get(ctx, request.Id)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	got, err := a.Manager().Get(r.Context(), id)
-	if err != nil {
-		return err
-	}
-	writeJSON(w, http.StatusOK, got)
-	return nil
+	return apiv1.GetWatch200JSONResponse(got), nil
 }
 
-func (a *API) patch(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r)
-	if err != nil {
-		return err
-	}
-	var req watch.PatchRequest
-	if err := decode(r, &req); err != nil {
-		return err
-	}
+// UpdateWatch implements apiv1.StrictServerInterface.
+func (a *API) UpdateWatch(ctx context.Context, request apiv1.UpdateWatchRequestObject) (apiv1.UpdateWatchResponseObject, error) {
+	req := deref(request.Body)
 	update, changes := req.Update()
 	if req.Enabled == nil && !changes {
-		return badRequest("nothing to change")
+		return nil, badRequest("nothing to change")
 	}
 	if update.Schedule != nil {
 		if _, err := watch.ParseSchedule(*update.Schedule); err != nil {
-			return badRequest("%w", err)
+			return nil, badRequest("%w", err)
 		}
 	}
 	m := a.Manager()
 	var got watch.Watch
+	var err error
 	if req.Enabled != nil {
-		if got, err = m.SetEnabled(r.Context(), id, *req.Enabled); err != nil {
-			return err
+		if got, err = m.SetEnabled(ctx, request.Id, *req.Enabled); err != nil {
+			return nil, err
 		}
 	}
 	if changes {
-		if got, err = m.Update(r.Context(), id, update); err != nil {
-			return err
+		if got, err = m.Update(ctx, request.Id, update); err != nil {
+			return nil, err
 		}
 	}
 	a.changed()
-	writeJSON(w, http.StatusOK, got)
-	return nil
+	return apiv1.UpdateWatch200JSONResponse(got), nil
 }
 
-func (a *API) relink(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r)
-	if err != nil {
-		return err
-	}
-	var req watch.RelinkOptions
-	if err := decode(r, &req); err != nil {
-		return err
-	}
+// RelinkWatch implements apiv1.StrictServerInterface.
+func (a *API) RelinkWatch(ctx context.Context, request apiv1.RelinkWatchRequestObject) (apiv1.RelinkWatchResponseObject, error) {
+	req := deref(request.Body)
 	if req.MangaID == "" && req.Query == "" {
-		return badRequest("manga_id or query is needed")
+		return nil, badRequest("manga_id or query is needed")
 	}
-	got, err := a.Manager().Relink(r.Context(), id, req)
+	got, err := a.Manager().Relink(ctx, request.Id, req)
 	if err != nil {
-		if watch.ErrorCode(err) == "" {
-			// the provider or the manga, not the server
-			err = &httpError{http.StatusUnprocessableEntity, err}
-		}
-		return err
+		return nil, unprocessable(err)
 	}
 	a.Log.Infof("re-linked watch %d to %q from %s (%s)", got.ID, got.Title, got.Provider, got.MangaID)
 	a.changed()
-	writeJSON(w, http.StatusOK, got)
-	return nil
+	return apiv1.RelinkWatch200JSONResponse(got), nil
 }
 
-func (a *API) remove(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r)
-	if err != nil {
-		return err
+// RemoveWatch implements apiv1.StrictServerInterface.
+func (a *API) RemoveWatch(ctx context.Context, request apiv1.RemoveWatchRequestObject) (apiv1.RemoveWatchResponseObject, error) {
+	if err := a.Manager().Remove(ctx, request.Id); err != nil {
+		return nil, err
 	}
-	if err := a.Manager().Remove(r.Context(), id); err != nil {
-		return err
-	}
-	a.Log.Infof("stopped watching %d", id)
-	w.WriteHeader(http.StatusNoContent)
-	return nil
+	a.Log.Infof("stopped watching %d", request.Id)
+	return apiv1.RemoveWatch204Response{}, nil
 }
 
-func (a *API) removeRun(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r)
+// RemoveWatchRun implements apiv1.StrictServerInterface.
+func (a *API) RemoveWatchRun(ctx context.Context, request apiv1.RemoveWatchRunRequestObject) (apiv1.RemoveWatchRunResponseObject, error) {
+	removed, err := a.Manager().RemoveRun(ctx, request.Id)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	removed, err := a.Manager().RemoveRun(r.Context(), id)
-	if err != nil {
-		return err
-	}
-	a.Log.Infof("removed watch run %d from the history (snapshot %s)", id, removed.Snapshot)
-	writeJSON(w, http.StatusOK, removed)
-	return nil
+	a.Log.Infof("removed watch run %d from the history (snapshot %s)", request.Id, removed.Snapshot)
+	return apiv1.RemoveWatchRun200JSONResponse(removed), nil
 }
 
-func (a *API) check(w http.ResponseWriter, r *http.Request) error {
-	var req watch.CheckRequest
-	if err := decode(r, &req); err != nil {
-		return err
-	}
+// CheckWatches implements apiv1.StrictServerInterface.
+func (a *API) CheckWatches(ctx context.Context, request apiv1.CheckWatchesRequestObject) (apiv1.CheckWatchesResponseObject, error) {
+	req := deref(request.Body)
 	kind := watch.KindManual
 	if req.Gaps {
 		kind = watch.KindGaps
 	}
 	m := a.Manager()
 	if req.DryRun {
-		report, err := m.Check(r.Context(), req.IDs, watch.CheckOptions{Kind: kind, Gaps: req.Gaps, DryRun: true})
+		report, err := m.Check(ctx, req.IDs, watch.CheckOptions{Kind: kind, Gaps: req.Gaps, DryRun: true})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		report.Results = orEmpty(report.Results)
-		writeJSON(w, http.StatusOK, report)
-		return nil
+		return apiv1.CheckWatches200JSONResponse(report), nil
 	}
 
 	// runs in the server, not cancelled with the request
-	ctx, cancel := context.WithCancel(a.ctx)
+	checkCtx, cancel := context.WithCancel(a.ctx)
 	started := make(chan watch.CheckResponse, 1)
 	failed := make(chan error, 1)
 	ended := make(chan struct{})
 	if !a.startCheck() {
 		cancel()
-		return &httpError{http.StatusServiceUnavailable, errors.New("the server is stopping")}
+		return nil, newAPIError(http.StatusServiceUnavailable, CodeUnavailable, "the server is stopping")
 	}
 	go func() {
 		defer a.checks.Done()
@@ -466,7 +376,7 @@ func (a *API) check(w http.ResponseWriter, r *http.Request) error {
 		defer cancel()
 		var id int64
 		var busy []string
-		report, err := m.Check(ctx, req.IDs, watch.CheckOptions{Kind: kind, Gaps: req.Gaps,
+		report, err := m.Check(checkCtx, req.IDs, watch.CheckOptions{Kind: kind, Gaps: req.Gaps,
 			OnEvent: logEvents(a.Log, false),
 			OnBusy:  func(providers []string) { busy = providers },
 			OnRun: func(run storage.CheckRun) {
@@ -497,91 +407,83 @@ func (a *API) check(w http.ResponseWriter, r *http.Request) error {
 	}()
 	select {
 	case resp := <-started:
-		writeJSON(w, http.StatusAccepted, resp)
-		return nil
+		return apiv1.CheckWatches202JSONResponse(resp), nil
 	case err := <-failed:
-		return err
+		return nil, err
 	case <-ended:
 		select {
 		case resp := <-started:
-			writeJSON(w, http.StatusAccepted, resp)
-			return nil
+			return apiv1.CheckWatches202JSONResponse(resp), nil
 		case err := <-failed:
-			return err
+			return nil, err
 		default:
-			return errors.New("the check didn't start")
+			return nil, errors.New("the check didn't start")
 		}
 	}
 }
 
-func (a *API) runs(w http.ResponseWriter, r *http.Request) error {
-	q := r.URL.Query()
+// ListRuns implements apiv1.StrictServerInterface.
+func (a *API) ListRuns(ctx context.Context, request apiv1.ListRunsRequestObject) (apiv1.ListRunsResponseObject, error) {
+	p := request.Params
 	var filter watch.RunFilter
-	if s := q.Get("since"); s != "" {
-		if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-			filter.Since = t
-		} else if d, err := parseDuration(s); err == nil {
-			filter.Since = time.Now().Add(-d)
-		} else {
-			return badRequest("since: %q isn't a time (RFC 3339) or a duration (7d, 12h)", s)
+	if s := deref(p.Since); s != "" {
+		t, err := parseSince(s)
+		if err != nil {
+			return nil, badRequest("since: %w", err)
 		}
+		filter.Since = t
 	}
-	if s := q.Get("watch"); s != "" {
-		n, err := strconv.ParseInt(s, 10, 64)
-		if err != nil || n < 0 {
-			return badRequest("watch: %q isn't an id", s)
-		}
-		filter.Watch = n
+	if w := deref(p.Watch); w < 0 {
+		return nil, badRequest("watch: %d isn't an id", w)
+	} else {
+		filter.Watch = w
 	}
-	filter.Provider, filter.MangaID = q.Get("provider"), q.Get("manga_id")
-	if s := q.Get("limit"); s != "" {
-		n, err := strconv.Atoi(s)
-		if err != nil || n < 0 {
-			return badRequest("limit: %q isn't a number", s)
-		}
-		filter.Limit = n
-	}
-	list, err := a.Manager().Runs(r.Context(), filter)
+	filter.Provider, filter.MangaID, filter.Limit = deref(p.Provider), deref(p.MangaId), deref(p.Limit)
+	list, err := a.Manager().Runs(ctx, filter)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	writeJSON(w, http.StatusOK, orEmpty(list))
-	return nil
+	return apiv1.ListRuns200JSONResponse(orEmpty(list)), nil
 }
 
-func (a *API) run(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r)
-	if err != nil {
-		return err
+// parseSince is a time (RFC 3339) or a duration ago (7d, 12h).
+func parseSince(s string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t, nil
 	}
-	run, err := a.Manager().RunDetails(r.Context(), id)
-	if err != nil {
-		return err
+	if d, err := parseDuration(s); err == nil {
+		return time.Now().Add(-d), nil
 	}
-	writeJSON(w, http.StatusOK, run)
-	return nil
+	return time.Time{}, fmt.Errorf("%q isn't a time (RFC 3339) or a duration (7d, 12h)", s)
 }
 
-func (a *API) cancel(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r)
+// GetRun implements apiv1.StrictServerInterface.
+func (a *API) GetRun(ctx context.Context, request apiv1.GetRunRequestObject) (apiv1.GetRunResponseObject, error) {
+	run, err := a.Manager().RunDetails(ctx, request.Id)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !a.Runs.cancel(id) {
-		return fmt.Errorf("check run %d isn't running here (only the ones asked through the API can be cancelled): %w", id, watch.ErrNotFound)
-	}
-	a.Log.Infof("check %d cancelled through the API", id)
-	w.WriteHeader(http.StatusAccepted)
-	return nil
+	return apiv1.GetRun200JSONResponse(run), nil
 }
 
-// eventsPing is how often the event stream sends a keep-alive.
+// CancelRun implements apiv1.StrictServerInterface.
+func (a *API) CancelRun(_ context.Context, request apiv1.CancelRunRequestObject) (apiv1.CancelRunResponseObject, error) {
+	if !a.Runs.cancel(request.Id) {
+		return nil, fmt.Errorf("check run %d isn't running here (only the ones asked through the API can be cancelled): %w", request.Id, watch.ErrNotFound)
+	}
+	a.Log.Infof("check %d cancelled through the API", request.Id)
+	return apiv1.CancelRun202Response{}, nil
+}
+
+// eventsPing is how often the event streams send a keep-alive.
 var eventsPing = 30 * time.Second
 
-// events streams the live events of the checks as server-sent events (id: the event's
-// Seq, data: its JSON): the recent ones of the running checks first, after the Seq in
-// ?since= or Last-Event-ID (a reconnection), then each one as it happens.
-func (a *API) events(w http.ResponseWriter, r *http.Request) error {
+// legacyEvents is GET /api/events: the live events of the checks (watch.LiveEvent, what
+// watch.Remote reads) as server-sent events (id: the event's Seq, data: its JSON): the
+// recent ones of the running checks first, after the Seq in ?since= or Last-Event-ID (a
+// reconnection), then each one as it happens.
+func (a *API) legacyEvents(c *echo.Context) error {
+	r := c.Request()
 	var since uint64
 	if s := cmp.Or(r.URL.Query().Get("since"), r.Header.Get("Last-Event-ID")); s != "" {
 		n, err := strconv.ParseUint(s, 10, 64)
@@ -599,11 +501,9 @@ func (a *API) events(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	w := c.Response()
 	rc := http.NewResponseController(w)
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
+	startStream(w)
 	if _, err := io.WriteString(w, ": mangal serve events\n\n"); err != nil {
 		return nil
 	}
@@ -638,6 +538,14 @@ func (a *API) events(w http.ResponseWriter, r *http.Request) error {
 			return nil
 		}
 	}
+}
+
+// startStream starts an event stream answer.
+func startStream(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
 }
 
 // parseDuration is a duration that also takes days ("7d", "1.5d").

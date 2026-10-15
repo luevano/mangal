@@ -229,6 +229,24 @@ func enumEntry[T fmt.Stringer](key string, def T, description string, parse func
 	})
 }
 
+// scopesEntry is a list of serve token scopes (read, watch, write).
+func scopesEntry(key string, def []string, description string) *entry[string, []string] {
+	e := listEntry(key, description)
+	e.Default = def
+	e.Validate = func(list []string) error {
+		for _, s := range list {
+			if !slices.Contains(ServeScopes, s) {
+				return fmt.Errorf("%q isn't a scope (%s)", s, strings.Join(ServeScopes, ", "))
+			}
+		}
+		return nil
+	}
+	return e
+}
+
+// ServeScopes are the scopes of the serve API's tokens.
+var ServeScopes = []string{"read", "watch", "write"}
+
 // listEntry is a comma separated list, its entries trimmed (empty ones dropped).
 func listEntry(key, description string) *entry[string, []string] {
 	return reg(entry[string, []string]{
@@ -545,8 +563,19 @@ var Serve = configServe{
 		Description: "Token the `mangal serve` API asks for (Authorization: Bearer <token>) when it listens on an address that isn't loopback, where it's required (on loopback too with serve.token_on_loopback). mangal's own commands and TUI send it. A token saved with `mangal serve token` (kept with the logins) is used instead.",
 		Secret:      true,
 	}),
-	TokenOnLoopback: boolEntry("serve.token_on_loopback", false, "Also require serve.token when `mangal serve` listens on loopback, where any local program (or user) can reach the API otherwise. Needs a token."),
+	TokenOnLoopback: boolEntry("serve.token_on_loopback", false, "Require a token from the same machine too, as serve.loopback_scopes = \"\" does (kept for older configs)."),
 	Web:             boolEntry("serve.web", false, "Also serve the web UI (as `mangal web`) on the `mangal serve` port (`mangal serve --web`), behind the token when one is required (the browser asks for it: any user name, the token as the password)."),
+	Auth: oneOfEntry("serve.auth", "token",
+		"How `mangal serve` authenticates: token (Authorization: Bearer <token>; serve.token, the token saved with `mangal serve token` and the named ones it makes, each with its scopes; requests from the same machine without one get serve.loopback_scopes) or none (every request may do everything: only behind something that authenticates, e.g. a reverse proxy).",
+		"token", "none"),
+	LoopbackScopes: scopesEntry("serve.loopback_scopes", []string{"read", "watch"},
+		"Scopes of the requests from the same machine (a loopback address, not through a proxy) without a token: read (GET, events), watch (add, change, check the watches), write (change files, the library, the config, downloads). Empty requires a token there too. Behind a reverse proxy on the same machine, see serve.trusted_proxies."),
+	AllowedHosts: listEntry("serve.allowed_hosts",
+		"Host names `mangal serve` answers besides localhost and its address, comma separated (e.g. the name a reverse proxy passes, mangal.example.com). On loopback only localhost is answered otherwise (DNS rebinding); set, it's checked on any address."),
+	AllowedOrigins: listEntry("serve.allowed_origins",
+		"Origins (https://mangal.example.com) whose pages may change things through `mangal serve` (POST, PUT, PATCH, DELETE): a reverse proxy's public address when the browser's Origin isn't the Host the server sees. Other sites' pages are refused."),
+	TrustedProxies: listEntry("serve.trusted_proxies",
+		"Addresses or CIDRs (127.0.0.1, 10.0.0.0/8) of reverse proxies whose X-Forwarded-For and X-Forwarded-Host `mangal serve` believes: the client's address (whether it's on the same machine) and the host. Empty believes none: a request with forwarding headers is never treated as local."),
 }
 
 var Log = configLog{

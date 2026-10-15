@@ -201,4 +201,13 @@ type configServe struct {
 	// TokenOnLoopback requires the token on loopback too.
 	TokenOnLoopback *entry[bool, bool]
 	Web             *entry[bool, bool]
+	// Auth is token or none.
+	Auth *entry[string, string]
+	// LoopbackScopes are the scopes of the requests from the same machine without a
+	// token.
+	LoopbackScopes *entry[string, []string]
+	// AllowedHosts, AllowedOrigins and TrustedProxies are for reverse proxies.
+	AllowedHosts   *entry[string, []string]
+	AllowedOrigins *entry[string, []string]
+	TrustedProxies *entry[string, []string]
 }

@@ -3,24 +3,26 @@
 package serve
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/cron"
 	"github.com/luevano/mangal/v5/web"
 )
@@ -31,10 +33,17 @@ type Args struct {
 	Port int
 	// Web also serves the web UI.
 	Web bool
-	// Token is required by the API (as a bearer token), needed when Host isn't loopback.
-	Token string
-	// TokenOnLoopback requires the token on loopback too.
+	// Token has every scope (as a bearer token), TokenName says where it's from (default:
+	// saved, config: serve.token).
+	Token, TokenName string
+	// TokenOnLoopback requires a token on loopback too (as LoopbackScopes empty).
 	TokenOnLoopback bool
+	// Auth is AuthToken or AuthNone, LoopbackScopes the scopes of the requests from the
+	// same machine without a token (nil: read and watch, empty: none).
+	Auth           string
+	LoopbackScopes []string
+	// AllowedHosts, AllowedOrigins and TrustedProxies are for reverse proxies (web.GuardOptions).
+	AllowedHosts, AllowedOrigins, TrustedProxies []string
 }
 
 // MinTokenLen is the shortest token used without a warning.
@@ -116,19 +125,38 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	}
 	defer listener.Close()
 	loopback := isLoopback(listener.Addr())
-	if !loopback && args.Token == "" {
-		return fmt.Errorf("listening on %s (not loopback) needs a token: set serve.token (or MANGAL_SERVE_TOKEN)", listener.Addr())
+	auth, err := newAuth(args, loopback, lg)
+	if err != nil {
+		return err
 	}
-	if loopback && args.TokenOnLoopback && args.Token == "" {
-		return errors.New("serve.token_on_loopback needs a token: set serve.token (or MANGAL_SERVE_TOKEN), or save one with `mangal serve token --generate`")
+	if !loopback && auth.Mode == AuthToken && !auth.HasTokens() {
+		return fmt.Errorf("listening on %s (not loopback) needs a token: `mangal serve token --generate` saves one (or set serve.token, MANGAL_SERVE_TOKEN)", listener.Addr())
 	}
-	token := args.Token
-	if loopback && !args.TokenOnLoopback {
-		token = ""
+	if auth.Mode == AuthToken && len(auth.LoopbackScopes) == 0 && !auth.HasTokens() {
+		return errors.New("serve.loopback_scopes empty (or serve.token_on_loopback) needs a token: `mangal serve token --generate` saves one (or set serve.token, MANGAL_SERVE_TOKEN)")
 	}
-	if token != "" && len(token) < MinTokenLen {
-		lg.Warnf("the serve token is short (%d characters), use %d or more: `mangal serve token --generate` makes one", len(token), MinTokenLen)
+	if args.Token != "" && len(args.Token) < MinTokenLen {
+		lg.Warnf("the serve token is short (%d characters), use %d or more: `mangal serve token --generate` makes one", len(args.Token), MinTokenLen)
 	}
+	if auth.Mode == AuthNone {
+		lg.Warnf("serve.auth is none: every request that reaches %s may do everything (only behind something that authenticates)", listener.Addr())
+	}
+	proxies, err := ParseProxies(args.TrustedProxies)
+	if err != nil {
+		return err
+	}
+	auth.TrustedProxies = proxies
+
+	browser, err := web.NewBrowser(out)
+	if err != nil {
+		return err
+	}
+	jobManager := jobs.New(ctx)
+	defer jobManager.Shutdown(10 * time.Second)
+	events := NewEvents()
+	go events.forwardWatches(ctx, svc)
+	go events.forwardJobs(ctx, jobManager)
+	go events.forwardLogs(ctx, log.Dir())
 
 	var current atomic.Pointer[watch.Service]
 	current.Store(svc)
@@ -140,26 +168,21 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	api := &API{
 		Manager: func() watch.Manager { return current.Load() },
 		Info:    watch.Status{Server: true, Address: address, Version: meta.Version, Started: started},
-		Token:   token,
+		Auth:    auth,
 		Changed: sched.Wake,
 		Log:     lg,
 		Runs:    r,
+		Browser: browser,
+		Jobs:    jobManager,
+		Events:  events,
 		ctx:     ctx,
 	}
-	mux := http.NewServeMux()
-	api.Register(mux)
-	if args.Web {
-		ui, err := web.Handler(out, web.GuardOptions{Addr: listener.Addr()})
-		if err != nil {
-			return err
-		}
-		mux.Handle("/", api.AuthWeb(ui))
-	} else {
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, http.StatusNotFound, watch.ErrorResponse{Error: "not found (the web UI is off, see serve.web)", Code: watch.CodeNotFound})
-		})
+	app, err := api.NewApp(AppOptions{Web: args.Web, Guard: web.GuardOptions{Addr: listener.Addr(),
+		AllowedHosts: args.AllowedHosts, AllowedOrigins: args.AllowedOrigins, TrustedProxies: proxies}})
+	if err != nil {
+		return err
 	}
-	server := web.NewServer(ctx, web.Guard(web.GuardOptions{Addr: listener.Addr()})(mux))
+	server := web.NewServer(ctx, app)
 
 	dataDB := watch.DataDB()
 	discovery := watch.DiscoveryPath(dataDB)
@@ -173,12 +196,10 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		extra = ", web UI on " + address
 	}
 	listen := address
-	switch {
-	case !loopback:
-		listen = fmt.Sprintf("%s (%s, token required)", listener.Addr(), address)
-	case token != "":
-		listen += " (token required)"
+	if !loopback {
+		listen = fmt.Sprintf("%s (%s)", listener.Addr(), address)
 	}
+	listen += " (" + auth.describe() + ")"
 	lg.Infof("mangal serve %s on %s%s, data %s (pid %d)", meta.Version, listen, extra, dataDB, os.Getpid())
 
 	schedDone := make(chan struct{})
@@ -204,6 +225,38 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	}
 	lg.Infof("stopped")
 	return err
+}
+
+// newAuth is the server's Auth from its args.
+func newAuth(args Args, loopback bool, lg logger) (*Auth, error) {
+	mode := cmp.Or(args.Auth, AuthToken)
+	if mode != AuthToken && mode != AuthNone {
+		return nil, fmt.Errorf("serve.auth: %q isn't token or none", mode)
+	}
+	loopbackScopes := args.LoopbackScopes
+	if loopbackScopes == nil {
+		// serve.loopback_scopes' default
+		loopbackScopes = []string{ScopeRead, ScopeWatch}
+	}
+	scopes, err := NormalizeScopes(loopbackScopes)
+	if err != nil {
+		return nil, fmt.Errorf("serve.loopback_scopes: %w", err)
+	}
+	if args.TokenOnLoopback {
+		scopes = nil
+	}
+	return &Auth{Mode: mode, Token: args.Token, TokenName: cmp.Or(args.TokenName, "config"), LoopbackScopes: scopes, Named: cache.ServeTokens}, nil
+}
+
+// describe says how the requests are authenticated, for the start line.
+func (a *Auth) describe() string {
+	if a.Mode == AuthNone {
+		return "no authentication"
+	}
+	if len(a.LoopbackScopes) == 0 {
+		return "token required"
+	}
+	return "token required, same machine without one: " + strings.Join(a.LoopbackScopes, ", ")
 }
 
 // listen is net.Listen, swapped in tests.

@@ -73,7 +73,7 @@ func OperationByID(id string) (Operation, bool) {
 		return Operation{}, false
 	}
 	for _, o := range ops {
-		if o.ID == id {
+		if strings.EqualFold(o.ID, id) {
 			return o, true
 		}
 	}

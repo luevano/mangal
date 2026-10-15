@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
@@ -118,6 +119,7 @@ const (
 	keyDiscordWebhook = "webhook"
 	authOwnerServe    = "serve"
 	keyServeToken     = "token"
+	keyServeTokens    = "tokens"
 )
 
 // DiscordWebhook is the saved Discord webhook url, empty if none.
@@ -212,4 +214,45 @@ func moveConfigClient(data *storage.DB) string {
 	}
 	log.Info("moved %s (and the secret, if any) from the config to the saved logins", retiredMyAnimeListClientID)
 	return fmt.Sprintf("Moved the MyAnimeList API client (%s) from the config to mangal's saved logins, it's no longer read from the config (\"mangal config write\" drops it, \"mangal myanimelist client\" changes it).", retiredMyAnimeListClientID)
+}
+
+// ServeTokenEntry is a named token of the `mangal serve` API: only its hash is kept, the
+// token is shown once when made.
+type ServeTokenEntry struct {
+	Name string `json:"name"`
+	// Hash is the hex sha256 of the token.
+	Hash    string    `json:"hash"`
+	Scopes  []string  `json:"scopes"`
+	Created time.Time `json:"created"`
+}
+
+// ServeTokens are the named tokens of the `mangal serve` API.
+func ServeTokens() ([]ServeTokenEntry, error) {
+	st, err := Storage()
+	if err != nil {
+		return nil, err
+	}
+	var tokens []ServeTokenEntry
+	if _, err := st.AuthStore(authOwnerServe, keyring).Get(keyServeTokens, &tokens); err != nil {
+		return nil, fmt.Errorf("read the serve tokens: %w", err)
+	}
+	return tokens, nil
+}
+
+// SetServeTokens saves the named tokens of the `mangal serve` API, none removes them.
+func SetServeTokens(tokens []ServeTokenEntry) error {
+	st, err := Storage()
+	if err != nil {
+		return err
+	}
+	kv := st.AuthStore(authOwnerServe, keyring)
+	if len(tokens) == 0 {
+		err = kv.Delete(keyServeTokens)
+	} else {
+		err = kv.Set(keyServeTokens, tokens)
+	}
+	if err != nil {
+		return fmt.Errorf("save the serve tokens: %w", err)
+	}
+	return nil
 }
