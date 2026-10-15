@@ -28,8 +28,13 @@ type configReadHistory struct {
 }
 
 type configMetadata struct {
+	Anilist     configMetadataAnilist
 	Kitsu       configMetadataKitsu
 	MyAnimeList configMetadataMyAnimeList
+}
+
+type configMetadataAnilist struct {
+	TagRankMin *entry[int64, int]
 }
 
 type configMetadataMyAnimeList struct {

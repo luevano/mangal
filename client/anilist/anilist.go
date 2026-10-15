@@ -10,6 +10,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/metadata/anilist"
 	"github.com/luevano/mangal/v5/client/internal/logins"
+	"github.com/luevano/mangal/v5/config"
 	mlog "github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/provider/loader"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -57,11 +58,16 @@ func Anilist() (*metadata.ProviderWithCache, error) {
 	return anilist_, anilistErr
 }
 
-func newAnilist() (*metadata.ProviderWithCache, error) {
-	aniOpts := anilist.DefaultOptions()
-	aniOpts.HTTPClient = httpClient()
+// anilistOptions are the AniList options from the config.
+func anilistOptions() anilist.Options {
+	o := anilist.DefaultOptions()
+	o.HTTPClient = httpClient()
+	o.TagRankMin = config.Metadata.Anilist.TagRankMin.Get()
+	return o
+}
 
-	ani, err := anilist.NewAnilist(aniOpts)
+func newAnilist() (*metadata.ProviderWithCache, error) {
+	ani, err := anilist.NewAnilist(anilistOptions())
 	if err != nil {
 		return nil, fmt.Errorf("create anilist: %w", err)
 	}

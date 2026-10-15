@@ -16,6 +16,7 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/dustin/go-humanize"
 	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/metadata/anilist"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/util/cron"
@@ -306,6 +307,10 @@ var Read = configRead{
 }
 
 var Metadata = configMetadata{
+	Anilist: configMetadataAnilist{
+		TagRankMin: intEntry("metadata.anilist.tag_rank_min", anilist.DefaultTagRankMin, 1, 100,
+			"Lowest AniList tag rank (how relevant the tag is to the manga, 1 to 100) kept in the tags, 1 keeps them all. Applies to metadata fetched after the change."),
+	},
 	Kitsu: configMetadataKitsu{
 		Enabled: boolEntry("metadata.kitsu.enabled", true,
 			"Search Kitsu for metadata when Anilist finds none (or fails). Kitsu often lacks the authors, such metadata isn't valid (see download.metadata.strict)."),
