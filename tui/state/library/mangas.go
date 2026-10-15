@@ -11,10 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	_list "github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
-	"github.com/luevano/mangal/v5/client/anilist"
-	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
@@ -430,77 +427,22 @@ func (s *mangasState) setItems() tea.Cmd {
 }
 
 func (s *mangasState) scanCmd(ctx context.Context, check bool) tea.Cmd {
-	files := s.files
-	providerDirs := config.Download.Provider.CreateDir.Get()
 	return base.LoadWithStatus(ctx, "Scanning the library", func(ctx context.Context, status func(string)) (scannedMsg, error) {
-		return scan(ctx, files, providerDirs, check, status)
+		return scan(ctx, check, status)
 	}, func(msg scannedMsg) tea.Msg { return msg })
 }
 
-// Scan scans download.path (an error when it doesn't exist, e.g. a drive not mounted)
-// into the library; otherRoot is a directory that has the missing mangas, if any.
-func Scan(ctx context.Context, files library.Files, providerDirs bool, status func(string)) (res library.ScanResult, otherRoot string, err error) {
-	root, err := path.ExistingDownloads()
-	if err != nil {
-		return res, "", err
-	}
-	scanner := library.Scanner{FS: files.FS, Library: files.Library, OnProgress: func(p library.Progress) { status(p.String()) }}
-	res, err = scanner.ScanContext(ctx, root, providerDirs)
-	if err != nil {
-		return res, "", err
-	}
-	return res, library.OtherRoot(files.FS, res.Missing, root, providerDirs), nil
-}
-
-// scan scans the library (Scan), check checks the ids too.
-func scan(ctx context.Context, files library.Files, providerDirs, check bool, status func(string)) (scannedMsg, error) {
-	res, otherRoot, err := Scan(ctx, files, providerDirs, status)
+// scan scans the library (core's Library.Scan), check checks the ids and the statuses too.
+func scan(ctx context.Context, check bool, status func(string)) (scannedMsg, error) {
+	c, err := base.Core()
 	if err != nil {
 		return scannedMsg{}, err
 	}
-	onProgress := func(p library.Progress) { status(p.String()) }
-	msg := scannedMsg{result: res, otherRoot: otherRoot, checked: check}
-	if mangas, err := files.Library.Mangas(); err == nil {
-		watched, err := watches.Watched(ctx)
-		if err != nil {
-			log.Warn("library: the watches: %s", err)
-		}
-		msg.dups = duplicates(files.Library, mangas, watched)
-	}
-	if check && msg.otherRoot == "" {
-		msg.checks, msg.checkErr = checkIDs(ctx, files, onProgress)
-		if mangas, err := files.Library.Mangas(); err == nil && msg.checkErr == nil {
-			msg.checkErr = client.UpdateLibraryStatuses(ctx, files.Library, mangas, true, onProgress)
-		}
-	}
-	return msg, nil
-}
-
-// checkIDs checks the ids of the adopted folders on AniList and Kitsu.
-func checkIDs(ctx context.Context, files library.Files, onProgress func(library.Progress)) ([]library.IDCheck, error) {
-	mangas, err := files.Library.Mangas()
+	rep, err := c.Library.Scan(base.WithStatus(ctx, status), core.ScanOptions{Check: check, Statuses: true})
 	if err != nil {
-		return nil, err
+		return scannedMsg{}, err
 	}
-	ani, err := anilist.Anilist()
-	if err != nil {
-		return nil, err
-	}
-	if err := anilist.EnsureLogin(ctx); err != nil {
-		// the checks go on without the login
-		log.Debug("anilist login: %s", err)
-	}
-	kt, err := kitsu.Kitsu()
-	if err != nil {
-		return nil, err
-	}
-	checker := library.IDChecker{
-		FS:         files.FS,
-		Providers:  map[metadata.IDSource]library.IDProvider{metadata.IDSourceAnilist: ani, metadata.IDSourceKitsu: kt},
-		Suggest:    ani,
-		OnProgress: onProgress,
-	}
-	return checker.Check(ctx, mangas)
+	return scannedMsg{result: rep.Result, otherRoot: rep.OtherRoot, checked: check, checks: rep.Checks, checkErr: rep.CheckErr, dups: rep.Duplicates}, nil
 }
 
 func (s *mangasState) onScanned(msg scannedMsg) tea.Cmd {

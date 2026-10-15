@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/v5/client"
-	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/storage"
@@ -176,20 +174,20 @@ func capitalize(s string) string {
 
 // scanLibrary scans the library, the notification says what it found.
 func scanLibrary(ctx context.Context, status func(string)) (string, error) {
-	files, err := client.LibraryFiles()
+	c, err := base.Core()
 	if err != nil {
 		return "", err
 	}
-	providerDirs := config.Download.Provider.CreateDir.Get()
-	res, otherRoot, err := tuilibrary.Scan(ctx, files, providerDirs, status)
+	rep, err := c.Library.Scan(base.WithStatus(ctx, status), core.ScanOptions{})
 	if err != nil {
 		return "", err
 	}
+	res := rep.Result
 	notify := fmt.Sprintf("scanned: %d chapters added, %d removed, %d folders new, %d moved", res.Added, res.Removed, res.New, res.Relocated)
 	if n := len(res.Missing); n != 0 {
 		notify += fmt.Sprintf(", %d still missing", n)
-		if otherRoot != "" {
-			notify += fmt.Sprintf(" (they're in %s: the library's scan offers to use it as download.path)", otherRoot)
+		if rep.OtherRoot != "" {
+			notify += fmt.Sprintf(" (they're in %s: the library's scan offers to use it as download.path)", rep.OtherRoot)
 		}
 	}
 	return notify, nil

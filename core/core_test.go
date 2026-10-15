@@ -396,3 +396,23 @@ func TestLockContention(t *testing.T) {
 		t.Error("not applied after the wait")
 	}
 }
+
+func TestScan(t *testing.T) {
+	c, root := testCore(t)
+	ctx := context.Background()
+	if err := os.MkdirAll(filepath.Join(root, "Berserk"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Berserk", "Chapter 1.cbz"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := c.Library.Scan(ctx, ScanOptions{})
+	if err != nil || rep.Result.New != 1 || rep.Root != root || rep.Checked {
+		t.Fatalf("%+v %v", rep, err)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := c.Library.Scan(cancelled, ScanOptions{}); !errors.Is(err, context.Canceled) {
+		t.Errorf("cancelled: %v", err)
+	}
+}

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -9,10 +8,7 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal"
-	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
-	"github.com/luevano/mangal/v5/client/anilist"
-	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
@@ -304,35 +300,30 @@ existing .libmangal.json is never replaced.`,
 		}
 		st := newStatus(cmd)
 		defer st.Done()
-		lib, err := cache.Library()
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
-		root, err := path.ExistingDownloads()
-		if err != nil {
-			return err
-		}
-		providerDirs := config.Download.Provider.CreateDir.Get()
-		scanner := library.Scanner{FS: afs.Afero, Library: lib, OnProgress: st.Progress}
-		res, err := scanner.ScanContext(cmd.Context(), root, providerDirs)
+		ctx := changeCtx(cmd, st)
+		rep, err := c.Library.Scan(ctx, core.ScanOptions{})
 		st.Clear()
 		if err != nil {
 			return err
 		}
 
 		// mangas in another (existing) download directory
-		if dir := library.OtherRoot(afs.Afero, res.Missing, root, providerDirs); dir != "" &&
-			confirm(cmd, fmt.Sprintf("%d mangas are in %s, but download.path is %s. Use %s as download.path?", len(res.Missing), dir, root, dir)) {
+		if dir := rep.OtherRoot; dir != "" &&
+			confirm(cmd, fmt.Sprintf("%d mangas are in %s, but download.path is %s. Use %s as download.path?", len(rep.Result.Missing), dir, rep.Root, dir)) {
 			if err := config.WriteKey(config.Download.Path.Key, dir); err != nil {
 				return err
 			}
-			root = dir
-			res, err = scanner.ScanContext(cmd.Context(), root, providerDirs)
+			rep, err = c.Library.Scan(ctx, core.ScanOptions{})
 			st.Clear()
 			if err != nil {
 				return err
 			}
 		}
+		res := rep.Result
 
 		cmd.Printf("added %d, moved %d, removed %d chapters; found %d moved manga folders, %d new\n",
 			res.Added, res.Moved, res.Removed, res.Relocated, res.New)
@@ -355,18 +346,19 @@ existing .libmangal.json is never replaced.`,
 					return err
 				}
 				cmd.Println("removed")
+				if rep.Duplicates, err = c.Library.Duplicates(); err != nil {
+					return err
+				}
 			}
 		}
-		if err := printDuplicates(cmd, lib, root); err != nil {
-			return err
-		}
+		printLines(cmd, library.DuplicateLines(rep.Duplicates, rep.Root))
 		if libraryScanArgs.Mark {
 			if err := markFolders(cmd, st, libraryScanArgs.Apply); err != nil {
 				return err
 			}
 		}
 		if libraryScanArgs.Check {
-			if err := checkIDs(cmd, st, lib); err != nil {
+			if err := checkIDs(cmd, st, c); err != nil {
 				return err
 			}
 		}
@@ -389,18 +381,6 @@ func forgetMissing(cmd *cobra.Command, st *status, missing []storage.Manga) erro
 	res, err := c.Changes.Apply(changeCtx(cmd, st), core.ForgetReq{Mangas: ids}, applyOpts(st))
 	undoHint(cmd, res.Snapshot, err)
 	return err
-}
-
-// printDuplicates lists the library mangas that share a metadata id.
-func printDuplicates(cmd *cobra.Command, lib storage.Library, root string) error {
-	dups, err := client.LibraryDuplicates(lib)
-	if err != nil {
-		return err
-	}
-	for _, line := range library.DuplicateLines(dups, root) {
-		cmd.Println(line)
-	}
-	return nil
 }
 
 // markFolders writes (apply) or lists the missing .libmangal.json of the folders, from
@@ -521,18 +501,8 @@ other sources; one that agrees is left. Only lists what it would write unless --
 }
 
 // checkIDs reports the metadata ids of the adopted folders that look wrong.
-func checkIDs(cmd *cobra.Command, st *status, lib storage.Library) error {
-	mangas, err := lib.Mangas()
-	if err != nil {
-		return err
-	}
-	ctx := st.Context(cmd.Context())
-	checker, err := idChecker(ctx)
-	if err != nil {
-		return err
-	}
-	checker.OnProgress = st.Progress
-	checks, err := checker.Check(ctx, mangas)
+func checkIDs(cmd *cobra.Command, st *status, c *core.Core) error {
+	checks, err := c.Library.CheckIDs(changeCtx(cmd, st))
 	st.Clear()
 	if err != nil {
 		return err
@@ -546,26 +516,6 @@ func checkIDs(cmd *cobra.Command, st *status, lib storage.Library) error {
 		cmd.Println("  " + c.String())
 	}
 	return nil
-}
-
-// idChecker checks AniList and Kitsu ids, and suggests AniList ones.
-func idChecker(ctx context.Context) (library.IDChecker, error) {
-	ani, err := anilist.Anilist()
-	if err != nil {
-		return library.IDChecker{}, err
-	}
-	_ = anilist.EnsureLogin(ctx)
-	checker := library.IDChecker{
-		FS:        afs.Afero,
-		Providers: map[metadata.IDSource]library.IDProvider{metadata.IDSourceAnilist: ani},
-		Suggest:   ani,
-	}
-	kt, err := kitsu.Kitsu()
-	if err != nil {
-		return library.IDChecker{}, err
-	}
-	checker.Providers[metadata.IDSourceKitsu] = kt
-	return checker, nil
 }
 
 var libraryMergeArgs = struct {
