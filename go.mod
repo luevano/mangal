@@ -22,10 +22,10 @@ require (
 	github.com/labstack/echo/v4 v4.16.0
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luevano/gopher-luadoc v0.3.4
-	github.com/luevano/libmangal v0.30.0
-	github.com/luevano/luaprovider v0.18.0
-	github.com/luevano/mangoplus v0.7.3
-	github.com/luevano/mangoprovider v0.21.0
+	github.com/luevano/libmangal v0.31.0
+	github.com/luevano/luaprovider v0.19.0
+	github.com/luevano/mangoplus v0.7.4
+	github.com/luevano/mangoprovider v0.22.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/philippgille/gokv v0.7.0
@@ -60,6 +60,7 @@ require (
 	github.com/andybalholm/cascadia v1.3.5 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bits-and-blooms/bitset v1.24.6 // indirect
+	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
@@ -100,7 +101,7 @@ require (
 	github.com/ktr0731/go-ansisgr v0.1.0 // indirect
 	github.com/labstack/gommon v0.5.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
-	github.com/luevano/mangodex v0.5.1 // indirect
+	github.com/luevano/mangodex v0.5.2 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
