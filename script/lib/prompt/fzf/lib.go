@@ -2,9 +2,7 @@ package fzf
 
 import (
 	"context"
-	"errors"
 
-	"github.com/ktr0731/go-fuzzyfinder"
 	luadoc "github.com/luevano/gopher-luadoc"
 	"github.com/luevano/mangal/v5/script/lib/util"
 	lua "github.com/yuin/gopher-lua"
@@ -64,7 +62,7 @@ func Lib() *luadoc.Lib {
 }
 
 // find is swapped in tests.
-var find = fuzzyfinder.Find
+var find = pick
 
 func findOne(state *lua.LState) int {
 	var values []lua.LValue
@@ -86,12 +84,12 @@ func findOne(state *lua.LState) int {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	index, err := find(items, func(i int) string { return items[i] }, fuzzyfinder.WithContext(ctx))
-	if errors.Is(err, fuzzyfinder.ErrAbort) && ctx.Err() == nil {
+	index, ok, err := find(ctx, items)
+	util.Must(state, err)
+	if !ok {
 		state.Push(lua.LNil)
 		return 1
 	}
-	util.Must(state, err)
 
 	state.Push(values[index])
 	return 1

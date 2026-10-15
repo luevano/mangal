@@ -1,21 +1,20 @@
 package fzf
 
 import (
+	"context"
+	"strings"
 	"testing"
 
-	"github.com/ktr0731/go-fuzzyfinder"
 	lua "github.com/yuin/gopher-lua"
 )
 
 func TestFindOne(t *testing.T) {
 	var shown []string
-	find = func(slice any, itemFunc func(int) string, _ ...fuzzyfinder.Option) (int, error) {
-		for i := range slice.([]string) {
-			shown = append(shown, itemFunc(i))
-		}
-		return 1, nil
+	find = func(_ context.Context, items []string) (int, bool, error) {
+		shown = items
+		return 1, true, nil
 	}
-	t.Cleanup(func() { find = fuzzyfinder.Find })
+	t.Cleanup(func() { find = pick })
 
 	state := lua.NewState()
 	defer state.Close()
@@ -43,11 +42,16 @@ func TestFindOne(t *testing.T) {
 		t.Error("no error from to_string")
 	}
 
-	find = func(any, func(int) string, ...fuzzyfinder.Option) (int, error) { return 0, fuzzyfinder.ErrAbort }
+	find = func(context.Context, []string) (int, bool, error) { return 0, false, nil }
 	if err := state.DoString(`chosen = find_one({1}, tostring)`); err != nil {
 		t.Fatal(err)
 	}
 	if got := state.GetGlobal("chosen"); got != lua.LNil {
 		t.Errorf("cancelled chose %v", got)
+	}
+
+	find = func(context.Context, []string) (int, bool, error) { return 0, false, context.Canceled }
+	if err := state.DoString(`chosen = find_one({1}, tostring)`); err == nil || !strings.Contains(err.Error(), context.Canceled.Error()) {
+		t.Errorf("cancelled ctx: %v", err)
 	}
 }
