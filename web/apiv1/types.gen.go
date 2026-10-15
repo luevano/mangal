@@ -608,7 +608,7 @@ type ReadList struct {
 	Total int    `json:"total"`
 }
 
-// ReadRequest defines model for ReadRequest.
+// ReadRequest a chapter of a provider's manga, or of a library manga (a scanned folder without a source has no manga_id; it's synced, not in the history)
 type ReadRequest struct {
 	Chapter      float32 `json:"chapter"`
 	ChapterTitle *string `json:"chapter_title,omitempty"`
@@ -616,9 +616,9 @@ type ReadRequest struct {
 
 	// LibraryManga the library manga read (its ids are synced when the manga has no binding)
 	LibraryManga *int64  `json:"library_manga,omitempty"`
-	MangaId      string  `json:"manga_id"`
+	MangaId      *string `json:"manga_id,omitempty"`
 	MangaTitle   *string `json:"manga_title,omitempty"`
-	Provider     string  `json:"provider"`
+	Provider     *string `json:"provider,omitempty"`
 
 	// Sync set the progress on the metadata sources (default true)
 	Sync   *bool    `json:"sync,omitempty"`
@@ -629,6 +629,9 @@ type ReadRequest struct {
 type ReadResponse struct {
 	// Error what failed to sync
 	Error *string `json:"error,omitempty"`
+
+	// Note why it isn't in the read history
+	Note *string `json:"note,omitempty"`
 
 	// Recorded written to the read history (read.history.local)
 	Recorded bool `json:"recorded"`

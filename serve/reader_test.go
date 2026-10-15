@@ -192,6 +192,12 @@ func TestV1RecordRead(t *testing.T) {
 	if reads, _ := (storage.History{DB: s.src.library.DB}).List("fake", "opm"); reads[0].Count != 2 {
 		t.Errorf("count %d", reads[0].Count)
 	}
+	// a scanned folder's chapter: no manga id, synced with the library manga's ids only
+	gotIDs = nil
+	if code := s.call(t, "POST", "/api/v1/reads", `{"provider":"fake","chapter":3,"library_manga":1}`, &out); code != http.StatusOK ||
+		out.Recorded || out.Note == nil || gotIDs[metadata.IDCodeAnilist] != "21087" {
+		t.Errorf("scanned %d %+v %v", code, out, gotIDs)
+	}
 	var e ErrorResponse
 	if code := s.call(t, "POST", "/api/v1/reads", `{"provider":"fake","chapter":2}`, &e); code != http.StatusBadRequest {
 		t.Errorf("no manga %d %+v", code, e)

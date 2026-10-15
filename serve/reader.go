@@ -287,8 +287,9 @@ var syncProgress, defaultSyncProgress = client.SyncProgress, client.SyncProgress
 // RecordRead implements apiv1.StrictServerInterface.
 func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObject) (apiv1.RecordReadResponseObject, error) {
 	b := deref(request.Body)
-	if b.Provider == "" || b.MangaId == "" {
-		return nil, badRequest("provider and manga_id are needed")
+	provider, mangaID := deref(b.Provider), deref(b.MangaId)
+	if (provider == "" || mangaID == "") && deref(b.LibraryManga) == 0 {
+		return nil, badRequest("provider and manga_id, or library_manga, are needed")
 	}
 	svc, err := a.services(ctx)
 	if err != nil {
@@ -303,7 +304,7 @@ func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObj
 	}
 	for _, m := range mangas {
 		if m.ID == libraryManga || (libraryManga == 0 && slices.ContainsFunc(m.Sources, func(s storage.Source) bool {
-			return s.Provider == b.Provider && s.MangaID == b.MangaId
+			return s.Provider == provider && s.MangaID == mangaID
 		})) {
 			libraryManga = m.ID
 			ids = map[metadata.IDCode]string{}
@@ -314,12 +315,18 @@ func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObj
 		}
 	}
 	out := apiv1.RecordRead200JSONResponse{Synced: []string{}}
-	if config.Read.History.Local.Get() {
+	switch {
+	case !config.Read.History.Local.Get():
+		out.Note = ptr("read.history.local is off")
+	case provider == "" || mangaID == "":
+		// the history is by provider and manga id
+		out.Note = ptr("the chapter has no provider manga (a scanned folder): synced only")
+	default:
 		title := deref(b.MangaTitle)
 		if title == "" {
-			title = b.MangaId
+			title = mangaID
 		}
-		err := st.History().Record(storage.Read{Provider: b.Provider, MangaID: b.MangaId, MangaTitle: title,
+		err := st.History().Record(storage.Read{Provider: provider, MangaID: mangaID, MangaTitle: title,
 			Volume: deref(b.Volume), Chapter: b.Chapter, ChapterTitle: deref(b.ChapterTitle), ChapterURL: deref(b.ChapterUrl),
 			LibraryManga: libraryManga, Last: time.Now()})
 		if err != nil {
@@ -328,9 +335,11 @@ func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObj
 		out.Recorded = true
 	}
 	if b.Sync == nil || *b.Sync {
-		bindings, err := st.Bindings().Get(b.Provider, b.MangaId)
-		if err != nil {
-			return nil, err
+		var bindings []storage.Binding
+		if provider != "" && mangaID != "" {
+			if bindings, err = st.Bindings().Get(provider, mangaID); err != nil {
+				return nil, err
+			}
 		}
 		synced, err := syncProgress(ctx, bindings, ids, b.Chapter)
 		out.Synced = append(out.Synced, synced...)
@@ -338,7 +347,7 @@ func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObj
 			out.Error = ptr(err.Error())
 		}
 	}
-	a.Log.Infof("read %s %q chapter %g through the API%s", b.Provider, b.MangaId, b.Chapter, syncedNote(out.Synced))
+	a.Log.Infof("read %s %q chapter %g (library manga %d) through the API%s", provider, mangaID, b.Chapter, libraryManga, syncedNote(out.Synced))
 	return out, nil
 }
 

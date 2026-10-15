@@ -3008,7 +3008,8 @@ components:
           type: string
     ReadRequest:
       type: object
-      required: [provider, manga_id, chapter]
+      description: a chapter of a provider's manga, or of a library manga (a scanned folder without a source has no manga_id; it's synced, not in the history)
+      required: [chapter]
       properties:
         provider:
           type: string
@@ -3048,6 +3049,9 @@ components:
         error:
           type: string
           description: what failed to sync
+        note:
+          type: string
+          description: why it isn't in the read history
     ConfigEntry:
       type: object
       required: [key, value, default, description, secret, applies]

@@ -1872,9 +1872,10 @@ export interface components {
             size?: number;
             type?: string;
         };
+        /** @description a chapter of a provider's manga, or of a library manga (a scanned folder without a source has no manga_id; it's synced, not in the history) */
         ReadRequest: {
-            provider: string;
-            manga_id: string;
+            provider?: string;
+            manga_id?: string;
             manga_title?: string;
             /** Format: float */
             volume?: number;
@@ -1897,6 +1898,8 @@ export interface components {
             synced: string[];
             /** @description what failed to sync */
             error?: string;
+            /** @description why it isn't in the read history */
+            note?: string;
         };
         ConfigEntry: {
             key: string;

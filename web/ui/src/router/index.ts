@@ -27,6 +27,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/providers/:provider/manga/:manga', name: 'provider-manga', component: () => import('@/views/ProviderMangaView.vue') },
   { path: '/accounts', name: 'accounts', component: () => import('@/views/AccountsView.vue') },
   { path: '/config', name: 'config', component: () => import('@/views/ConfigView.vue') },
+  { path: '/read/library/:id(\\d+)', name: 'read-library', component: () => import('@/views/ReaderView.vue'), meta: { bare: true } },
+  { path: '/read/:provider/:manga', name: 'read-online', component: () => import('@/views/ReaderView.vue'), meta: { bare: true } },
   { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFoundView.vue') }
 ]
 
