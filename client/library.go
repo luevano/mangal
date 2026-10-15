@@ -6,14 +6,11 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
-	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/template"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -35,35 +32,6 @@ func LibraryFiles() (library.Files, error) {
 // LibraryModes are download.mode_file and download.mode_dir.
 func LibraryModes() library.Modes {
 	return library.Modes{File: config.Download.ModeFile.Get(), Dir: config.Download.ModeDir.Get()}
-}
-
-// LibraryMarkOptions are how Mark tells a folder's provider: the installed providers,
-// download.provider.create_dir and the provider name template.
-func LibraryMarkOptions() (library.MarkOptions, error) {
-	loaders, err := manager.Loaders()
-	if err != nil {
-		return library.MarkOptions{}, err
-	}
-	return library.MarkOptions{Loaders: loaders, ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider}, nil
-}
-
-// LibraryNamer plans library rename with the configured name templates and the
-// installed providers, the AniList metadata from meta (anilist.MetadataByIDsBatch, or
-// its Cached or Fresh variant).
-func LibraryNamer(lib storage.Library, meta func(context.Context, [][]metadata.ID) ([]metadata.Metadata, error)) (library.Namer, error) {
-	loaders, err := manager.Loaders()
-	if err != nil {
-		return library.Namer{}, err
-	}
-	return library.Namer{
-		FS:           afs.Afero,
-		Loaders:      loaders,
-		ProviderName: template.Provider,
-		MangaName:    template.Manga,
-		ChapterName:  template.Chapter,
-		Metadata:     meta,
-		Library:      lib,
-	}, nil
 }
 
 // LibraryDuplicates are the library mangas sharing a metadata id (library.Duplicates),

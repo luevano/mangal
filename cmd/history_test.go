@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"io"
 	"testing"
 	"time"
 
-	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -30,15 +32,15 @@ func TestHistoryClearUndo(t *testing.T) {
 		t.Fatalf("not cleared: %+v", reads)
 	}
 
-	undoer, err := client.LibraryUndoer()
+	c, err := newCore()
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := undoer.Plan(0)
-	if err != nil || plan.Op.Kind != "history-clear" {
-		t.Fatalf("plan %+v, %v", plan.Op, err)
+	plan, err := c.Changes.Plan(context.Background(), core.UndoReq{})
+	if err != nil || plan.Detail.(library.UndoPlan).Op.Kind != "history-clear" {
+		t.Fatalf("plan %+v, %v", plan, err)
 	}
-	if _, _, err := client.Undo(undoer, plan, false); err != nil {
+	if _, err := c.Changes.ApplyPlan(context.Background(), plan, core.ApplyOpts{}); err != nil {
 		t.Fatal(err)
 	}
 	if reads, _ := history.List("p", ""); len(reads) != 1 {

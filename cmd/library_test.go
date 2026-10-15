@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
@@ -106,13 +106,13 @@ func TestLibraryScanMergeTrash(t *testing.T) {
 	}
 
 	// the merge's undo needs the trash: blocked now
-	undoer, err := client.LibraryUndoer()
+	c, err := newCore()
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := undoer.Plan(0)
-	if err != nil || plan.Op.Kind != "merge" || len(plan.Blocked()) == 0 {
-		t.Errorf("undo plan %+v, blocked %v, %v", plan.Op, plan.Blocked(), err)
+	plan, err := c.Changes.Plan(context.Background(), core.UndoReq{})
+	if err != nil || plan.Detail.(library.UndoPlan).Op.Kind != "merge" || len(plan.Blocked) == 0 {
+		t.Errorf("undo plan %+v, %v", plan, err)
 	}
 
 	// a missing folder is listed, removed only when asked (not without a terminal)

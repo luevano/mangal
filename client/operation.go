@@ -10,7 +10,6 @@ import (
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
@@ -144,15 +143,6 @@ func (o Ops) Undo(ctx context.Context, u library.Undoer, plan library.UndoPlan, 
 	return res, snapshot, err
 }
 
-// Snapshot is Ops.Snapshot of mangal's databases.
-func Snapshot(op string) (string, error) {
-	o, err := DefaultOps()
-	if err != nil {
-		return "", err
-	}
-	return o.Snapshot(op)
-}
-
 // Operation is Ops.Run of mangal's databases (the library's lock waited for). It returns
 // the snapshot.
 func Operation(kind, summary string, do func(library.Journal) error) (string, error) {
@@ -162,27 +152,4 @@ func Operation(kind, summary string, do func(library.Journal) error) (string, er
 	}
 	info, err := o.Run(context.Background(), kind, summary, do)
 	return info.Snapshot, err
-}
-
-// LibraryUndoer undoes library operations, with the configured modes.
-func LibraryUndoer() (library.Undoer, error) {
-	st, err := cache.Storage()
-	if err != nil {
-		return library.Undoer{}, err
-	}
-	return library.Undoer{FS: afs.Afero, Journal: st.Journal(), Modes: LibraryModes()}, nil
-}
-
-// Undo is UndoContext without a ctx.
-func Undo(u library.Undoer, plan library.UndoPlan, force bool) (library.UndoResult, string, error) {
-	return UndoContext(context.Background(), u, plan, force)
-}
-
-// UndoContext is Ops.Undo of mangal's databases.
-func UndoContext(ctx context.Context, u library.Undoer, plan library.UndoPlan, force bool) (library.UndoResult, string, error) {
-	o, err := DefaultOps()
-	if err != nil {
-		return library.UndoResult{}, "", err
-	}
-	return o.Undo(ctx, u, plan, force)
 }
