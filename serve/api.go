@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/storage"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -86,10 +87,10 @@ type API struct {
 	Changed func()
 	Log     logger
 	Runs    *runs
-	// Health and Fixer make the health checker and fixer over the watches of a manager,
-	// health.NewWith and health.NewFixer when nil.
+	// Health makes the health checker over the watches of a manager (health.NewWith when
+	// nil), Core the app's services whose fixes change them (core.New with them when nil).
 	Health func(watch.Manager) (health.Checker, error)
-	Fixer  func(watch.Manager) (health.Fixer, error)
+	Core   func(watch.Manager) (*core.Core, error)
 
 	healthJobs healthJobs
 

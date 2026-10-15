@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
 )
 
@@ -288,21 +290,25 @@ func (a *API) healthFix(w http.ResponseWriter, r *http.Request) error {
 	if !ok {
 		return fmt.Errorf("no finding %s now (a network check's needs a GET /api/health?network=1 first): %w", req.Key, watch.ErrNotFound)
 	}
-	newFixer := a.Fixer
-	if newFixer == nil {
-		newFixer = health.NewFixer
+	newCore := a.Core
+	if newCore == nil {
+		newCore = func(m watch.Manager) (*core.Core, error) {
+			return core.New(r.Context(), core.Env{Watches: func(context.Context) (watch.Manager, error) { return m, nil }})
+		}
 	}
-	fixer, err := newFixer(a.Manager())
+	c, err := newCore(a.Manager())
 	if err != nil {
 		return err
 	}
-	res, err := fixer.Fix(r.Context(), f, req.Choice, req.Apply)
+	res, err := fixFinding(r.Context(), c, f, req.Choice, req.Apply)
 	var notFixable *health.NotFixableError
 	switch {
 	case errors.As(err, &notFixable):
 		return &httpError{http.StatusUnprocessableEntity, err}
 	case errors.Is(err, health.ErrChoice):
 		return badRequest("%w", err)
+	case errors.Is(err, core.ErrBusy), errors.Is(err, core.ErrPlanChanged):
+		return &httpError{http.StatusConflict, err}
 	case err != nil:
 		return err
 	}
@@ -315,4 +321,21 @@ func (a *API) healthFix(w http.ResponseWriter, r *http.Request) error {
 	}
 	writeJSON(w, http.StatusOK, res)
 	return nil
+}
+
+// fixFinding plans the finding's fix, applies it with apply (when there's something to do).
+func fixFinding(ctx context.Context, c *core.Core, f health.Finding, choice string, apply bool) (health.FixResult, error) {
+	plan, err := c.Changes.Plan(ctx, core.HealthFixReq{Finding: f, Choice: choice})
+	if err != nil {
+		return health.FixResult{}, err
+	}
+	fix := plan.Detail.(health.FixResult)
+	if !apply || plan.Nothing {
+		return fix, nil
+	}
+	res, err := c.Changes.ApplyPlan(ctx, plan, core.ApplyOpts{NoWait: true})
+	if err != nil {
+		return health.FixResult{}, err
+	}
+	return res.Detail.(health.FixResult), nil
 }

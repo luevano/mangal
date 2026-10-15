@@ -8,7 +8,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/mangal/v5/client"
-	watchpkg "github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
@@ -16,7 +15,6 @@ import (
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	tuilibrary "github.com/luevano/mangal/v5/tui/state/library"
-	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
@@ -40,11 +38,7 @@ func (s *state) runLib(ctx context.Context, msg libMsg) tea.Cmd {
 // undoable ends the notification of a journaled change.
 var undoable = " (" + base.KeyUndo.Help().Key + " in the library undoes it)"
 
-// newFixer is the Fixer of the fixes (the serve API's), over the watches of m (nil for
-// the library fixes). Swapped in tests.
-var newFixer = health.NewFixer
-
-// fixMsg is a confirmed fix, applied by the Fixer with Load by the State (as runMsg).
+// fixMsg is a confirmed fix, applied by the core with Load by the State (as runMsg).
 // watch is a fix of the watches (resume, watch it), applied the library manga a watch
 // is added for.
 type fixMsg struct {
@@ -58,27 +52,36 @@ func fix(label string, f health.Finding, watch bool, applied int64) tea.Cmd {
 	return func() tea.Msg { return fixMsg{label: label, f: f, watch: watch, applied: applied} }
 }
 
-// fixFinding plans the finding's fix with the Fixer, applies it with apply.
-func fixFinding(ctx context.Context, f health.Finding, watch, apply bool, status func(string)) (health.FixResult, error) {
-	var m watchpkg.Manager
-	if watch {
-		var err error
-		if m, err = watches.Connect(ctx); err != nil {
-			return health.FixResult{}, err
-		}
-	}
-	x, err := newFixer(m)
+// fixFinding plans the finding's fix (core.HealthFixReq), applies it with apply when
+// there's something to do.
+func fixFinding(ctx context.Context, f health.Finding, apply bool, status func(string)) (health.FixResult, error) {
+	changes, err := base.Changes()
 	if err != nil {
 		return health.FixResult{}, err
 	}
-	x.OnProgress = status
-	return x.Fix(ctx, f, "", apply)
+	if status != nil {
+		ctx = base.WithStatus(ctx, status)
+	} else {
+		status = func(string) {}
+	}
+	plan, err := changes.Plan(ctx, core.HealthFixReq{Finding: f})
+	if err != nil {
+		return health.FixResult{}, err
+	}
+	if !apply || plan.Nothing {
+		return plan.Detail.(health.FixResult), nil
+	}
+	res, err := changes.ApplyPlan(ctx, plan, base.ApplyOpts(status))
+	if err != nil {
+		return health.FixResult{}, err
+	}
+	return res.Detail.(health.FixResult), nil
 }
 
 // runFix applies the fix, changedMsg after it.
 func (s *state) runFix(ctx context.Context, msg fixMsg) tea.Cmd {
 	return base.LoadWithStatus(ctx, msg.label, func(ctx context.Context, status func(string)) (changedMsg, error) {
-		res, err := fixFinding(ctx, msg.f, msg.watch, true, status)
+		res, err := fixFinding(ctx, msg.f, true, status)
 		if err != nil {
 			return changedMsg{}, err
 		}
@@ -121,7 +124,7 @@ func (s *state) applyLibrary(ctx context.Context, f health.Finding) (tea.Cmd, bo
 			libChange("Scanning the library", scanLibrary))
 	case health.ActionRename:
 		return base.Load(ctx, "Planning the renames", func(ctx context.Context) (fixPlannedMsg, error) {
-			res, err := fixFinding(ctx, f, false, false, nil)
+			res, err := fixFinding(ctx, f, false, nil)
 			return fixPlannedMsg{f: f, res: res}, err
 		}, func(msg fixPlannedMsg) tea.Msg { return msg }), true
 	case health.ActionEmptyTrash:

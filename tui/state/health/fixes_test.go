@@ -12,8 +12,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/path"
@@ -84,9 +86,9 @@ func changed(t *testing.T, msgs []tea.Msg) changedMsg {
 	return changedMsg{}
 }
 
-// the fixes go through health.Fixer (the serve API's): resume, forget, rename; the
-// confirms stay the TUI's
-func TestFixesThroughFixer(t *testing.T) {
+// the fixes go through the core (as the CLI's and the serve API's): resume, forget,
+// rename; the confirms stay the TUI's
+func TestFixesThroughCore(t *testing.T) {
 	ctx := context.Background()
 	data, err := storage.OpenData(filepath.Join(t.TempDir(), storage.FilenameData))
 	if err != nil {
@@ -94,7 +96,7 @@ func TestFixesThroughFixer(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = data.Close() })
 	lib := storage.Library{DB: data}
-	if err := lib.RememberMangaDir("/dl", "Berserk", libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "b", Title: "Berserk"}}); err != nil {
+	if err := lib.RememberMangaDir("/dl", "Gone", libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "b", Title: "Berserk"}}); err != nil {
 		t.Fatal(err)
 	}
 	m, _, err := lib.MangaBySource("p", "b")
@@ -102,28 +104,40 @@ func TestFixesThroughFixer(t *testing.T) {
 		t.Fatal(err)
 	}
 	fsys := afero.NewMemMapFs()
-	from, to := "/dl/MangaDex/Berserk", "/dl/MangaDex/Berserk (1989)"
-	_ = fsys.MkdirAll(from, 0o755)
-	watches := &fixWatches{enabled: map[int64]bool{}}
-	var ops []string
-	old := newFixer
-	t.Cleanup(func() { newFixer = old })
-	newFixer = func(watch.Manager) (health.Fixer, error) {
-		return health.Fixer{
-			Watches: watches,
-			Linker:  library.Linker{Files: library.Files{FS: fsys, Library: lib, Root: "/dl"}},
-			Operation: func(kind, summary string, do func(library.Journal) error) (string, error) {
-				ops = append(ops, kind+": "+summary)
-				return "snap", do(nil)
-			},
-			Renames: func(context.Context) ([]library.Rename, error) {
-				if ok, _ := afero.DirExists(fsys, from); !ok {
-					return nil, nil
-				}
-				return []library.Rename{{From: from, To: to}}, nil
-			},
-		}, nil
+	from, to := "/dl/Berserk", "/dl/Berserk (1989) [alid-30002]"
+	info := libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "b", Title: "Berserk"},
+		MetadataIDs: []metadata.ID{{Raw: "30002", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}}}
+	if err := libmangal.WriteMangaDirInfo(fsys, from, info, 0o644); err != nil {
+		t.Fatal(err)
 	}
+	watches := &fixWatches{enabled: map[int64]bool{}}
+	meta := &mangadata.Metadata{EnglishTitle: "Berserk", AuthorList: []string{"Miura"}, DateStart: metadata.Date{Year: 1989, Month: 1, Day: 1},
+		PublicationStatus: metadata.StatusReleasing, ProviderID: "30002", ProviderIDCode: string(metadata.IDCodeAnilist)}
+	cached := func(_ context.Context, ids [][]metadata.ID) ([]metadata.Metadata, error) {
+		metas := make([]metadata.Metadata, len(ids))
+		for i := range ids {
+			metas[i] = meta
+		}
+		return metas, nil
+	}
+	c, err := core.New(ctx, core.Env{
+		Storage:        storage.Storage{Data: data},
+		FS:             fsys,
+		Root:           func() string { return "/dl" },
+		ProviderDirs:   func() bool { return false },
+		Modes:          func() library.Modes { return library.DefaultModes },
+		BackupsDir:     t.TempDir(),
+		Loaders:        func() ([]libmangal.ProviderLoader, error) { return nil, nil },
+		Watches:        func(context.Context) (watch.Manager, error) { return watches, nil },
+		MangaName:      func(_ libmangal.ProviderInfo, m mangadata.Manga) string { return m.Metadata().String() },
+		MetadataCached: cached,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := base.Core
+	t.Cleanup(func() { base.Core = old })
+	base.Core = func() (*core.Core, error) { return c, nil }
 	s := newState(nil)
 	s.Resize(base.Size{Width: 100, Height: 30})
 
@@ -142,9 +156,9 @@ func TestFixesThroughFixer(t *testing.T) {
 		t.Error("not forgotten")
 	}
 
-	rename := health.Finding{Check: "L4", Subject: health.Subject{Kind: "directory", Name: "MangaDex"}, Fix: health.Fix{Action: &health.Action{Kind: health.ActionRename, Paths: []string{from}}}}
+	rename := health.Finding{Check: "L5", Subject: health.Subject{Kind: "folder", Name: "Berserk"}, Fix: health.Fix{Action: &health.Action{Kind: health.ActionRename, Paths: []string{from}}}}
 	update(s, base.Drain(s.apply(ctx, rename))...)
-	if v := s.Confirm.View(); !strings.Contains(v, "MangaDex/Berserk -> MangaDex/Berserk (1989)") {
+	if v := s.Confirm.View(); !strings.Contains(v, "Berserk -> Berserk (1989) [alid-30002]") {
 		t.Fatalf("rename question:\n%s", v)
 	}
 	if c := changed(t, update(s, answer(t, s, "y")...)); !strings.HasPrefix(c.notify, "renamed 1 folder (U") {
@@ -160,7 +174,12 @@ func TestFixesThroughFixer(t *testing.T) {
 	}) {
 		t.Errorf("renamed, asked again: %#v", msgs)
 	}
-	if want := []string{`remove: remove missing 1 "Berserk"`, "rename: rename 1 folders"}; !slices.Equal(ops, want) {
-		t.Errorf("ops %q", ops)
+	ops, _ := c.Library.Ops(0)
+	var kinds []string
+	for _, op := range ops {
+		kinds = append(kinds, op.Kind+": "+op.Summary)
+	}
+	if want := []string{"rename: rename 1 folders", `remove: remove missing 1 "Berserk"`}; !slices.Equal(kinds, want) {
+		t.Errorf("ops %q", kinds)
 	}
 }

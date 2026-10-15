@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
@@ -72,15 +73,22 @@ func newHealthServer(t *testing.T) (*testServer, chan struct{}, *[]string) {
 			},
 		}, nil
 	}
-	s.api.Fixer = func(m watch.Manager) (health.Fixer, error) {
-		return health.Fixer{
-			Watches: m,
-			Linker:  library.Linker{Files: library.Files{FS: afero.NewMemMapFs(), Library: s.src.library, Root: "/lib"}},
-			Operation: func(kind, summary string, do func(library.Journal) error) (string, error) {
-				ops = append(ops, kind)
-				return "snap", do(nil)
+	backups := t.TempDir()
+	s.api.Core = func(m watch.Manager) (*core.Core, error) {
+		return core.New(context.Background(), core.Env{
+			Storage:    storage.Storage{Data: s.src.library.DB},
+			FS:         afero.NewMemMapFs(),
+			Root:       func() string { return "/lib" },
+			Modes:      func() library.Modes { return library.DefaultModes },
+			BackupsDir: backups,
+			Loaders:    func() ([]libmangal.ProviderLoader, error) { return []libmangal.ProviderLoader{fakeLoader{}}, nil },
+			Watches:    func(context.Context) (watch.Manager, error) { return m, nil },
+			Metadata:   func(context.Context, []metadata.ID) (metadata.Metadata, error) { return nil, nil },
+			CheckLink: func(context.Context, metadata.IDCode, string) (metadata.Metadata, error) {
+				ops = append(ops, "check")
+				return nil, nil
 			},
-		}, nil
+		})
 	}
 	return s, gate, &ops
 }
@@ -161,8 +169,11 @@ func TestHealthNetworkJob(t *testing.T) {
 		t.Fatalf("plan %d %+v", code, plan)
 	}
 	var applied health.FixResult
-	if code := s.call(t, "POST", "/api/health/fix", `{"key":"M1/manga/1","apply":true}`, &applied); code != http.StatusOK || !applied.Applied || applied.Snapshot != "snap" || !slices.Equal(*ops, []string{"link"}) {
+	if code := s.call(t, "POST", "/api/health/fix", `{"key":"M1/manga/1","apply":true}`, &applied); code != http.StatusOK || !applied.Applied || applied.Snapshot == "" || len(*ops) == 0 {
 		t.Fatalf("apply %d %+v %q", code, applied, *ops)
+	}
+	if op, _, _ := (storage.Journal{DB: s.src.library.DB}).Last(); op.Kind != "link" {
+		t.Errorf("last operation %+v", op)
 	}
 	m, _, _ := s.src.library.MangaByID(1)
 	if !slices.ContainsFunc(m.MetadataIDs, func(id metadata.ID) bool { return id.Raw == "74347" }) {
