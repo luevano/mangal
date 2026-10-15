@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/libmangal/netutil"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
@@ -23,26 +23,10 @@ const (
 	maxWait = 10 * time.Second
 )
 
-// RateLimited is implemented by provider errors that say how long to wait,
-// e.g. mangodex's RateLimitError.
-type RateLimited interface {
-	RetryAfterDuration() time.Duration
-}
-
-// RetryAfter is whether err (or one it wraps) is a rate limit (libmangal.ErrRateLimited,
-// or RateLimited) and how long to wait: zero when the site didn't say.
-func RetryAfter(err error) (time.Duration, bool) {
-	var rateLimit RateLimited
-	if errors.As(err, &rateLimit) {
-		return rateLimit.RetryAfterDuration(), true
-	}
-	return 0, errors.Is(err, libmangal.ErrRateLimited)
-}
-
 // noDelay is a rate limit without a delay: it isn't retried and stops a Download (e.g.
 // mangoplus' 10522 locks the device out for minutes, retrying keeps it locked).
 func noDelay(err error) bool {
-	wait, limited := RetryAfter(err)
+	wait, limited := netutil.RetryAfterOf(err)
 	return limited && wait <= 0
 }
 
@@ -234,7 +218,7 @@ type getFunc func(context.Context, mangadata.Chapter) (*metadata.DownloadedChapt
 func retry(ctx context.Context, chapter mangadata.Chapter, get getFunc, onWait func(attempt int, wait time.Duration)) (*metadata.DownloadedChapter, error) {
 	for attempt := 1; ; attempt++ {
 		down, err := get(ctx, chapter)
-		wait, limited := RetryAfter(err)
+		wait, limited := netutil.RetryAfterOf(err)
 		if !limited || wait <= 0 || ctx.Err() != nil {
 			return down, err
 		}

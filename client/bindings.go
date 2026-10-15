@@ -13,6 +13,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/libmangal/netutil"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
@@ -210,7 +211,7 @@ func firstBound(ctx context.Context, c metadataProvider, bindings []storage.Bind
 			}
 			return meta, nil
 		}
-		if _, limited := RetryAfter(err); limited || ctx.Err() != nil {
+		if _, limited := netutil.RetryAfterOf(err); limited || ctx.Err() != nil {
 			return nil, err
 		}
 		setFailed(b, true)

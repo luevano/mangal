@@ -9,7 +9,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/luevano/libmangal"
-	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/libmangal/netutil"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/web/api"
 )
@@ -30,7 +30,7 @@ func apiError(err error, c echo.Context) {
 	}
 
 	status := http.StatusInternalServerError
-	wait, limited := client.RetryAfter(err)
+	wait, limited := netutil.RetryAfterOf(err)
 	var httpErr *echo.HTTPError
 	switch {
 	case errors.As(err, &httpErr):
