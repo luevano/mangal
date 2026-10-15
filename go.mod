@@ -41,7 +41,6 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/yuin/gopher-lua v1.1.2
 	github.com/zalando/go-keyring v0.2.8
-	github.com/zyedidia/generic v1.2.1
 	go.etcd.io/bbolt v1.5.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/term v0.47.0
@@ -128,7 +127,6 @@ require (
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/sasha-s/go-csync v0.0.0-20240107134140-fcbab37b09ad // indirect
-	github.com/segmentio/fasthash v1.0.3 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/skeema/knownhosts v1.3.2 // indirect
 	github.com/speakeasy-api/jsonpath v0.6.3 // indirect
@@ -147,7 +145,6 @@ require (
 	github.com/ysmood/leakless v0.9.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
-	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/net v0.61.0 // indirect

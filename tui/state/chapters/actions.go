@@ -3,7 +3,9 @@ package chapters
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
+	"slices"
 	"sort"
 	"time"
 
@@ -43,15 +45,17 @@ const busyNotice = "Wait for the running download or read"
 
 // target is the toggled chapter, else the hovered one.
 func (s *state) target(hovered *item) *item {
-	if s.selected.Size() == 1 {
-		return s.selected.Keys()[0]
+	if len(s.selected) == 1 {
+		for i := range s.selected {
+			return i
+		}
 	}
 	return hovered
 }
 
 func (s *state) askDownload(hovered *item) tea.Cmd {
-	if size := s.selected.Size(); size > 1 {
-		items := s.selected.Keys()
+	if size := len(s.selected); size > 1 {
+		items := slices.Collect(maps.Keys(s.selected))
 		sort.SliceStable(items, func(i, j int) bool {
 			return items[i].chapter.Info().Number < items[j].chapter.Info().Number
 		})
@@ -77,7 +81,7 @@ func (s *state) askRead(ctx context.Context, hovered *item) tea.Cmd {
 	if base.Busy(ctx) {
 		return base.Notify(busyNotice)
 	}
-	if s.selected.Size() > 1 {
+	if len(s.selected) > 1 {
 		return base.Notify("Can't open for reading more than 1 chapter")
 	}
 	i := s.target(hovered)

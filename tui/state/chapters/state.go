@@ -30,7 +30,6 @@ import (
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
-	"github.com/zyedidia/generic/set"
 )
 
 var _ base.State = (*state)(nil)
@@ -46,7 +45,7 @@ type state struct {
 	manga  mangadata.Manga
 	client *libmangal.Client
 
-	selected set.Set[*item]
+	selected map[*item]struct{}
 	// show is what the items show, they point to it
 	show show
 	// fullMeta shows the metadata's source and id in the status
@@ -106,7 +105,7 @@ func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volum
 			group:         config.TUI.Chapter.ShowGroup.Get(),
 			date:          config.TUI.Chapter.ShowDate.Get(),
 		},
-		selected:    set.NewMapset[*item](),
+		selected:    map[*item]struct{}{},
 		renderedSep: _styles.sep.Render(icon.Separator.Raw()),
 		styles:      _styles,
 		keys: keyMap{
@@ -192,9 +191,9 @@ func (s *state) Subtitle() string {
 	var subtitle strings.Builder
 	subtitle.Grow(100)
 	subtitle.WriteString(s.List.Subtitle())
-	if s.selected.Size() > 0 {
+	if len(s.selected) > 0 {
 		subtitle.WriteString(s.renderedSep)
-		subtitle.WriteString(s.styles.subtitle.Render(fmt.Sprintf("%d selected", s.selected.Size())))
+		subtitle.WriteString(s.styles.subtitle.Render(fmt.Sprintf("%d selected", len(s.selected))))
 	}
 	subtitle.WriteString(s.renderedSubtitleFormats)
 	if len(s.watched) != 0 {
@@ -342,9 +341,9 @@ func (s *state) updateItemKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 		}
 		i.toggle()
 		if i.selected {
-			s.selected.Put(i)
+			s.selected[i] = struct{}{}
 		} else {
-			s.selected.Remove(i)
+			delete(s.selected, i)
 		}
 		return nil
 	case key.Matches(msg, s.keys.read):
@@ -358,9 +357,9 @@ func (s *state) updateItemKey(ctx context.Context, msg tea.KeyMsg) tea.Cmd {
 }
 
 func (s *state) unselectAll() {
-	for _, i := range s.selected.Keys() {
+	for i := range s.selected {
 		i.toggle()
-		s.selected.Remove(i)
+		delete(s.selected, i)
 	}
 }
 
@@ -368,7 +367,7 @@ func (s *state) selectAll() {
 	for _, i := range s.items() {
 		if !i.selected && i.unavailable() == "" {
 			i.toggle()
-			s.selected.Put(i)
+			s.selected[i] = struct{}{}
 		}
 	}
 }
