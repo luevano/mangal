@@ -1,8 +1,0 @@
-package: api
-generate:
-  echo5-server: true
-  strict-server: true
-  embedded-spec: true
-output-options:
-  include-tags: [web]
-output: server.gen.go

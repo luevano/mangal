@@ -326,8 +326,11 @@ For more, use the `-h` flag.
 
 #### Web
 
-Serves a browse-only web UI (search providers, see mangas and chapters; no downloads or library),
-on `127.0.0.1:6970` by default (`web.host`, `web.port`). `--host 0.0.0.0` serves it to the network, without any authentication.
+Serves the web UI on `127.0.0.1:6970` by default (`web.host`, `web.port`): the library (with plan/apply and
+undo for its changes), a reader for downloaded and online chapters, downloads, watches, health, logs,
+search. `mangal serve --web` serves the same UI next to the scheduler. Authentication is serve's: on loopback
+the same machine reads without a token, changing files needs a token (`mangal serve token --generate`, the UI
+asks for it); `--host 0.0.0.0` needs a token, which the browser asks for as a basic-auth password.
 
 ```sh
 mangal web --open

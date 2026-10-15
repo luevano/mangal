@@ -126,27 +126,11 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	}
 	defer listener.Close()
 	loopback := isLoopback(listener.Addr())
-	auth, err := newAuth(args, loopback, lg)
+	auth, err := listenerAuth(args, listener.Addr(), lg)
 	if err != nil {
 		return err
 	}
-	if !loopback && auth.Mode == AuthToken && !auth.HasTokens() {
-		return fmt.Errorf("listening on %s (not loopback) needs a token: `mangal serve token --generate` saves one (or set serve.token, MANGAL_SERVE_TOKEN)", listener.Addr())
-	}
-	if auth.Mode == AuthToken && len(auth.LoopbackScopes) == 0 && !auth.HasTokens() {
-		return errors.New("serve.loopback_scopes empty (or serve.token_on_loopback) needs a token: `mangal serve token --generate` saves one (or set serve.token, MANGAL_SERVE_TOKEN)")
-	}
-	if args.Token != "" && len(args.Token) < MinTokenLen {
-		lg.Warnf("the serve token is short (%d characters), use %d or more: `mangal serve token --generate` makes one", len(args.Token), MinTokenLen)
-	}
-	if auth.Mode == AuthNone {
-		lg.Warnf("serve.auth is none: every request that reaches %s may do everything (only behind something that authenticates)", listener.Addr())
-	}
-	proxies, err := ParseProxies(args.TrustedProxies)
-	if err != nil {
-		return err
-	}
-	auth.TrustedProxies = proxies
+	proxies := auth.TrustedProxies
 
 	browser, err := web.NewBrowser(out)
 	if err != nil {
@@ -227,6 +211,34 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	}
 	lg.Infof("stopped")
 	return err
+}
+
+// listenerAuth is the Auth of a server listening on addr, refused without a token where
+// one is needed.
+func listenerAuth(args Args, addr net.Addr, lg logger) (*Auth, error) {
+	loopback := isLoopback(addr)
+	auth, err := newAuth(args, loopback, lg)
+	if err != nil {
+		return nil, err
+	}
+	if !loopback && auth.Mode == AuthToken && !auth.HasTokens() {
+		return nil, fmt.Errorf("listening on %s (not loopback) needs a token: `mangal serve token --generate` saves one (or set serve.token, MANGAL_SERVE_TOKEN)", addr)
+	}
+	if auth.Mode == AuthToken && len(auth.LoopbackScopes) == 0 && !auth.HasTokens() {
+		return nil, errors.New("serve.loopback_scopes empty (or serve.token_on_loopback) needs a token: `mangal serve token --generate` saves one (or set serve.token, MANGAL_SERVE_TOKEN)")
+	}
+	if args.Token != "" && len(args.Token) < MinTokenLen {
+		lg.Warnf("the serve token is short (%d characters), use %d or more: `mangal serve token --generate` makes one", len(args.Token), MinTokenLen)
+	}
+	if auth.Mode == AuthNone {
+		lg.Warnf("serve.auth is none: every request that reaches %s may do everything (only behind something that authenticates)", addr)
+	}
+	proxies, err := ParseProxies(args.TrustedProxies)
+	if err != nil {
+		return nil, err
+	}
+	auth.TrustedProxies = proxies
+	return auth, nil
 }
 
 // newAuth is the server's Auth from its args.

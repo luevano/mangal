@@ -20,7 +20,6 @@ import (
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web"
-	"github.com/luevano/mangal/v5/web/api"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
@@ -75,7 +74,7 @@ func unprocessable(err error) error {
 type AppOptions struct {
 	// Guard is what the requests have to pass first (host, origin).
 	Guard web.GuardOptions
-	// Web serves the web UI and its browse routes (the camelCase /api ones).
+	// Web serves the web UI.
 	Web bool
 }
 
@@ -126,7 +125,7 @@ func (a *API) NewApp(opts AppOptions) (*echo.Echo, error) {
 		if a.Browser == nil {
 			return nil, errors.New("no browser for the web UI")
 		}
-		if err := a.Browser.Register(e, []api.StrictMiddlewareFunc{func(f api.StrictHandlerFunc, _ string) api.StrictHandlerFunc { return f }}); err != nil {
+		if err := a.Browser.RegisterUI(e); err != nil {
 			return nil, err
 		}
 	} else {

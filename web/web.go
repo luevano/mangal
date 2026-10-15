@@ -10,41 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/v5"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/provider/manager"
-	"github.com/skratchdot/open-golang/open"
 )
-
-type Args struct {
-	Open bool
-	Host string
-	Port string
-}
-
-// Run serves until the context is cancelled (ctrl+c), which also cancels the requests in
-// flight. Messages for the user go to out.
-func Run(ctx context.Context, args Args, out io.Writer) error {
-	listener, err := net.Listen("tcp", net.JoinHostPort(args.Host, args.Port))
-	if err != nil {
-		return fmt.Errorf("listen: %w", err)
-	}
-	handler, err := Handler(out, GuardOptions{Addr: listener.Addr()})
-	if err != nil {
-		listener.Close()
-		return err
-	}
-
-	server := NewServer(ctx, handler)
-	address := "http://" + listener.Addr().String()
-	fmt.Fprintf(out, "Serving on %s\n", address)
-	if args.Open {
-		if err := open.Start(address); err != nil {
-			log.Warn("open %s: %s", address, err)
-		}
-	}
-	return Serve(ctx, server, listener, nil)
-}
 
 // NewServer is the server of the handler (guarded by it, see Guard); its requests get ctx.
 func NewServer(ctx context.Context, handler http.Handler) *http.Server {
@@ -86,33 +54,7 @@ func Serve(ctx context.Context, server *http.Server, listener net.Listener, stop
 	return serveErr
 }
 
-// Handler is the web UI with its API under /api, as Run serves it, guarded (Guard).
-// Providers that can't be loaded are told to out.
-func Handler(out io.Writer, guard GuardOptions) (http.Handler, error) {
-	server, err := NewBrowser(out)
-	if err != nil {
-		return nil, err
-	}
-	e, err := newHandler(server)
-	if err != nil {
-		return nil, err
-	}
-	e.Pre(echo.WrapMiddleware(Guard(guard)))
-	return e, nil
-}
-
-// newHandler is the API under /api and the UI.
-func newHandler(server *Server) (*echo.Echo, error) {
-	e := echo.New()
-	e.HTTPErrorHandler = APIError
-	e.Use(ImageHeaders)
-	if err := server.Register(e, nil); err != nil {
-		return nil, err
-	}
-	return e, nil
-}
-
-// NewBrowser is the browse API of the providers and its image proxy (Register adds them).
+// NewBrowser has the providers and the image proxy, and serves the UI (RegisterUI).
 // Providers that can't be loaded are told to out.
 func NewBrowser(out io.Writer) (*Server, error) {
 	loaders, problems, err := manager.Load()

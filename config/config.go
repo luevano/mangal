@@ -595,6 +595,6 @@ var Log = configLog{
 }
 
 var Web = configWeb{
-	Host: stringEntry("web.host", "127.0.0.1", "Address `mangal web` listens on, 127.0.0.1 only accepts local connections (`mangal web` has no authentication)."),
+	Host: stringEntry("web.host", "127.0.0.1", "Address `mangal web` listens on, 127.0.0.1 only accepts local connections; off loopback a serve token is required (serve.auth)."),
 	Port: intEntry("web.port", 6970, 1, 65535, "Port `mangal web` listens on (not 6969, the logins' callback port)."),
 }

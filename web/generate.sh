@@ -10,8 +10,8 @@ OPENAPI_SCHEMA="$DIR/openapi.yaml"
 
 main() {
 	pushd "$DIR"
-	# one spec: the browse routes (tag web) in api, the API v1 (tag v1) in apiv1
-	for pkg in api apiv1; do
+	# the API v1 (tag v1) in apiv1
+	for pkg in apiv1; do
 		pushd "$pkg"
 		go tool oapi-codegen --config server.cfg.yaml "$OPENAPI_SCHEMA"
 		go tool oapi-codegen --config types.cfg.yaml "$OPENAPI_SCHEMA"

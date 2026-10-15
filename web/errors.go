@@ -11,7 +11,6 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/netutil"
 	"github.com/luevano/mangal/v5/log"
-	"github.com/luevano/mangal/v5/web/api"
 )
 
 var (
@@ -23,7 +22,7 @@ var (
 	ErrUpstream = errors.New("bad upstream response")
 )
 
-// APIError writes the handler's error as an api.Error, with the status it matches.
+// APIError writes the handler's error as {code, message}, with the status it matches.
 func APIError(c *echo.Context, err error) {
 	if resp, _ := echo.UnwrapResponse(c.Response()); resp != nil && resp.Committed {
 		return
@@ -66,7 +65,13 @@ func APIError(c *echo.Context, err error) {
 		log.Error("web: %s %s: %s", c.Request().Method, c.Request().URL, err)
 	}
 
-	if err := c.JSON(status, api.Error{Code: int32(status), Message: message}); err != nil {
+	if err := c.JSON(status, errorBody{Code: int32(status), Message: message}); err != nil {
 		log.Debug("web: write error response: %s", err)
 	}
+}
+
+// errorBody is the body of an error of a route outside the API.
+type errorBody struct {
+	Code    int32  `json:"code"`
+	Message string `json:"message"`
 }

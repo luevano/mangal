@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bytes"
 	"container/list"
 	"context"
 	"fmt"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/luevano/mangal/v5/config"
-	"github.com/luevano/mangal/v5/web/api"
 )
 
 const (
@@ -27,24 +25,6 @@ const (
 type cachedImage struct {
 	data        []byte
 	contentType string
-}
-
-// GetImage implements api.StrictServerInterface.
-func (s *Server) GetImage(ctx context.Context, request api.GetImageRequestObject) (api.GetImageResponseObject, error) {
-	referer := ""
-	if request.Params.Referer != nil {
-		referer = *request.Params.Referer
-	}
-
-	data, contentType, err := s.Image(ctx, request.Params.Url, referer)
-	if err != nil {
-		return nil, err
-	}
-	return api.GetImage200ImageResponse{
-		Body:          bytes.NewReader(data),
-		ContentType:   contentType,
-		ContentLength: int64(len(data)),
-	}, nil
 }
 
 // Image is the image at the url (fetched with the referer, or from the cache) and its
