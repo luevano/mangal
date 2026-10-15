@@ -14,6 +14,7 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/progress"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -44,15 +45,10 @@ func TestMove(t *testing.T) {
 	}
 	m, _, _ := lib.MangaBySource("mango-asurascans", "berserk")
 
-	mover := library.Mover{
-		Files:        library.Files{FS: afero.NewOsFs(), Library: lib, Root: root, Modes: library.DefaultModes},
-		ProviderDirs: true,
-		ProviderName: func(p libmangal.ProviderInfo) string { return p.Name },
-		MangaName:    func(_ libmangal.ProviderInfo, m mangadata.Manga) string { return m.Info().Title },
-	}
-	oldMover, oldInfo, oldSearch := newMover, acquireInfo, pick.SearchProvider
-	t.Cleanup(func() { newMover, acquireInfo, pick.SearchProvider = oldMover, oldInfo, oldSearch })
-	newMover = func() (library.Mover, error) { return mover, nil }
+	files := library.Files{FS: afero.NewOsFs(), Library: lib, Root: root, Modes: library.DefaultModes}
+	useCore(t, lib, files.FS, root)
+	oldInfo, oldSearch := acquireInfo, pick.SearchProvider
+	t.Cleanup(func() { acquireInfo, pick.SearchProvider = oldInfo, oldSearch })
 	acquireInfo = func(_ context.Context, provider string) (libmangal.ProviderInfo, error) {
 		return libmangal.ProviderInfo{ID: provider, Name: "Weeb Central"}, nil
 	}
@@ -61,7 +57,7 @@ func TestMove(t *testing.T) {
 	}
 
 	// M picks the provider first, then searches it
-	s := newMangasState(mover.Files)
+	s := newMangasState(files)
 	s.onLoaded(mangasLoadedMsg{items: []*mangaItem{{manga: m}}})
 	if _, ok := s.Update(ctx, press("X"))().(*pick.Providers); !ok {
 		t.Fatal("M doesn't open the provider picker")
@@ -91,7 +87,7 @@ func TestMove(t *testing.T) {
 		}
 	}
 	chosen, ok := ms.Update(ctx, press("a"))().(moveChosenMsg)
-	if !ok || !chosen.plan.Full || chosen.plan.Title != "Berserk Deluxe" {
+	if mp, _ := chosen.plan.Detail.(library.MovePlan); !ok || !mp.Full || mp.Title != "Berserk Deluxe" {
 		t.Fatalf("a: %+v", chosen)
 	}
 	ms.Update(ctx, chosen)
@@ -157,15 +153,9 @@ func TestMoveProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _, _ := lib.MangaBySource("mango-asurascans", "berserk")
-	mover := library.Mover{
-		Files:        library.Files{FS: xdevFs{afero.NewOsFs()}, Library: lib, Root: root, Modes: library.DefaultModes},
-		ProviderDirs: true,
-		ProviderName: func(p libmangal.ProviderInfo) string { return p.Name },
-		MangaName:    func(_ libmangal.ProviderInfo, m mangadata.Manga) string { return m.Info().Title },
-	}
-	oldMover, oldInfo := newMover, acquireInfo
-	t.Cleanup(func() { newMover, acquireInfo = oldMover, oldInfo })
-	newMover = func() (library.Mover, error) { return mover, nil }
+	useCore(t, lib, xdevFs{afero.NewOsFs()}, root)
+	oldInfo := acquireInfo
+	t.Cleanup(func() { acquireInfo = oldInfo })
 	acquireInfo = func(_ context.Context, provider string) (libmangal.ProviderInfo, error) {
 		return libmangal.ProviderInfo{ID: provider, Name: "Weeb Central"}, nil
 	}
@@ -221,17 +211,27 @@ func TestLinksProgress(t *testing.T) {
 	}
 	m, _, _ := lib.MangaBySource("mango-asurascans", "berserk")
 	to := filepath.Join(root, "Berserk (1989) [alid-30002]")
-	linker := library.Linker{Files: library.Files{FS: xdevFs{afero.NewOsFs()}, Library: lib, Root: root, Modes: library.DefaultModes}}
-	plan := library.LinkPlan{
-		Info:    library.LinkInfo{Manga: m},
-		Links:   library.Links{"al": "30002"},
-		Changes: []library.LinkChange{{Code: "al", New: "30002"}},
-		Rename:  &library.Rename{From: dir, To: to},
-		Root:    root,
+	c := useCore(t, lib, xdevFs{afero.NewOsFs()}, root)
+	env := c.Env()
+	env.Metadata = func(context.Context, []metadata.ID) (metadata.Metadata, error) {
+		return &mangadata.Metadata{EnglishTitle: "Berserk", AuthorList: []string{"Miura"}, DateStart: metadata.Date{Year: 1989, Month: 1, Day: 1},
+			PublicationStatus: metadata.StatusReleasing, ProviderID: "30002", ProviderIDCode: string(metadata.IDCodeAnilist)}, nil
+	}
+	c, err = core.New(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.Core = func() (*core.Core, error) { return c, nil }
+	plan, err := c.Changes.Plan(context.Background(), core.LinkReq{Manga: m.ID, Links: library.Links{"al": "30002"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lp := plan.Detail.(core.LinkDetail).Plan; lp.Rename == nil || lp.Rename.To != to {
+		t.Fatalf("no rename planned: %+v", lp.Rename)
 	}
 	d := newDialog()
 	d.Resize(base.Size{Width: 120, Height: 40})
-	if cmd := askLinks(d, "", linkPlannedMsg{linker: linker, plan: plan}); cmd != nil || !d.Active() {
+	if cmd := askLinks(d, "", linkPlannedMsg{plan: plan}); cmd != nil || !d.Active() {
 		t.Fatal("no choice dialog")
 	}
 	act, ok := d.Update(press("r"))().(actionMsg)

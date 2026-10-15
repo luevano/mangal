@@ -7,7 +7,6 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
@@ -64,22 +63,6 @@ func LibraryNamer(lib storage.Library, meta func(context.Context, [][]metadata.I
 		ChapterName:  template.Chapter,
 		Metadata:     meta,
 		Library:      lib,
-	}, nil
-}
-
-// LibraryMover moves library mangas to other providers, with the configured name
-// templates and provider directories.
-func LibraryMover() (library.Mover, error) {
-	files, err := LibraryFiles()
-	if err != nil {
-		return library.Mover{}, err
-	}
-	return library.Mover{
-		Files:        files,
-		ProviderDirs: config.Download.Provider.CreateDir.Get(),
-		ProviderName: template.Provider,
-		MangaName:    template.Manga,
-		Metadata:     anilist.MetadataByIDs,
 	}, nil
 }
 

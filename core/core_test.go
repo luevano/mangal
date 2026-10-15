@@ -57,7 +57,7 @@ func addManga(t *testing.T, c *Core, dir, provider, id, title string, chapters .
 	t.Helper()
 	root := c.env.Root()
 	lib := c.env.Storage.Library()
-	if err := lib.RememberMangaDir(root, dir, libmangal.MangaDirInfo{Provider: provider, Manga: mangadata.MangaInfo{ID: id, Title: title}}); err != nil {
+	if err := lib.RememberMangaDir(filepath.Join(root, filepath.Dir(dir)), filepath.Base(dir), libmangal.MangaDirInfo{Provider: provider, Manga: mangadata.MangaInfo{ID: id, Title: title}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, n := range chapters {
@@ -80,7 +80,7 @@ func download(t *testing.T, c *Core, dir, provider, id, title string, n float32)
 	if err := os.WriteFile(path, []byte("cbz"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := c.env.Storage.Library().RecordDownload(root, dir, storage.Download{
+	err := c.env.Storage.Library().RecordDownload(filepath.Join(root, filepath.Dir(dir)), filepath.Base(dir), storage.Download{
 		Path: path, Provider: provider, MangaID: id, MangaTitle: title, Chapter: n, Format: "CBZ", Downloaded: time.Unix(1, 0),
 	})
 	if err != nil {

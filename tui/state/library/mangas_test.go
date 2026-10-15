@@ -191,7 +191,7 @@ func TestAskLinks(t *testing.T) {
 		Watches: []library.LinkWatch{{Watch: storage.Watch{ID: 4, Provider: "mango-weebcentral", MangaID: "w"}, Code: "al", Has: "21087", Want: "74347"}},
 		Root:    "/dl",
 	}
-	if cmd := askLinks(d, "", linkPlannedMsg{plan: plan}); cmd != nil || !d.Active() {
+	if cmd := askLinks(d, "", linkPlannedMsg{plan: core.Plan{Change: core.LinkReq{Manga: 4, Links: plan.Links}, Detail: core.LinkDetail{Plan: plan}}}); cmd != nil || !d.Active() {
 		t.Fatal("no choice dialog")
 	}
 	view := d.View()
@@ -203,7 +203,7 @@ func TestAskLinks(t *testing.T) {
 	// nothing to change nor imply
 	plan.Changes, plan.Rename, plan.Watches = nil, nil, nil
 	d = newDialog()
-	if msg, ok := askLinks(d, "", linkPlannedMsg{plan: plan})().(base.NotificationMsg); !ok || d.Active() || !strings.Contains(msg.Message, "already") {
+	if msg, ok := askLinks(d, "", linkPlannedMsg{plan: core.Plan{Detail: core.LinkDetail{Plan: plan}}})().(base.NotificationMsg); !ok || d.Active() || !strings.Contains(msg.Message, "already") {
 		t.Errorf("no change: %#v", msg)
 	}
 }

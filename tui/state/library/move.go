@@ -11,6 +11,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -18,9 +19,6 @@ import (
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/state/pick"
 )
-
-// newMover is the library's Mover, read when a move is planned. Swapped in tests.
-var newMover = client.LibraryMover
 
 // acquireInfo is the provider's info (its current id). Swapped in tests.
 var acquireInfo = func(ctx context.Context, provider string) (libmangal.ProviderInfo, error) {
@@ -58,16 +56,14 @@ type moveState struct {
 // movePlannedMsg is the planned move, and the full one (adopting the new title) when the
 // titles differ, or why it can't be.
 type movePlannedMsg struct {
-	mover   library.Mover
-	plan    library.MovePlan
-	full    *library.MovePlan
+	plan    core.Plan
+	full    *core.Plan
 	fullErr error
 }
 
 // moveChosenMsg is the move picked (keeping the title or adopting the new one), to confirm.
 type moveChosenMsg struct {
-	mover library.Mover
-	plan  library.MovePlan
+	plan core.Plan
 }
 
 func newMoveState(m storage.Manga, provider string) *moveState {
@@ -114,7 +110,7 @@ func (s *moveState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		s.askTitle(msg)
 		return nil
 	case moveChosenMsg:
-		s.askMove(msg.mover, msg.plan)
+		s.askMove(msg.plan)
 		return nil
 	case actionMsg:
 		return msg.run(ctx)
@@ -134,28 +130,27 @@ func (s *moveState) planCmd(ctx context.Context, provider string, to mangadata.M
 // planMove plans moving the library manga to the provider's manga, telling onProgress
 // (may be nil) where it is.
 func planMove(ctx context.Context, m storage.Manga, provider string, to mangadata.Manga, onProgress func(library.Progress)) (movePlannedMsg, error) {
-	mover, err := newMover()
+	changes, err := base.Changes()
 	if err != nil {
 		return movePlannedMsg{}, err
 	}
-	mover.OnProgress = onProgress
 	info, err := acquireInfo(ctx, provider)
 	if err != nil {
 		return movePlannedMsg{}, err
 	}
-	// the manga may have changed since the list was loaded
-	if fresh, ok, err := mover.Library.MangaByID(m.ID); err != nil {
-		return movePlannedMsg{}, err
-	} else if ok {
-		m = fresh
+	if onProgress != nil {
+		ctx = core.WithProgress(ctx, onProgress)
 	}
-	plan, err := mover.PlanMove(ctx, m, info, to, library.MoveOptions{})
+	req := core.MoveReq{Manga: m.ID, Provider: info, To: to}
+	plan, err := changes.Plan(ctx, req)
 	if err != nil {
 		return movePlannedMsg{}, err
 	}
-	msg := movePlannedMsg{mover: mover, plan: plan}
-	if t := to.Info().Title; t != "" && t != m.Title {
-		full, err := mover.PlanMove(ctx, m, info, to, library.MoveOptions{Full: true})
+	msg := movePlannedMsg{plan: plan}
+	// the manga may have changed since the list was loaded: its title now
+	if t := to.Info().Title; t != "" && t != plan.Detail.(library.MovePlan).Manga.Title {
+		req.Full = true
+		full, err := changes.Plan(ctx, req)
 		if err != nil {
 			msg.fullErr = err
 		} else {
@@ -169,10 +164,11 @@ func planMove(ctx context.Context, m storage.Manga, provider string, to mangadat
 // differ; else it confirms the move.
 func (s *moveState) askTitle(msg movePlannedMsg) {
 	if msg.full == nil && msg.fullErr == nil {
-		s.askMove(msg.mover, msg.plan)
+		s.askMove(msg.plan)
 		return
 	}
-	plan := msg.plan
+	keep := msg.plan
+	plan := keep.Detail.(library.MovePlan)
 	lines := []string{
 		fmt.Sprintf("%q is %q on %s.", plan.Manga.Title, plan.To.Title, plan.Provider.ID),
 		"",
@@ -185,28 +181,28 @@ func (s *moveState) askTitle(msg movePlannedMsg) {
 		return lines
 	}
 	lines = append(lines, indent(plan.FolderLines())...)
-	choices := []confirm.Choice{{Key: "k", Label: "keep the title", Cmd: func() tea.Msg { return moveChosenMsg{mover: msg.mover, plan: plan} }}}
+	choices := []confirm.Choice{{Key: "k", Label: "keep the title", Cmd: func() tea.Msg { return moveChosenMsg{plan: keep} }}}
 	if msg.full != nil {
-		full := *msg.full
+		fullPlan := *msg.full
+		full := fullPlan.Detail.(library.MovePlan)
 		lines = append(lines, "a adopts the new title:", "  title: "+full.TitleChange())
 		lines = append(lines, indent(full.FolderLines())...)
-		choices = append(choices, confirm.Choice{Key: "a", Label: "adopt the new title", Cmd: func() tea.Msg { return moveChosenMsg{mover: msg.mover, plan: full} }})
+		choices = append(choices, confirm.Choice{Key: "a", Label: "adopt the new title", Cmd: func() tea.Msg { return moveChosenMsg{plan: fullPlan} }})
 	} else {
 		lines = append(lines, "can't adopt it: "+msg.fullErr.Error())
 	}
 	s.Confirm.Choose("Library title", strings.Join(lines, "\n"), s.View(), choices...)
 }
 
-func (s *moveState) askMove(mover library.Mover, plan library.MovePlan) {
+func (s *moveState) askMove(plan core.Plan) {
+	mp := plan.Detail.(library.MovePlan)
 	// with the screen's ctx: a copy across drives reports its progress, esc stops it
-	s.Confirm.Ask("Move", strings.Join(plan.Lines(), "\n"), s.View(), func() tea.Msg {
-		return actionMsg{label: "Moving " + plan.Manga.Title, do: func(ctx context.Context, _ func(string)) (reloadMsg, error) {
-			summary := fmt.Sprintf("move %d %q to %s %s", plan.Manga.ID, plan.Manga.Title, plan.Provider.ID, plan.To.ID)
-			notify, err := journaled("move", summary, fmt.Sprintf("moved %s to %s (%s)", plan.Manga.Title, plan.Provider.ID, plan.To.Title), func(j library.Journal) error {
-				mover.Journal = j
-				return mover.ApplyMoveContext(ctx, plan)
-			})
-			return reloadMsg{notify: notify}, err
+	s.Confirm.Ask("Move", strings.Join(plan.Lines, "\n"), s.View(), func() tea.Msg {
+		return actionMsg{label: "Moving " + mp.Manga.Title, do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
+			if _, err := base.ApplyPlan(ctx, plan, status); err != nil {
+				return reloadMsg{}, err
+			}
+			return reloadMsg{notify: undoNotice(fmt.Sprintf("moved %s to %s (%s)", mp.Manga.Title, mp.Provider.ID, mp.To.Title))}, nil
 		}}
 	})
 }

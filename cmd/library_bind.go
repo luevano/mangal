@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/spf13/cobra"
@@ -89,11 +91,11 @@ differs is only replaced when you say so (with --apply). Every change can be und
 			if !libraryBindArgs.Backups || len(links) != 0 || libraryBindArgs.Rename || libraryBindArgs.Watches {
 				return errors.New("give the library id (mangal library ls), only --backups goes without one")
 			}
-			mangas, err := linker.Library.Mangas()
+			c, err := newCore()
 			if err != nil {
 				return err
 			}
-			return libraryBackups(cmd, st, linker, mangas)
+			return libraryBackups(cmd, st, c, nil)
 		}
 		id, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
@@ -128,73 +130,65 @@ differs is only replaced when you say so (with --apply). Every change can be und
 				}
 				return printLinks(cmd, linker, manga)
 			}
-			return libraryBackups(cmd, st, linker, []storage.Manga{manga})
-		}
-		for code, id := range links {
-			if id == "" {
-				continue
-			}
-			src, _ := client.MetadataSourceOf(code)
-			st.Set(fmt.Sprintf("checking %s %s", src.Name, id))
-			meta, err := client.LinkMetadata(ctx, code, id)
+			c, err := newCore()
 			if err != nil {
 				return err
 			}
-			st.Print(func() {
-				if meta == nil {
-					cmd.Printf("%s %s (not checked: no MyAnimeList API client)\n", src.Name, id)
-				} else {
-					cmd.Printf("%s %s: %s\n", src.Name, id, meta)
-				}
-			})
+			return libraryBackups(cmd, st, c, []int64{manga.ID})
 		}
-		st.Set("planning")
-		plan, err := linker.PlanLinks(ctx, manga, links, library.PlanOptions{})
+		c, err := newCore()
+		if err != nil {
+			return err
+		}
+		ctx = core.WithProgress(ctx, st.Progress)
+		plan, err := c.Changes.Plan(ctx, core.LinkReq{Manga: manga.ID, Links: links, Rename: libraryBindArgs.Rename, Watches: libraryBindArgs.Watches})
 		st.Clear()
 		if err != nil {
 			return err
 		}
-		for _, line := range plan.Lines() {
-			cmd.Println(line)
+		detail := plan.Detail.(core.LinkDetail)
+		for _, checked := range detail.Checked {
+			src, _ := client.MetadataSourceOf(checked.Code)
+			if checked.Meta == nil {
+				cmd.Printf("%s %s (not checked: no MyAnimeList API client)\n", src.Name, checked.ID)
+			} else {
+				cmd.Printf("%s %s: %s\n", src.Name, checked.ID, checked.Meta)
+			}
 		}
-		opts := library.LinkOptions{Rename: libraryBindArgs.Rename, Watches: libraryBindArgs.Watches}
-		renames := opts.Rename && plan.Rename != nil && plan.Rename.Skip == ""
-		watches := opts.Watches && len(plan.Watches) != 0
-		todo := len(plan.Changes) != 0 || renames || watches
+		lp := detail.Plan
+		printLines(cmd, lp.Lines())
+		renames, watches := detail.Renames, detail.BindsWatches
+		todo := !plan.Nothing
 		if todo && !libraryBindArgs.Apply {
-			if len(plan.Changes) != 0 {
+			if len(lp.Changes) != 0 {
 				cmd.Println("would link")
 			}
 			if renames {
-				cmd.Printf("would rename to %s\n", filepath.Base(plan.Rename.To))
+				cmd.Printf("would rename to %s\n", filepath.Base(lp.Rename.To))
 			}
 			if watches {
-				cmd.Printf("would bind %d watches\n", len(plan.Watches))
+				cmd.Printf("would bind %d watches\n", len(lp.Watches))
 			}
 		}
 		if todo && libraryBindArgs.Apply {
-			summary := fmt.Sprintf("link %d %q", manga.ID, manga.Title)
-			snapshot, err := client.Operation("link", summary, func(j library.Journal) error {
-				linker.Journal = j
-				return linker.ApplyLinksContext(ctx, plan, opts)
-			})
+			res, err := c.Changes.ApplyPlan(ctx, plan, applyOpts(st))
 			st.Done()
-			undoHint(cmd, snapshot, err)
+			undoHint(cmd, res.Snapshot, err)
 			if err != nil {
 				return err
 			}
-			if len(plan.Changes) != 0 {
+			if len(lp.Changes) != 0 {
 				cmd.Println("linked")
 			}
 			if renames {
-				cmd.Printf("renamed to %s\n", filepath.Base(plan.Rename.To))
+				cmd.Printf("renamed to %s\n", filepath.Base(lp.Rename.To))
 			}
 			if watches {
-				cmd.Printf("bound %d watches\n", len(plan.Watches))
+				cmd.Printf("bound %d watches\n", len(lp.Watches))
 			}
 		}
 		// what's left to do
-		left := plan
+		left := lp
 		if renames {
 			left.Rename = nil
 		}
@@ -208,10 +202,7 @@ differs is only replaced when you say so (with --apply). Every change can be und
 			cmd.Println("run with --apply to do it")
 		}
 		if libraryBindArgs.Backups {
-			if manga, ok, err = linker.Library.MangaByID(manga.ID); err != nil || !ok {
-				return err
-			}
-			return libraryBackups(cmd, st, linker, []storage.Manga{manga})
+			return libraryBackups(cmd, st, c, []int64{manga.ID})
 		}
 		return nil
 	},
@@ -294,68 +285,47 @@ func pickLine(pick storage.LinkPick, flag string) string {
 	return fmt.Sprintf("pick one (found %s for AniList %s): %s; or --dismiss", pick.Found.Format("2006-01-02"), pick.AniList, strings.Join(parts, ", "))
 }
 
-// libraryBackups fills the Kitsu and MyAnimeList links of the mangas from AniList, asking
-// first (unless --yes) and for each id that differs.
-func libraryBackups(cmd *cobra.Command, st *status, linker library.Linker, mangas []storage.Manga) error {
-	ctx := st.Context(cmd.Context())
-	finder, err := client.LibraryBackups()
-	if err != nil {
-		return err
-	}
-	finder.OnProgress = st.Progress
-	backups, err := finder.Find(ctx, mangas)
+// libraryBackups fills the Kitsu and MyAnimeList links of the mangas (nil: all) from
+// AniList, asking first (unless --yes) and for each id that differs.
+func libraryBackups(cmd *cobra.Command, st *status, c *core.Core, mangas []int64) error {
+	ctx := changeCtx(cmd, st)
+	req := core.BackupsReq{Mangas: mangas}
+	plan, err := c.Changes.Plan(ctx, req)
 	st.Clear()
 	if err != nil {
 		return err
 	}
-	_, conflicts, _, _ := library.BackupSummary(backups)
-	for _, b := range backups {
+	found := plan.Detail.(core.BackupsDetail)
+	for _, b := range found.Backups {
 		for _, line := range b.Lines() {
 			cmd.Println("  " + line)
 		}
 	}
-	replace := map[int64]bool{}
-	if conflicts != 0 && libraryBindArgs.Apply {
-		for _, b := range backups {
-			for _, c := range b.Conflicts {
-				src, _ := client.MetadataSourceOf(c.Code)
-				if confirm(cmd, fmt.Sprintf("Replace the %s link of %q (%s) with AniList's %s?", src.Name, b.Manga.Title, c.Old[0], c.New)) {
-					replace[b.Manga.ID] = true
+	if found.Conflicts != 0 && libraryBindArgs.Apply {
+		for _, b := range found.Backups {
+			for _, conflict := range b.Conflicts {
+				src, _ := client.MetadataSourceOf(conflict.Code)
+				if confirm(cmd, fmt.Sprintf("Replace the %s link of %q (%s) with AniList's %s?", src.Name, b.Manga.Title, conflict.Old[0], conflict.New)) && !slices.Contains(req.Replace, b.Manga.ID) {
+					req.Replace = append(req.Replace, b.Manga.ID)
 				}
 			}
 		}
-	}
-	todo := 0
-	for _, b := range backups {
-		if len(b.Links(replace[b.Manga.ID])) != 0 {
-			todo++
+		if len(req.Replace) != 0 {
+			if plan, err = c.Changes.Plan(ctx, req); err != nil {
+				return err
+			}
+			found = plan.Detail.(core.BackupsDetail)
 		}
 	}
+	todo := found.ToSet
 	switch {
 	case todo == 0:
 	case !libraryBindArgs.Apply:
 		cmd.Printf("would set the links of %d mangas\n", todo)
 	case libraryBindArgs.Yes || confirm(cmd, fmt.Sprintf("Set the links of %d mangas?", todo)):
-		snapshot, err := client.Operation("link", fmt.Sprintf("backup links of %d mangas", todo), func(j library.Journal) error {
-			linker.Journal = j
-			for i, b := range backups {
-				links := b.Links(replace[b.Manga.ID])
-				if len(links) == 0 {
-					continue
-				}
-				st.Progress(library.Progress{Phase: "linking", Done: i + 1, Total: len(backups), Item: b.Manga.Title})
-				plan, err := linker.PlanLinks(ctx, b.Manga, links, library.PlanOptions{NoImplied: true})
-				if err != nil {
-					return err
-				}
-				if err := linker.ApplyLinksContext(ctx, plan, library.LinkOptions{}); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
+		res, err := c.Changes.ApplyPlan(ctx, plan, applyOpts(st))
 		st.Done()
-		undoHint(cmd, snapshot, err)
+		undoHint(cmd, res.Snapshot, err)
 		if err != nil {
 			return err
 		}
@@ -363,7 +333,7 @@ func libraryBackups(cmd *cobra.Command, st *status, linker library.Linker, manga
 	default:
 		cmd.Println("nothing set")
 	}
-	cmd.Println(finder.Summary(backups))
+	cmd.Println(found.Summary)
 	if todo != 0 && !libraryBindArgs.Apply {
 		cmd.Println("run with --apply to set them")
 	}

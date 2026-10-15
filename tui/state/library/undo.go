@@ -7,22 +7,11 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
 )
-
-// journaled runs an undoable library operation (snapshot first, file changes journaled),
-// the notification says how to undo it.
-func journaled(kind, summary, notify string, do func(library.Journal) error) (string, error) {
-	_, err := client.Operation(kind, summary, do)
-	if err != nil {
-		return "", err
-	}
-	return undoNotice(notify), nil
-}
 
 // undoNotice ends the notification of an undoable change.
 func undoNotice(notify string) string {

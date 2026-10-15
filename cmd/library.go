@@ -710,24 +710,20 @@ Only lists what would happen unless --apply is set.`,
 		if _, err := path.ExistingDownloads(); err != nil {
 			return err
 		}
-		mover, err := client.LibraryMover()
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
-		mover.OnProgress = st.Progress
-		id, err := strconv.ParseInt(args[0], 10, 64)
-		if err != nil {
-			return fmt.Errorf("invalid manga id %q", args[0])
-		}
-		manga, ok, err := mover.Library.MangaByID(id)
+		id, err := parseMangaID(args[0])
 		if err != nil {
 			return err
 		}
-		if !ok {
-			return fmt.Errorf("no manga %d in the library", id)
+		manga, err := c.Library.Manga(id)
+		if err != nil {
+			return err
 		}
 		st.Set("loading " + args[1])
-		c, warnings, err := client.AcquireByID(ctx, args[1])
+		cl, warnings, err := client.AcquireByID(ctx, args[1])
 		if err != nil {
 			return err
 		}
@@ -739,30 +735,26 @@ Only lists what would happen unless --apply is set.`,
 			query = manga.Title
 		}
 		if !strings.HasPrefix(query, "mid:") {
-			st.Set(fmt.Sprintf("searching %q on %s", query, c.Info().Name))
+			st.Set(fmt.Sprintf("searching %q on %s", query, cl.Info().Name))
 		}
-		to, err := selector.Find(ctx, client.Searcher(c), "", query, libraryMoveArgs.Selector)
+		to, err := selector.Find(ctx, client.Searcher(cl), "", query, libraryMoveArgs.Selector)
 		if err != nil {
 			return err
 		}
 		st.Set("planning the move")
-		plan, err := mover.PlanMove(ctx, manga, c.Info(), to, library.MoveOptions{Full: libraryMoveArgs.Full})
+		ctx = core.WithProgress(ctx, st.Progress)
+		plan, err := c.Changes.Plan(ctx, core.MoveReq{Manga: id, Provider: cl.Info(), To: to, Full: libraryMoveArgs.Full})
 		st.Done()
 		if err != nil {
 			return err
 		}
-		for _, line := range plan.Lines() {
-			cmd.Println(line)
-		}
+		printLines(cmd, plan.Lines)
 		if !libraryMoveArgs.Apply {
 			cmd.Println("run with --apply to move")
 			return nil
 		}
-		snapshot, err := client.Operation("move", fmt.Sprintf("move %d %q to %s %s", plan.Manga.ID, plan.Manga.Title, plan.Provider.ID, plan.To.ID), func(j library.Journal) error {
-			mover.Journal = j
-			return mover.ApplyMoveContext(ctx, plan)
-		})
-		undoHint(cmd, snapshot, err)
+		res, err := c.Changes.ApplyPlan(ctx, plan, applyOpts(st))
+		undoHint(cmd, res.Snapshot, err)
 		if err != nil {
 			return err
 		}

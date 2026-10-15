@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
@@ -103,17 +104,14 @@ type pickLoadedMsg struct {
 	metas []lmmeta.Metadata
 }
 
-// linkPlannedMsg is a planned link change, to ask about.
+// linkPlannedMsg is a planned link change (a core.LinkReq), to ask about.
 type linkPlannedMsg struct {
-	linker library.Linker
-	plan   library.LinkPlan
+	plan core.Plan
 }
 
-// backupsFoundMsg are the backups found, to ask about.
+// backupsFoundMsg are the backups found (a core.BackupsReq planned), to ask about.
 type backupsFoundMsg struct {
-	linker  library.Linker
-	backups []library.Backup
-	summary string
+	plan core.Plan
 }
 
 // linksCmd opens the links screen of the manga.
@@ -330,29 +328,15 @@ func planLinks(ctx context.Context, manga storage.Manga, links library.Links) te
 	if base.Busy(ctx) {
 		return nil
 	}
-	return base.LoadWithStatus(ctx, "Planning the link", func(ctx context.Context, status func(string)) (linkPlannedMsg, error) {
-		for code, id := range links {
-			if id == "" {
-				continue
-			}
-			if _, err := client.LinkMetadata(ctx, code, id); err != nil {
-				return linkPlannedMsg{}, err
-			}
-		}
-		linker, err := client.LibraryLinker()
-		if err != nil {
-			return linkPlannedMsg{}, err
-		}
-		linker.OnProgress = func(p library.Progress) { status(p.String()) }
-		plan, err := linker.PlanLinks(ctx, manga, links, library.PlanOptions{})
-		return linkPlannedMsg{linker: linker, plan: plan}, err
-	}, func(msg linkPlannedMsg) tea.Msg { return msg })
+	return base.PlanChange(ctx, "Planning the link", core.LinkReq{Manga: manga.ID, Links: links}, func(p core.Plan) tea.Msg {
+		return linkPlannedMsg{plan: p}
+	})
 }
 
 // askLinks asks to make the planned change, with a choice for each implied one (the
 // folder rename, the watches' bindings). Another manga with the id is only told.
 func askLinks(d *confirm.Dialog, behind string, msg linkPlannedMsg) tea.Cmd {
-	plan := msg.plan
+	plan := msg.plan.Detail.(core.LinkDetail).Plan
 	if len(plan.Changes) == 0 && !plan.Implied() {
 		lines := plan.ImpliedLines(nil)
 		if len(lines) == 0 {
@@ -361,20 +345,28 @@ func askLinks(d *confirm.Dialog, behind string, msg linkPlannedMsg) tea.Cmd {
 		return base.Viewport("Links", strings.Join(append(plan.Lines(), lines...), "\n"), color.Accent)
 	}
 	message := strings.Join(append(plan.Lines(), plan.ImpliedLines(nil)...), "\n")
+	req, _ := msg.plan.Change.(core.LinkReq)
 	run := func(opts library.LinkOptions) tea.Cmd {
-		linker, m := msg.linker, plan.Manga()
+		m := plan.Manga()
 		label := "Linking " + m.Title
 		if opts.Rename {
 			label = "Linking and renaming " + m.Title
 		}
 		// with the screen's ctx: a rename across drives reports its progress, esc stops it
 		return func() tea.Msg {
-			return actionMsg{label: label, do: func(ctx context.Context, _ func(string)) (reloadMsg, error) {
-				notify, err := journaled("link", fmt.Sprintf("link %d %q", m.ID, m.Title), "linked "+m.Title, func(j library.Journal) error {
-					linker.Journal = j
-					return linker.ApplyLinksContext(ctx, plan, opts)
-				})
-				return reloadMsg{notify: notify}, err
+			return actionMsg{label: label, do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
+				var err error
+				if opts == (library.LinkOptions{}) {
+					_, err = base.ApplyPlan(ctx, msg.plan, status)
+				} else {
+					// what the choice adds, planned again
+					req.Rename, req.Watches = opts.Rename, opts.Watches
+					_, err = base.ApplyChange(ctx, req, status)
+				}
+				if err != nil {
+					return reloadMsg{}, err
+				}
+				return reloadMsg{notify: undoNotice("linked " + m.Title)}, nil
 			}}
 		}
 	}
@@ -407,70 +399,56 @@ func findBackups(ctx context.Context, mangas []storage.Manga) tea.Cmd {
 	if base.Busy(ctx) {
 		return nil
 	}
-	return base.LoadWithStatus(ctx, "Looking for backup links", func(ctx context.Context, status func(string)) (backupsFoundMsg, error) {
-		finder, err := client.LibraryBackups()
-		if err != nil {
-			return backupsFoundMsg{}, err
-		}
-		finder.OnProgress = func(p library.Progress) { status(p.String()) }
-		backups, err := finder.Find(ctx, mangas)
-		if err != nil {
-			return backupsFoundMsg{}, err
-		}
-		linker, err := client.LibraryLinker()
-		return backupsFoundMsg{linker: linker, backups: backups, summary: finder.Summary(backups) + "."}, err
-	}, func(msg backupsFoundMsg) tea.Msg { return msg })
+	ids := make([]int64, len(mangas))
+	for i, m := range mangas {
+		ids[i] = m.ID
+	}
+	return base.PlanChange(ctx, "Looking for backup links", core.BackupsReq{Mangas: ids}, func(p core.Plan) tea.Msg {
+		return backupsFoundMsg{plan: p}
+	})
 }
 
 // askBackups asks to fill the missing links, and whether to replace the ones that differ.
 func askBackups(d *confirm.Dialog, behind string, msg backupsFoundMsg) tea.Cmd {
-	fill, conflicts, _, _ := library.BackupSummary(msg.backups)
+	found := msg.plan.Detail.(core.BackupsDetail)
 	var lines []string
-	for _, b := range msg.backups {
+	for _, b := range found.Backups {
 		lines = append(lines, b.Lines()...)
 	}
-	summary := msg.summary
-	if fill == 0 && conflicts == 0 {
+	summary := found.Summary + "."
+	if found.Fill == 0 && found.Conflicts == 0 {
 		return base.Viewport("Backup links", strings.Join(append(lines, "", summary), "\n"), color.Accent)
 	}
 	message := strings.Join(append(lines, "", summary), "\n")
 	run := func(replace bool) tea.Cmd {
-		linker, backups := msg.linker, msg.backups
+		plan := msg.plan
 		return func() tea.Msg {
 			return actionMsg{label: "Linking", do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
-				n := 0
-				notify, err := journaled("link", "backup links", "backup links set", func(j library.Journal) error {
-					linker.Journal = j
-					for i, b := range backups {
-						links := b.Links(replace)
-						if len(links) == 0 {
-							continue
-						}
-						status(library.Progress{Phase: "linking", Done: i + 1, Total: len(backups), Item: b.Manga.Title}.String())
-						plan, err := linker.PlanLinks(ctx, b.Manga, links, library.PlanOptions{NoImplied: true})
-						if err != nil {
-							return err
-						}
-						if err := linker.ApplyLinksContext(ctx, plan, library.LinkOptions{}); err != nil {
-							return err
-						}
-						n++
-					}
-					return nil
-				})
-				if err == nil {
-					notify = fmt.Sprintf("%d mangas: %s", n, notify)
+				var res core.OpResult
+				var err error
+				if req, ok := plan.Change.(core.BackupsReq); ok && replace {
+					req.ReplaceAll = true
+					res, err = base.ApplyChange(ctx, req, status)
+				} else {
+					res, err = base.ApplyPlan(ctx, plan, status)
 				}
-				return reloadMsg{notify: notify}, err
+				if err != nil {
+					return reloadMsg{}, err
+				}
+				n := 0
+				if d, ok := res.Detail.(int); ok {
+					n = d
+				}
+				return reloadMsg{notify: fmt.Sprintf("%d mangas: %s", n, undoNotice("backup links set"))}, nil
 			}}
 		}
 	}
-	if conflicts == 0 {
+	if found.Conflicts == 0 {
 		d.Ask("Backup links", message, behind, run(false))
 		return nil
 	}
-	choices := []confirm.Choice{{Key: "a", Label: fmt.Sprintf("also replace the %d that differ", conflicts), Cmd: run(true)}}
-	if fill != 0 {
+	choices := []confirm.Choice{{Key: "a", Label: fmt.Sprintf("also replace the %d that differ", found.Conflicts), Cmd: run(true)}}
+	if found.Fill != 0 {
 		choices = append([]confirm.Choice{{Key: "y", Label: "fill the missing only", Cmd: run(false)}}, choices...)
 	}
 	d.Choose("Backup links", message, behind, choices...)

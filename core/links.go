@@ -1,0 +1,268 @@
+package core
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+
+	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
+	lmmeta "github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/storage"
+)
+
+// MoveReq moves the library manga to the provider's manga To (found by the caller): it
+// gets it as a source, its folder goes to that provider's directory, its watch and
+// bindings follow; Full adopts the new title and the folder name the template gives it.
+type MoveReq struct {
+	Manga    int64                  `json:"manga"`
+	Provider libmangal.ProviderInfo `json:"-"`
+	To       mangadata.Manga        `json:"-"`
+	Full     bool                   `json:"full,omitempty"`
+}
+
+func (MoveReq) Kind() Kind { return KindMove }
+
+func (c *Core) mover(ctx context.Context) (library.Mover, error) {
+	files, err := c.existingFiles()
+	if err != nil {
+		return library.Mover{}, err
+	}
+	files.OnProgress = progressOf(ctx)
+	return library.Mover{
+		Files:        files,
+		ProviderDirs: c.env.ProviderDirs(),
+		ProviderName: c.env.ProviderName,
+		MangaName:    c.env.MangaName,
+		Metadata:     c.env.Metadata,
+	}, nil
+}
+
+func (r MoveReq) plan(ctx context.Context, c *Core) (*prepared, error) {
+	if r.To == nil || r.Provider.ID == "" {
+		return nil, invalid("no manga to move to")
+	}
+	m, err := c.manga(r.Manga)
+	if err != nil {
+		return nil, err
+	}
+	mover, err := c.mover(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mp, err := mover.PlanMove(ctx, m, r.Provider, r.To, library.MoveOptions{Full: r.Full})
+	if err != nil {
+		return nil, err
+	}
+	summary := fmt.Sprintf("move %d %q to %s %s", mp.Manga.ID, mp.Manga.Title, mp.Provider.ID, mp.To.ID)
+	return &prepared{
+		plan:   Plan{Summary: summary, Lines: mp.Lines(), Detail: mp},
+		tables: append(append([]string{}, libraryTables...), watchTables...),
+		apply: func(ctx context.Context, _ ApplyOpts, res *OpResult) error {
+			return c.journaled(ctx, "move", summary, res, func(j library.Journal) error {
+				mover.Journal, mover.OnProgress = j, progressOf(ctx)
+				return mover.ApplyMoveContext(ctx, mp)
+			})
+		},
+	}, nil
+}
+
+// LinkReq links a library manga to metadata sources (Links: source code → id, "" removes
+// the link), checking the ids first. Rename and Watches also do what the links imply: the
+// folder name the template gives, the bindings of its watches on other providers.
+type LinkReq struct {
+	Manga   int64         `json:"manga"`
+	Links   library.Links `json:"links"`
+	Rename  bool          `json:"rename,omitempty"`
+	Watches bool          `json:"watches,omitempty"`
+}
+
+func (LinkReq) Kind() Kind { return KindLink }
+
+// LinkChecked is an id checked before linking it: its metadata, nil when it couldn't be
+// checked (MyAnimeList without an API client).
+type LinkChecked struct {
+	Code lmmeta.IDCode
+	ID   string
+	Meta lmmeta.Metadata
+}
+
+// LinkDetail is a link's plan: the ids checked and the library's plan.
+type LinkDetail struct {
+	Checked []LinkChecked
+	Plan    library.LinkPlan
+	// Renames and BindsWatches are the implied changes the request does.
+	Renames, BindsWatches bool
+}
+
+func (c *Core) linker(ctx context.Context) (library.Linker, error) {
+	files := c.files()
+	files.OnProgress = progressOf(ctx)
+	loaders, err := c.env.Loaders()
+	if err != nil {
+		return library.Linker{}, err
+	}
+	return library.Linker{Files: files, Loaders: loaders, MangaName: c.env.MangaName, Metadata: c.env.Metadata}, nil
+}
+
+func (r LinkReq) plan(ctx context.Context, c *Core) (*prepared, error) {
+	m, err := c.manga(r.Manga)
+	if err != nil {
+		return nil, err
+	}
+	var d LinkDetail
+	for _, src := range client.MetadataSources {
+		id, ok := r.Links[src.Code]
+		if !ok || id == "" {
+			continue
+		}
+		report(ctx, library.Progress{Phase: fmt.Sprintf("checking %s %s", src.Name, id)})
+		meta, err := c.env.CheckLink(ctx, src.Code, id)
+		if err != nil {
+			return nil, err
+		}
+		d.Checked = append(d.Checked, LinkChecked{Code: src.Code, ID: id, Meta: meta})
+	}
+	linker, err := c.linker(ctx)
+	if err != nil {
+		return nil, err
+	}
+	report(ctx, library.Progress{Phase: "planning"})
+	lp, err := linker.PlanLinks(ctx, m, r.Links, library.PlanOptions{})
+	if err != nil {
+		return nil, err
+	}
+	d.Plan = lp
+	opts := library.LinkOptions{Rename: r.Rename, Watches: r.Watches}
+	d.Renames = opts.Rename && lp.Rename != nil && lp.Rename.Skip == ""
+	d.BindsWatches = opts.Watches && len(lp.Watches) != 0
+	lines := lp.Lines()
+	if d.Renames {
+		lines = append(lines, "rename to "+filepath.Base(lp.Rename.To))
+	}
+	if d.BindsWatches {
+		lines = append(lines, fmt.Sprintf("bind %d watches", len(lp.Watches)))
+	}
+	summary := fmt.Sprintf("link %d %q", m.ID, m.Title)
+	tables := libraryTables
+	if r.Watches {
+		tables = append(append([]string{}, libraryTables...), watchTables...)
+	}
+	return &prepared{
+		plan:   Plan{Summary: summary, Lines: lines, Nothing: len(lp.Changes) == 0 && !d.Renames && !d.BindsWatches, Detail: d},
+		tables: tables,
+		apply: func(ctx context.Context, _ ApplyOpts, res *OpResult) error {
+			return c.journaled(ctx, "link", summary, res, func(j library.Journal) error {
+				linker.Journal, linker.OnProgress = j, progressOf(ctx)
+				return linker.ApplyLinksContext(ctx, lp, opts)
+			})
+		},
+	}, nil
+}
+
+// BackupsReq fills the Kitsu and MyAnimeList links of the library mangas (nil: all)
+// linked to AniList; a link that differs is only replaced for the mangas of Replace (or
+// every one with ReplaceAll).
+type BackupsReq struct {
+	Mangas     []int64 `json:"mangas,omitempty"`
+	Replace    []int64 `json:"replace,omitempty"`
+	ReplaceAll bool    `json:"replace_all,omitempty"`
+}
+
+func (BackupsReq) Kind() Kind { return KindBackups }
+
+// BackupsDetail is what the backups found.
+type BackupsDetail struct {
+	Backups []library.Backup
+	// Summary says what was found (BackupFinder.Summary).
+	Summary string
+	// Fill and Conflicts count the links to fill and those that differ, ToSet the mangas
+	// whose links would be set.
+	Fill, Conflicts, ToSet int
+}
+
+func (r BackupsReq) replace(id int64) bool {
+	if r.ReplaceAll {
+		return true
+	}
+	for _, m := range r.Replace {
+		if m == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (r BackupsReq) plan(ctx context.Context, c *Core) (*prepared, error) {
+	lib := c.env.Storage.Library()
+	var mangas []storage.Manga
+	if r.Mangas == nil {
+		var err error
+		if mangas, err = lib.Mangas(); err != nil {
+			return nil, err
+		}
+	}
+	for _, id := range r.Mangas {
+		m, err := c.manga(id)
+		if err != nil {
+			return nil, err
+		}
+		mangas = append(mangas, m)
+	}
+	finder, err := c.env.BackupFinder()
+	if err != nil {
+		return nil, err
+	}
+	finder.Files = c.files()
+	finder.OnProgress = progressOf(ctx)
+	backups, err := finder.Find(ctx, mangas)
+	if err != nil {
+		return nil, err
+	}
+	d := BackupsDetail{Backups: backups, Summary: finder.Summary(backups)}
+	d.Fill, d.Conflicts, _, _ = library.BackupSummary(backups)
+	var lines []string
+	for _, b := range backups {
+		for _, line := range b.Lines() {
+			lines = append(lines, "  "+line)
+		}
+		if len(b.Links(r.replace(b.Manga.ID))) != 0 {
+			d.ToSet++
+		}
+	}
+	summary := fmt.Sprintf("backup links of %d mangas", d.ToSet)
+	linker, err := c.linker(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &prepared{
+		plan:   Plan{Summary: summary, Lines: append(lines, d.Summary), Nothing: d.ToSet == 0, Detail: d},
+		tables: libraryTables,
+		apply: func(ctx context.Context, _ ApplyOpts, res *OpResult) error {
+			n := 0
+			// Detail is how many mangas got their links
+			defer func() { res.Detail = n }()
+			return c.journaled(ctx, "link", summary, res, func(j library.Journal) error {
+				linker.Journal = j
+				for i, b := range backups {
+					links := b.Links(r.replace(b.Manga.ID))
+					if len(links) == 0 {
+						continue
+					}
+					report(ctx, library.Progress{Phase: "linking", Done: i + 1, Total: len(backups), Item: b.Manga.Title})
+					plan, err := linker.PlanLinks(ctx, b.Manga, links, library.PlanOptions{NoImplied: true})
+					if err != nil {
+						return err
+					}
+					if err := linker.ApplyLinksContext(ctx, plan, library.LinkOptions{}); err != nil {
+						return err
+					}
+					n++
+				}
+				return nil
+			})
+		},
+	}, nil
+}

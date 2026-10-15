@@ -65,6 +65,12 @@ type Env struct {
 	// up again.
 	Metadata                                     func(context.Context, []lmmeta.ID) (lmmeta.Metadata, error)
 	MetadataBatch, MetadataCached, MetadataFresh MetadataFunc
+	// CheckLink is the metadata of a source's id, to check it before linking a library
+	// manga to it (nil metadata: not checked).
+	CheckLink func(ctx context.Context, code lmmeta.IDCode, id string) (lmmeta.Metadata, error)
+	// BackupFinder finds the Kitsu and MyAnimeList links of mangas linked to AniList (its
+	// Files are the Env's).
+	BackupFinder func() (library.BackupFinder, error)
 	// Now is the clock.
 	Now func() time.Time
 }
@@ -115,6 +121,12 @@ func (e Env) withDefaults() (Env, error) {
 	}
 	if e.MetadataFresh == nil {
 		e.MetadataFresh = anilist.MetadataByIDsFresh
+	}
+	if e.CheckLink == nil {
+		e.CheckLink = client.LinkMetadata
+	}
+	if e.BackupFinder == nil {
+		e.BackupFinder = client.LibraryBackups
 	}
 	if e.Now == nil {
 		e.Now = time.Now
