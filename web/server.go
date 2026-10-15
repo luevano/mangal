@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
@@ -155,8 +155,6 @@ func newHandler(server *Server) (*echo.Echo, error) {
 	}
 
 	e := echo.New()
-	e.HideBanner = true
-	e.HidePort = true
 	e.HTTPErrorHandler = apiError
 	e.Use(imageHeaders)
 	api.RegisterHandlersWithBaseURL(e, api.NewStrictHandler(server, nil), "api")

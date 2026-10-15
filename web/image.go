@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/web/api"
 )
@@ -122,7 +122,7 @@ func imageType(header string, data []byte) (string, error) {
 
 // imageHeaders keep a proxied image from being anything but an image in the browser.
 func imageHeaders(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		if strings.HasPrefix(c.Request().URL.Path, "/api/") {
 			h := c.Response().Header()
 			h.Set("X-Content-Type-Options", "nosniff")

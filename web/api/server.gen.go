@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/oapi-codegen/runtime"
 )
 
@@ -25,31 +25,31 @@ import (
 type ServerInterface interface {
 
 	// (GET /formats)
-	GetFormats(ctx echo.Context) error
+	GetFormats(ctx *echo.Context) error
 
 	// (GET /image)
-	GetImage(ctx echo.Context, params GetImageParams) error
+	GetImage(ctx *echo.Context, params GetImageParams) error
 
 	// (GET /mangaPage)
-	GetMangaPage(ctx echo.Context, params GetMangaPageParams) error
+	GetMangaPage(ctx *echo.Context, params GetMangaPageParams) error
 
 	// (GET /mangaVolumes)
-	GetMangaVolumes(ctx echo.Context, params GetMangaVolumesParams) error
+	GetMangaVolumes(ctx *echo.Context, params GetMangaVolumesParams) error
 
 	// (GET /mangalInfo)
-	GetMangalInfo(ctx echo.Context) error
+	GetMangalInfo(ctx *echo.Context) error
 
 	// (GET /provider)
-	GetProvider(ctx echo.Context, params GetProviderParams) error
+	GetProvider(ctx *echo.Context, params GetProviderParams) error
 
 	// (GET /providers)
-	GetProviders(ctx echo.Context) error
+	GetProviders(ctx *echo.Context) error
 
 	// (GET /searchMangas)
-	SearchMangas(ctx echo.Context, params SearchMangasParams) error
+	SearchMangas(ctx *echo.Context, params SearchMangasParams) error
 
 	// (GET /volumeChapters)
-	GetVolumeChapters(ctx echo.Context, params GetVolumeChaptersParams) error
+	GetVolumeChapters(ctx *echo.Context, params GetVolumeChaptersParams) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -58,7 +58,7 @@ type ServerInterfaceWrapper struct {
 }
 
 // GetFormats converts echo context to params.
-func (w *ServerInterfaceWrapper) GetFormats(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetFormats(ctx *echo.Context) error {
 	var err error
 
 	// Invoke the callback with all the unmarshaled arguments
@@ -67,7 +67,7 @@ func (w *ServerInterfaceWrapper) GetFormats(ctx echo.Context) error {
 }
 
 // GetImage converts echo context to params.
-func (w *ServerInterfaceWrapper) GetImage(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetImage(ctx *echo.Context) error {
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
@@ -92,7 +92,7 @@ func (w *ServerInterfaceWrapper) GetImage(ctx echo.Context) error {
 }
 
 // GetMangaPage converts echo context to params.
-func (w *ServerInterfaceWrapper) GetMangaPage(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetMangaPage(ctx *echo.Context) error {
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
@@ -124,7 +124,7 @@ func (w *ServerInterfaceWrapper) GetMangaPage(ctx echo.Context) error {
 }
 
 // GetMangaVolumes converts echo context to params.
-func (w *ServerInterfaceWrapper) GetMangaVolumes(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetMangaVolumes(ctx *echo.Context) error {
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
@@ -156,7 +156,7 @@ func (w *ServerInterfaceWrapper) GetMangaVolumes(ctx echo.Context) error {
 }
 
 // GetMangalInfo converts echo context to params.
-func (w *ServerInterfaceWrapper) GetMangalInfo(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetMangalInfo(ctx *echo.Context) error {
 	var err error
 
 	// Invoke the callback with all the unmarshaled arguments
@@ -165,7 +165,7 @@ func (w *ServerInterfaceWrapper) GetMangalInfo(ctx echo.Context) error {
 }
 
 // GetProvider converts echo context to params.
-func (w *ServerInterfaceWrapper) GetProvider(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetProvider(ctx *echo.Context) error {
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
@@ -183,7 +183,7 @@ func (w *ServerInterfaceWrapper) GetProvider(ctx echo.Context) error {
 }
 
 // GetProviders converts echo context to params.
-func (w *ServerInterfaceWrapper) GetProviders(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetProviders(ctx *echo.Context) error {
 	var err error
 
 	// Invoke the callback with all the unmarshaled arguments
@@ -192,7 +192,7 @@ func (w *ServerInterfaceWrapper) GetProviders(ctx echo.Context) error {
 }
 
 // SearchMangas converts echo context to params.
-func (w *ServerInterfaceWrapper) SearchMangas(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) SearchMangas(ctx *echo.Context) error {
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
@@ -217,7 +217,7 @@ func (w *ServerInterfaceWrapper) SearchMangas(ctx echo.Context) error {
 }
 
 // GetVolumeChapters converts echo context to params.
-func (w *ServerInterfaceWrapper) GetVolumeChapters(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetVolumeChapters(ctx *echo.Context) error {
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
@@ -259,15 +259,15 @@ func (w *ServerInterfaceWrapper) GetVolumeChapters(ctx echo.Context) error {
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
 type EchoRouter interface {
-	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
+	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
 }
 
 // RegisterHandlersOptions configures RegisterHandlersWithOptions.
@@ -700,7 +700,7 @@ type StrictServerInterface interface {
 	GetVolumeChapters(ctx context.Context, request GetVolumeChaptersRequestObject) (GetVolumeChaptersResponseObject, error)
 }
 
-type StrictHandlerFunc func(ctx echo.Context, request any) (any, error)
+type StrictHandlerFunc func(ctx *echo.Context, request any) (any, error)
 type StrictMiddlewareFunc func(f StrictHandlerFunc, operationID string) StrictHandlerFunc
 
 func NewStrictHandler(ssi StrictServerInterface, middlewares []StrictMiddlewareFunc) ServerInterface {
@@ -713,10 +713,10 @@ type strictHandler struct {
 }
 
 // GetFormats operation middleware
-func (sh *strictHandler) GetFormats(ctx echo.Context) error {
+func (sh *strictHandler) GetFormats(ctx *echo.Context) error {
 	var request GetFormatsRequestObject
 
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetFormats(ctx.Request().Context(), request.(GetFormatsRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
@@ -736,12 +736,12 @@ func (sh *strictHandler) GetFormats(ctx echo.Context) error {
 }
 
 // GetImage operation middleware
-func (sh *strictHandler) GetImage(ctx echo.Context, params GetImageParams) error {
+func (sh *strictHandler) GetImage(ctx *echo.Context, params GetImageParams) error {
 	var request GetImageRequestObject
 
 	request.Params = params
 
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetImage(ctx.Request().Context(), request.(GetImageRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
@@ -761,12 +761,12 @@ func (sh *strictHandler) GetImage(ctx echo.Context, params GetImageParams) error
 }
 
 // GetMangaPage operation middleware
-func (sh *strictHandler) GetMangaPage(ctx echo.Context, params GetMangaPageParams) error {
+func (sh *strictHandler) GetMangaPage(ctx *echo.Context, params GetMangaPageParams) error {
 	var request GetMangaPageRequestObject
 
 	request.Params = params
 
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetMangaPage(ctx.Request().Context(), request.(GetMangaPageRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
@@ -786,12 +786,12 @@ func (sh *strictHandler) GetMangaPage(ctx echo.Context, params GetMangaPageParam
 }
 
 // GetMangaVolumes operation middleware
-func (sh *strictHandler) GetMangaVolumes(ctx echo.Context, params GetMangaVolumesParams) error {
+func (sh *strictHandler) GetMangaVolumes(ctx *echo.Context, params GetMangaVolumesParams) error {
 	var request GetMangaVolumesRequestObject
 
 	request.Params = params
 
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetMangaVolumes(ctx.Request().Context(), request.(GetMangaVolumesRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
@@ -811,10 +811,10 @@ func (sh *strictHandler) GetMangaVolumes(ctx echo.Context, params GetMangaVolume
 }
 
 // GetMangalInfo operation middleware
-func (sh *strictHandler) GetMangalInfo(ctx echo.Context) error {
+func (sh *strictHandler) GetMangalInfo(ctx *echo.Context) error {
 	var request GetMangalInfoRequestObject
 
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetMangalInfo(ctx.Request().Context(), request.(GetMangalInfoRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
@@ -834,12 +834,12 @@ func (sh *strictHandler) GetMangalInfo(ctx echo.Context) error {
 }
 
 // GetProvider operation middleware
-func (sh *strictHandler) GetProvider(ctx echo.Context, params GetProviderParams) error {
+func (sh *strictHandler) GetProvider(ctx *echo.Context, params GetProviderParams) error {
 	var request GetProviderRequestObject
 
 	request.Params = params
 
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetProvider(ctx.Request().Context(), request.(GetProviderRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
@@ -859,10 +859,10 @@ func (sh *strictHandler) GetProvider(ctx echo.Context, params GetProviderParams)
 }
 
 // GetProviders operation middleware
-func (sh *strictHandler) GetProviders(ctx echo.Context) error {
+func (sh *strictHandler) GetProviders(ctx *echo.Context) error {
 	var request GetProvidersRequestObject
 
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetProviders(ctx.Request().Context(), request.(GetProvidersRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
@@ -882,12 +882,12 @@ func (sh *strictHandler) GetProviders(ctx echo.Context) error {
 }
 
 // SearchMangas operation middleware
-func (sh *strictHandler) SearchMangas(ctx echo.Context, params SearchMangasParams) error {
+func (sh *strictHandler) SearchMangas(ctx *echo.Context, params SearchMangasParams) error {
 	var request SearchMangasRequestObject
 
 	request.Params = params
 
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.SearchMangas(ctx.Request().Context(), request.(SearchMangasRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
@@ -907,12 +907,12 @@ func (sh *strictHandler) SearchMangas(ctx echo.Context, params SearchMangasParam
 }
 
 // GetVolumeChapters operation middleware
-func (sh *strictHandler) GetVolumeChapters(ctx echo.Context, params GetVolumeChaptersParams) error {
+func (sh *strictHandler) GetVolumeChapters(ctx *echo.Context, params GetVolumeChaptersParams) error {
 	var request GetVolumeChaptersRequestObject
 
 	request.Params = params
 
-	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetVolumeChapters(ctx.Request().Context(), request.(GetVolumeChaptersRequestObject))
 	}
 	for _, middleware := range sh.middlewares {

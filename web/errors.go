@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/netutil"
 	"github.com/luevano/mangal/v5/log"
@@ -24,8 +24,8 @@ var (
 )
 
 // apiError writes the handler's error as an api.Error, with the status it matches.
-func apiError(err error, c echo.Context) {
-	if c.Response().Committed {
+func apiError(c *echo.Context, err error) {
+	if resp, _ := echo.UnwrapResponse(c.Response()); resp != nil && resp.Committed {
 		return
 	}
 
@@ -35,6 +35,9 @@ func apiError(err error, c echo.Context) {
 	switch {
 	case errors.As(err, &httpErr):
 		status = httpErr.Code
+	case echo.StatusCode(err) != 0:
+		// echo's own: no route, method not allowed
+		status = echo.StatusCode(err)
 	case errors.Is(err, errNotFound), errors.Is(err, libmangal.ErrNotFound):
 		status = http.StatusNotFound
 	case limited:
@@ -53,10 +56,8 @@ func apiError(err error, c echo.Context) {
 	}
 
 	message := err.Error()
-	if httpErr != nil {
-		if m, ok := httpErr.Message.(string); ok {
-			message = m
-		}
+	if httpErr != nil && httpErr.Message != "" {
+		message = httpErr.Message
 	}
 	switch {
 	case status == http.StatusBadGateway:

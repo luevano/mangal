@@ -1,6 +1,6 @@
 package: api
 generate:
-  echo-server: true
+  echo5-server: true
   strict-server: true
   embedded-spec: true
 output: server.gen.go
