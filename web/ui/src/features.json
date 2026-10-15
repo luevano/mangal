@@ -1,0 +1,352 @@
+{
+  "features": [
+    {
+      "name": "providers",
+      "web": [
+        "providers"
+      ],
+      "api": [
+        "listProviders",
+        "getProviderInfo"
+      ]
+    },
+    {
+      "name": "provider install",
+      "not_applicable": "providers run code: never installed over HTTP"
+    },
+    {
+      "name": "search and browse",
+      "web": [
+        "search",
+        "provider-manga"
+      ],
+      "api": [
+        "searchProvider",
+        "getProviderManga",
+        "listProviderChapters",
+        "proxyImage"
+      ]
+    },
+    {
+      "name": "download",
+      "web": [
+        "provider-manga",
+        "jobs"
+      ],
+      "api": [
+        "startDownload",
+        "listJobs",
+        "getJob",
+        "cancelJob",
+        "retryJob",
+        "removeJob",
+        "clearJobQueue"
+      ]
+    },
+    {
+      "name": "read",
+      "web": [
+        "read-library",
+        "read-online"
+      ],
+      "api": [
+        "listChapterPages",
+        "getChapterPage",
+        "getChapterFile",
+        "listProviderPages",
+        "getProviderPage",
+        "recordRead"
+      ]
+    },
+    {
+      "name": "read history",
+      "web": [
+        "history"
+      ],
+      "api": [
+        "listHistory"
+      ]
+    },
+    {
+      "name": "history clear",
+      "web": [
+        "history"
+      ],
+      "api": [
+        "clearHistory"
+      ]
+    },
+    {
+      "name": "library list",
+      "web": [
+        "library",
+        "library-manga"
+      ],
+      "api": [
+        "listLibraryMangas",
+        "getLibraryManga",
+        "getLibraryCover",
+        "listLibraryChapters",
+        "listDownloads"
+      ]
+    },
+    {
+      "name": "library scan",
+      "web": [
+        "library"
+      ],
+      "api": [
+        "scanLibrary"
+      ]
+    },
+    {
+      "name": "merge",
+      "web": [
+        "duplicates",
+        "library-manga"
+      ],
+      "api": [
+        "mergeLibraryMangas",
+        "listDuplicates"
+      ]
+    },
+    {
+      "name": "move",
+      "web": [
+        "library-manga"
+      ],
+      "api": [
+        "moveLibraryManga"
+      ]
+    },
+    {
+      "name": "links",
+      "web": [
+        "library-manga"
+      ],
+      "api": [
+        "linkLibraryManga"
+      ]
+    },
+    {
+      "name": "backup links",
+      "web": [
+        "library"
+      ],
+      "api": [
+        "fillBackupLinks"
+      ]
+    },
+    {
+      "name": "mark",
+      "web": [
+        "library",
+        "library-manga"
+      ],
+      "api": [
+        "markLibraryMangas"
+      ]
+    },
+    {
+      "name": "rename",
+      "web": [
+        "library",
+        "library-manga"
+      ],
+      "api": [
+        "renameLibrary"
+      ]
+    },
+    {
+      "name": "forget",
+      "web": [
+        "library-manga"
+      ],
+      "api": [
+        "forgetLibraryMangas"
+      ]
+    },
+    {
+      "name": "delete",
+      "web": [
+        "library-manga"
+      ],
+      "api": [
+        "deleteLibraryManga"
+      ]
+    },
+    {
+      "name": "trash",
+      "web": [
+        "trash"
+      ],
+      "api": [
+        "getTrash"
+      ]
+    },
+    {
+      "name": "empty the trash",
+      "web": [
+        "trash"
+      ],
+      "api": [
+        "emptyTrash"
+      ]
+    },
+    {
+      "name": "undo",
+      "web": [
+        "ops"
+      ],
+      "api": [
+        "listOps",
+        "undoOp"
+      ]
+    },
+    {
+      "name": "migrate",
+      "web": [
+        "library"
+      ],
+      "api": [
+        "migrateLibrary"
+      ]
+    },
+    {
+      "name": "bindings",
+      "web": [
+        "provider-manga",
+        "library-manga"
+      ],
+      "api": [
+        "listBindings",
+        "setBinding"
+      ]
+    },
+    {
+      "name": "unbind",
+      "web": [
+        "provider-manga"
+      ],
+      "api": [
+        "removeBinding"
+      ]
+    },
+    {
+      "name": "metadata search",
+      "not_applicable": "not in the API yet (docs/core.md Progress)"
+    },
+    {
+      "name": "health",
+      "web": [
+        "health"
+      ],
+      "api": [
+        "getHealth",
+        "getHealthJob",
+        "dismissHealthFindings"
+      ]
+    },
+    {
+      "name": "health fix",
+      "web": [
+        "health"
+      ],
+      "api": [
+        "fixHealthFinding"
+      ]
+    },
+    {
+      "name": "watches",
+      "web": [
+        "watches",
+        "watch"
+      ],
+      "api": [
+        "listWatches",
+        "addWatch",
+        "getWatch",
+        "updateWatch",
+        "removeWatch",
+        "relinkWatch",
+        "listStaleWatches"
+      ]
+    },
+    {
+      "name": "watch check",
+      "web": [
+        "watches",
+        "watch",
+        "run"
+      ],
+      "api": [
+        "checkWatches",
+        "cancelRun"
+      ]
+    },
+    {
+      "name": "watch history",
+      "web": [
+        "runs",
+        "run",
+        "watch"
+      ],
+      "api": [
+        "listRuns",
+        "getRun",
+        "removeWatchRun"
+      ]
+    },
+    {
+      "name": "accounts",
+      "web": [
+        "accounts"
+      ],
+      "api": [
+        "listAccounts"
+      ]
+    },
+    {
+      "name": "config",
+      "web": [
+        "config"
+      ],
+      "api": [
+        "listConfig",
+        "setConfig"
+      ]
+    },
+    {
+      "name": "logs",
+      "web": [
+        "logs"
+      ],
+      "api": [
+        "listLogs",
+        "listLogFiles"
+      ]
+    },
+    {
+      "name": "cache",
+      "not_applicable": "a one-off command, the CLI is enough"
+    },
+    {
+      "name": "templates",
+      "not_applicable": "a one-off command, the CLI is enough"
+    },
+    {
+      "name": "paths",
+      "not_applicable": "a one-off command, the CLI is enough"
+    },
+    {
+      "name": "formats",
+      "api": [
+        "listFormats"
+      ],
+      "not_applicable": "downloads use download.format (the config)"
+    }
+  ],
+  "routes": {
+    "not-found": "the web UI's 404"
+  }
+}
