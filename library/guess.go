@@ -1,7 +1,6 @@
 package library
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -37,18 +36,15 @@ func (s Scanner) guessInfo(folder string, files []chapterFile) libmangal.MangaDi
 		info.MetadataIDs = append(info.MetadataIDs, metadata.ID{Raw: m[2], Source: idSources[code], Code: code})
 	}
 
-	var series struct {
-		Metadata struct {
-			Name    string `json:"name"`
-			ComicID int    `json:"comicid"`
-			Image   string `json:"comic_image"`
-		} `json:"metadata"`
-	}
-	if data, err := afero.ReadFile(s.FS, filepath.Join(folder, metadata.FilenameSeriesJSON)); err == nil && json.Unmarshal(data, &series) == nil {
-		info.Manga.Title = series.Metadata.Name
-		// comicid is the id of the metadata provider, only known by its cover
-		if len(info.MetadataIDs) == 0 && series.Metadata.ComicID != 0 && strings.Contains(series.Metadata.Image, "anilist.co") {
-			info.MetadataIDs = append(info.MetadataIDs, metadata.ID{Raw: strconv.Itoa(series.Metadata.ComicID), Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist})
+	if file, err := s.FS.Open(filepath.Join(folder, metadata.FilenameSeriesJSON)); err == nil {
+		series, err := metadata.ReadSeriesJSON(file)
+		_ = file.Close()
+		if err == nil {
+			info.Manga.Title = series.Name
+			// comicid is the id of the metadata provider, only known by its cover
+			if len(info.MetadataIDs) == 0 && series.ComicID != 0 && strings.Contains(series.ComicImage, "anilist.co") {
+				info.MetadataIDs = append(info.MetadataIDs, metadata.ID{Raw: strconv.Itoa(series.ComicID), Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist})
+			}
 		}
 	}
 	for _, f := range files {

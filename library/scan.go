@@ -3,7 +3,6 @@ package library
 import (
 	"archive/zip"
 	"context"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -367,7 +366,7 @@ func (s Scanner) walkChapters(dir string, depth int, files *[]chapterFile) error
 			}
 			continue
 		}
-		format, ok := formatOf(name)
+		format, ok := libmangal.FormatOf(name)
 		if !ok {
 			continue
 		}
@@ -437,20 +436,14 @@ func (s Scanner) readZip(f *chapterFile) {
 			warn("%s: %s", entry.Name, err)
 			continue
 		}
-		var info struct {
-			Title  string `xml:"Title"`
-			Series string `xml:"Series"`
-			Number string `xml:"Number"`
-			Web    string `xml:"Web"`
-		}
-		err = xml.NewDecoder(rc).Decode(&info)
+		info, err := metadata.ReadComicInfoXML(rc)
 		_ = rc.Close()
 		if err != nil {
-			warn("%s: %s", entry.Name, err)
+			warn("%s", err)
 			continue
 		}
-		if n, err := strconv.ParseFloat(strings.TrimSpace(info.Number), 32); err == nil {
-			f.number, f.hasNumber = float32(n), true
+		if !info.NoNumber {
+			f.number, f.hasNumber = info.Number, true
 		}
 		f.title, f.series, f.url = info.Title, info.Series, info.Web
 	}
@@ -462,16 +455,6 @@ func numberFromName(name string) (float32, bool) {
 			if n, err := strconv.ParseFloat(m[1], 32); err == nil {
 				return float32(n), true
 			}
-		}
-	}
-	return 0, false
-}
-
-func formatOf(name string) (libmangal.Format, bool) {
-	lower := strings.ToLower(name)
-	for _, format := range []libmangal.Format{libmangal.FormatTARGZ, libmangal.FormatCBZ, libmangal.FormatPDF, libmangal.FormatZIP, libmangal.FormatTAR} {
-		if strings.HasSuffix(lower, format.Extension()) {
-			return format, true
 		}
 	}
 	return 0, false
