@@ -285,6 +285,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/library/mangas/{id}/cover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A library manga's cover (cover.jpg, .png, .webp in its folder) */
+        get: operations["getLibraryCover"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/mangas/{id}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The pages of a downloaded chapter, read from its file (no extraction)
+         * @description CBZ, ZIP, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
+         *     it's read whole from getChapterFile.
+         */
+        get: operations["listChapterPages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/mangas/{id}/pages/{page}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A page of a downloaded chapter (0-based) */
+        get: operations["getChapterPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/mangas/{id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A downloaded chapter's file (a folder of images as a zip) */
+        get: operations["getChapterFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/library/downloads": {
         parameters: {
             query?: never;
@@ -861,6 +933,65 @@ export interface paths {
         get: operations["listProviderChapters"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/providers/{provider}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The pages of a provider's chapter (read online)
+         * @description The pages are kept a while; getProviderPage gets each through the provider (its headers, its rate limit).
+         */
+        get: operations["listProviderPages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/providers/{provider}/pages/{page}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A page of a provider's chapter (0-based) */
+        get: operations["getProviderPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a chapter read in the web reader
+         * @description Records it in the read history (read.history.local) and sets the reading progress
+         *     on AniList, Kitsu and MyAnimeList (read.history.*, logged in; the manga's bindings,
+         *     else the library manga's ids), like the TUI's read. The reader skips it in incognito.
+         */
+        post: operations["recordRead"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1722,6 +1853,46 @@ export interface components {
             total: number;
             reads: components["schemas"]["Read"][];
         };
+        ChapterPages: {
+            /** @description the chapter's format, libmangal's (CBZ, ZIP, TAR, TARGZ, Images, PDF), ONLINE for a provider's */
+            format: string;
+            /** @description no pages, the file is read whole (getChapterFile with inline) */
+            pdf?: boolean;
+            pages: components["schemas"]["ChapterPage"][];
+        };
+        ChapterPage: {
+            index: number;
+            name?: string;
+            /** Format: int64 */
+            size?: number;
+            type?: string;
+        };
+        ReadRequest: {
+            provider: string;
+            manga_id: string;
+            manga_title?: string;
+            /** Format: float */
+            volume?: number;
+            /** Format: float */
+            chapter: number;
+            chapter_title?: string;
+            chapter_url?: string;
+            /**
+             * Format: int64
+             * @description the library manga read (its ids are synced when the manga has no binding)
+             */
+            library_manga?: number;
+            /** @description set the progress on the metadata sources (default true) */
+            sync?: boolean;
+        };
+        ReadResponse: {
+            /** @description written to the read history (read.history.local) */
+            recorded: boolean;
+            /** @description the sources whose progress was set */
+            synced: string[];
+            /** @description what failed to sync */
+            error?: string;
+        };
         ConfigEntry: {
             key: string;
             /** @description the value (masked for a secret) */
@@ -1891,6 +2062,14 @@ export interface components {
         MangaIDParam: string;
         /** @description the provider's manga id */
         MangaIDRequiredParam: string;
+        /** @description the chapter's file, as the manga's chapters list it (download.path) */
+        ChapterPathParam: string;
+        /** @description the page's index, 0-based */
+        PageParam: number;
+        /** @description the chapter's number */
+        ChapterNumberParam: number;
+        /** @description the chapter's volume number, when several volumes have the number */
+        VolumeNumberParam: number;
         /** @description a provider id */
         ProviderPathParam: string;
     };
@@ -2363,6 +2542,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryChapter"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getLibraryCover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the cover */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listChapterPages: {
+        parameters: {
+            query: {
+                /** @description the chapter's file, as the manga's chapters list it (download.path) */
+                path: components["parameters"]["ChapterPathParam"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the pages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterPages"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getChapterPage: {
+        parameters: {
+            query: {
+                /** @description the chapter's file, as the manga's chapters list it (download.path) */
+                path: components["parameters"]["ChapterPathParam"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+                /** @description the page's index, 0-based */
+                page: components["parameters"]["PageParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the page's image */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getChapterFile: {
+        parameters: {
+            query: {
+                /** @description the chapter's file, as the manga's chapters list it (download.path) */
+                path: components["parameters"]["ChapterPathParam"];
+                /** @description shown in the browser (a PDF), not saved */
+                inline?: boolean;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the file */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
                 };
             };
             default: components["responses"]["Error"];
@@ -3157,6 +3444,96 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderChapter"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listProviderPages: {
+        parameters: {
+            query: {
+                /** @description the provider's manga id */
+                manga_id: components["parameters"]["MangaIDRequiredParam"];
+                /** @description the chapter's number */
+                chapter: components["parameters"]["ChapterNumberParam"];
+                /** @description the chapter's volume number, when several volumes have the number */
+                volume?: components["parameters"]["VolumeNumberParam"];
+            };
+            header?: never;
+            path: {
+                /** @description a provider id */
+                provider: components["parameters"]["ProviderPathParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the pages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterPages"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getProviderPage: {
+        parameters: {
+            query: {
+                /** @description the provider's manga id */
+                manga_id: components["parameters"]["MangaIDRequiredParam"];
+                /** @description the chapter's number */
+                chapter: components["parameters"]["ChapterNumberParam"];
+                /** @description the chapter's volume number, when several volumes have the number */
+                volume?: components["parameters"]["VolumeNumberParam"];
+            };
+            header?: never;
+            path: {
+                /** @description a provider id */
+                provider: components["parameters"]["ProviderPathParam"];
+                /** @description the page's index, 0-based */
+                page: components["parameters"]["PageParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the page's image */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    recordRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadRequest"];
+            };
+        };
+        responses: {
+            /** @description what was recorded and synced */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadResponse"];
                 };
             };
             default: components["responses"]["Error"];

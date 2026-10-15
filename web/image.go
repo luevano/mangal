@@ -205,3 +205,31 @@ func (c *imageCache) add(url string, img cachedImage) {
 	c.byURL[url] = c.order.PushFront(&imageEntry{url: url, image: img})
 	c.used += len(img.data)
 }
+
+// UncachedImage is CachedImage without a cache.
+func UncachedImage(_ string, fetch func() ([]byte, error)) ([]byte, string, error) {
+	data, err := fetch()
+	if err != nil {
+		return nil, "", err
+	}
+	contentType, err := imageType("", data)
+	return data, contentType, err
+}
+
+// CachedImage is the image under key from the cache, else fetched (and cached) with
+// fetch: only raster images, like Image's.
+func (s *Server) CachedImage(key string, fetch func() ([]byte, error)) ([]byte, string, error) {
+	if img, ok := s.images.get(key); ok {
+		return img.data, img.contentType, nil
+	}
+	data, err := fetch()
+	if err != nil {
+		return nil, "", err
+	}
+	contentType, err := imageType("", data)
+	if err != nil {
+		return nil, "", err
+	}
+	s.images.add(key, cachedImage{data: data, contentType: contentType})
+	return data, contentType, nil
+}

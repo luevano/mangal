@@ -123,6 +123,18 @@ type ServerInterface interface {
 	// ListLibraryChapters A library manga's downloaded chapters, with how often each was read
 	// (GET /v1/library/mangas/{id}/chapters)
 	ListLibraryChapters(ctx *echo.Context, id IDParam) error
+	// GetLibraryCover A library manga's cover (cover.jpg, .png, .webp in its folder)
+	// (GET /v1/library/mangas/{id}/cover)
+	GetLibraryCover(ctx *echo.Context, id IDParam) error
+	// GetChapterFile A downloaded chapter's file (a folder of images as a zip)
+	// (GET /v1/library/mangas/{id}/file)
+	GetChapterFile(ctx *echo.Context, id IDParam, params GetChapterFileParams) error
+	// ListChapterPages The pages of a downloaded chapter, read from its file (no extraction)
+	// (GET /v1/library/mangas/{id}/pages)
+	ListChapterPages(ctx *echo.Context, id IDParam, params ListChapterPagesParams) error
+	// GetChapterPage A page of a downloaded chapter (0-based)
+	// (GET /v1/library/mangas/{id}/pages/{page})
+	GetChapterPage(ctx *echo.Context, id IDParam, page PageParam, params GetChapterPageParams) error
 	// MarkLibraryMangas Write the .libmangal.json of folders without one
 	// (POST /v1/library/mark)
 	MarkLibraryMangas(ctx *echo.Context, params MarkLibraryMangasParams) error
@@ -174,9 +186,18 @@ type ServerInterface interface {
 	// GetProviderManga A provider's manga by id
 	// (GET /v1/providers/{provider}/manga)
 	GetProviderManga(ctx *echo.Context, provider ProviderPathParam, params GetProviderMangaParams) error
+	// ListProviderPages The pages of a provider's chapter (read online)
+	// (GET /v1/providers/{provider}/pages)
+	ListProviderPages(ctx *echo.Context, provider ProviderPathParam, params ListProviderPagesParams) error
+	// GetProviderPage A page of a provider's chapter (0-based)
+	// (GET /v1/providers/{provider}/pages/{page})
+	GetProviderPage(ctx *echo.Context, provider ProviderPathParam, page PageParam, params GetProviderPageParams) error
 	// SearchProvider Search a provider's mangas
 	// (GET /v1/providers/{provider}/search)
 	SearchProvider(ctx *echo.Context, provider ProviderPathParam, params SearchProviderParams) error
+	// RecordRead Record a chapter read in the web reader
+	// (POST /v1/reads)
+	RecordRead(ctx *echo.Context) error
 	// ListRuns The check runs, newest first
 	// (GET /v1/runs)
 	ListRuns(ctx *echo.Context, params ListRunsParams) error
@@ -855,6 +876,112 @@ func (w *ServerInterfaceWrapper) ListLibraryChapters(ctx *echo.Context) error {
 	return err
 }
 
+// GetLibraryCover converts echo context to params.
+func (w *ServerInterfaceWrapper) GetLibraryCover(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id IDParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetLibraryCover(ctx, id)
+	return err
+}
+
+// GetChapterFile converts echo context to params.
+func (w *ServerInterfaceWrapper) GetChapterFile(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id IDParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetChapterFileParams
+	// ------------- Required query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "path", ctx.QueryParams(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter path: %s", err))
+	}
+
+	// ------------- Optional query parameter "inline" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "inline", ctx.QueryParams(), &params.Inline, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter inline: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetChapterFile(ctx, id, params)
+	return err
+}
+
+// ListChapterPages converts echo context to params.
+func (w *ServerInterfaceWrapper) ListChapterPages(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id IDParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListChapterPagesParams
+	// ------------- Required query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "path", ctx.QueryParams(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter path: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListChapterPages(ctx, id, params)
+	return err
+}
+
+// GetChapterPage converts echo context to params.
+func (w *ServerInterfaceWrapper) GetChapterPage(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id IDParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// ------------- Path parameter "page" -------------
+	var page PageParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page", ctx.Param("page"), &page, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter page: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetChapterPageParams
+	// ------------- Required query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "path", ctx.QueryParams(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter path: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetChapterPage(ctx, id, page, params)
+	return err
+}
+
 // MarkLibraryMangas converts echo context to params.
 func (w *ServerInterfaceWrapper) MarkLibraryMangas(ctx *echo.Context) error {
 	var err error
@@ -1184,6 +1311,92 @@ func (w *ServerInterfaceWrapper) GetProviderManga(ctx *echo.Context) error {
 	return err
 }
 
+// ListProviderPages converts echo context to params.
+func (w *ServerInterfaceWrapper) ListProviderPages(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "provider" -------------
+	var provider ProviderPathParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", ctx.Param("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter provider: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListProviderPagesParams
+	// ------------- Required query parameter "manga_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "manga_id", ctx.QueryParams(), &params.MangaId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter manga_id: %s", err))
+	}
+
+	// ------------- Required query parameter "chapter" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "chapter", ctx.QueryParams(), &params.Chapter, runtime.BindQueryParameterOptions{Type: "number", Format: "float"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter chapter: %s", err))
+	}
+
+	// ------------- Optional query parameter "volume" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "volume", ctx.QueryParams(), &params.Volume, runtime.BindQueryParameterOptions{Type: "number", Format: "float"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter volume: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListProviderPages(ctx, provider, params)
+	return err
+}
+
+// GetProviderPage converts echo context to params.
+func (w *ServerInterfaceWrapper) GetProviderPage(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "provider" -------------
+	var provider ProviderPathParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", ctx.Param("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter provider: %s", err))
+	}
+
+	// ------------- Path parameter "page" -------------
+	var page PageParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page", ctx.Param("page"), &page, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter page: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProviderPageParams
+	// ------------- Required query parameter "manga_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "manga_id", ctx.QueryParams(), &params.MangaId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter manga_id: %s", err))
+	}
+
+	// ------------- Required query parameter "chapter" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "chapter", ctx.QueryParams(), &params.Chapter, runtime.BindQueryParameterOptions{Type: "number", Format: "float"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter chapter: %s", err))
+	}
+
+	// ------------- Optional query parameter "volume" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "volume", ctx.QueryParams(), &params.Volume, runtime.BindQueryParameterOptions{Type: "number", Format: "float"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter volume: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetProviderPage(ctx, provider, page, params)
+	return err
+}
+
 // SearchProvider converts echo context to params.
 func (w *ServerInterfaceWrapper) SearchProvider(ctx *echo.Context) error {
 	var err error
@@ -1206,6 +1419,15 @@ func (w *ServerInterfaceWrapper) SearchProvider(ctx *echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.SearchProvider(ctx, provider, params)
+	return err
+}
+
+// RecordRead converts echo context to params.
+func (w *ServerInterfaceWrapper) RecordRead(ctx *echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.RecordRead(ctx)
 	return err
 }
 
@@ -1466,6 +1688,10 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/v1/library/mangas", wrapper.ListLibraryMangas, options.OperationMiddlewares["listLibraryMangas"]...)
 	router.GET(options.BaseURL+"/v1/library/mangas/:id", wrapper.GetLibraryManga, options.OperationMiddlewares["getLibraryManga"]...)
 	router.GET(options.BaseURL+"/v1/library/mangas/:id/chapters", wrapper.ListLibraryChapters, options.OperationMiddlewares["listLibraryChapters"]...)
+	router.GET(options.BaseURL+"/v1/library/mangas/:id/cover", wrapper.GetLibraryCover, options.OperationMiddlewares["getLibraryCover"]...)
+	router.GET(options.BaseURL+"/v1/library/mangas/:id/pages", wrapper.ListChapterPages, options.OperationMiddlewares["listChapterPages"]...)
+	router.GET(options.BaseURL+"/v1/library/mangas/:id/pages/:page", wrapper.GetChapterPage, options.OperationMiddlewares["getChapterPage"]...)
+	router.GET(options.BaseURL+"/v1/library/mangas/:id/file", wrapper.GetChapterFile, options.OperationMiddlewares["getChapterFile"]...)
 	router.GET(options.BaseURL+"/v1/library/downloads", wrapper.ListDownloads, options.OperationMiddlewares["listDownloads"]...)
 	router.GET(options.BaseURL+"/v1/library/duplicates", wrapper.ListDuplicates, options.OperationMiddlewares["listDuplicates"]...)
 	router.GET(options.BaseURL+"/v1/library/trash", wrapper.GetTrash, options.OperationMiddlewares["getTrash"]...)
@@ -1500,6 +1726,9 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/v1/providers/:provider/search", wrapper.SearchProvider, options.OperationMiddlewares["searchProvider"]...)
 	router.GET(options.BaseURL+"/v1/providers/:provider/manga", wrapper.GetProviderManga, options.OperationMiddlewares["getProviderManga"]...)
 	router.GET(options.BaseURL+"/v1/providers/:provider/chapters", wrapper.ListProviderChapters, options.OperationMiddlewares["listProviderChapters"]...)
+	router.GET(options.BaseURL+"/v1/providers/:provider/pages", wrapper.ListProviderPages, options.OperationMiddlewares["listProviderPages"]...)
+	router.GET(options.BaseURL+"/v1/providers/:provider/pages/:page", wrapper.GetProviderPage, options.OperationMiddlewares["getProviderPage"]...)
+	router.POST(options.BaseURL+"/v1/reads", wrapper.RecordRead, options.OperationMiddlewares["recordRead"]...)
 	router.GET(options.BaseURL+"/v1/formats", wrapper.ListFormats, options.OperationMiddlewares["listFormats"]...)
 	router.GET(options.BaseURL+"/v1/image", wrapper.ProxyImage, options.OperationMiddlewares["proxyImage"]...)
 	router.DELETE(options.BaseURL+"/v1/bindings", wrapper.RemoveBinding, options.OperationMiddlewares["removeBinding"]...)
@@ -2876,6 +3105,211 @@ func (response ListLibraryChaptersdefaultJSONResponse) VisitListLibraryChaptersR
 	return err
 }
 
+type GetLibraryCoverRequestObject struct {
+	Id IDParam `json:"id"`
+}
+
+type GetLibraryCoverResponseObject interface {
+	VisitGetLibraryCoverResponse(w http.ResponseWriter) error
+}
+
+type GetLibraryCover200ResponseHeaders struct {
+	CacheControl *string
+}
+
+type GetLibraryCover200ImageResponse struct {
+	Body          io.Reader
+	Headers       GetLibraryCover200ResponseHeaders
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetLibraryCover200ImageResponse) VisitGetLibraryCoverResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetLibraryCoverdefaultJSONResponse struct {
+	Body       ErrorResponse
+	StatusCode int
+}
+
+func (response GetLibraryCoverdefaultJSONResponse) VisitGetLibraryCoverResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChapterFileRequestObject struct {
+	Id     IDParam `json:"id"`
+	Params GetChapterFileParams
+}
+
+type GetChapterFileResponseObject interface {
+	VisitGetChapterFileResponse(w http.ResponseWriter) error
+}
+
+type GetChapterFile200ResponseHeaders struct {
+	ContentDisposition *string
+}
+
+type GetChapterFile200AsteriskResponse struct {
+	Body          io.Reader
+	Headers       GetChapterFile200ResponseHeaders
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetChapterFile200AsteriskResponse) VisitGetChapterFileResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetChapterFiledefaultJSONResponse struct {
+	Body       ErrorResponse
+	StatusCode int
+}
+
+func (response GetChapterFiledefaultJSONResponse) VisitGetChapterFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChapterPagesRequestObject struct {
+	Id     IDParam `json:"id"`
+	Params ListChapterPagesParams
+}
+
+type ListChapterPagesResponseObject interface {
+	VisitListChapterPagesResponse(w http.ResponseWriter) error
+}
+
+type ListChapterPages200JSONResponse ChapterPages
+
+func (response ListChapterPages200JSONResponse) VisitListChapterPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChapterPagesdefaultJSONResponse struct {
+	Body       ErrorResponse
+	StatusCode int
+}
+
+func (response ListChapterPagesdefaultJSONResponse) VisitListChapterPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChapterPageRequestObject struct {
+	Id     IDParam   `json:"id"`
+	Page   PageParam `json:"page"`
+	Params GetChapterPageParams
+}
+
+type GetChapterPageResponseObject interface {
+	VisitGetChapterPageResponse(w http.ResponseWriter) error
+}
+
+type GetChapterPage200ResponseHeaders struct {
+	CacheControl *string
+}
+
+type GetChapterPage200ImageResponse struct {
+	Body          io.Reader
+	Headers       GetChapterPage200ResponseHeaders
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetChapterPage200ImageResponse) VisitGetChapterPageResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetChapterPagedefaultJSONResponse struct {
+	Body       ErrorResponse
+	StatusCode int
+}
+
+func (response GetChapterPagedefaultJSONResponse) VisitGetChapterPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type MarkLibraryMangasRequestObject struct {
 	Params MarkLibraryMangasParams
 	Body   *MarkLibraryMangasJSONRequestBody
@@ -3551,6 +3985,102 @@ func (response GetProviderMangadefaultJSONResponse) VisitGetProviderMangaRespons
 	return err
 }
 
+type ListProviderPagesRequestObject struct {
+	Provider ProviderPathParam `json:"provider"`
+	Params   ListProviderPagesParams
+}
+
+type ListProviderPagesResponseObject interface {
+	VisitListProviderPagesResponse(w http.ResponseWriter) error
+}
+
+type ListProviderPages200JSONResponse ChapterPages
+
+func (response ListProviderPages200JSONResponse) VisitListProviderPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProviderPagesdefaultJSONResponse struct {
+	Body       ErrorResponse
+	StatusCode int
+}
+
+func (response ListProviderPagesdefaultJSONResponse) VisitListProviderPagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderPageRequestObject struct {
+	Provider ProviderPathParam `json:"provider"`
+	Page     PageParam         `json:"page"`
+	Params   GetProviderPageParams
+}
+
+type GetProviderPageResponseObject interface {
+	VisitGetProviderPageResponse(w http.ResponseWriter) error
+}
+
+type GetProviderPage200ResponseHeaders struct {
+	CacheControl *string
+}
+
+type GetProviderPage200ImageResponse struct {
+	Body          io.Reader
+	Headers       GetProviderPage200ResponseHeaders
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetProviderPage200ImageResponse) VisitGetProviderPageResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetProviderPagedefaultJSONResponse struct {
+	Body       ErrorResponse
+	StatusCode int
+}
+
+func (response GetProviderPagedefaultJSONResponse) VisitGetProviderPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SearchProviderRequestObject struct {
 	Provider ProviderPathParam `json:"provider"`
 	Params   SearchProviderParams
@@ -3580,6 +4110,45 @@ type SearchProviderdefaultJSONResponse struct {
 }
 
 func (response SearchProviderdefaultJSONResponse) VisitSearchProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RecordReadRequestObject struct {
+	Body *RecordReadJSONRequestBody
+}
+
+type RecordReadResponseObject interface {
+	VisitRecordReadResponse(w http.ResponseWriter) error
+}
+
+type RecordRead200JSONResponse ReadResponse
+
+func (response RecordRead200JSONResponse) VisitRecordReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RecordReaddefaultJSONResponse struct {
+	Body       ErrorResponse
+	StatusCode int
+}
+
+func (response RecordReaddefaultJSONResponse) VisitRecordReadResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -4148,6 +4717,18 @@ type StrictServerInterface interface {
 	// ListLibraryChapters A library manga's downloaded chapters, with how often each was read
 	// (GET /v1/library/mangas/{id}/chapters)
 	ListLibraryChapters(ctx context.Context, request ListLibraryChaptersRequestObject) (ListLibraryChaptersResponseObject, error)
+	// GetLibraryCover A library manga's cover (cover.jpg, .png, .webp in its folder)
+	// (GET /v1/library/mangas/{id}/cover)
+	GetLibraryCover(ctx context.Context, request GetLibraryCoverRequestObject) (GetLibraryCoverResponseObject, error)
+	// GetChapterFile A downloaded chapter's file (a folder of images as a zip)
+	// (GET /v1/library/mangas/{id}/file)
+	GetChapterFile(ctx context.Context, request GetChapterFileRequestObject) (GetChapterFileResponseObject, error)
+	// ListChapterPages The pages of a downloaded chapter, read from its file (no extraction)
+	// (GET /v1/library/mangas/{id}/pages)
+	ListChapterPages(ctx context.Context, request ListChapterPagesRequestObject) (ListChapterPagesResponseObject, error)
+	// GetChapterPage A page of a downloaded chapter (0-based)
+	// (GET /v1/library/mangas/{id}/pages/{page})
+	GetChapterPage(ctx context.Context, request GetChapterPageRequestObject) (GetChapterPageResponseObject, error)
 	// MarkLibraryMangas Write the .libmangal.json of folders without one
 	// (POST /v1/library/mark)
 	MarkLibraryMangas(ctx context.Context, request MarkLibraryMangasRequestObject) (MarkLibraryMangasResponseObject, error)
@@ -4199,9 +4780,18 @@ type StrictServerInterface interface {
 	// GetProviderManga A provider's manga by id
 	// (GET /v1/providers/{provider}/manga)
 	GetProviderManga(ctx context.Context, request GetProviderMangaRequestObject) (GetProviderMangaResponseObject, error)
+	// ListProviderPages The pages of a provider's chapter (read online)
+	// (GET /v1/providers/{provider}/pages)
+	ListProviderPages(ctx context.Context, request ListProviderPagesRequestObject) (ListProviderPagesResponseObject, error)
+	// GetProviderPage A page of a provider's chapter (0-based)
+	// (GET /v1/providers/{provider}/pages/{page})
+	GetProviderPage(ctx context.Context, request GetProviderPageRequestObject) (GetProviderPageResponseObject, error)
 	// SearchProvider Search a provider's mangas
 	// (GET /v1/providers/{provider}/search)
 	SearchProvider(ctx context.Context, request SearchProviderRequestObject) (SearchProviderResponseObject, error)
+	// RecordRead Record a chapter read in the web reader
+	// (POST /v1/reads)
+	RecordRead(ctx context.Context, request RecordReadRequestObject) (RecordReadResponseObject, error)
 	// ListRuns The check runs, newest first
 	// (GET /v1/runs)
 	ListRuns(ctx context.Context, request ListRunsRequestObject) (ListRunsResponseObject, error)
@@ -5258,6 +5848,110 @@ func (sh *strictHandler) ListLibraryChapters(ctx *echo.Context, id IDParam) erro
 	return nil
 }
 
+// GetLibraryCover operation middleware
+func (sh *strictHandler) GetLibraryCover(ctx *echo.Context, id IDParam) error {
+	var request GetLibraryCoverRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLibraryCover(ctx.Request().Context(), request.(GetLibraryCoverRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLibraryCover")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetLibraryCoverResponseObject); ok {
+		return validResponse.VisitGetLibraryCoverResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetChapterFile operation middleware
+func (sh *strictHandler) GetChapterFile(ctx *echo.Context, id IDParam, params GetChapterFileParams) error {
+	var request GetChapterFileRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetChapterFile(ctx.Request().Context(), request.(GetChapterFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetChapterFile")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetChapterFileResponseObject); ok {
+		return validResponse.VisitGetChapterFileResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListChapterPages operation middleware
+func (sh *strictHandler) ListChapterPages(ctx *echo.Context, id IDParam, params ListChapterPagesParams) error {
+	var request ListChapterPagesRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListChapterPages(ctx.Request().Context(), request.(ListChapterPagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListChapterPages")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListChapterPagesResponseObject); ok {
+		return validResponse.VisitListChapterPagesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetChapterPage operation middleware
+func (sh *strictHandler) GetChapterPage(ctx *echo.Context, id IDParam, page PageParam, params GetChapterPageParams) error {
+	var request GetChapterPageRequestObject
+
+	request.Id = id
+	request.Page = page
+	request.Params = params
+
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetChapterPage(ctx.Request().Context(), request.(GetChapterPageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetChapterPage")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetChapterPageResponseObject); ok {
+		return validResponse.VisitGetChapterPageResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // MarkLibraryMangas operation middleware
 func (sh *strictHandler) MarkLibraryMangas(ctx *echo.Context, params MarkLibraryMangasParams) error {
 	var request MarkLibraryMangasRequestObject
@@ -5822,6 +6516,59 @@ func (sh *strictHandler) GetProviderManga(ctx *echo.Context, provider ProviderPa
 	return nil
 }
 
+// ListProviderPages operation middleware
+func (sh *strictHandler) ListProviderPages(ctx *echo.Context, provider ProviderPathParam, params ListProviderPagesParams) error {
+	var request ListProviderPagesRequestObject
+
+	request.Provider = provider
+	request.Params = params
+
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListProviderPages(ctx.Request().Context(), request.(ListProviderPagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProviderPages")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListProviderPagesResponseObject); ok {
+		return validResponse.VisitListProviderPagesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetProviderPage operation middleware
+func (sh *strictHandler) GetProviderPage(ctx *echo.Context, provider ProviderPathParam, page PageParam, params GetProviderPageParams) error {
+	var request GetProviderPageRequestObject
+
+	request.Provider = provider
+	request.Page = page
+	request.Params = params
+
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProviderPage(ctx.Request().Context(), request.(GetProviderPageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProviderPage")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetProviderPageResponseObject); ok {
+		return validResponse.VisitGetProviderPageResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // SearchProvider operation middleware
 func (sh *strictHandler) SearchProvider(ctx *echo.Context, provider ProviderPathParam, params SearchProviderParams) error {
 	var request SearchProviderRequestObject
@@ -5842,6 +6589,45 @@ func (sh *strictHandler) SearchProvider(ctx *echo.Context, provider ProviderPath
 		return err
 	} else if validResponse, ok := response.(SearchProviderResponseObject); ok {
 		return validResponse.VisitSearchProviderResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// RecordRead operation middleware
+func (sh *strictHandler) RecordRead(ctx *echo.Context) error {
+	var request RecordReadRequestObject
+
+	var body RecordReadJSONRequestBody
+	var err error
+	if _, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// Bind only the request body, so that path and query parameters
+		// are not also bound into the body struct.
+		err = echo.BindBody(ctx, &body)
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding.
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.RecordRead(ctx.Request().Context(), request.(RecordReadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RecordRead")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(RecordReadResponseObject); ok {
+		return validResponse.VisitRecordReadResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -6195,152 +6981,169 @@ func (sh *strictHandler) RelinkWatch(ctx *echo.Context, id IDParam) error {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"tcjT6CIC+Tp6/Pr4/wYA",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

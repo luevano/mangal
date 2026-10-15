@@ -103,6 +103,7 @@ type API struct {
 	Events *Events
 
 	healthJobs healthJobs
+	online     onlinePages
 	coreOnce   sync.Mutex
 	core       *core.Core
 

@@ -84,6 +84,24 @@ type ChangeResponse struct {
 	Undo *string `json:"undo,omitempty"`
 }
 
+// ChapterPage defines model for ChapterPage.
+type ChapterPage struct {
+	Index int     `json:"index"`
+	Name  *string `json:"name,omitempty"`
+	Size  *int64  `json:"size,omitempty"`
+	Type  *string `json:"type,omitempty"`
+}
+
+// ChapterPages defines model for ChapterPages.
+type ChapterPages struct {
+	// Format the chapter's format, libmangal's (CBZ, ZIP, TAR, TARGZ, Images, PDF), ONLINE for a provider's
+	Format string        `json:"format"`
+	Pages  []ChapterPage `json:"pages"`
+
+	// Pdf no pages, the file is read whole (getChapterFile with inline)
+	Pdf *bool `json:"pdf,omitempty"`
+}
+
 // CheckReport a check's report (client/watch.Report)
 type CheckReport = watch.Report
 
@@ -590,6 +608,35 @@ type ReadList struct {
 	Total int    `json:"total"`
 }
 
+// ReadRequest defines model for ReadRequest.
+type ReadRequest struct {
+	Chapter      float32 `json:"chapter"`
+	ChapterTitle *string `json:"chapter_title,omitempty"`
+	ChapterUrl   *string `json:"chapter_url,omitempty"`
+
+	// LibraryManga the library manga read (its ids are synced when the manga has no binding)
+	LibraryManga *int64  `json:"library_manga,omitempty"`
+	MangaId      string  `json:"manga_id"`
+	MangaTitle   *string `json:"manga_title,omitempty"`
+	Provider     string  `json:"provider"`
+
+	// Sync set the progress on the metadata sources (default true)
+	Sync   *bool    `json:"sync,omitempty"`
+	Volume *float32 `json:"volume,omitempty"`
+}
+
+// ReadResponse defines model for ReadResponse.
+type ReadResponse struct {
+	// Error what failed to sync
+	Error *string `json:"error,omitempty"`
+
+	// Recorded written to the read history (read.history.local)
+	Recorded bool `json:"recorded"`
+
+	// Synced the sources whose progress was set
+	Synced []string `json:"synced"`
+}
+
 // RelinkRequest defines model for RelinkRequest.
 type RelinkRequest = watch.RelinkOptions
 
@@ -666,6 +713,12 @@ type Watch = watch.Watch
 // ApplyParam defines model for ApplyParam.
 type ApplyParam = bool
 
+// ChapterNumberParam defines model for ChapterNumberParam.
+type ChapterNumberParam = float32
+
+// ChapterPathParam defines model for ChapterPathParam.
+type ChapterPathParam = string
+
 // IDParam defines model for IDParam.
 type IDParam = int64
 
@@ -681,11 +734,17 @@ type MangaIDRequiredParam = string
 // OffsetParam defines model for OffsetParam.
 type OffsetParam = int
 
+// PageParam defines model for PageParam.
+type PageParam = int
+
 // ProviderParam defines model for ProviderParam.
 type ProviderParam = string
 
 // ProviderPathParam defines model for ProviderPathParam.
 type ProviderPathParam = string
+
+// VolumeNumberParam defines model for VolumeNumberParam.
+type VolumeNumberParam = float32
 
 // Change defines model for Change.
 type Change = ChangeResponse
@@ -841,6 +900,27 @@ type ListLibraryMangasParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// GetChapterFileParams defines parameters for GetChapterFile.
+type GetChapterFileParams struct {
+	// Path the chapter's file, as the manga's chapters list it (download.path)
+	Path ChapterPathParam `form:"path" json:"path"`
+
+	// Inline shown in the browser (a PDF), not saved
+	Inline *bool `form:"inline,omitempty" json:"inline,omitempty"`
+}
+
+// ListChapterPagesParams defines parameters for ListChapterPages.
+type ListChapterPagesParams struct {
+	// Path the chapter's file, as the manga's chapters list it (download.path)
+	Path ChapterPathParam `form:"path" json:"path"`
+}
+
+// GetChapterPageParams defines parameters for GetChapterPage.
+type GetChapterPageParams struct {
+	// Path the chapter's file, as the manga's chapters list it (download.path)
+	Path ChapterPathParam `form:"path" json:"path"`
+}
+
 // MarkLibraryMangasParams defines parameters for MarkLibraryMangas.
 type MarkLibraryMangasParams struct {
 	// Apply apply the change (needs `expect`, the hash of the plan confirmed), else only plan it
@@ -926,6 +1006,30 @@ type GetProviderMangaParams struct {
 
 	// Q a title to search when the provider can't get a manga by id
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
+// ListProviderPagesParams defines parameters for ListProviderPages.
+type ListProviderPagesParams struct {
+	// MangaId the provider's manga id
+	MangaId MangaIDRequiredParam `form:"manga_id" json:"manga_id"`
+
+	// Chapter the chapter's number
+	Chapter ChapterNumberParam `form:"chapter" json:"chapter"`
+
+	// Volume the chapter's volume number, when several volumes have the number
+	Volume *VolumeNumberParam `form:"volume,omitempty" json:"volume,omitempty"`
+}
+
+// GetProviderPageParams defines parameters for GetProviderPage.
+type GetProviderPageParams struct {
+	// MangaId the provider's manga id
+	MangaId MangaIDRequiredParam `form:"manga_id" json:"manga_id"`
+
+	// Chapter the chapter's number
+	Chapter ChapterNumberParam `form:"chapter" json:"chapter"`
+
+	// Volume the chapter's volume number, when several volumes have the number
+	Volume *VolumeNumberParam `form:"volume,omitempty" json:"volume,omitempty"`
 }
 
 // SearchProviderParams defines parameters for SearchProvider.
@@ -1015,6 +1119,9 @@ type EmptyTrashJSONRequestBody = ApplyFields
 
 // UndoOpJSONRequestBody defines body for UndoOp for application/json ContentType.
 type UndoOpJSONRequestBody = ApplyFields
+
+// RecordReadJSONRequestBody defines body for RecordRead for application/json ContentType.
+type RecordReadJSONRequestBody = ReadRequest
 
 // AddWatchJSONRequestBody defines body for AddWatch for application/json ContentType.
 type AddWatchJSONRequestBody = AddWatchRequest

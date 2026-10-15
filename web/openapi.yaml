@@ -410,6 +410,101 @@ paths:
                   $ref: '#/components/schemas/LibraryChapter'
         default:
           $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}/cover:
+    get:
+      summary: A library manga's cover (cover.jpg, .png, .webp in its folder)
+      operationId: getLibraryCover
+      tags: [v1, library, reader]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '200':
+          description: the cover
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}/pages:
+    get:
+      summary: The pages of a downloaded chapter, read from its file (no extraction)
+      description: |
+        CBZ, ZIP, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
+        it's read whole from getChapterFile.
+      operationId: listChapterPages
+      tags: [v1, library, reader]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+        - $ref: '#/components/parameters/ChapterPathParam'
+      responses:
+        '200':
+          description: the pages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChapterPages'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}/pages/{page}:
+    get:
+      summary: A page of a downloaded chapter (0-based)
+      operationId: getChapterPage
+      tags: [v1, library, reader]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/ChapterPathParam'
+      responses:
+        '200':
+          description: the page's image
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}/file:
+    get:
+      summary: A downloaded chapter's file (a folder of images as a zip)
+      operationId: getChapterFile
+      tags: [v1, library, reader]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+        - $ref: '#/components/parameters/ChapterPathParam'
+        - name: inline
+          in: query
+          description: shown in the browser (a PDF), not saved
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: the file
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: '#/components/responses/Error'
   /v1/library/downloads:
     get:
       summary: The downloaded chapters, newest first
@@ -1114,6 +1209,78 @@ paths:
                   $ref: '#/components/schemas/ProviderChapter'
         default:
           $ref: '#/components/responses/Error'
+  /v1/providers/{provider}/pages:
+    get:
+      summary: The pages of a provider's chapter (read online)
+      description: The pages are kept a while; getProviderPage gets each through the provider (its headers, its rate limit).
+      operationId: listProviderPages
+      tags: [v1, providers, reader]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/ProviderPathParam'
+        - $ref: '#/components/parameters/MangaIDRequiredParam'
+        - $ref: '#/components/parameters/ChapterNumberParam'
+        - $ref: '#/components/parameters/VolumeNumberParam'
+      responses:
+        '200':
+          description: the pages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChapterPages'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/providers/{provider}/pages/{page}:
+    get:
+      summary: A page of a provider's chapter (0-based)
+      operationId: getProviderPage
+      tags: [v1, providers, reader]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/ProviderPathParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/MangaIDRequiredParam'
+        - $ref: '#/components/parameters/ChapterNumberParam'
+        - $ref: '#/components/parameters/VolumeNumberParam'
+      responses:
+        '200':
+          description: the page's image
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/reads:
+    post:
+      summary: Record a chapter read in the web reader
+      description: |
+        Records it in the read history (read.history.local) and sets the reading progress
+        on AniList, Kitsu and MyAnimeList (read.history.*, logged in; the manga's bindings,
+        else the library manga's ids), like the TUI's read. The reader skips it in incognito.
+      operationId: recordRead
+      tags: [v1, reader]
+      x-mangal-scope: watch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReadRequest'
+      responses:
+        '200':
+          description: what was recorded and synced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadResponse'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/formats:
     get:
       summary: The download formats
@@ -1627,6 +1794,36 @@ components:
       description: the provider's manga id
       schema:
         type: string
+    ChapterPathParam:
+      name: path
+      in: query
+      required: true
+      description: the chapter's file, as the manga's chapters list it (download.path)
+      schema:
+        type: string
+    PageParam:
+      name: page
+      in: path
+      required: true
+      description: the page's index, 0-based
+      schema:
+        type: integer
+        minimum: 0
+    ChapterNumberParam:
+      name: chapter
+      in: query
+      required: true
+      description: the chapter's number
+      schema:
+        type: number
+        format: float
+    VolumeNumberParam:
+      name: volume
+      in: query
+      description: the chapter's volume number, when several volumes have the number
+      schema:
+        type: number
+        format: float
     ProviderPathParam:
       name: provider
       in: path
@@ -2778,6 +2975,75 @@ components:
           items:
             $ref: '#/components/schemas/Read'
 
+    ChapterPages:
+      type: object
+      required: [format, pages]
+      properties:
+        format:
+          type: string
+          description: the chapter's format, libmangal's (CBZ, ZIP, TAR, TARGZ, Images, PDF), ONLINE for a provider's
+        pdf:
+          type: boolean
+          description: no pages, the file is read whole (getChapterFile with inline)
+        pages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChapterPage'
+    ChapterPage:
+      type: object
+      required: [index]
+      properties:
+        index:
+          type: integer
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        type:
+          type: string
+    ReadRequest:
+      type: object
+      required: [provider, manga_id, chapter]
+      properties:
+        provider:
+          type: string
+        manga_id:
+          type: string
+        manga_title:
+          type: string
+        volume:
+          type: number
+          format: float
+        chapter:
+          type: number
+          format: float
+        chapter_title:
+          type: string
+        chapter_url:
+          type: string
+        library_manga:
+          type: integer
+          format: int64
+          description: the library manga read (its ids are synced when the manga has no binding)
+        sync:
+          type: boolean
+          description: set the progress on the metadata sources (default true)
+    ReadResponse:
+      type: object
+      required: [recorded, synced]
+      properties:
+        recorded:
+          type: boolean
+          description: written to the read history (read.history.local)
+        synced:
+          type: array
+          description: the sources whose progress was set
+          items:
+            type: string
+        error:
+          type: string
+          description: what failed to sync
     ConfigEntry:
       type: object
       required: [key, value, default, description, secret, applies]
