@@ -1,90 +1,53 @@
 <script setup lang="ts">
-import client from '@/api/client'
-import { type Manga } from '@/api/schemas'
-import MangaCard from '@/components/MangaCard.vue';
-import { onMounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
-import { inject } from 'vue';
-import router from '@/router';
-
-const redrawVueMasonry = inject('redrawVueMasonry') as ((container: number) => void);
+import { computed, inject, nextTick, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import client, { ok } from '@/api/client'
+import { imageURL } from '@/api/urls'
+import LoadState from '@/components/LoadState.vue'
+import { useLoad } from '@/composables/useLoad'
+import { crumbs } from '@/stores/crumbs'
 
 const route = useRoute()
-const mangas = ref([] as Manga[])
+const router = useRouter()
+const provider = computed(() => String(route.params.provider))
+const q = computed(() => String(route.query.q ?? ''))
+const input = ref(q.value)
+const redraw = inject<(id?: string) => void>('redrawVueMasonry', () => {})
 
-const query = ref(route.params['query'] as string)
-const loading = ref(false)
-const provider = route.params['provider'] as string
-const containerId = 42
+crumbs(() => [{ title: 'Providers', to: { name: 'providers' } }, { title: provider.value }, { title: q.value ? `“${q.value}”` : 'Search' }])
 
-async function updateRouteWithQuery(query: string) {
-    await router.push({
-        name: 'search', params: {
-            ...route.params,
-            query
-        }
-    })
-}
-
-async function handleInput() {
-    await updateRouteWithQuery(query.value)
-    await searchMangas(query.value)
-}
-
-async function searchMangas(query: string) {
-    loading.value = true
-    const { data, error } = await client.GET('/searchMangas', {
-        params: {
-            query: { provider, query }
-        }
-    })
-    loading.value = false
-
-    if (error) {
-        throw error
-    }
-
-    mangas.value = data!
-}
-
-function openMangaView(manga: Manga) {
-    router.push({
-        name: 'manga', params: {
-            provider,
-            query: query.value,
-            manga: manga.id
-        }
-    })
-}
-
-onMounted(async () => {
-    if (!query.value) {
-        return
-    }
-
-    await searchMangas(query.value)
+const { data, loading, error } = useLoad(
+  () => (q.value ? ok(client.GET('/v1/providers/{provider}/search', { params: { path: { provider: provider.value }, query: { q: q.value } } })) : Promise.resolve([])),
+  [provider, q]
+)
+watch(data, async () => {
+  await nextTick()
+  redraw('results')
 })
+
+function submit() {
+  router.replace({ query: { q: input.value } })
+}
+function open(id: string) {
+  router.push({ name: 'provider-manga', params: { provider: provider.value, manga: id } })
+}
 </script>
 
 <template>
-    <h2 class="text-center">Search</h2>
-    <div class="input-group mb-3">
-        <input @keypress.enter="handleInput" v-model="query" class="form-control form-control-lg" type="text"
-            :placeholder="`Search mangas`" aria-describedby="button-addon2">
-        <button @click="handleInput" class="btn btn-primary" type="button" id="button-addon2">Search</button>
-    </div>
-    <p class="lead text-center">
-        {{ mangas.length }} results
-    </p>
-
-    <div v-if="loading" class="d-flex justify-content-center">
-        <div class="spinner-border" role="status">
-            <span class="visually-hidden">Loading...</span>
+  <form class="input-group mb-3" style="max-width: 32rem" @submit.prevent="submit">
+    <input v-model="input" class="form-control" placeholder="search" data-test="search-input" />
+    <button class="btn btn-primary" type="submit">Search</button>
+  </form>
+  <LoadState :loading="loading" :error="error" :empty="!loading && q !== '' && data && !data.length" empty-text="Nothing found." />
+  <div v-if="data?.length" v-masonry="'results'" class="row" transition-duration="0.2s" item-selector=".result">
+    <div v-for="m in data" :key="m.id" v-masonry-tile class="col-6 col-md-4 col-lg-3 col-xl-2 mb-3 result">
+      <div class="card h-100 clickable" data-test="search-result" @click="open(m.id)">
+        <img v-if="m.cover" :src="imageURL(m.cover, m.url)" class="card-img-top" loading="lazy" alt="" @load="redraw('results')" />
+        <div class="card-body p-2">
+          <div class="small fw-semibold">{{ m.title }}</div>
+          <div class="small text-secondary text-truncate">{{ m.id }}</div>
         </div>
+      </div>
     </div>
-    <div v-else class="row" v-masonry="containerId" transition-duration="0.3s" item-selector=".manga">
-        <div v-for="manga in mangas" v-masonry-tile class="col-12 col-sm-6 col-md-4 mb-4 manga">
-            <MangaCard @click="openMangaView(manga)" @load="redrawVueMasonry(containerId)" :manga="manga" />
-        </div>
-    </div>
+  </div>
 </template>

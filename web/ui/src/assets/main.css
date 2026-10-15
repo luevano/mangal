@@ -1,0 +1,33 @@
+body {
+  padding-bottom: 2.5rem;
+}
+
+.cover-thumb {
+  width: 48px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 0.25rem;
+  background: var(--bs-secondary-bg);
+}
+
+.cover-large {
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 5 / 7;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  background: var(--bs-secondary-bg);
+}
+
+.table-sm td,
+.table-sm th {
+  vertical-align: middle;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.mono {
+  font-family: var(--bs-font-monospace);
+}
