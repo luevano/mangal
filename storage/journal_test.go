@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -431,5 +434,36 @@ func TestRestoreRefusesOtherSchemas(t *testing.T) {
 		if err := db.QueryRow(`SELECT title FROM library_mangas`).Scan(&title); err != nil || title != "B" {
 			t.Errorf("%s: restored anyway (%q, %v)", name, title, err)
 		}
+	}
+}
+
+// a fingerprint follows the rows of its tables, not the publication statuses
+func TestFingerprint(t *testing.T) {
+	data := openData(t)
+	lib := Library{DB: data}
+	sum := func() string {
+		t.Helper()
+		fp, err := data.Fingerprint("library_mangas", "library_chapters", "link_picks")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fp
+	}
+	empty := sum()
+	if err := lib.RememberMangaDir("/lib", "Berserk", libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "b", Title: "Berserk"}}); err != nil {
+		t.Fatal(err)
+	}
+	added := sum()
+	if added == empty {
+		t.Fatal("same fingerprint after a manga was added")
+	}
+	if _, err := data.Exec(`UPDATE library_mangas SET status = 'FINISHED', status_updated = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if sum() != added {
+		t.Error("a publication status changed the fingerprint")
+	}
+	if other, _ := data.Fingerprint("reads"); other == added {
+		t.Error("other tables, same fingerprint")
 	}
 }

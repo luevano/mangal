@@ -491,46 +491,70 @@ func fingerprintOf(q querier, v2 bool) (string, error) {
 		if ok && skip == nil {
 			continue
 		}
-		all, err := columns(q, t)
-		if err != nil {
+		if sums[t], err = tableSum(q, t, skip); err != nil {
 			return "", err
 		}
-		cols := slices.DeleteFunc(all, func(c string) bool {
-			return slices.ContainsFunc(skip, func(s string) bool { return quote(s) == c })
-		})
-		order := make([]string, len(cols))
-		for i := range cols {
-			order[i] = fmt.Sprint(i + 1)
-		}
-		rows, err := q.Query(`SELECT ` + strings.Join(cols, ", ") + ` FROM main.` + quote(t) + ` ORDER BY ` + strings.Join(order, ", "))
-		if err != nil {
-			return "", fmt.Errorf("fingerprint %s: %w", t, err)
-		}
-		h := sha256.New()
-		values := make([]any, len(cols))
-		ptrs := make([]any, len(cols))
-		for i := range values {
-			ptrs[i] = &values[i]
-		}
-		for rows.Next() {
-			if err := rows.Scan(ptrs...); err != nil {
-				_ = rows.Close()
-				return "", fmt.Errorf("fingerprint %s: %w", t, err)
-			}
-			for _, v := range values {
-				fmt.Fprintf(h, "%T:%v\x00", v, v)
-			}
-			h.Write([]byte{'\n'})
-		}
-		err = rows.Err()
-		_ = rows.Close()
-		if err != nil {
-			return "", fmt.Errorf("fingerprint %s: %w", t, err)
-		}
-		sums[t] = hex.EncodeToString(h.Sum(nil)[:16])
 	}
 	data, err := json.Marshal(sums)
 	return string(data), err
+}
+
+// tableSum is a hash of the table's rows, but the columns skip.
+func tableSum(q querier, t string, skip []string) (string, error) {
+	all, err := columns(q, t)
+	if err != nil {
+		return "", err
+	}
+	cols := slices.DeleteFunc(all, func(c string) bool {
+		return slices.ContainsFunc(skip, func(s string) bool { return quote(s) == c })
+	})
+	order := make([]string, len(cols))
+	for i := range cols {
+		order[i] = fmt.Sprint(i + 1)
+	}
+	rows, err := q.Query(`SELECT ` + strings.Join(cols, ", ") + ` FROM main.` + quote(t) + ` ORDER BY ` + strings.Join(order, ", "))
+	if err != nil {
+		return "", fmt.Errorf("fingerprint %s: %w", t, err)
+	}
+	defer rows.Close()
+	h := sha256.New()
+	values := make([]any, len(cols))
+	ptrs := make([]any, len(cols))
+	for i := range values {
+		ptrs[i] = &values[i]
+	}
+	for rows.Next() {
+		if err := rows.Scan(ptrs...); err != nil {
+			return "", fmt.Errorf("fingerprint %s: %w", t, err)
+		}
+		for _, v := range values {
+			fmt.Fprintf(h, "%T:%v\x00", v, v)
+		}
+		h.Write([]byte{'\n'})
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("fingerprint %s: %w", t, err)
+	}
+	return hex.EncodeToString(h.Sum(nil)[:16]), nil
+}
+
+// Fingerprint is a hash of the rows of the tables, as an operation's fingerprint counts
+// them (publication statuses and link picks don't): it changes when they do. A plan of a
+// change is stale once the fingerprint of the tables it read changed.
+func (db *DB) Fingerprint(tables ...string) (string, error) {
+	h := sha256.New()
+	for _, t := range slices.Sorted(slices.Values(tables)) {
+		skip, ok := unfingerprinted[t]
+		if ok && skip == nil {
+			continue
+		}
+		sum, err := tableSum(db, t, skip)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(h, "%s=%s\n", t, sum)
+	}
+	return hex.EncodeToString(h.Sum(nil)[:16]), nil
 }
 
 // SnapshotPrefix starts the names of the snapshots: mangal-<time>-<operation>.sqlite.
