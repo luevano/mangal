@@ -161,3 +161,83 @@ func TestAuthorizeErrors(t *testing.T) {
 		t.Errorf("got %v, want the ctx error", err)
 	}
 }
+
+// the pin login: no callback server, AniList's pin page as redirect, the code it shows pasted
+func TestAnilistPin(t *testing.T) {
+	var redirect string
+	tokens := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		redirect = r.FormValue("redirect_uri")
+		if r.FormValue("code") != "pin-code" {
+			http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"from-pin","token_type":"Bearer","expires_in":3600}`))
+	}))
+	defer tokens.Close()
+	endpoint := anilist.OAuthEndpoint
+	anilist.OAuthEndpoint.TokenURL = tokens.URL
+	defer func() { anilist.OAuthEndpoint = endpoint }()
+
+	login := func(secret, paste string) (*AnilistLoginOption, string, error) {
+		o, err := NewAnilistLoginOption("id", secret)
+		if err != nil {
+			t.Fatal(err)
+		}
+		o.Pin = true
+		o.server.listen = func() (net.Listener, error) {
+			t.Error("callback server started")
+			return nil, errors.New("no")
+		}
+		o.server.openURL = func(string) error { t.Error("browser opened"); return nil }
+		pasted := make(chan string, 1)
+		var shown string
+		err = o.AuthorizeManual(context.Background(), Manual{Pasted: pasted, Show: func(u string) { shown = u; pasted <- paste }})
+		return o, shown, err
+	}
+
+	o, shown, err := login("secret", " pin-code \n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, _ := url.Parse(shown)
+	if u.Query().Get("redirect_uri") != anilist.OAuthPinURL || redirect != anilist.OAuthPinURL || o.Token().AccessToken != "from-pin" {
+		t.Errorf("shown %q, exchanged with redirect %q, token %+v", shown, redirect, o.Token())
+	}
+	if o.RedirectURL() != anilist.OAuthPinURL {
+		t.Errorf("redirect url %q", o.RedirectURL())
+	}
+
+	// implicit: the page shows the token, the client's redirect url is used
+	o, shown, err = login("", "the-token")
+	if err != nil || o.Token().AccessToken != "the-token" {
+		t.Fatalf("implicit: %v, %+v", err, o.Token())
+	}
+	if u, _ := url.Parse(shown); u.Query().Get("response_type") != "token" {
+		t.Errorf("implicit url %q", shown)
+	}
+
+	// only a paste can finish it
+	o, _ = NewAnilistLoginOption("id", "")
+	o.Pin = true
+	if err := o.Authorize(context.Background()); !errors.Is(err, ErrNeedsPaste) {
+		t.Errorf("without a paste: %v", err)
+	}
+}
+
+// a busy port: told, the paste still finishes the login
+func TestManualNoServer(t *testing.T) {
+	o, _ := NewAnilistLoginOption("id", "")
+	busy := errors.New("address already in use")
+	o.server.listen = func() (net.Listener, error) { return nil, busy }
+	pasted := make(chan string, 1)
+	var told error
+	err := o.AuthorizeManual(context.Background(), Manual{
+		Pasted:   pasted,
+		NoServer: func(err error) { told = err },
+		Show:     func(string) { pasted <- "#access_token=tok" },
+	})
+	if err != nil || o.Token().AccessToken != "tok" || !errors.Is(told, busy) {
+		t.Errorf("got %v, token %+v, told %v", err, o.Token(), told)
+	}
+}

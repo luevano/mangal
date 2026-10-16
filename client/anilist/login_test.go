@@ -3,6 +3,7 @@ package anilist
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -107,7 +108,7 @@ var idRequests atomic.Int32
 
 func TestLoginNewSavesClient(t *testing.T) {
 	pasted := make(chan string, 1)
-	u, err := LoginManual(context.Background(), " the-id ", "", oauth.Manual{
+	u, err := LoginManual(context.Background(), " the-id ", "", false, oauth.Manual{
 		Pasted: pasted,
 		Show: func(authURL string) {
 			u, _ := url.Parse(authURL)
@@ -123,6 +124,28 @@ func TestLoginNewSavesClient(t *testing.T) {
 	}
 	if id, secret, err := Client(); err != nil || id != "the-id" || secret != "" {
 		t.Errorf("saved client %q %q, %v", id, secret, err)
+	}
+}
+
+// TestLoginPin: AniList's pin page shows the token (no secret), pasted as is.
+func TestLoginPin(t *testing.T) {
+	pasted := make(chan string, 1)
+	var shown string
+	u, err := LoginManual(context.Background(), "the-id", "", true, oauth.Manual{
+		Pasted: pasted,
+		Show:   func(authURL string) { shown = authURL; pasted <- "tok" },
+	})
+	if err != nil || u.Name() != "me" || shown == "" {
+		t.Fatalf("user %v, %v, shown %q", u, err, shown)
+	}
+
+	// the TUI's login can't take a paste
+	t.Setenv("MANGAL_METADATA_ANILIST_REDIRECT", "pin")
+	if !Pin() {
+		t.Fatal("pin from the config")
+	}
+	if _, err := LoginNew(context.Background(), "the-id", ""); !errors.Is(err, oauth.ErrNeedsPaste) {
+		t.Errorf("LoginNew with pin: %v", err)
 	}
 }
 

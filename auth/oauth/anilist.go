@@ -40,6 +40,11 @@ type AnilistLoginOption struct {
 	// When empty, the OAuth is an implicit grant.
 	ClientSecret string
 
+	// Pin logs in with AniList's pin page (anilist.OAuthPinURL) as redirect: AniList shows
+	// the code (the token when implicit) to paste, no callback server (headless, ssh, port
+	// taken). The API client's redirect URL must be the pin URL. Only AuthorizeManual.
+	Pin bool
+
 	token *oauth2.Token
 
 	server server
@@ -57,7 +62,16 @@ func NewAnilistLoginOption(clientID, clientSecret string) (*AnilistLoginOption, 
 }
 
 func (o *AnilistLoginOption) getOAuthConfig() *oauth2.Config {
-	return anilist.OAuthConfig(o.ClientID, o.ClientSecret, AnilistServerCallbackURL)
+	return anilist.OAuthConfig(o.ClientID, o.ClientSecret, o.RedirectURL())
+}
+
+// RedirectURL is the redirect URL the AniList API client must have: the callback server's,
+// or the pin page's with Pin.
+func (o *AnilistLoginOption) RedirectURL() string {
+	if o.Pin {
+		return anilist.OAuthPinURL
+	}
+	return AnilistServerCallbackURL
 }
 
 func (o *AnilistLoginOption) implicit() bool {
@@ -93,7 +107,8 @@ func (o *AnilistLoginOption) Authorize(ctx context.Context) error {
 
 // AuthorizeManual is Authorize showing the authorize url instead of opening it, and
 // taking the pasted address the browser ends up on (see Manual). An implicit grant's
-// address has the token in its fragment (#access_token=), a code grant's the code.
+// address has the token in its fragment (#access_token=), a code grant's the code. With
+// Pin the paste is what AniList's page shows (the code, or the token when implicit).
 func (o *AnilistLoginOption) AuthorizeManual(ctx context.Context, manual Manual) error {
 	return o.authorize(ctx, &manual)
 }
@@ -107,6 +122,7 @@ func (o *AnilistLoginOption) authorize(ctx context.Context, manual *Manual) erro
 		authURL:  o.authURL,
 		handler:  o.handler,
 		paste:    o.paste,
+		noServer: o.Pin,
 	}, o.server, manual)
 	if err != nil {
 		return err

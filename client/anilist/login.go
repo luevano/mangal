@@ -10,6 +10,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/auth/oauth"
 	"github.com/luevano/mangal/v5/client/internal/logins"
+	"github.com/luevano/mangal/v5/config"
 	mlog "github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/util/cache"
 	"golang.org/x/oauth2"
@@ -68,23 +69,33 @@ func LoginSaved(ctx context.Context, user string) (metadata.User, error) {
 	return u, account.LoggedIn(u)
 }
 
+// Pin is the config's pin login (metadata.anilist.redirect), see oauth.AnilistLoginOption.Pin.
+func Pin() bool {
+	return config.Metadata.Anilist.Redirect.Get() == "pin"
+}
+
 // LoginNew authorizes mangal with the AniList API client (in the browser), logs in and
-// saves the login. An empty secret is an implicit grant.
+// saves the login. An empty secret is an implicit grant. Not with the pin login, which
+// needs a paste (LoginManual).
 func LoginNew(ctx context.Context, id, secret string) (metadata.User, error) {
-	return loginNew(ctx, id, secret, func(o *oauth.AnilistLoginOption) error {
+	if Pin() {
+		return nil, fmt.Errorf("metadata.anilist.redirect is pin, log in with mangal anilist login: %w", oauth.ErrNeedsPaste)
+	}
+	return loginNew(ctx, id, secret, false, func(o *oauth.AnilistLoginOption) error {
 		return o.Authorize(ctx)
 	})
 }
 
 // LoginManual is LoginNew showing the authorize url instead of opening it, the redirected
-// address (or code, or token) can be pasted, see oauth.Manual.
-func LoginManual(ctx context.Context, id, secret string, manual oauth.Manual) (metadata.User, error) {
-	return loginNew(ctx, id, secret, func(o *oauth.AnilistLoginOption) error {
+// address (or code, or token) can be pasted, see oauth.Manual. With pin AniList's page
+// shows the code to paste (the client must have its redirect URL).
+func LoginManual(ctx context.Context, id, secret string, pin bool, manual oauth.Manual) (metadata.User, error) {
+	return loginNew(ctx, id, secret, pin, func(o *oauth.AnilistLoginOption) error {
 		return o.AuthorizeManual(ctx, manual)
 	})
 }
 
-func loginNew(ctx context.Context, id, secret string, authorize func(*oauth.AnilistLoginOption) error) (metadata.User, error) {
+func loginNew(ctx context.Context, id, secret string, pin bool, authorize func(*oauth.AnilistLoginOption) error) (metadata.User, error) {
 	id, secret = clean(id), clean(secret)
 	if id == "" {
 		return nil, errors.New("empty client id")
@@ -93,6 +104,7 @@ func loginNew(ctx context.Context, id, secret string, authorize func(*oauth.Anil
 	if err != nil {
 		return nil, err
 	}
+	option.Pin = pin
 	if err := authorize(option); err != nil {
 		return nil, fmt.Errorf("authorize: %w", err)
 	}

@@ -329,6 +329,8 @@ var Metadata = configMetadata{
 	Anilist: configMetadataAnilist{
 		TagRankMin: intEntry("metadata.anilist.tag_rank_min", anilist.DefaultTagRankMin, 1, 100,
 			"Lowest AniList tag rank (how relevant the tag is to the manga, 1 to 100) kept in the tags, 1 keeps them all. Applies to metadata fetched after the change."),
+		Redirect: oneOfEntry("metadata.anilist.redirect", "local",
+			`Where AniList sends the login back, the redirect URL your Anilist API client is registered with: "local" (mangal's callback server, `+"http://localhost:6969/oauth/al/callback"+`) or "pin" (AniList's page `+anilist.OAuthPinURL+` shows the code to paste into mangal anilist login: headless, ssh, or the port taken).`, "local", "pin"),
 	},
 	Kitsu: configMetadataKitsu{
 		Enabled: boolEntry("metadata.kitsu.enabled", true,

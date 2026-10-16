@@ -41,6 +41,9 @@ type Manual struct {
 	// BadPaste is told about a paste that can't be used, the login keeps waiting. When nil
 	// such a paste ends the login with its error.
 	BadPaste func(error)
+	// NoServer, optional, is told why the callback server couldn't start (e.g. the port is
+	// taken): only a paste can finish the login then.
+	NoServer func(error)
 }
 
 // result is the outcome of the login, sent once by the callback handler.
@@ -57,6 +60,9 @@ type flow struct {
 	// handler serves the login page and the callback, requests made for it use ctx
 	handler func(ctx context.Context, state string, done func(result)) http.Handler
 	paste   func(ctx context.Context, state, input string) (*oauth2.Token, error)
+	// noServer: the provider shows the code instead of redirecting (e.g. AniList's pin),
+	// only a paste finishes the login
+	noServer bool
 }
 
 // server is how the login reaches the network and the browser, replaced in tests.
@@ -95,9 +101,11 @@ func authorize(ctx context.Context, f flow, s server, manual *Manual) (*oauth2.T
 
 	// nil channels block: no server or nothing to paste never answers
 	var serveErr chan error
-	ln, err := s.listener()
-	switch {
-	case err == nil:
+	if f.noServer {
+		if manual == nil || manual.Pasted == nil {
+			return nil, ErrNeedsPaste
+		}
+	} else if ln, err := s.listener(); err == nil {
 		srv := &http.Server{Handler: f.handler(ctx, state, done), ReadHeaderTimeout: 10 * time.Second}
 		serveErr = make(chan error, 1)
 		go func() { serveErr <- srv.Serve(ln) }()
@@ -106,8 +114,10 @@ func authorize(ctx context.Context, f flow, s server, manual *Manual) (*oauth2.T
 			defer cancel()
 			_ = srv.Shutdown(shutdownCtx)
 		}()
-	case manual == nil || manual.Pasted == nil:
+	} else if manual == nil || manual.Pasted == nil {
 		return nil, fmt.Errorf("start the oauth callback server: %w", err)
+	} else if manual.NoServer != nil {
+		manual.NoServer(err)
 	}
 
 	timeout := loginTimeout

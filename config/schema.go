@@ -35,6 +35,7 @@ type configMetadata struct {
 
 type configMetadataAnilist struct {
 	TagRankMin *entry[int64, int]
+	Redirect   *entry[string, string]
 }
 
 type configMetadataMyAnimeList struct {

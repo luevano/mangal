@@ -3,8 +3,10 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"strings"
 
+	lmanilist "github.com/luevano/libmangal/metadata/anilist"
 	"github.com/luevano/mangal/v5/auth/oauth"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -17,6 +19,7 @@ var anilistLoginArgs = struct {
 	ID      string
 	Secret  string
 	Browser bool
+	Pin     bool
 }{}
 
 func init() {
@@ -26,6 +29,7 @@ func init() {
 	anilistLoginCmd.Flags().StringVar(&anilistLoginArgs.Secret, "secret", "", "Secret of the Anilist API client, without it the login is an implicit grant")
 	_ = anilistLoginCmd.Flags().MarkDeprecated("secret", "it ends up in the shell history and the process list; leave it out to be asked for it")
 	anilistLoginCmd.Flags().BoolVar(&anilistLoginArgs.Browser, "browser", false, "Also open the address in the browser")
+	anilistLoginCmd.Flags().BoolVar(&anilistLoginArgs.Pin, "pin", false, "Log in with AniList's pin page, the client's redirect URL must be "+lmanilist.OAuthPinURL+" (default from metadata.anilist.redirect)")
 }
 
 var anilistCmd = &cobra.Command{
@@ -45,7 +49,13 @@ redirect URL ` + oauth.AnilistServerCallbackURL + `), for headless use.
 
 The authorize address is printed: open it in any browser and allow mangal. A browser on
 this machine comes back to mangal by itself; on another machine the page it ends up on
-won't load, paste its address (it has the token after #access_token=, or the code) here.`,
+won't load, paste its address (it has the token after #access_token=, or the code) here.
+
+With --pin (or metadata.anilist.redirect = "pin") there's no callback server: the API
+client's redirect URL must be ` + lmanilist.OAuthPinURL + ` instead, AniList
+shows the code (the token without a secret) on that page, paste it here. For when the
+browser is on another machine, or mangal's port is taken. AniList allows one redirect URL
+per client: use one client per mode.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		in := bufio.NewReader(cmd.InOrStdin())
@@ -81,7 +91,20 @@ won't load, paste its address (it has the token after #access_token=, or the cod
 				}
 			}
 		}
-		user, err := anilist.LoginManual(cmd.Context(), id, secret, manualLogin(cmd, in, anilistLoginArgs.Browser))
+		pin := anilistLoginArgs.Pin || anilist.Pin()
+		manual := manualLogin(cmd, in, anilistLoginArgs.Browser)
+		out := cmd.ErrOrStderr()
+		if pin {
+			manual.Show = func(authURL string) {
+				showAuthURL(out, authURL, anilistLoginArgs.Browser)
+				fmt.Fprintln(out, "AniList then shows a code: paste it here and press enter:")
+			}
+		} else {
+			manual.NoServer = func(err error) {
+				fmt.Fprintf(out, "The callback server can't start (%s): paste the address the browser ends up on,\nor log in with --pin (a client with the redirect URL %s).\n", err, lmanilist.OAuthPinURL)
+			}
+		}
+		user, err := anilist.LoginManual(cmd.Context(), id, secret, pin, manual)
 		if err != nil {
 			return fmt.Errorf("anilist login: %w", err)
 		}
@@ -110,17 +133,22 @@ func manualLogin(cmd *cobra.Command, in *bufio.Reader, browser bool) oauth.Manua
 	return oauth.Manual{
 		Pasted: pasted,
 		Show: func(authURL string) {
-			fmt.Fprintf(out, "Open this address in a browser and allow mangal:\n\n  %s\n\n", authURL)
-			if browser {
-				if err := open.Start(authURL); err != nil {
-					fmt.Fprintf(out, "warning: couldn't open the browser: %s\n", err)
-				}
-			}
+			showAuthURL(out, authURL, browser)
 			fmt.Fprintln(out, "Waiting for the browser. If it runs on another machine, paste the address of the page")
 			fmt.Fprintln(out, "it ends up on (it won't load) and press enter:")
 		},
 		BadPaste: func(err error) {
 			fmt.Fprintf(out, "Can't use that (%s), paste the address again:\n", err)
 		},
+	}
+}
+
+// showAuthURL prints the authorize address, also opened with browser.
+func showAuthURL(out io.Writer, authURL string, browser bool) {
+	fmt.Fprintf(out, "Open this address in a browser and allow mangal:\n\n  %s\n\n", authURL)
+	if browser {
+		if err := open.Start(authURL); err != nil {
+			fmt.Fprintf(out, "warning: couldn't open the browser: %s\n", err)
+		}
 	}
 }
