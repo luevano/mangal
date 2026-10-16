@@ -32,11 +32,18 @@ RestrictSUIDSGID=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 # No MemoryDenyWriteExecute or RestrictNamespaces: Chrome's JIT and sandbox need them.
 
-# Read-only system and home, writable only where mangal writes: uncomment and list the
-# user's config, data, state and cache dirs and the download path (download.path).
-#ProtectSystem=strict
-#ProtectHome=read-only
-#ReadWritePaths=/home/mangal/.config/mangal /home/mangal/.local/share/mangal /home/mangal/.local/state/mangal /home/mangal/.cache/mangal /srv/manga
+ProtectProc=invisible
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+# Read-only system, other homes hidden: writable only the user's home (config, data, state,
+# cache; rod downloads its browser to ~/.cache/rod) and the download path (download.path;
+# set yours, one ReadWritePaths per dir mangal writes outside the home). A home outside
+# /home (e.g. /opt/mangal): drop ProtectHome/BindPaths and add it to ReadWritePaths.
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindPaths=/home/mangal
+ReadWritePaths=/srv/manga
 
 # New files (downloads included) only readable by this user; leave it out if another user
 # (a reader like Kavita or Komga) reads the library.
