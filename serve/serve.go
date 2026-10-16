@@ -250,7 +250,7 @@ func newAuth(args Args, loopback bool, lg logger) (*Auth, error) {
 	loopbackScopes := args.LoopbackScopes
 	if loopbackScopes == nil {
 		// serve.loopback_scopes' default
-		loopbackScopes = []string{ScopeRead, ScopeWatch}
+		loopbackScopes = []string{ScopeRead, ScopeWatch, ScopeProgress}
 	}
 	scopes, err := NormalizeScopes(loopbackScopes)
 	if err != nil {

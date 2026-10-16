@@ -21,15 +21,17 @@ import (
 )
 
 // The scopes of the API's tokens: read is every GET and the events, watch changes the
-// watches, write the files, the library, the config, the downloads.
+// watches, progress records the reader's reads, write the files, the library, the
+// config, the downloads.
 const (
-	ScopeRead  = "read"
-	ScopeWatch = "watch"
-	ScopeWrite = "write"
+	ScopeRead     = "read"
+	ScopeWatch    = "watch"
+	ScopeProgress = "progress"
+	ScopeWrite    = "write"
 )
 
 // Scopes are every scope.
-var Scopes = []string{ScopeRead, ScopeWatch, ScopeWrite}
+var Scopes = []string{ScopeRead, ScopeWatch, ScopeProgress, ScopeWrite}
 
 // The auth modes (serve.auth).
 const (

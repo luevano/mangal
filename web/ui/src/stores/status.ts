@@ -5,7 +5,7 @@ import { getToken, setToken } from '@/api/auth'
 import { errorMessage } from '@/api/errors'
 import type { Status } from '@/api/schemas'
 
-export type Scope = 'read' | 'watch' | 'write'
+export type Scope = 'read' | 'watch' | 'progress' | 'write'
 
 // the status of the server and of this browser's authorization; asks for a token when an
 // action needs one.

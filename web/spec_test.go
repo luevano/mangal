@@ -20,7 +20,7 @@ func TestSpecOperations(t *testing.T) {
 		}
 		v1++
 		switch o.Scope {
-		case "read", "watch", "write":
+		case "read", "watch", "progress", "write":
 		default:
 			t.Errorf("%s: scope %q", o.ID, o.Scope)
 		}

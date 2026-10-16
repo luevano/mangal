@@ -229,7 +229,7 @@ func enumEntry[T fmt.Stringer](key string, def T, description string, parse func
 	})
 }
 
-// scopesEntry is a list of serve token scopes (read, watch, write).
+// scopesEntry is a list of serve token scopes (read, watch, progress, write).
 func scopesEntry(key string, def []string, description string) *entry[string, []string] {
 	e := listEntry(key, description)
 	e.Default = def
@@ -245,7 +245,7 @@ func scopesEntry(key string, def []string, description string) *entry[string, []
 }
 
 // ServeScopes are the scopes of the serve API's tokens.
-var ServeScopes = []string{"read", "watch", "write"}
+var ServeScopes = []string{"read", "watch", "progress", "write"}
 
 // listEntry is a comma separated list, its entries trimmed (empty ones dropped).
 func listEntry(key, description string) *entry[string, []string] {
@@ -568,8 +568,8 @@ var Serve = configServe{
 	Auth: oneOfEntry("serve.auth", "token",
 		"How `mangal serve` authenticates: token (Authorization: Bearer <token>; serve.token, the token saved with `mangal serve token` and the named ones it makes, each with its scopes; requests from the same machine without one get serve.loopback_scopes) or none (every request may do everything: only behind something that authenticates, e.g. a reverse proxy).",
 		"token", "none"),
-	LoopbackScopes: scopesEntry("serve.loopback_scopes", []string{"read", "watch"},
-		"Scopes of the requests from the same machine (a loopback address, not through a proxy) without a token: read (GET, events), watch (add, change, check the watches), write (change files, the library, the config, downloads). Empty requires a token there too. Behind a reverse proxy on the same machine, see serve.trusted_proxies."),
+	LoopbackScopes: scopesEntry("serve.loopback_scopes", []string{"read", "watch", "progress"},
+		"Scopes of the requests from the same machine (a loopback address, not through a proxy) without a token: read (GET, events), watch (add, change, check the watches), progress (the web reader records reads: history, AniList/Kitsu/MyAnimeList progress), write (change files, the library, the config, downloads). Empty requires a token there too. Behind a reverse proxy on the same machine, see serve.trusted_proxies."),
 	AllowedHosts: listEntry("serve.allowed_hosts",
 		"Host names `mangal serve` answers besides localhost and its address, comma separated (e.g. the name a reverse proxy passes, mangal.example.com). On loopback only localhost is answered otherwise (DNS rebinding); set, it's checked on any address."),
 	AllowedOrigins: listEntry("serve.allowed_origins",

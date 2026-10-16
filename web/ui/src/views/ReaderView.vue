@@ -182,7 +182,7 @@ async function record() {
     else if (res.synced.length) toasts.push('success', `Read; synced to ${res.synced.join(', ')}`, 3000)
   } catch (e) {
     recorded.value = false
-    const hint = e instanceof ApiError && e.needsToken ? ' (needs a token with the watch scope)' : ''
+    const hint = e instanceof ApiError && e.needsToken ? ' (needs a token with the progress scope)' : ''
     toasts.push('warning', `The read wasn't recorded: ${errorMessage(e)}${hint}`, 6000)
   }
 }

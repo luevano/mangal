@@ -45,7 +45,7 @@ func TestV1Meta(t *testing.T) {
 	for _, path := range []string{"/api/v1/status", "/api/status"} {
 		var st apiv1.Status
 		if code := s.call(t, "GET", path, "", &st); code != http.StatusOK || !st.Server || st.ApiVersion != APIVersion ||
-			len(st.Features) == 0 || len(st.Scopes) != 3 || st.Auth == "" {
+			len(st.Features) == 0 || len(st.Scopes) != len(Scopes) || st.Auth == "" {
 			t.Errorf("%s: %d %+v", path, code, st)
 		}
 	}
@@ -279,7 +279,10 @@ func TestV1Scopes(t *testing.T) {
 	s := newTestServer(t, "s3cret")
 	s.api.Auth.LoopbackScopes = []string{ScopeRead, ScopeWatch}
 	s.api.Auth.Named = func() ([]cache.ServeTokenEntry, error) {
-		return []cache.ServeTokenEntry{{Name: "claude", Hash: HashToken("r3ad"), Scopes: []string{ScopeRead}}}, nil
+		return []cache.ServeTokenEntry{
+			{Name: "claude", Hash: HashToken("r3ad"), Scopes: []string{ScopeRead}},
+			{Name: "phone", Hash: HashToken("pr0g"), Scopes: []string{ScopeRead, ScopeProgress}},
+		}, nil
 	}
 	s.api.Auth.Saved = func() (string, error) { return "sav3d", nil }
 	h := s.handler(t)
@@ -318,6 +321,10 @@ func TestV1Scopes(t *testing.T) {
 		{"POST", "/api/v1/check", `{"dry_run":true}`, local, "", http.StatusOK},
 		{"POST", "/api/check", `{"dry_run":true}`, remote, "r3ad", http.StatusForbidden},
 		{"POST", "/api/health/fix", `{"key":"bogus"}`, local, "", http.StatusUnauthorized},
+		// progress: this loopback hasn't it, the phone token has it (then a bad request) but not watch
+		{"POST", "/api/v1/reads", `{"provider":"fake","chapter":2}`, local, "", http.StatusUnauthorized},
+		{"POST", "/api/v1/reads", `{"provider":"fake","chapter":2}`, remote, "pr0g", http.StatusBadRequest},
+		{"POST", "/api/v1/check", `{"dry_run":true}`, remote, "pr0g", http.StatusForbidden},
 	} {
 		code, e := do(tc.method, tc.path, tc.body, tc.from, tc.token)
 		if code != tc.want {

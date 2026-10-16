@@ -42,12 +42,12 @@ minute. Logs go to stderr and the log file; GET /api/events streams the live pro
 The HTTP API (serve.host:serve.port, 127.0.0.1 by default; /api/v1/, its spec at
 /api/v1/openapi.yaml, "mangal api" calls it) is what the TUI and the "mangal watch"
 commands use while it runs. Requests need a token (Authorization: Bearer <token>; "mangal
-serve token") with the scope of what they do (read, watch, write), except from the same
-machine, which gets serve.loopback_scopes (read, watch by default) without one. Requests
-from another site's pages (a foreign Origin) are refused, bodies have to be JSON; for a
-reverse proxy see serve.allowed_hosts, serve.allowed_origins, serve.trusted_proxies. One
-server per data db: a second instance needs another config (--config) with its own
-data.path and serve.port.`,
+serve token") with the scope of what they do (read, watch, progress, write), except from
+the same machine, which gets serve.loopback_scopes (read, watch, progress by default)
+without one. Requests from another site's pages (a foreign Origin) are refused, bodies
+have to be JSON; for a reverse proxy see serve.allowed_hosts, serve.allowed_origins,
+serve.trusted_proxies. One server per data db: a second instance needs another config
+(--config) with its own data.path and serve.port.`,
 	Example: `  mangal serve
   mangal --config ~/.config/mangal-b/mangal.toml serve --port 6978`,
 	GroupID: groupMode,
@@ -80,7 +80,7 @@ func init() {
 	f.BoolVar(&serveTokenArgs.Generate, "generate", false, "Generate a random token, save it and print it")
 	f.BoolVar(&serveTokenArgs.Clear, "clear", false, "Remove the saved token")
 	f.StringVar(&serveTokenArgs.Name, "name", "", "With --generate, a named token for someone else (only its hash is kept, it's printed once)")
-	f.StringSliceVar(&serveTokenArgs.Scopes, "scope", nil, "Scopes of the named token: read, watch, write (comma separated or repeated; read by default)")
+	f.StringSliceVar(&serveTokenArgs.Scopes, "scope", nil, "Scopes of the named token: read, watch, progress, write (comma separated or repeated; read by default)")
 	f.BoolVar(&serveTokenArgs.List, "list", false, "List the tokens the server takes, with their scopes")
 	f.StringVar(&serveTokenArgs.Revoke, "revoke", "", "Remove the named token")
 	serveTokenCmd.MarkFlagsMutuallyExclusive("generate", "clear", "list", "revoke")
@@ -97,8 +97,9 @@ is read from the terminal without echo, or from stdin.
 --generate --name NAME --scope read,watch makes a named token for another client (e.g.
 read-only for a script or an assistant): only its hash is kept, it's printed once, --list
 shows the tokens and --revoke NAME removes one (a running server stops taking it within
-seconds). Scopes: read (GET, events), watch (the watches: add, change, check), write (the
-files, the library, the config, downloads).`,
+seconds). Scopes: read (GET, events), watch (the watches: add, change, check), progress
+(the web reader's reads: history, tracker progress), write (the files, the library, the
+config, downloads).`,
 	Example: `  mangal serve token --generate
   mangal serve token --generate --name claude --scope read
   mangal serve token --list

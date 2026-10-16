@@ -4,7 +4,7 @@ info:
   title: mangal API
   description: |
     The HTTP API v1 of `mangal serve` and `mangal web` under /api/v1 (tag v1). Paths are
-    relative to /api. Every v1 operation has an x-mangal-scope (read, watch or write):
+    relative to /api. Every v1 operation has an x-mangal-scope (read, watch, progress or write):
     the token scope it needs; the plan/apply ones (x-mangal-plan) need it only with
     apply=1, a plan needs read.
 servers:
@@ -1025,7 +1025,7 @@ paths:
         else the library manga's ids), like the TUI's read. The reader skips it in incognito.
       operationId: recordRead
       tags: [v1, reader]
-      x-mangal-scope: watch
+      x-mangal-scope: progress
       requestBody:
         required: true
         content:

@@ -30,7 +30,7 @@ async function save() {
           <div class="modal-body">
             <p class="small text-secondary">
               {{ st.tokenReason || 'This needs a token.' }} A token with the scope comes from
-              <code>mangal serve token --generate [--name web --scope read,watch,write]</code>.
+              <code>mangal serve token --generate [--name web --scope read,watch,progress,write]</code>.
             </p>
             <input
               v-model="token"
