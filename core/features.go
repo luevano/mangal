@@ -64,6 +64,7 @@ func (f Feature) Has(m Mode) bool {
 const (
 	noLibraryScripts = "scripts don't change the library (docs/core.md: read-only Lua modules or the serve API, to decide)"
 	cliEnough        = "a one-off command, the CLI is enough"
+	apiNotYet        = "not in the API yet (docs/core.md Progress)"
 )
 
 // Features are mangal's features.
@@ -93,6 +94,8 @@ var Features = []Feature{
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
 	{Name: "links", Web: []string{"library-manga"}, API: []string{"linkLibraryManga"}, CLI: []string{"library bind"}, TUI: "A (library, library manga)", TUIKey: "A", Change: KindLink,
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
+	{Name: "dismiss a link pick", CLI: []string{"library bind"}, TUI: "d (links, a pick)", TUIKey: "d", Change: KindDismissPick,
+		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts, ModeAPI: apiNotYet, ModeWeb: apiNotYet}},
 	{Name: "backup links", Web: []string{"library"}, API: []string{"fillBackupLinks"}, CLI: []string{"library bind"}, TUI: "B (library, links)", TUIKey: "B", Change: KindBackups,
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
 	{Name: "mark", Web: []string{"library", "library-manga"}, API: []string{"markLibraryMangas"}, CLI: []string{"library mark", "library scan"}, TUI: "x (health)", TUIKey: "x", Change: KindMark,

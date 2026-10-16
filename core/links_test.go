@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/storage"
 )
 
 type testManga struct{ info mangadata.MangaInfo }
@@ -220,5 +221,33 @@ func TestVariants(t *testing.T) {
 	var changed *PlanChangedError
 	if _, err := c.Changes.ApplyPlan(ctx, v, ApplyOpts{}); !errors.As(err, &changed) {
 		t.Errorf("stale variant applied: %v", err)
+	}
+}
+
+func TestDismissPick(t *testing.T) {
+	c, _ := testLinkCore(t)
+	ctx := context.Background()
+	m := addManga(t, c, filepath.Join("MangaDex", "Berserk"), "mango-mangadex", "b", "Berserk", 1)
+	req := DismissPickReq{Manga: m.ID, Source: metadata.IDCodeKitsu}
+	if p, err := c.Changes.Plan(ctx, req); err != nil || !p.Nothing {
+		t.Fatalf("no pick: %+v %v", p, err)
+	}
+	lib := c.env.Storage.Library()
+	if _, err := lib.SetLinkPick(storage.LinkPick{Manga: m.ID, Source: metadata.IDCodeKitsu, AniList: "30002",
+		Candidates: []storage.LinkCandidate{{ID: "1", From: "mango-mangadex"}, {ID: "2", From: storage.FromKitsu}}}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := c.Changes.Plan(ctx, req)
+	if err != nil || p.Nothing || !strings.Contains(p.Lines[0], "1 or 2") {
+		t.Fatalf("%+v %v", p, err)
+	}
+	if _, err := c.Changes.ApplyPlan(ctx, p, ApplyOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	if pick, ok, _ := c.Library.LinkPick(ctx, m.ID, metadata.IDCodeKitsu); !ok || !pick.Dismissed {
+		t.Errorf("not dismissed: %+v", pick)
+	}
+	if info, err := c.Library.Links(ctx, m.ID); err != nil || info.Manga.ID != m.ID {
+		t.Errorf("links: %+v %v", info, err)
 	}
 }

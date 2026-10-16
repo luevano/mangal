@@ -23,16 +23,6 @@ type actionMsg struct {
 	do func(ctx context.Context, status func(string)) (reloadMsg, error)
 }
 
-// action is a confirmed change, do returns the notification.
-func action(label string, do func() (string, error)) tea.Cmd {
-	return func() tea.Msg {
-		return actionMsg{label: label, do: func(context.Context, func(string)) (reloadMsg, error) {
-			notify, err := do()
-			return reloadMsg{notify: notify}, err
-		}}
-	}
-}
-
 // applyChange applies a change through the core, applyVariant a variant of a plan.
 // Swapped in tests.
 var (

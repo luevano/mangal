@@ -6,6 +6,7 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -292,4 +293,47 @@ func (r BackupsReq) prepare(c *Core, backups []library.Backup, found string, lin
 			})
 		},
 	}
+}
+
+// KindDismissPick is dismissing a link pick.
+const KindDismissPick Kind = "dismiss-pick"
+
+// DismissPickReq dismisses the library manga's pick of the source (the ids its sources
+// disagree on): nothing is linked and it isn't asked again until other ids are found.
+// It isn't journaled, nothing is lost: linking one of the ids later settles it.
+type DismissPickReq struct {
+	Manga  int64         `json:"manga"`
+	Source lmmeta.IDCode `json:"source"`
+}
+
+func (DismissPickReq) Kind() Kind { return KindDismissPick }
+
+func (r DismissPickReq) plan(_ context.Context, c *Core) (*prepared, error) {
+	m, err := c.manga(r.Manga)
+	if err != nil {
+		return nil, err
+	}
+	src, ok := client.MetadataSourceOf(r.Source)
+	if !ok {
+		return nil, invalid("no metadata source %q", r.Source)
+	}
+	lib := c.env.Storage.Library()
+	pick, found, err := lib.LinkPick(m.ID, r.Source)
+	if err != nil {
+		return nil, err
+	}
+	if !found || pick.Dismissed {
+		msg := fmt.Sprintf("library manga %d has no %s ids to pick from", m.ID, src.Name)
+		return &prepared{plan: Plan{Lines: []string{msg}, Nothing: true}, tables: libraryTables}, nil
+	}
+	summary := fmt.Sprintf("dismiss the %s pick of %d %q", src.Name, m.ID, m.Title)
+	line := fmt.Sprintf("%s (%s): nothing linked, not asked again until other ids are found", summary, strings.Join(pick.IDs(), " or "))
+	return &prepared{
+		plan:   Plan{Summary: summary, Lines: []string{line}, Detail: pick},
+		tables: libraryTables,
+		apply: func(context.Context, ApplyOpts, *OpResult) error {
+			_, err := lib.DismissLinkPick(m.ID, r.Source)
+			return err
+		},
+	}, nil
 }

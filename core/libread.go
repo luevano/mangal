@@ -37,6 +37,9 @@ type Library interface {
 	Bindings(ctx context.Context, provider, mangaID string) ([]storage.Binding, error)
 	// MangaBindings are the bindings of the library manga's sources, then its own ids.
 	MangaBindings(ctx context.Context, id int64) ([]storage.Binding, error)
+	// Links are the library manga's metadata links: each source's ids from its sources'
+	// bindings, its own ids and its folder.
+	Links(ctx context.Context, id int64) (library.LinkInfo, error)
 	// LinkPick is the ids of the source the library manga's link check left to choose
 	// from (a dismissed pick too), false when there's none.
 	LinkPick(ctx context.Context, id int64, source lmmeta.IDCode) (storage.LinkPick, bool, error)
@@ -199,6 +202,18 @@ func (l *localLibrary) Bindings(_ context.Context, provider, mangaID string) ([]
 
 func (l *localLibrary) MangaBindings(_ context.Context, id int64) ([]storage.Binding, error) {
 	return l.core.env.Storage.Bindings().OfLibraryManga(id)
+}
+
+func (l *localLibrary) Links(ctx context.Context, id int64) (library.LinkInfo, error) {
+	m, err := l.core.manga(id)
+	if err != nil {
+		return library.LinkInfo{}, err
+	}
+	linker, err := l.core.linker(ctx)
+	if err != nil {
+		return library.LinkInfo{}, err
+	}
+	return linker.LinkInfo(m)
 }
 
 func (l *localLibrary) LinkPick(_ context.Context, id int64, source lmmeta.IDCode) (storage.LinkPick, bool, error) {

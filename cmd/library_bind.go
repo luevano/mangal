@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -74,12 +75,11 @@ differs is only replaced when you say so (with --apply). Every change can be und
 	RunE: func(cmd *cobra.Command, args []string) error {
 		st := newStatus(cmd)
 		defer st.Done()
-		ctx := st.Context(cmd.Context())
-		linker, err := client.LibraryLinker()
+		ctx := changeCtx(cmd, st)
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
-		linker.OnProgress = st.Progress
 		links, err := libraryBindLinks(cmd)
 		if err != nil {
 			return err
@@ -91,34 +91,30 @@ differs is only replaced when you say so (with --apply). Every change can be und
 			if !libraryBindArgs.Backups || len(links) != 0 || libraryBindArgs.Rename || libraryBindArgs.Watches {
 				return errors.New("give the library id (mangal library ls), only --backups goes without one")
 			}
-			c, err := newCore()
-			if err != nil {
-				return err
-			}
 			return libraryBackups(cmd, st, c, nil)
 		}
 		id, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid manga id %q", args[0])
 		}
-		manga, ok, err := linker.Library.MangaByID(id)
+		manga, err := c.Library.Manga(ctx, id)
 		if err != nil {
 			return err
-		}
-		if !ok {
-			return fmt.Errorf("no manga %d in the library", id)
 		}
 
 		if libraryBindArgs.Dismiss {
 			if len(links) != 0 || libraryBindArgs.Rename || libraryBindArgs.Watches || libraryBindArgs.Backups {
 				return errors.New("--dismiss goes alone")
 			}
-			ok, err := linker.Library.DismissLinkPick(manga.ID, metadata.IDCodeKitsu)
+			plan, err := c.Changes.Plan(ctx, core.DismissPickReq{Manga: manga.ID, Source: metadata.IDCodeKitsu})
 			if err != nil {
 				return err
 			}
-			if !ok {
-				return fmt.Errorf("library manga %d has no Kitsu ids to pick from", manga.ID)
+			if plan.Nothing {
+				return errors.New(plan.Lines[0])
+			}
+			if _, err := c.Changes.ApplyPlan(ctx, plan, applyOpts(st)); err != nil {
+				return err
 			}
 			cmd.Println("dismissed, no Kitsu id linked")
 			return nil
@@ -128,19 +124,10 @@ differs is only replaced when you say so (with --apply). Every change can be und
 				if libraryBindArgs.Apply {
 					return errors.New("nothing to apply: give links (--anilist, --kitsu, --mal, --remove), --rename, --watches or --backups")
 				}
-				return printLinks(cmd, linker, manga)
-			}
-			c, err := newCore()
-			if err != nil {
-				return err
+				return printLinks(ctx, cmd, c, manga)
 			}
 			return libraryBackups(cmd, st, c, []int64{manga.ID})
 		}
-		c, err := newCore()
-		if err != nil {
-			return err
-		}
-		ctx = core.WithProgress(ctx, st.Progress)
 		plan, err := c.Changes.Plan(ctx, core.LinkReq{Manga: manga.ID, Links: links, Rename: libraryBindArgs.Rename, Watches: libraryBindArgs.Watches})
 		st.Clear()
 		if err != nil {
@@ -243,8 +230,8 @@ func libraryBindLinks(cmd *cobra.Command) (library.Links, error) {
 }
 
 // printLinks prints the manga's links, where they come from, and what its folder suggests.
-func printLinks(cmd *cobra.Command, linker library.Linker, manga storage.Manga) error {
-	info, err := linker.LinkInfo(manga)
+func printLinks(ctx context.Context, cmd *cobra.Command, c *core.Core, manga storage.Manga) error {
+	info, err := c.Library.Links(ctx, manga.ID)
 	if err != nil {
 		return err
 	}
@@ -263,7 +250,7 @@ func printLinks(cmd *cobra.Command, linker library.Linker, manga storage.Manga) 
 		default:
 			cmd.Printf("  %s: not linked\n", src.Name)
 		}
-		if pick, ok, err := linker.Library.LinkPick(manga.ID, s.Code); err != nil {
+		if pick, ok, err := c.Library.LinkPick(ctx, manga.ID, s.Code); err != nil {
 			return err
 		} else if ok && !pick.Dismissed {
 			cmd.Printf("    %s\n", pickLine(pick, src.Key))

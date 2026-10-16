@@ -38,7 +38,7 @@ const (
 
 // Kinds are every kind of change.
 var Kinds = []Kind{KindMerge, KindMove, KindLink, KindBackups, KindMark, KindRename, KindForget, KindDelete,
-	KindEmptyTrash, KindMigrate, KindHistoryClear, KindUndo, KindBind, KindUnbind, KindHealthFix}
+	KindEmptyTrash, KindMigrate, KindHistoryClear, KindUndo, KindBind, KindUnbind, KindHealthFix, KindDismissPick}
 
 // Change is a typed request for a change (MergeReq, MoveReq, ...).
 type Change interface {

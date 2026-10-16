@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -153,21 +154,18 @@ func (s *linksState) Init(ctx context.Context) tea.Cmd {
 func (s *linksState) load(ctx context.Context) tea.Cmd {
 	id := s.manga.ID
 	return base.Load(ctx, "Loading the links", func(ctx context.Context) (linksLoadedMsg, error) {
-		linker, err := client.LibraryLinker()
+		lib, err := base.Library()
 		if err != nil {
 			return linksLoadedMsg{}, err
 		}
-		manga, ok, err := linker.Library.MangaByID(id)
-		if err != nil {
-			return linksLoadedMsg{}, err
-		}
-		if !ok {
+		info, err := lib.Links(ctx, id)
+		if errors.Is(err, core.ErrNotFound) {
 			return linksLoadedMsg{}, fmt.Errorf("library manga %d is gone", id)
 		}
-		info, err := linker.LinkInfo(manga)
 		if err != nil {
 			return linksLoadedMsg{}, err
 		}
+		manga := info.Manga
 		var items []*linkItem
 		for _, src := range client.MetadataSources {
 			_, err := client.MetadataProvider(src.Source)
@@ -180,7 +178,7 @@ func (s *linksState) load(ctx context.Context) tea.Cmd {
 			if link.Linked() {
 				i.meta, i.err = client.LinkMetadata(ctx, src.Code, link.Current())
 			}
-			if pick, ok, err := linker.Library.LinkPick(manga.ID, src.Code); err != nil {
+			if pick, ok, err := lib.LinkPick(ctx, manga.ID, src.Code); err != nil {
 				return linksLoadedMsg{}, err
 			} else if ok && !pick.Dismissed {
 				i.pick = &pick
@@ -311,15 +309,15 @@ func (s *linksState) askPick(msg pickLoadedMsg) {
 		code, id := msg.pick.Source, c.ID
 		choices = append(choices, confirm.Choice{Key: fmt.Sprint(i + 1), Label: "link " + c.ID, Cmd: func() tea.Msg { return linkPickedMsg{code: code, id: id} }})
 	}
-	lib, manga, source := client.LibraryFiles, s.manga, msg.pick.Source
-	choices = append(choices, confirm.Choice{Key: "d", Label: "neither (dismiss)", Cmd: action("Dismissing", func() (string, error) {
-		files, err := lib()
-		if err != nil {
-			return "", err
-		}
-		_, err = files.Library.DismissLinkPick(manga.ID, source)
-		return "dismissed, nothing linked", err
-	})})
+	req := core.DismissPickReq{Manga: s.manga.ID, Source: msg.pick.Source}
+	choices = append(choices, confirm.Choice{Key: "d", Label: "neither (dismiss)", Cmd: func() tea.Msg {
+		return actionMsg{label: "Dismissing", do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
+			if _, err := applyChange(ctx, req, status); err != nil && !errors.Is(err, core.ErrNothingToDo) {
+				return reloadMsg{}, err
+			}
+			return reloadMsg{notify: "dismissed, nothing linked"}, nil
+		}}
+	}})
 	s.Confirm.Choose("Pick "+src.Name, strings.Join(lines, "\n"), s.View(), choices...)
 }
 

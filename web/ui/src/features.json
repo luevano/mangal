@@ -150,6 +150,10 @@
       ]
     },
     {
+      "name": "dismiss a link pick",
+      "not_applicable": "not in the API yet (docs/core.md Progress)"
+    },
+    {
       "name": "backup links",
       "web": [
         "library"
