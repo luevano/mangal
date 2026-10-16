@@ -19,6 +19,23 @@ body {
   background: var(--bs-secondary-bg);
 }
 
+/* search results: every cover the same 5:7 box, so rows line up and nothing moves while
+   lazy covers load */
+.cover-card {
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  object-fit: cover;
+  background: var(--bs-secondary-bg);
+}
+
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .table-sm td,
 .table-sm th {
   vertical-align: middle;
