@@ -55,3 +55,27 @@ func TestHTTPClientDebug(t *testing.T) {
 		t.Errorf("with the unsafe env: %q", lines)
 	}
 }
+
+// the providers' cache hits and headless pages go to the same log as the requests
+func TestProviderDebug(t *testing.T) {
+	t.Setenv("MANGAL_PROVIDERS_MANGAPLUS_SECRET_FILE", "")
+	t.Cleanup(func() { log.Init(log.Options{Level: log.LevelInfo}) })
+	log.Init(log.Options{Level: log.LevelInfo})
+	if mangoOptions().Debug != nil || LuaOptions(t.TempDir()).Debug != nil {
+		t.Error("without --debug the providers should get no debug hook")
+	}
+
+	log.Init(log.Options{Level: log.LevelDebug})
+	debug := mangoOptions().Debug
+	if debug == nil || LuaOptions(t.TempDir()).Debug == nil {
+		t.Fatal("with --debug the providers should get a debug hook")
+	}
+	debug("mango-test: volumes %s cached", "key-volumes")
+	var found bool
+	for _, e := range log.Recent() {
+		found = found || e.Message == "http: mango-test: volumes key-volumes cached"
+	}
+	if !found {
+		t.Error("cache hit not logged")
+	}
+}

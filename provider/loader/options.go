@@ -67,6 +67,17 @@ func DebugTransport(next http.RoundTripper) http.RoundTripper {
 	}, redactURL)
 }
 
+// debugLog logs what answers without a request through DebugTransport (provider cache hits,
+// headless browser pages) like its lines; nil without --debug.
+func debugLog() func(format string, a ...any) {
+	if !log.Enabled(log.LevelDebug) {
+		return nil
+	}
+	return func(format string, a ...any) {
+		log.Debug("http: %s", fmt.Sprintf(format, a...))
+	}
+}
+
 func redactURL(u *url.URL) string {
 	return mangoplus.RedactURL(netutil.RedactURL(u))
 }
@@ -98,6 +109,7 @@ func LuaOptions(dir string) luaprovider.Options {
 		CacheStore:   cache.CacheStore,
 		PackagePaths: []string{dir},
 		Filter:       c.Filter,
+		Debug:        debugLog(),
 	}
 }
 
@@ -118,6 +130,7 @@ func SDKOptions(name string) (*sdk.Options, io.Closer, error) {
 		Log:        log.ProviderHook(name),
 		Track:      t.track,
 		Filter:     c.Filter,
+		Debug:      debugLog(),
 	}, t, nil
 }
 

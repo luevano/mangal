@@ -49,6 +49,7 @@ func mangoOptions() mango.Options {
 	o.Headless.FlaresolverrURL = config.Providers.Headless.FlaresolverrURL.Get()
 	// no timeout, each solve has its own; not guarded, the user chose it
 	o.Headless.FlaresolverrClient = &http.Client{Transport: DebugTransport(nil)}
+	o.Debug = debugLog()
 	o.Mirrors = config.Providers.Mirrors.Get()
 	o.MangaDex.DataSaver = config.Providers.MangaDex.DataSaver.Get()
 	o.MangaDex.ExcludeGroups = config.Providers.MangaDex.ExcludeGroups.Get()
