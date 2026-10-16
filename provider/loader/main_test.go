@@ -8,6 +8,7 @@ import (
 
 	"github.com/adrg/xdg"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangoplus"
 )
 
 func TestMain(m *testing.M) {
@@ -37,5 +38,13 @@ func TestMangoOptionsMangaDexGroups(t *testing.T) {
 	o := mangoOptions()
 	if !slices.Equal(o.MangaDex.ExcludeGroups, []string{"Bad Group"}) || !slices.Equal(o.MangaDex.PreferGroups, []string{"First", "Second"}) {
 		t.Errorf("exclude %q, prefer %q", o.MangaDex.ExcludeGroups, o.MangaDex.PreferGroups)
+	}
+}
+
+func TestMangoOptionsMangaPlusAPI(t *testing.T) {
+	t.Setenv("MANGAL_PROVIDERS_MANGAPLUS_SECRET_FILE", "")
+	t.Setenv("MANGAL_PROVIDERS_MANGAPLUS_API", "web")
+	if o := mangoOptions(); o.MangaPlus.API != mangoplus.APIWeb {
+		t.Errorf("api %q, want web", o.MangaPlus.API)
 	}
 }

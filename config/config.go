@@ -509,6 +509,8 @@ var Providers = configProviders{
 			Description: "The Android ID used for the MangaPlus API calls. If empty will be randomly generated.",
 			Secret:      true,
 		}),
+		API: oneOfEntry("providers.mangaplus.api", "app",
+			`MangaPlus api: "app" (the official app's, with the secret_file device or a registered free one), "web" (the website's, no device or secret: only what the website shows, e.g. a series' first and latest chapters; 1 request/s) or "auto" (web when there's no secret_file and no free device saved yet).`, "app", "web", "auto"),
 		Viewer: oneOfEntry("providers.mangaplus.viewer", "app",
 			`MangaPlus chapter viewer, "app" (same as the official app, needed for subscription images) or "legacy" (deprecated, old endpoint).`, "app", "legacy"),
 		RequestInterval: durationEntry("providers.mangaplus.request_interval", "500ms",

@@ -61,6 +61,7 @@ func mangoOptions() mango.Options {
 	if androidID := config.Providers.MangaPlus.AndroidID.Get(); androidID != "" {
 		o.MangaPlus.AndroidID = androidID
 	}
+	o.MangaPlus.API = mangoplus.API(config.Providers.MangaPlus.API.Get())
 	o.MangaPlus.Viewer = mangoplus.Viewer(config.Providers.MangaPlus.Viewer.Get())
 	// already validated by the config
 	o.MangaPlus.RequestInterval, _ = time.ParseDuration(config.Providers.MangaPlus.RequestInterval.Get())

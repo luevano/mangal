@@ -147,6 +147,7 @@ type configProvidersMangaPlus struct {
 	OSVersion       *entry[string, string]
 	AppVersion      *entry[string, string]
 	AndroidID       *entry[string, string]
+	API             *entry[string, string]
 	Viewer          *entry[string, string]
 	RequestInterval *entry[string, string]
 	FreeSecret      *entry[string, string]
