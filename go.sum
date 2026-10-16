@@ -223,6 +223,8 @@ github.com/luevano/mangoplus v0.7.4 h1:Th5oainQhnA4YUjiqQQG6bzlDnJC1ZIgITp6Td7Eo
 github.com/luevano/mangoplus v0.7.4/go.mod h1:SGJ2B4p76QFpwD6THHjcFxEvV/s95965USDeB1CzB48=
 github.com/luevano/mangoprovider v0.22.0 h1:b9+Z72EUZO91id4wvbkcwEhMTSeKkly2lZPlW/y8pjk=
 github.com/luevano/mangoprovider v0.22.0/go.mod h1:0mygVNMApGivYZBDSwkaN2HGaMbdGsWr69WkXEKxC5o=
+github.com/maruel/natural v1.3.0 h1:VsmCsBmEyrR46RomtgHs5hbKADGRVtliHTyCOLFBpsg=
+github.com/maruel/natural v1.3.0/go.mod h1:v+Rfd79xlw1AgVBjbO0BEQmptqb5HvL/k9GRHB7ZKEg=
 github.com/mattn/go-colorable v0.1.9/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
 github.com/mattn/go-colorable v0.1.15 h1:+u9SLTRGnXv73cEsnsmoZBom+dMU88B2M0aDcWy0/jY=
 github.com/mattn/go-colorable v0.1.15/go.mod h1:6LmQG8QLFO4G5z1gPvYEzlUgJ2wF+stgPZH1UqBm1s8=

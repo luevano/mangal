@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/luevano/libmangal"
+	"github.com/maruel/natural"
 	"github.com/spf13/afero"
 )
 
@@ -117,7 +118,8 @@ func Open(fsys afero.Fs, p string) (*Chapter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", filepath.Base(p), err)
 	}
-	slices.SortStableFunc(c.Pages, func(a, b Page) int { return strings.Compare(a.Name, b.Name) })
+	// natural order: archives made elsewhere often don't pad the numbers (page2, page10)
+	slices.SortStableFunc(c.Pages, func(a, b Page) int { return natural.Compare(a.Name, b.Name) })
 	return c, nil
 }
 

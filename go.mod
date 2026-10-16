@@ -27,6 +27,7 @@ require (
 	github.com/luevano/luaprovider v0.19.0
 	github.com/luevano/mangoplus v0.7.4
 	github.com/luevano/mangoprovider v0.22.0
+	github.com/maruel/natural v1.3.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/philippgille/gokv v0.7.0

@@ -13,10 +13,10 @@ import (
 	"github.com/spf13/afero"
 )
 
-var files = map[string]string{"0002.png": "two", "0001.jpg": "one", "ComicInfo.xml": "<x/>", "0010.webp": "ten"}
+var files = map[string]string{"0002.png": "two", "0001.jpg": "one", "ComicInfo.xml": "<x/>", "0010.webp": "ten", "p2.png": "p2", "p10.png": "p10"}
 
 // the pages in order, without the other files
-var want = []string{"0001.jpg", "0002.png", "0010.webp"}
+var want = []string{"0001.jpg", "0002.png", "0010.webp", "p2.png", "p10.png"}
 
 func writeZip(t *testing.T, fs afero.Fs, p string) {
 	var buf bytes.Buffer
