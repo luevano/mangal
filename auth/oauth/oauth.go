@@ -113,6 +113,9 @@ func authorize(ctx context.Context, f flow, s server, manual *Manual) (*oauth2.T
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_ = srv.Shutdown(shutdownCtx)
+			// Shutdown only closes listeners Serve has started on: a login that ends first
+			// would leave the port open
+			_ = ln.Close()
 		}()
 	} else if manual == nil || manual.Pasted == nil {
 		return nil, fmt.Errorf("start the oauth callback server: %w", err)
