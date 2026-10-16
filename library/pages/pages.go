@@ -9,6 +9,10 @@ import (
 	"compress/gzip"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"mime"
 	"path"
@@ -19,6 +23,8 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/maruel/natural"
 	"github.com/spf13/afero"
+	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/webp"
 )
 
 // ErrNotFound is a page that isn't there.
@@ -33,6 +39,8 @@ type Page struct {
 	Name string
 	// Size in bytes (uncompressed).
 	Size int64
+	// Width and Height in pixels, 0 until ReadDimensions (or when its header can't be read).
+	Width, Height int
 
 	// where a plain tar has its data
 	offset int64
@@ -255,6 +263,40 @@ func (c *Chapter) Read(i int) (io.ReadCloser, Page, error) {
 		return io.NopCloser(bytes.NewReader(data)), p, nil
 	}
 	return nil, p, fmt.Errorf("format %s has no pages", c.Format)
+}
+
+// ReadDimensions reads the width and height of every page from its header (jpeg, png,
+// gif, webp, bmp; the others stay 0), for the reader's double pages.
+func (c *Chapter) ReadDimensions() {
+	set := func(i int, r io.Reader) {
+		if cfg, _, err := image.DecodeConfig(r); err == nil {
+			c.Pages[i].Width, c.Pages[i].Height = cfg.Width, cfg.Height
+		}
+	}
+	switch c.Format {
+	case libmangal.FormatPDF:
+	case libmangal.FormatTARGZ:
+		// one pass, no random access
+		index := make(map[string]int, len(c.Pages))
+		for i, p := range c.Pages {
+			index[p.Name] = i
+		}
+		_ = c.walkTar(func(h *tar.Header, _ int64, r io.Reader) (bool, error) {
+			if i, ok := index[h.Name]; ok {
+				set(i, r)
+			}
+			return false, nil
+		})
+	default:
+		for i := range c.Pages {
+			r, _, err := c.Read(i)
+			if err != nil {
+				continue
+			}
+			set(i, r)
+			r.Close()
+		}
+	}
 }
 
 // ContentType is the type of the chapter's file as a download (a folder is sent as a zip).
