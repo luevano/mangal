@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v5"
-	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/web/apiv1"
 
 	"github.com/luevano/libmangal/progress"
@@ -118,15 +118,6 @@ func (j *healthJobs) update(id int64, do func(*HealthJob)) {
 	}
 }
 
-// checker is the health checker over the server's watches.
-func (a *API) checker() (health.Checker, error) {
-	newChecker := a.Health
-	if newChecker == nil {
-		newChecker = health.NewWith
-	}
-	return newChecker(a.Manager())
-}
-
 // splitList is a comma separated list, trimmed.
 func splitList(s string) []string {
 	var list []string
@@ -155,12 +146,12 @@ func (r healthJobResponse) VisitGetHealthResponse(w http.ResponseWriter) error {
 func (a *API) GetHealth(ctx context.Context, request apiv1.GetHealthRequestObject) (apiv1.GetHealthResponseObject, error) {
 	p := request.Params
 	opts := health.Options{Only: splitList(deref(p.Only)), All: deref(p.All), Network: deref(p.Network)}
-	checker, err := a.checker()
+	c, err := a.services(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if !opts.Network {
-		report, err := checker.Run(ctx, opts)
+		report, err := c.Health.Report(ctx, opts)
 		if err != nil {
 			return nil, badRequest("%w", err)
 		}
@@ -179,13 +170,13 @@ func (a *API) GetHealth(ctx context.Context, request apiv1.GetHealthRequestObjec
 		a.healthJobs.update(job.ID, func(j *HealthJob) { j.Running, j.Finished, j.Error = false, time.Now(), "the server is stopping" })
 		return nil, newAPIError(http.StatusServiceUnavailable, CodeUnavailable, "the server is stopping")
 	}
-	go a.runHealth(job.ID, checker, opts)
+	go a.runHealth(job.ID, c.Health, opts)
 	return healthJobResponse{job}, nil
 }
 
 // runHealth runs the job in the server (not cancelled with the request), its progress as
 // events.
-func (a *API) runHealth(id int64, checker health.Checker, opts health.Options) {
+func (a *API) runHealth(id int64, h core.Health, opts health.Options) {
 	defer a.checks.Done()
 	publish := func(kind, msg string) {
 		if svc, ok := a.Manager().(*watch.Service); ok && svc.Events != nil {
@@ -202,13 +193,13 @@ func (a *API) runHealth(id int64, checker health.Checker, opts health.Options) {
 	}
 	a.Log.Infof("health check %d (asked through the API): %s", id, what)
 	publish(watch.LiveHealthStart, "health: checking "+what)
-	checker.OnProgress = status
 	ctx := progress.WithReporter(a.ctx, func(s progress.Status) {
 		if !s.IsMinor() {
 			status(s.String())
 		}
 	})
-	report, err := checker.Run(ctx, opts)
+	ctx = core.WithProgress(ctx, func(p library.Progress) { status(p.String()) })
+	report, err := h.Report(ctx, opts)
 	a.healthJobs.update(id, func(j *HealthJob) {
 		j.Running, j.Finished, j.Status = false, time.Now(), ""
 		if err != nil {
@@ -254,14 +245,14 @@ func (a *API) finding(ctx context.Context, key string) (health.Finding, error) {
 		return health.Finding{}, badRequest("%w", err)
 	}
 	key = check + "/" + subject
-	checker, err := a.checker()
+	c, err := a.services(ctx)
 	if err != nil {
 		return health.Finding{}, err
 	}
 	var f health.Finding
 	ok := false
 	if !health.IsNetwork(check) {
-		report, err := checker.Run(ctx, health.Options{Only: []string{check}, All: true})
+		report, err := c.Health.Report(ctx, health.Options{Only: []string{check}, All: true})
 		if err != nil {
 			return f, err
 		}
@@ -304,19 +295,10 @@ func (a *API) DismissHealthFindings(ctx context.Context, request apiv1.DismissHe
 	if err != nil {
 		return nil, err
 	}
-	ignores := storage.HealthIgnores{DB: c.Env().Storage.Data}
 	resp := apiv1.DismissHealthFindings200JSONResponse{Dismissed: []string{}, Undismissed: []string{}}
 	for _, key := range deref(body.Undismiss) {
-		check, subject, err := health.SplitKey(key)
-		if err != nil {
-			return nil, badRequest("%w", err)
-		}
-		ok, err := ignores.Undismiss(check, subject)
-		if err != nil {
+		if err := c.Health.Undismiss(ctx, key); err != nil {
 			return nil, err
-		}
-		if !ok {
-			return nil, fmt.Errorf("%s isn't dismissed: %w", key, watch.ErrNotFound)
 		}
 		resp.Undismissed = append(resp.Undismissed, key)
 	}
@@ -324,38 +306,17 @@ func (a *API) DismissHealthFindings(ctx context.Context, request apiv1.DismissHe
 	if len(dismiss) == 0 {
 		return resp, nil
 	}
-	var only []string
-	for _, key := range dismiss {
-		check, _, err := health.SplitKey(key)
-		if err != nil {
-			return nil, badRequest("%w", err)
-		}
-		only = append(only, check)
+	req := core.DismissReq{Keys: dismiss, Network: deref(body.Network)}
+	if latest, found := a.healthJobs.latest(); found {
+		req.Fallback = latest.Findings
 	}
-	checker, err := a.checker()
-	if err != nil {
-		return nil, err
-	}
-	report, err := checker.Run(ctx, health.Options{Only: only, All: true, Network: deref(body.Network)})
-	if err != nil {
-		return nil, err
-	}
-	for _, key := range dismiss {
-		check, subject, _ := health.SplitKey(key)
-		f, ok := report.Find(check + "/" + subject)
-		if !ok {
-			if latest, found := a.healthJobs.latest(); found {
-				f, ok = latest.Find(check + "/" + subject)
-			}
-		}
-		if !ok {
-			return nil, fmt.Errorf("no finding %s now (a network check's needs network): %w", key, watch.ErrNotFound)
-		}
-		if err := ignores.Dismiss(storage.HealthIgnore{Check: check, Subject: subject, Message: f.Message}); err != nil {
-			return nil, err
-		}
+	dismissed, err := c.Health.Dismiss(ctx, req)
+	for _, f := range dismissed {
 		a.Log.Infof("health finding %s dismissed through the API: %s", f.Key, f.Message)
 		resp.Dismissed = append(resp.Dismissed, f.Key)
+	}
+	if err != nil {
+		return nil, err
 	}
 	return resp, nil
 }

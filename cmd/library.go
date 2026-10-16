@@ -346,7 +346,7 @@ existing .libmangal.json is never replaced.`,
 					return err
 				}
 				cmd.Println("removed")
-				if rep.Duplicates, err = c.Library.Duplicates(); err != nil {
+				if rep.Duplicates, err = c.Library.Duplicates(ctx); err != nil {
 					return err
 				}
 			}
@@ -611,7 +611,7 @@ Only lists what would happen unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		manga, err := c.Library.Manga(id)
+		manga, err := c.Library.Manga(ctx, id)
 		if err != nil {
 			return err
 		}

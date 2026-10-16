@@ -98,7 +98,7 @@ Only lists what would happen unless --apply is set.`,
 }
 
 func listOperations(cmd *cobra.Command, c *core.Core) error {
-	ops, err := c.Library.Ops(0)
+	ops, err := c.Library.Ops(cmd.Context(), 0)
 	if err != nil {
 		return err
 	}

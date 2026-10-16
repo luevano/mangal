@@ -93,7 +93,7 @@ type API struct {
 	Log     logger
 	Runs    *runs
 	// Health makes the health checker over the watches of a manager (health.NewWith when
-	// nil), Core the app's services whose fixes change them (core.New with them when nil).
+	// nil), Core the app's services over them (core.New with them and Health when nil).
 	Health func(watch.Manager) (health.Checker, error)
 	Core   func(watch.Manager) (*core.Core, error)
 	// Browser has the providers and the image proxy (and the web UI's browse routes).
@@ -146,7 +146,7 @@ func (a *API) services(ctx context.Context) (*core.Core, error) {
 	newCore := a.Core
 	if newCore == nil {
 		newCore = func(m watch.Manager) (*core.Core, error) {
-			return core.New(ctx, core.Env{Watches: func(context.Context) (watch.Manager, error) { return a.Manager(), nil }})
+			return core.New(ctx, core.Env{Watches: func(context.Context) (watch.Manager, error) { return a.Manager(), nil }, Checker: a.Health})
 		}
 	}
 	c, err := newCore(a.Manager())

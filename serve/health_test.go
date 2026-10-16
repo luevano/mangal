@@ -83,6 +83,7 @@ func newHealthServer(t *testing.T) (*testServer, chan struct{}, *[]string) {
 			BackupsDir: backups,
 			Loaders:    func() ([]libmangal.ProviderLoader, error) { return []libmangal.ProviderLoader{fakeLoader{}}, nil },
 			Watches:    func(context.Context) (watch.Manager, error) { return m, nil },
+			Checker:    s.api.Health,
 			Metadata:   func(context.Context, []metadata.ID) (metadata.Metadata, error) { return nil, nil },
 			CheckLink: func(context.Context, metadata.IDCode, string) (metadata.Metadata, error) {
 				ops = append(ops, "check")

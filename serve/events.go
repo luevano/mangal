@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/web/apiv1"
@@ -176,14 +177,14 @@ func (h *Events) forwardJobs(ctx context.Context, m *jobs.Manager) {
 			if e.Kind == jobs.EventFinished {
 				kind = "finished"
 			}
-			job := toAPIJob(e.Job)
+			job := toAPIJob(core.JobOf(e.Job))
 			h.Publish(TopicJob, kind, fmt.Sprintf("%s %s: %s", job.Kind, kind, job.Title), job)
 		}
 		if time.Since(lastChange) >= jobChangesEvery {
 			lastChange = time.Now()
 			for _, j := range m.Active() {
 				if j.Status == jobs.Running {
-					job := toAPIJob(j)
+					job := toAPIJob(core.JobOf(j))
 					h.Publish(TopicJob, "changed", deref(job.Message), job)
 				}
 			}

@@ -95,7 +95,7 @@ func TestMove(t *testing.T) {
 	if !exists(filepath.Join(root, "Weeb Central", "Berserk", "[0001.0] Chapter 1.cbz")) {
 		t.Fatal("not moved")
 	}
-	if got, _ := c.Library.Manga(m.ID); len(got.Sources) != 2 {
+	if got, _ := c.Library.Manga(t.Context(), m.ID); len(got.Sources) != 2 {
 		t.Errorf("sources %+v", got.Sources)
 	}
 	// moved already: the same plan again is stale

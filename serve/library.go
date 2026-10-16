@@ -8,6 +8,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web/apiv1"
@@ -67,10 +68,11 @@ func (a *API) ListLibraryMangas(ctx context.Context, request apiv1.ListLibraryMa
 	if err != nil {
 		return nil, err
 	}
-	mangas, err := c.Library.Mangas()
+	ml, err := c.Library.Mangas(ctx, core.MangasOptions{})
 	if err != nil {
 		return nil, err
 	}
+	mangas := ml.Mangas
 	watched, err := a.watchedMangas(ctx)
 	if err != nil {
 		return nil, err
@@ -78,7 +80,7 @@ func (a *API) ListLibraryMangas(ctx context.Context, request apiv1.ListLibraryMa
 	p := request.Params
 	duplicates := map[int64]bool{}
 	if deref(p.Duplicates) {
-		dups, err := c.Library.Duplicates()
+		dups, err := c.Library.Duplicates(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -143,7 +145,7 @@ func (a *API) GetLibraryManga(ctx context.Context, request apiv1.GetLibraryManga
 	if err != nil {
 		return nil, err
 	}
-	m, err := c.Library.Manga(request.Id)
+	m, err := c.Library.Manga(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -182,11 +184,11 @@ func (a *API) ListLibraryChapters(ctx context.Context, request apiv1.ListLibrary
 	if err != nil {
 		return nil, err
 	}
-	m, err := c.Library.Manga(request.Id)
+	m, err := c.Library.Manga(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
-	downloads, err := c.Library.Downloads(m.ID)
+	downloads, err := c.Library.Downloads(ctx, m.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +199,7 @@ func (a *API) ListLibraryChapters(ctx context.Context, request apiv1.ListLibrary
 	}
 	reads := map[readKey]storage.Read{}
 	for _, s := range m.Sources {
-		list, err := c.Library.History(s.Provider, s.MangaID)
+		list, err := c.Library.History(ctx, s.Provider, s.MangaID)
 		if err != nil {
 			return nil, err
 		}
@@ -246,7 +248,7 @@ func (a *API) ListDuplicates(ctx context.Context, _ apiv1.ListDuplicatesRequestO
 	if err != nil {
 		return nil, err
 	}
-	dups, err := c.Library.Duplicates()
+	dups, err := c.Library.Duplicates(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +269,7 @@ func (a *API) GetTrash(ctx context.Context, _ apiv1.GetTrashRequestObject) (apiv
 	if err != nil {
 		return nil, err
 	}
-	batches, err := c.Library.Trash()
+	batches, err := c.Library.Trash(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +307,7 @@ func (a *API) ListOps(ctx context.Context, request apiv1.ListOpsRequestObject) (
 	if err != nil {
 		return nil, err
 	}
-	ops, err := c.Library.Ops(deref(request.Params.Limit))
+	ops, err := c.Library.Ops(ctx, deref(request.Params.Limit))
 	if err != nil {
 		return nil, err
 	}

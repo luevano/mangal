@@ -54,6 +54,18 @@ func (s Status) String() string {
 // Active is true until the job is over.
 func (s Status) Active() bool { return s < Done }
 
+func (s Status) MarshalText() ([]byte, error) { return []byte(s.String()), nil }
+
+func (s *Status) UnmarshalText(b []byte) error {
+	for st := Queued; st <= Cancelled; st++ {
+		if st.String() == string(b) {
+			*s = st
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown job status %q", b)
+}
+
 // Kind is what a job does.
 type Kind int
 
@@ -72,6 +84,18 @@ func (k Kind) String() string {
 		return "scan"
 	}
 	return "download"
+}
+
+func (k Kind) MarshalText() ([]byte, error) { return []byte(k.String()), nil }
+
+func (k *Kind) UnmarshalText(b []byte) error {
+	for kind := KindDownload; kind <= KindScan; kind++ {
+		if kind.String() == string(b) {
+			*k = kind
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown job kind %q", b)
 }
 
 // keepFinished is how many finished jobs are kept listed.

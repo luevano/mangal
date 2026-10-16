@@ -14,6 +14,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/luevano/libmangal"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library/pages"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web/apiv1"
@@ -150,10 +151,11 @@ func (a *API) opdsLibrary(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	mangas, err := svc.Library.Mangas()
+	list, err := svc.Library.Mangas(ctx, core.MangasOptions{})
 	if err != nil {
 		return err
 	}
+	mangas := list.Mangas
 	q := strings.ToLower(strings.TrimSpace(c.QueryParam("q")))
 	mangas = slices.DeleteFunc(mangas, func(m storage.Manga) bool {
 		return m.Chapters == 0 || (q != "" && !strings.Contains(strings.ToLower(m.Title), q))
@@ -263,11 +265,11 @@ func (a *API) opdsManga(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	m, err := svc.Library.Manga(id)
+	m, err := svc.Library.Manga(ctx, id)
 	if err != nil {
 		return err
 	}
-	downloads, err := svc.Library.Downloads(m.ID)
+	downloads, err := svc.Library.Downloads(ctx, m.ID)
 	if err != nil {
 		return err
 	}
@@ -293,17 +295,18 @@ func (a *API) opdsRecentFeed(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	mangas, err := svc.Library.Mangas()
+	list, err := svc.Library.Mangas(ctx, core.MangasOptions{})
 	if err != nil {
 		return err
 	}
+	mangas := list.Mangas
 	type item struct {
 		m storage.Manga
 		d storage.Download
 	}
 	var items []item
 	for _, m := range mangas {
-		downloads, err := svc.Library.Downloads(m.ID)
+		downloads, err := svc.Library.Downloads(ctx, m.ID)
 		if err != nil {
 			return err
 		}

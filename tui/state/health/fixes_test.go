@@ -176,7 +176,7 @@ func TestFixesThroughCore(t *testing.T) {
 	}) {
 		t.Errorf("renamed, asked again: %#v", msgs)
 	}
-	ops, _ := c.Library.Ops(0)
+	ops, _ := c.Library.Ops(ctx, 0)
 	var kinds []string
 	for _, op := range ops {
 		kinds = append(kinds, op.Kind+": "+op.Summary)

@@ -182,7 +182,7 @@ func TestHealthFixBackups(t *testing.T) {
 	if err != nil || !res.Applied || res.Snapshot == "" || res.Message != `set the backup links of 1 "Berserk"` {
 		t.Fatalf("applied %+v %v", res, err)
 	}
-	m, _ := c.Library.Manga(berserk.ID)
+	m, _ := c.Library.Manga(t.Context(), berserk.ID)
 	if ids := fmt.Sprint(m.MetadataIDs); !strings.Contains(ids, "kt") || !strings.Contains(ids, "mal") {
 		t.Errorf("ids %v", m.MetadataIDs)
 	}
@@ -190,7 +190,7 @@ func TestHealthFixBackups(t *testing.T) {
 		t.Errorf("again %+v %v", again, err)
 	}
 	undoLast(t, c)
-	if m, _ := c.Library.Manga(berserk.ID); len(m.MetadataIDs) != 0 {
+	if m, _ := c.Library.Manga(t.Context(), berserk.ID); len(m.MetadataIDs) != 0 {
 		t.Errorf("not undone: %v", m.MetadataIDs)
 	}
 }

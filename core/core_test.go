@@ -142,7 +142,7 @@ func TestMerge(t *testing.T) {
 	if !exists(filepath.Join(root, "Berserk", "[0003.0] Chapter 3.cbz")) || exists(filepath.Join(root, "Berserk (WC)")) {
 		t.Fatal("not merged")
 	}
-	if _, err := c.Library.Manga(other.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := c.Library.Manga(t.Context(), other.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("other still there: %v", err)
 	}
 
@@ -150,7 +150,7 @@ func TestMerge(t *testing.T) {
 	if !exists(filepath.Join(root, "Berserk (WC)", "[0003.0] Chapter 3.cbz")) || exists(filepath.Join(root, "Berserk", "[0003.0] Chapter 3.cbz")) {
 		t.Fatal("not undone")
 	}
-	if _, err := c.Library.Manga(other.ID); err != nil {
+	if _, err := c.Library.Manga(t.Context(), other.ID); err != nil {
 		t.Errorf("other not back: %v", err)
 	}
 }
@@ -221,7 +221,7 @@ func TestDelete(t *testing.T) {
 	if exists(filepath.Join(root, "Vagabond")) {
 		t.Fatal("not deleted")
 	}
-	trash, _ := c.Library.Trash()
+	trash, _ := c.Library.Trash(t.Context())
 	if files := 0; len(trash) != 0 {
 		for _, b := range trash {
 			files += b.Files
@@ -248,7 +248,7 @@ func TestDelete(t *testing.T) {
 	if res, err := c.Changes.ApplyPlan(ctx, p, ApplyOpts{}); err != nil || res.Summary != fmt.Sprintf("remove missing %d \"Vagabond\"", m.ID) {
 		t.Fatalf("%+v %v", res, err)
 	}
-	if _, err := c.Library.Manga(m.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := c.Library.Manga(t.Context(), m.ID); !errors.Is(err, ErrNotFound) {
 		t.Error("not forgotten")
 	}
 }
@@ -262,12 +262,12 @@ func TestForget(t *testing.T) {
 	if err != nil || res.Summary != "remove 2 missing mangas" || res.OpID == 0 {
 		t.Fatalf("%+v %v", res, err)
 	}
-	if mangas, _ := c.Library.Mangas(); len(mangas) != 0 {
-		t.Fatalf("%d left", len(mangas))
+	if list, _ := c.Library.Mangas(ctx, MangasOptions{}); len(list.Mangas) != 0 {
+		t.Fatalf("%d left", len(list.Mangas))
 	}
 	undoLast(t, c)
-	if mangas, _ := c.Library.Mangas(); len(mangas) != 2 {
-		t.Fatalf("%d back", len(mangas))
+	if list, _ := c.Library.Mangas(ctx, MangasOptions{}); len(list.Mangas) != 2 {
+		t.Fatalf("%d back", len(list.Mangas))
 	}
 	if _, err := c.Changes.Plan(ctx, ForgetReq{}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("nothing to forget: %v", err)
@@ -300,7 +300,7 @@ func TestEmptyTrash(t *testing.T) {
 	if err != nil || res.Snapshot == "" || res.OpID != 0 {
 		t.Fatalf("%+v %v", res, err)
 	}
-	if trash, _ := c.Library.Trash(); len(trash) != 0 || exists(filepath.Join(root, ".mangal-trash", "x")) {
+	if trash, _ := c.Library.Trash(t.Context()); len(trash) != 0 || exists(filepath.Join(root, ".mangal-trash", "x")) {
 		t.Fatal("not emptied")
 	}
 	up, err := c.Changes.Plan(ctx, UndoReq{})
@@ -340,11 +340,11 @@ func TestHistoryClear(t *testing.T) {
 	if err != nil || res.Detail.(int64) != 2 || strings.Join(lines, "") != "forgot 2 read chapters" {
 		t.Fatalf("%+v %v %q", res, err, lines)
 	}
-	if reads, _ := c.Library.History("", ""); len(reads) != 1 {
+	if reads, _ := c.Library.History(t.Context(), "", ""); len(reads) != 1 {
 		t.Fatalf("%d reads left", len(reads))
 	}
 	undoLast(t, c)
-	if reads, _ := c.Library.History("", ""); len(reads) != 3 {
+	if reads, _ := c.Library.History(t.Context(), "", ""); len(reads) != 3 {
 		t.Fatalf("%d reads back", len(reads))
 	}
 	if _, err := c.Changes.Plan(ctx, HistoryClearReq{MangaID: "a"}); !errors.Is(err, ErrInvalid) {
@@ -392,7 +392,7 @@ func TestLockContention(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Library.Manga(m.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := c.Library.Manga(t.Context(), m.ID); !errors.Is(err, ErrNotFound) {
 		t.Error("not applied after the wait")
 	}
 }

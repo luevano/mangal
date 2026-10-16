@@ -21,17 +21,17 @@ import (
 )
 
 // toAPIJob is the job as the API answers it.
-func toAPIJob(j jobs.Job) apiv1.Job {
+func toAPIJob(j core.Job) apiv1.Job {
 	job := apiv1.Job{Id: j.ID, Kind: j.Kind.String(), Title: j.Title, Providers: orEmpty(j.Providers), Status: j.Status.String(),
 		Added: j.Added, Started: optTime(j.Started), Finished: optTime(j.Finished)}
-	if j.MangaID != "" {
-		job.MangaId = &j.MangaID
-	}
-	if j.Message != "" {
-		job.Message = &j.Message
-	}
-	if j.Note != "" {
-		job.Note = &j.Note
+	for _, f := range []struct {
+		v string
+		p **string
+	}{{j.MangaID, &job.MangaId}, {j.Message, &job.Message}, {j.Note, &job.Note}, {j.Error, &job.Error}} {
+		if f.v != "" {
+			v := f.v
+			*f.p = &v
+		}
 	}
 	if j.Total != 0 {
 		job.Done, job.Total = &j.Done, &j.Total
@@ -39,31 +39,21 @@ func toAPIJob(j jobs.Job) apiv1.Job {
 	if j.Part != 0 {
 		job.Part = &j.Part
 	}
-	if j.Err != nil {
-		e := j.Err.Error()
-		job.Error = &e
-	}
 	if j.Ahead != 0 {
 		job.Ahead, job.Behind = &j.Ahead, &j.Behind
 	}
 	if len(j.Results) != 0 {
 		results := make([]apiv1.JobResult, 0, len(j.Results))
 		for _, r := range j.Results {
-			info := r.Chapter.Info()
-			jr := apiv1.JobResult{Chapter: info.Number, Title: info.Title}
-			if r.Down != nil {
-				p := r.Down.Path()
-				jr.Path = &p
-				if r.Down.Skipped != "" {
-					jr.Skipped = &r.Down.Skipped
+			jr := apiv1.JobResult{Chapter: r.Chapter, Title: r.Title}
+			for _, f := range []struct {
+				v string
+				p **string
+			}{{r.Path, &jr.Path}, {r.Skipped, &jr.Skipped}, {r.Unavailable, &jr.Unavailable}, {r.Error, &jr.Error}} {
+				if f.v != "" {
+					v := f.v
+					*f.p = &v
 				}
-			}
-			if r.Unavailable != "" {
-				jr.Unavailable = &r.Unavailable
-			}
-			if r.Err != nil {
-				e := r.Err.Error()
-				jr.Error = &e
 			}
 			results = append(results, jr)
 		}
@@ -79,14 +69,26 @@ func (a *API) jobs() (*jobs.Manager, error) {
 	return a.Jobs, nil
 }
 
-// ListJobs implements apiv1.StrictServerInterface: the active ones first, then the newest.
-func (a *API) ListJobs(context.Context, apiv1.ListJobsRequestObject) (apiv1.ListJobsResponseObject, error) {
+// jobService is the server's jobs as the core's service.
+func (a *API) jobService() (core.Jobs, error) {
 	m, err := a.jobs()
 	if err != nil {
 		return nil, err
 	}
-	list := m.Jobs()
-	slices.SortStableFunc(list, func(x, y jobs.Job) int {
+	return core.LocalJobs(m), nil
+}
+
+// ListJobs implements apiv1.StrictServerInterface: the active ones first, then the newest.
+func (a *API) ListJobs(ctx context.Context, _ apiv1.ListJobsRequestObject) (apiv1.ListJobsResponseObject, error) {
+	svc, err := a.jobService()
+	if err != nil {
+		return nil, err
+	}
+	list, err := svc.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	slices.SortStableFunc(list, func(x, y core.Job) int {
 		if x.Status.Active() != y.Status.Active() {
 			if x.Status.Active() {
 				return -1
@@ -105,21 +107,21 @@ func (a *API) ListJobs(context.Context, apiv1.ListJobsRequestObject) (apiv1.List
 	return out, nil
 }
 
-func (a *API) job(id int64) (jobs.Job, error) {
-	m, err := a.jobs()
+func (a *API) job(ctx context.Context, id int64) (core.Job, core.Jobs, error) {
+	svc, err := a.jobService()
 	if err != nil {
-		return jobs.Job{}, err
+		return core.Job{}, nil, err
 	}
-	j, ok := m.Get(id)
-	if !ok {
-		return j, &core.NotFoundError{What: fmt.Sprintf("no job %d (finished ones are kept a while)", id)}
+	j, err := svc.Get(ctx, id)
+	if errors.Is(err, core.ErrNotFound) {
+		return j, svc, &core.NotFoundError{What: fmt.Sprintf("no job %d (finished ones are kept a while)", id)}
 	}
-	return j, nil
+	return j, svc, err
 }
 
 // GetJob implements apiv1.StrictServerInterface.
-func (a *API) GetJob(_ context.Context, request apiv1.GetJobRequestObject) (apiv1.GetJobResponseObject, error) {
-	j, err := a.job(request.Id)
+func (a *API) GetJob(ctx context.Context, request apiv1.GetJobRequestObject) (apiv1.GetJobResponseObject, error) {
+	j, _, err := a.job(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -127,25 +129,30 @@ func (a *API) GetJob(_ context.Context, request apiv1.GetJobRequestObject) (apiv
 }
 
 // CancelJob implements apiv1.StrictServerInterface.
-func (a *API) CancelJob(_ context.Context, request apiv1.CancelJobRequestObject) (apiv1.CancelJobResponseObject, error) {
-	j, err := a.job(request.Id)
+func (a *API) CancelJob(ctx context.Context, request apiv1.CancelJobRequestObject) (apiv1.CancelJobResponseObject, error) {
+	j, svc, err := a.job(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
-	if !a.Jobs.Cancel(request.Id) {
+	if ok, err := svc.Cancel(ctx, request.Id); err != nil {
+		return nil, err
+	} else if !ok {
 		return nil, newAPIError(http.StatusConflict, CodeRefused, "job %d is %s", j.ID, j.Status)
 	}
 	a.Log.Infof("job %d (%s) cancelled through the API", j.ID, j.Title)
-	j, _ = a.Jobs.Get(request.Id)
+	if now, err := svc.Get(ctx, request.Id); err == nil {
+		j = now
+	}
 	return apiv1.CancelJob202JSONResponse(toAPIJob(j)), nil
 }
 
 // RetryJob implements apiv1.StrictServerInterface.
-func (a *API) RetryJob(_ context.Context, request apiv1.RetryJobRequestObject) (apiv1.RetryJobResponseObject, error) {
-	if _, err := a.job(request.Id); err != nil {
+func (a *API) RetryJob(ctx context.Context, request apiv1.RetryJobRequestObject) (apiv1.RetryJobResponseObject, error) {
+	_, svc, err := a.job(ctx, request.Id)
+	if err != nil {
 		return nil, err
 	}
-	j, err := a.Jobs.Retry(request.Id)
+	j, err := svc.Retry(ctx, request.Id)
 	if err != nil {
 		if errors.Is(err, jobs.ErrNothingToRetry) {
 			return nil, &apiError{status: http.StatusConflict, code: CodeNothingToDo, err: err}
@@ -157,24 +164,29 @@ func (a *API) RetryJob(_ context.Context, request apiv1.RetryJobRequestObject) (
 }
 
 // RemoveJob implements apiv1.StrictServerInterface.
-func (a *API) RemoveJob(_ context.Context, request apiv1.RemoveJobRequestObject) (apiv1.RemoveJobResponseObject, error) {
-	j, err := a.job(request.Id)
+func (a *API) RemoveJob(ctx context.Context, request apiv1.RemoveJobRequestObject) (apiv1.RemoveJobResponseObject, error) {
+	j, svc, err := a.job(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
-	if !a.Jobs.Remove(request.Id) {
+	if ok, err := svc.Remove(ctx, request.Id); err != nil {
+		return nil, err
+	} else if !ok {
 		return nil, newAPIError(http.StatusConflict, CodeRefused, "job %d is %s, cancel it first", j.ID, j.Status)
 	}
 	return apiv1.RemoveJob204Response{}, nil
 }
 
 // ClearJobQueue implements apiv1.StrictServerInterface.
-func (a *API) ClearJobQueue(_ context.Context, request apiv1.ClearJobQueueRequestObject) (apiv1.ClearJobQueueResponseObject, error) {
-	m, err := a.jobs()
+func (a *API) ClearJobQueue(ctx context.Context, request apiv1.ClearJobQueueRequestObject) (apiv1.ClearJobQueueResponseObject, error) {
+	svc, err := a.jobService()
 	if err != nil {
 		return nil, err
 	}
-	n := m.ClearQueue(deref(deref(request.Body).Provider))
+	n, err := svc.ClearQueue(ctx, deref(deref(request.Body).Provider))
+	if err != nil {
+		return nil, err
+	}
 	if n > 0 {
 		a.Log.Infof("%s cancelled through the API", stringutil.Quantify(n, "queued job", "queued jobs"))
 	}
@@ -233,7 +245,7 @@ func (a *API) StartDownload(ctx context.Context, request apiv1.StartDownloadRequ
 	title := fmt.Sprintf("%s: %s", manga.Info().Title, chaptersTitle(chapters))
 	job := m.Add(jobs.DownloadSpec(c, manga, chapters, options, title, "api"))
 	a.Log.Infof("download %d (asked through the API): %s from %s", job.ID, title, c.Info().ID)
-	return apiv1.StartDownload202JSONResponse(toAPIJob(job)), nil
+	return apiv1.StartDownload202JSONResponse(toAPIJob(core.JobOf(job))), nil
 }
 
 // chaptersTitle is "chapter 3" or "chapters 1-5 (4)".
@@ -258,7 +270,11 @@ func (a *API) ScanLibrary(ctx context.Context, request apiv1.ScanLibraryRequestO
 	b := deref(request.Body)
 	opts := core.ScanOptions{Check: deref(b.Check), Statuses: deref(b.Statuses)}
 	job := m.Add(jobs.Spec{Kind: jobs.KindScan, Title: "library scan", Origin: "api", Run: func(ctx context.Context, p *jobs.Progress) error {
-		p.Running("scanning " + c.Library.Root())
+		root, err := c.Library.Root(ctx)
+		if err != nil {
+			return err
+		}
+		p.Running("scanning " + root)
 		ctx = core.WithProgress(ctx, func(pr library.Progress) { p.Message(pr.String()) })
 		rep, err := c.Library.Scan(ctx, opts)
 		if err != nil {
@@ -269,7 +285,7 @@ func (a *API) ScanLibrary(ctx context.Context, request apiv1.ScanLibraryRequestO
 		a.Log.Infof("library scan (asked through the API): %s", msg)
 		return nil
 	}})
-	return apiv1.ScanLibrary202JSONResponse(toAPIJob(job)), nil
+	return apiv1.ScanLibrary202JSONResponse(toAPIJob(core.JobOf(job))), nil
 }
 
 // scanSummary is what a scan found, in a line.

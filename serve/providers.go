@@ -90,7 +90,7 @@ func (a *API) SetProviderMirror(_ context.Context, request apiv1.SetProviderMirr
 	if l, err = a.loader(info.ID); err != nil {
 		return nil, err
 	}
-	return apiv1.SetProviderMirror200JSONResponse(toAPIProvider(l)), nil
+	return apiv1.SetProviderMirror200JSONResponse(toAPIProvider(l.Info())), nil
 }
 
 func cmpOr(a, b string) string {
@@ -139,8 +139,7 @@ func (a *API) UpdateProviders(ctx context.Context, _ apiv1.UpdateProvidersReques
 	return out, nil
 }
 
-func toAPIProvider(l libmangal.ProviderLoader) apiv1.Provider {
-	info := l.Info()
+func toAPIProvider(info libmangal.ProviderInfo) apiv1.Provider {
 	out := apiv1.Provider{Id: info.ID, Name: info.Name, Version: info.Version}
 	if info.Description != "" {
 		out.Description = &info.Description

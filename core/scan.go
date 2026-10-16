@@ -39,7 +39,7 @@ type ScanReport struct {
 // exist: a drive not mounted), then finds the duplicates and, with opts.Check, checks the
 // guessed ids. It changes the library's rows only (the files are never touched), as a
 // download does: no operation.
-func (l *Library) Scan(ctx context.Context, opts ScanOptions) (ScanReport, error) {
+func (l *localLibrary) Scan(ctx context.Context, opts ScanOptions) (ScanReport, error) {
 	c := l.core
 	files, err := c.existingFiles()
 	if err != nil {
@@ -52,7 +52,7 @@ func (l *Library) Scan(ctx context.Context, opts ScanOptions) (ScanReport, error
 		return rep, err
 	}
 	rep.OtherRoot = library.OtherRoot(c.env.FS, rep.Result.Missing, files.Root, providerDirs)
-	if rep.Duplicates, err = l.Duplicates(); err != nil {
+	if rep.Duplicates, err = l.Duplicates(ctx); err != nil {
 		return rep, err
 	}
 	if opts.Check && rep.OtherRoot == "" {
@@ -70,7 +70,7 @@ func (l *Library) Scan(ctx context.Context, opts ScanOptions) (ScanReport, error
 // CheckIDs looks the metadata ids of the folders without a .libmangal.json up on AniList
 // and Kitsu: those not found or whose manga doesn't look like the folder's, and an
 // AniList suggestion for the folders without any.
-func (l *Library) CheckIDs(ctx context.Context) ([]library.IDCheck, error) {
+func (l *localLibrary) CheckIDs(ctx context.Context) ([]library.IDCheck, error) {
 	c := l.core
 	mangas, err := c.env.Storage.Library().Mangas()
 	if err != nil {
@@ -105,6 +105,6 @@ func idChecker(ctx context.Context) (library.IDChecker, error) {
 }
 
 // Duplicates are the library mangas sharing a metadata id, with the one to keep suggested.
-func (l *Library) Duplicates() ([]library.Duplicate, error) {
+func (l *localLibrary) Duplicates(context.Context) ([]library.Duplicate, error) {
 	return client.LibraryDuplicates(l.core.env.Storage.Library())
 }

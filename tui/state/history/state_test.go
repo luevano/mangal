@@ -72,7 +72,7 @@ func TestClear(t *testing.T) {
 	if n := len(s.List.Items()); n != 1 {
 		t.Errorf("%d mangas after", n)
 	}
-	if ops, _ := c.Library.Ops(0); len(ops) != 1 || ops[0].Kind != "history-clear" {
+	if ops, _ := c.Library.Ops(ctx, 0); len(ops) != 1 || ops[0].Kind != "history-clear" {
 		t.Errorf("ops %+v", ops)
 	}
 }

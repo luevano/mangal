@@ -21,6 +21,7 @@ import (
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
@@ -75,6 +76,10 @@ type Env struct {
 	// BackupFinder finds the Kitsu and MyAnimeList links of mangas linked to AniList (its
 	// Files are the Env's).
 	BackupFinder func() (library.BackupFinder, error)
+	// Checker is the health checker over the watches (health.NewWith).
+	Checker func(watch.Manager) (health.Checker, error)
+	// LogDir is the log files' directory.
+	LogDir func() string
 	// Now is the clock.
 	Now func() time.Time
 }
@@ -138,6 +143,12 @@ func (e Env) withDefaults() (Env, error) {
 	if e.BackupFinder == nil {
 		e.BackupFinder = client.LibraryBackups
 	}
+	if e.Checker == nil {
+		e.Checker = health.NewWith
+	}
+	if e.LogDir == nil {
+		e.LogDir = path.Logs
+	}
 	if e.Now == nil {
 		e.Now = time.Now
 	}
@@ -156,14 +167,21 @@ func connectWatches(ctx context.Context) (watch.Manager, error) {
 	return m, nil
 }
 
-// Core is the services over an Env.
+// Core is the services over an Env. Each is an interface whose methods take a ctx and
+// deal in plain data, so a remote implementation (the serve API's client) can stand in;
+// the watches are watch.Manager's and the jobs whoever runs them (LocalJobs).
 type Core struct {
 	env Env
 	ops client.Ops
 	// Changes plans and applies the destructive changes.
 	Changes Changes
 	// Library reads the library.
-	Library *Library
+	Library   Library
+	Health    Health
+	Logs      Logs
+	Providers Providers
+	Config    Config
+	Accounts  Accounts
 }
 
 // New is the services over env (its zero fields mangal's own).
@@ -174,7 +192,12 @@ func New(_ context.Context, env Env) (*Core, error) {
 	}
 	c := &Core{env: env, ops: client.Ops{Storage: env.Storage, BackupsDir: env.BackupsDir, Keep: env.Backups}}
 	c.Changes = &changes{core: c}
-	c.Library = &Library{core: c}
+	c.Library = &localLibrary{core: c}
+	c.Health = &localHealth{core: c}
+	c.Logs = NewLogs(env.LogDir)
+	c.Providers = NewProviders(env.Loaders)
+	c.Config = NewConfig()
+	c.Accounts = NewAccounts()
 	return c, nil
 }
 

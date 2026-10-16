@@ -12,44 +12,6 @@ import (
 	"github.com/spf13/afero"
 )
 
-// Library reads the library.
-type Library struct {
-	core *Core
-}
-
-// Mangas are the library's mangas.
-func (l *Library) Mangas() ([]storage.Manga, error) {
-	return l.core.env.Storage.Library().Mangas()
-}
-
-// Manga is the library manga with the id, a *NotFoundError when there's none.
-func (l *Library) Manga(id int64) (storage.Manga, error) {
-	return l.core.manga(id)
-}
-
-// Downloads are the manga's downloaded chapters.
-func (l *Library) Downloads(manga int64) ([]storage.Download, error) {
-	return l.core.env.Storage.Library().Downloads(manga)
-}
-
-// Trash is what's in the trash, oldest first.
-func (l *Library) Trash() ([]library.TrashBatch, error) {
-	return library.Trash(l.core.env.FS, l.core.env.Root())
-}
-
-// Ops are the journal's operations, newest first (limit 0: all).
-func (l *Library) Ops(limit int) ([]storage.Op, error) {
-	return l.core.env.Storage.Journal().Ops(limit)
-}
-
-// History is the read chapters (of the provider, or its manga), last read first.
-func (l *Library) History(provider, mangaID string) ([]storage.Read, error) {
-	return l.core.env.Storage.History().List(provider, mangaID)
-}
-
-// Root is the download directory.
-func (l *Library) Root() string { return l.core.env.Root() }
-
 // manga is the library manga with the id, a *NotFoundError when there's none.
 func (c *Core) manga(id int64) (storage.Manga, error) {
 	m, ok, err := c.env.Storage.Library().MangaByID(id)

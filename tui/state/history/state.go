@@ -85,7 +85,7 @@ func (s *state) reload(ctx context.Context) tea.Cmd {
 		if err != nil {
 			return nil, err
 		}
-		reads, err := c.Library.History("", "")
+		reads, err := c.Library.History(ctx, "", "")
 		if err != nil {
 			return nil, err
 		}

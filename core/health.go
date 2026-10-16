@@ -331,33 +331,3 @@ func (r HealthFixReq) planWatch(ctx context.Context, c *Core) (*prepared, error)
 		},
 	}, nil
 }
-
-// Finding is the finding with the key there now, an offline run of its check (with the
-// network checks too when network), a *NotFoundError when it isn't there.
-func (c *Core) Finding(ctx context.Context, key string, network bool) (health.Finding, error) {
-	check, subject, err := health.SplitKey(key)
-	if err != nil {
-		return health.Finding{}, invalid("%s", err)
-	}
-	m, err := c.env.Watches(ctx)
-	if err != nil {
-		return health.Finding{}, err
-	}
-	checker, err := health.NewWith(m)
-	if err != nil {
-		return health.Finding{}, err
-	}
-	report, err := checker.Run(ctx, health.Options{Only: []string{check}, Network: network, All: true})
-	if err != nil {
-		return health.Finding{}, err
-	}
-	f, ok := report.Find(check + "/" + subject)
-	if !ok {
-		what := fmt.Sprintf("no finding %s now (mangal health shows the keys", key)
-		if health.IsNetwork(check) && !network {
-			what += "; a network check's needs --network"
-		}
-		return health.Finding{}, &NotFoundError{What: what + ")"}
-	}
-	return f, nil
-}

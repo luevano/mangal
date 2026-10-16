@@ -40,7 +40,7 @@ func (a *API) GetLibraryCover(ctx context.Context, request apiv1.GetLibraryCover
 	if err != nil {
 		return nil, err
 	}
-	m, err := c.Library.Manga(request.Id)
+	m, err := c.Library.Manga(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -64,11 +64,11 @@ func (a *API) libraryChapter(ctx context.Context, id int64, path string) (*pages
 	if err != nil {
 		return nil, storage.Download{}, err
 	}
-	m, err := c.Library.Manga(id)
+	m, err := c.Library.Manga(ctx, id)
 	if err != nil {
 		return nil, storage.Download{}, err
 	}
-	downloads, err := c.Library.Downloads(m.ID)
+	downloads, err := c.Library.Downloads(ctx, m.ID)
 	if err != nil {
 		return nil, storage.Download{}, err
 	}
@@ -411,11 +411,11 @@ func (a *API) GetLibraryMangaZip(ctx context.Context, request apiv1.GetLibraryMa
 	if err != nil {
 		return nil, err
 	}
-	m, err := c.Library.Manga(request.Id)
+	m, err := c.Library.Manga(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
-	downloads, err := c.Library.Downloads(m.ID)
+	downloads, err := c.Library.Downloads(ctx, m.ID)
 	if err != nil {
 		return nil, err
 	}

@@ -124,9 +124,9 @@ func TestWebUI(t *testing.T) {
 	step().MustElement("[data-test=plan-apply]").MustClick()
 	step().MustElement("[data-test=plan-done]")
 	if mangas, _ := s.api.services(context.Background()); mangas != nil {
-		list, _ := mangas.Library.Mangas()
-		if len(list) != 1 {
-			t.Errorf("%d mangas after the merge", len(list))
+		list, _ := mangas.Library.Mangas(context.Background(), core.MangasOptions{})
+		if len(list.Mangas) != 1 {
+			t.Errorf("%d mangas after the merge", len(list.Mangas))
 		}
 	}
 	step().MustElement("[data-test=plan-dialog] .btn-close").MustClick()
@@ -135,8 +135,8 @@ func TestWebUI(t *testing.T) {
 	step().MustElement("[data-test=plan-apply]").MustClick()
 	step().MustElement("[data-test=plan-done]")
 	c, _ := s.api.services(context.Background())
-	if list, _ := c.Library.Mangas(); len(list) != 2 {
-		t.Errorf("%d mangas after the undo", len(list))
+	if list, _ := c.Library.Mangas(context.Background(), core.MangasOptions{}); len(list.Mangas) != 2 {
+		t.Errorf("%d mangas after the undo", len(list.Mangas))
 	}
 }
 

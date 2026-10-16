@@ -3,6 +3,7 @@ package serve
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -15,7 +16,6 @@ import (
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/log"
-	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
@@ -24,61 +24,51 @@ import (
 // default) of every file (or the one named), oldest first.
 func (a *API) ListLogs(ctx context.Context, request apiv1.ListLogsRequestObject) (apiv1.ListLogsResponseObject, error) {
 	p := request.Params
-	var filter log.Filter
+	q := core.LogQuery{Level: deref(p.Level), Grep: deref(p.Grep), Limit: deref(p.Limit)}
+	if p.Limit == nil {
+		q.Limit = 200
+	}
 	var err error
 	if s := deref(p.Since); s != "" {
-		if filter.Since, err = parseSince(s); err != nil {
+		if q.Since, err = parseSince(s); err != nil {
 			return nil, badRequest("since: %w", err)
 		}
 	}
 	if s := deref(p.Until); s != "" {
-		if filter.Until, err = parseSince(s); err != nil {
+		if q.Until, err = parseSince(s); err != nil {
 			return nil, badRequest("until: %w", err)
 		}
 	}
-	if s := deref(p.Level); s != "" {
-		if filter.Level, err = log.ParseLevel(s); err != nil {
-			return nil, badRequest("level: %w", err)
-		}
-	}
-	filter.Pattern = log.Pattern(deref(p.Grep), false)
-	files, err := log.Files(path.Logs())
-	if err != nil {
-		return nil, fmt.Errorf("list log files: %w", err)
-	}
 	if name := deref(p.File); name != "" {
-		i := slices.IndexFunc(files, func(f log.File) bool { return f.Name == name || f.Name == name+".gz" })
-		if i < 0 {
-			return nil, &core.NotFoundError{What: fmt.Sprintf("no log file %q (see /api/v1/logs/files)", name)}
-		}
-		files = files[i : i+1]
+		q.Files = []string{name}
 	}
-	limit := deref(p.Limit)
-	if p.Limit == nil {
-		limit = 200
+	c, err := a.services(ctx)
+	if err != nil {
+		return nil, err
 	}
-	var entries []apiv1.LogEntry
-	err = log.Scan(ctx, files, filter, func(e log.Entry) error {
+	entries := []apiv1.LogEntry{}
+	err = c.Logs.Entries(ctx, q, func(e log.Entry) error {
 		entries = append(entries, toAPILog(e))
-		if limit > 0 && len(entries) > 2*limit {
-			entries = slices.Delete(entries, 0, len(entries)-limit)
-		}
 		return nil
 	})
+	if errors.Is(err, core.ErrNotFound) {
+		return nil, fmt.Errorf("%w (see /api/v1/logs/files)", err)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read logs: %w", err)
 	}
-	if limit > 0 && len(entries) > limit {
-		entries = entries[len(entries)-limit:]
-	}
-	return apiv1.ListLogs200JSONResponse(orEmpty(entries)), nil
+	return apiv1.ListLogs200JSONResponse(entries), nil
 }
 
 // ListLogFiles implements apiv1.StrictServerInterface.
-func (a *API) ListLogFiles(context.Context, apiv1.ListLogFilesRequestObject) (apiv1.ListLogFilesResponseObject, error) {
-	files, err := log.Files(path.Logs())
+func (a *API) ListLogFiles(ctx context.Context, _ apiv1.ListLogFilesRequestObject) (apiv1.ListLogFilesResponseObject, error) {
+	c, err := a.services(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list log files: %w", err)
+		return nil, err
+	}
+	files, err := c.Logs.Files(ctx)
+	if err != nil {
+		return nil, err
 	}
 	out := apiv1.ListLogFiles200JSONResponse{}
 	for _, f := range files {
@@ -103,25 +93,25 @@ func toAPIManga(m mangadata.Manga) apiv1.Manga {
 }
 
 // ListProviders implements apiv1.StrictServerInterface.
-func (a *API) ListProviders(context.Context, apiv1.ListProvidersRequestObject) (apiv1.ListProvidersResponseObject, error) {
-	loaders, err := a.loaders()
+func (a *API) ListProviders(ctx context.Context, _ apiv1.ListProvidersRequestObject) (apiv1.ListProvidersResponseObject, error) {
+	infos, err := core.NewProviders(a.loaders).List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := apiv1.ListProviders200JSONResponse{}
-	for _, l := range loaders {
-		out = append(out, toAPIProvider(l))
+	for _, info := range infos {
+		out = append(out, toAPIProvider(info))
 	}
 	return out, nil
 }
 
 // GetProviderInfo implements apiv1.StrictServerInterface.
-func (a *API) GetProviderInfo(_ context.Context, request apiv1.GetProviderInfoRequestObject) (apiv1.GetProviderInfoResponseObject, error) {
-	l, err := a.loader(request.Provider)
+func (a *API) GetProviderInfo(ctx context.Context, request apiv1.GetProviderInfoRequestObject) (apiv1.GetProviderInfoResponseObject, error) {
+	info, err := core.NewProviders(a.loaders).Info(ctx, request.Provider)
 	if err != nil {
 		return nil, err
 	}
-	return apiv1.GetProviderInfo200JSONResponse(toAPIProvider(l)), nil
+	return apiv1.GetProviderInfo200JSONResponse(toAPIProvider(info)), nil
 }
 
 // withClient runs fn with the provider's client.
@@ -290,7 +280,7 @@ func (a *API) ListBindings(ctx context.Context, request apiv1.ListBindingsReques
 	if err != nil {
 		return nil, err
 	}
-	list, err := svc.Env().Storage.Bindings().List(deref(request.Params.Provider), deref(request.Params.MangaId))
+	list, err := svc.Library.Bindings(ctx, deref(request.Params.Provider), deref(request.Params.MangaId))
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +294,7 @@ func (a *API) ListHistory(ctx context.Context, request apiv1.ListHistoryRequestO
 		return nil, err
 	}
 	p := request.Params
-	reads, err := svc.Library.History(deref(p.Provider), deref(p.MangaId))
+	reads, err := svc.Library.History(ctx, deref(p.Provider), deref(p.MangaId))
 	if err != nil {
 		return nil, err
 	}
@@ -332,37 +322,30 @@ func applies(key string) string {
 	return "restart"
 }
 
-func configEntry(key string) (apiv1.ConfigEntry, error) {
-	value, err := config.Get(key)
-	if err != nil {
-		return apiv1.ConfigEntry{}, err
+func toAPIConfig(e core.ConfigEntry) apiv1.ConfigEntry {
+	out := apiv1.ConfigEntry{Key: e.Key, Value: e.Value, Default: e.Default, Description: e.Description, Secret: e.Secret, Applies: applies(e.Key)}
+	if e.Env != "" {
+		out.Env = &e.Env
 	}
-	def, _ := config.Default(key)
-	description, _ := config.Description(key)
-	e := apiv1.ConfigEntry{Key: key, Value: config.Masked(key, value), Default: config.Masked(key, def), Description: description,
-		Secret: config.IsSecret(key), Applies: applies(key)}
-	if name, set := config.EnvVar(key); set {
-		e.Env = &name
-	}
-	return e, nil
+	return out
 }
 
 // ListConfig implements apiv1.StrictServerInterface.
-func (a *API) ListConfig(context.Context, apiv1.ListConfigRequestObject) (apiv1.ListConfigResponseObject, error) {
+func (a *API) ListConfig(ctx context.Context, _ apiv1.ListConfigRequestObject) (apiv1.ListConfigResponseObject, error) {
+	entries, err := core.NewConfig().List(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := apiv1.ListConfig200JSONResponse{}
-	for _, key := range config.Keys() {
-		e, err := configEntry(key)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, e)
+	for _, e := range entries {
+		out = append(out, toAPIConfig(e))
 	}
 	return out, nil
 }
 
 // SetConfig implements apiv1.StrictServerInterface: writes the key to the config file.
 // Secrets and the serve.* keys (its own security) aren't set over HTTP.
-func (a *API) SetConfig(_ context.Context, request apiv1.SetConfigRequestObject) (apiv1.SetConfigResponseObject, error) {
+func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObject) (apiv1.SetConfigResponseObject, error) {
 	key := request.Key
 	if !config.Exists(key) {
 		return nil, newAPIError(http.StatusNotFound, "not_found", "no config key %q", key)
@@ -374,33 +357,30 @@ func (a *API) SetConfig(_ context.Context, request apiv1.SetConfigRequestObject)
 	if body.Value == nil {
 		return nil, badRequest("value is needed")
 	}
-	if _, err := config.Parse(key, body.Value); err != nil {
+	e, err := core.NewConfig().Set(ctx, key, body.Value)
+	if errors.Is(err, core.ErrInvalid) {
 		return nil, badRequest("%w", err)
 	}
-	if err := config.WriteKey(key, body.Value); err != nil {
-		return nil, err
-	}
-	e, err := configEntry(key)
 	if err != nil {
 		return nil, err
 	}
-	a.Log.Infof("config %s = %v set through the API (applies: %s)", key, e.Value, e.Applies)
-	return apiv1.SetConfig200JSONResponse(e), nil
+	a.Log.Infof("config %s = %v set through the API (applies: %s)", key, e.Value, applies(key))
+	return apiv1.SetConfig200JSONResponse(toAPIConfig(e)), nil
 }
 
 // ListAccounts implements apiv1.StrictServerInterface.
 func (a *API) ListAccounts(ctx context.Context, _ apiv1.ListAccountsRequestObject) (apiv1.ListAccountsResponseObject, error) {
-	entries, err := client.AccountsCached(ctx)
+	accounts, err := core.NewAccounts().List(ctx, core.AccountsOptions{Cached: true})
 	if err != nil {
 		return nil, err
 	}
-	out := apiv1.ListAccounts200JSONResponse{}
-	for _, e := range entries {
+	list := apiv1.ListAccounts200JSONResponse{}
+	for _, e := range accounts {
 		acc := apiv1.Account{Service: e.Service, Status: e.Status, Checked: optTime(e.Checked), Expires: optTime(e.Expires)}
 		for _, f := range []struct {
 			v string
 			p **string
-		}{{e.Provider, &acc.Provider}, {e.User, &acc.User}, {e.URL, &acc.Url}} {
+		}{{e.Provider, &acc.Provider}, {e.User, &acc.User}, {e.URL, &acc.Url}, {e.Error, &acc.Error}} {
 			if f.v != "" {
 				v := f.v
 				*f.p = &v
@@ -409,11 +389,7 @@ func (a *API) ListAccounts(ctx context.Context, _ apiv1.ListAccountsRequestObjec
 		if len(e.Details) != 0 {
 			acc.Details = &e.Details
 		}
-		if e.Err != nil {
-			msg := e.Err.Error()
-			acc.Error = &msg
-		}
-		out = append(out, acc)
+		list = append(list, acc)
 	}
-	return out, nil
+	return list, nil
 }
