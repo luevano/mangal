@@ -204,6 +204,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/library/mangas/{id}/zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every downloaded chapter of a library manga in one zip
+         * @description Streamed (stored, not compressed again), the chapter files under their names in the manga's folder; a folder of images is zipped inside.
+         */
+        get: operations["getLibraryMangaZip"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/library/downloads": {
         parameters: {
             query?: never;
@@ -715,6 +735,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/providers/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update the installed providers (git pull of each)
+         * @description Only the providers already installed, from their own remotes (https, ssh, file); installing a provider has no endpoint. The providers are loaded again after.
+         */
+        post: operations["updateProviders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/providers/{provider}/mirror": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the provider's preferred website (providers.mirrors)
+         * @description Its website or one of its mirrors; empty or the website itself goes back to the default. The mirror that last worked is forgotten and the providers loaded again.
+         */
+        put: operations["setProviderMirror"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/providers/{provider}": {
         parameters: {
             query?: never;
@@ -918,6 +978,43 @@ export interface paths {
         post?: never;
         /** Remove a binding */
         delete: operations["removeBinding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/metadata/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList) */
+        get: operations["listMetadataSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/metadata/{source}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search a metadata source's mangas
+         * @description The closest match first (with its score), then the source's results; a number (or `id:<n>`) gets the manga with that id. Bind one with setBinding, link it with linkLibraryManga.
+         */
+        get: operations["searchMetadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1186,6 +1283,59 @@ export interface components {
             id: string;
             description?: string;
             version: string;
+            website?: string;
+            /** @description the other websites it can use (providers.mirrors) */
+            mirrors?: string[];
+            /** @description the preferred website (providers.mirrors), the website when none is set */
+            preferred?: string;
+        };
+        MirrorRequest: {
+            /** @description the website or one of the mirrors, empty for the default */
+            mirror: string;
+        };
+        ProvidersUpdate: {
+            providers: components["schemas"]["ProviderUpdate"][];
+            /** @description providers that couldn't be loaded after */
+            problems?: string[];
+        };
+        ProviderUpdate: {
+            /** @description the provider's directory */
+            dir: string;
+            /** @description updated, up to date, skipped (not a git repository or no remote) or failed */
+            status: string;
+            error?: string;
+        };
+        MetadataSource: {
+            /** @description al, kt, mal (Binding.source) */
+            code: string;
+            key: string;
+            name: string;
+            /** @description the page of a manga, the id appended */
+            url: string;
+            enabled: boolean;
+            /** @description why it can't be searched (not enabled, no API client) */
+            reason?: string;
+        };
+        MetadataResult: {
+            /** @description the source's code */
+            source: string;
+            id: string;
+            title: string;
+            alternate_titles?: string[];
+            year?: number;
+            format?: string;
+            status?: string;
+            chapters?: number;
+            cover?: string;
+            url: string;
+            authors?: string[];
+            /**
+             * Format: double
+             * @description how close it is to the query, 0 to 1
+             */
+            score: number;
+            /** @description too unlike the query to be used automatically (it can still be picked) */
+            bad: boolean;
         };
         Manga: {
             id: string;
@@ -1717,6 +1867,9 @@ export interface components {
             /** Format: int64 */
             size?: number;
             type?: string;
+            /** @description in pixels, when known (a library page whose header could be read) */
+            width?: number;
+            height?: number;
         };
         ReaderPosition: {
             /** @description the reader's chapter key */
@@ -2312,6 +2465,30 @@ export interface operations {
                 };
                 content: {
                     "*/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getLibraryMangaZip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the zip */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
                 };
             };
             default: components["responses"]["Error"];
@@ -3002,6 +3179,55 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    updateProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description what each provider directory did */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvidersUpdate"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setProviderMirror: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description a provider id */
+                provider: components["parameters"]["ProviderPathParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MirrorRequest"];
+            };
+        };
+        responses: {
+            /** @description the provider */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Provider"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     getProviderInfo: {
         parameters: {
             query?: never;
@@ -3361,6 +3587,53 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listMetadataSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the sources, in their order of priority */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataSource"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    searchMetadata: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path: {
+                /** @description the source's key or code (anilist/al, kitsu/kt, mal) */
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the mangas found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataResult"][];
+                };
+            };
             default: components["responses"]["Error"];
         };
     };

@@ -54,10 +54,13 @@ func Serve(ctx context.Context, server *http.Server, listener net.Listener, stop
 	return serveErr
 }
 
+// loadProviders is manager.Load, swapped in tests.
+var loadProviders = manager.Load
+
 // NewBrowser has the providers and the image proxy, and serves the UI (RegisterUI).
 // Providers that can't be loaded are told to out.
 func NewBrowser(out io.Writer) (*Server, error) {
-	loaders, problems, err := manager.Load()
+	loaders, problems, err := loadProviders()
 	if err != nil {
 		return nil, err
 	}

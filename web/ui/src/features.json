@@ -15,6 +15,24 @@
       "not_applicable": "providers run code: never installed over HTTP"
     },
     {
+      "name": "provider update",
+      "web": [
+        "providers"
+      ],
+      "api": [
+        "updateProviders"
+      ]
+    },
+    {
+      "name": "mirrors",
+      "web": [
+        "providers"
+      ],
+      "api": [
+        "setProviderMirror"
+      ]
+    },
+    {
       "name": "search and browse",
       "web": [
         "search",
@@ -89,7 +107,8 @@
         "getLibraryManga",
         "getLibraryCover",
         "listLibraryChapters",
-        "listDownloads"
+        "listDownloads",
+        "getLibraryMangaZip"
       ]
     },
     {
@@ -236,7 +255,14 @@
     },
     {
       "name": "metadata search",
-      "not_applicable": "not in the API yet (docs/core.md Progress)"
+      "web": [
+        "provider-manga",
+        "library-manga"
+      ],
+      "api": [
+        "listMetadataSources",
+        "searchMetadata"
+      ]
     },
     {
       "name": "health",

@@ -86,10 +86,14 @@ type ChangeResponse struct {
 
 // ChapterPage defines model for ChapterPage.
 type ChapterPage struct {
-	Index int     `json:"index"`
-	Name  *string `json:"name,omitempty"`
-	Size  *int64  `json:"size,omitempty"`
-	Type  *string `json:"type,omitempty"`
+	Height *int    `json:"height,omitempty"`
+	Index  int     `json:"index"`
+	Name   *string `json:"name,omitempty"`
+	Size   *int64  `json:"size,omitempty"`
+	Type   *string `json:"type,omitempty"`
+
+	// Width in pixels, when known (a library page whose header could be read)
+	Width *int `json:"width,omitempty"`
 }
 
 // ChapterPages defines model for ChapterPages.
@@ -550,6 +554,50 @@ type MetadataID struct {
 	Source string `json:"source"`
 }
 
+// MetadataResult defines model for MetadataResult.
+type MetadataResult struct {
+	AlternateTitles *[]string `json:"alternate_titles,omitempty"`
+	Authors         *[]string `json:"authors,omitempty"`
+
+	// Bad too unlike the query to be used automatically (it can still be picked)
+	Bad      bool    `json:"bad"`
+	Chapters *int    `json:"chapters,omitempty"`
+	Cover    *string `json:"cover,omitempty"`
+	Format   *string `json:"format,omitempty"`
+	Id       string  `json:"id"`
+
+	// Score how close it is to the query, 0 to 1
+	Score float64 `json:"score"`
+
+	// Source the source's code
+	Source string  `json:"source"`
+	Status *string `json:"status,omitempty"`
+	Title  string  `json:"title"`
+	Url    string  `json:"url"`
+	Year   *int    `json:"year,omitempty"`
+}
+
+// MetadataSource defines model for MetadataSource.
+type MetadataSource struct {
+	// Code al, kt, mal (Binding.source)
+	Code    string `json:"code"`
+	Enabled bool   `json:"enabled"`
+	Key     string `json:"key"`
+	Name    string `json:"name"`
+
+	// Reason why it can't be searched (not enabled, no API client)
+	Reason *string `json:"reason,omitempty"`
+
+	// Url the page of a manga, the id appended
+	Url string `json:"url"`
+}
+
+// MirrorRequest defines model for MirrorRequest.
+type MirrorRequest struct {
+	// Mirror the website or one of the mirrors, empty for the default
+	Mirror string `json:"mirror"`
+}
+
 // MoveRequest defines model for MoveRequest.
 type MoveRequest struct {
 	// Confirm empty-trash for an irreversible plan, force-undo for a forced undo
@@ -603,8 +651,15 @@ type Plan = core.Plan
 type Provider struct {
 	Description *string `json:"description,omitempty"`
 	Id          string  `json:"id"`
-	Name        string  `json:"name"`
-	Version     string  `json:"version"`
+
+	// Mirrors the other websites it can use (providers.mirrors)
+	Mirrors *[]string `json:"mirrors,omitempty"`
+	Name    string    `json:"name"`
+
+	// Preferred the preferred website (providers.mirrors), the website when none is set
+	Preferred *string `json:"preferred,omitempty"`
+	Version   string  `json:"version"`
+	Website   *string `json:"website,omitempty"`
 }
 
 // ProviderChapter defines model for ProviderChapter.
@@ -633,6 +688,23 @@ type ProviderManga struct {
 
 // ProviderStatus defines model for ProviderStatus.
 type ProviderStatus = watch.ProviderStatus
+
+// ProviderUpdate defines model for ProviderUpdate.
+type ProviderUpdate struct {
+	// Dir the provider's directory
+	Dir   string  `json:"dir"`
+	Error *string `json:"error,omitempty"`
+
+	// Status updated, up to date, skipped (not a git repository or no remote) or failed
+	Status string `json:"status"`
+}
+
+// ProvidersUpdate defines model for ProvidersUpdate.
+type ProvidersUpdate struct {
+	// Problems providers that couldn't be loaded after
+	Problems  *[]string        `json:"problems,omitempty"`
+	Providers []ProviderUpdate `json:"providers"`
+}
 
 // Read defines model for Read.
 type Read struct {
@@ -1077,6 +1149,11 @@ type ListLogsParams struct {
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// SearchMetadataParams defines parameters for SearchMetadata.
+type SearchMetadataParams struct {
+	Q string `form:"q" json:"q"`
+}
+
 // ListOpsParams defines parameters for ListOps.
 type ListOpsParams struct {
 	// Limit at most this many (0 for all)
@@ -1224,6 +1301,9 @@ type EmptyTrashJSONRequestBody = ApplyFields
 
 // UndoOpJSONRequestBody defines body for UndoOp for application/json ContentType.
 type UndoOpJSONRequestBody = ApplyFields
+
+// SetProviderMirrorJSONRequestBody defines body for SetProviderMirror for application/json ContentType.
+type SetProviderMirrorJSONRequestBody = MirrorRequest
 
 // PutReaderPositionJSONRequestBody defines body for PutReaderPosition for application/json ContentType.
 type PutReaderPositionJSONRequestBody = ReaderPosition

@@ -87,15 +87,6 @@ func (a *API) ListLogFiles(context.Context, apiv1.ListLogFilesRequestObject) (ap
 	return out, nil
 }
 
-func toAPIProvider(l libmangal.ProviderLoader) apiv1.Provider {
-	info := l.Info()
-	out := apiv1.Provider{Id: info.ID, Name: info.Name, Version: info.Version}
-	if info.Description != "" {
-		out.Description = &info.Description
-	}
-	return out
-}
-
 func toAPIManga(m mangadata.Manga) apiv1.Manga {
 	info := m.Info()
 	out := apiv1.Manga{Id: info.ID, Title: info.Title}

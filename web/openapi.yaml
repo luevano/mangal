@@ -265,6 +265,29 @@ paths:
                 format: binary
         default:
           $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}/zip:
+    get:
+      summary: Every downloaded chapter of a library manga in one zip
+      description: Streamed (stored, not compressed again), the chapter files under their names in the manga's folder; a folder of images is zipped inside.
+      operationId: getLibraryMangaZip
+      tags: [v1, library, reader]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '200':
+          description: the zip
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: '#/components/responses/Error'
   /v1/library/downloads:
     get:
       summary: The downloaded chapters, newest first
@@ -878,6 +901,46 @@ paths:
                   $ref: '#/components/schemas/Provider'
         default:
           $ref: '#/components/responses/Error'
+  /v1/providers/update:
+    post:
+      summary: Update the installed providers (git pull of each)
+      description: Only the providers already installed, from their own remotes (https, ssh, file); installing a provider has no endpoint. The providers are loaded again after.
+      operationId: updateProviders
+      tags: [v1, providers]
+      x-mangal-scope: write
+      responses:
+        '200':
+          description: what each provider directory did
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvidersUpdate'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/providers/{provider}/mirror:
+    put:
+      summary: Set the provider's preferred website (providers.mirrors)
+      description: Its website or one of its mirrors; empty or the website itself goes back to the default. The mirror that last worked is forgotten and the providers loaded again.
+      operationId: setProviderMirror
+      tags: [v1, providers]
+      x-mangal-scope: write
+      parameters:
+        - $ref: '#/components/parameters/ProviderPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MirrorRequest'
+      responses:
+        '200':
+          description: the provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Provider'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/providers/{provider}:
     get:
       summary: A provider (an old id of it works too)
@@ -1199,6 +1262,54 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/metadata/sources:
+    get:
+      summary: The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList)
+      operationId: listMetadataSources
+      tags: [v1, metadata]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the sources, in their order of priority
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MetadataSource'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/metadata/{source}/search:
+    get:
+      summary: Search a metadata source's mangas
+      description: The closest match first (with its score), then the source's results; a number (or `id:<n>`) gets the manga with that id. Bind one with setBinding, link it with linkLibraryManga.
+      operationId: searchMetadata
+      tags: [v1, metadata]
+      x-mangal-scope: read
+      parameters:
+        - name: source
+          in: path
+          required: true
+          description: the source's key or code (anilist/al, kitsu/kt, mal)
+          schema:
+            type: string
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: the mangas found
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MetadataResult'
         default:
           $ref: '#/components/responses/Error'
 
@@ -1673,6 +1784,106 @@ components:
           type: string
         version:
           type: string
+        website:
+          type: string
+        mirrors:
+          type: array
+          description: the other websites it can use (providers.mirrors)
+          items:
+            type: string
+        preferred:
+          type: string
+          description: the preferred website (providers.mirrors), the website when none is set
+    MirrorRequest:
+      type: object
+      required: [mirror]
+      properties:
+        mirror:
+          type: string
+          description: the website or one of the mirrors, empty for the default
+    ProvidersUpdate:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderUpdate'
+        problems:
+          type: array
+          description: providers that couldn't be loaded after
+          items:
+            type: string
+    ProviderUpdate:
+      type: object
+      required: [dir, status]
+      properties:
+        dir:
+          type: string
+          description: the provider's directory
+        status:
+          type: string
+          description: updated, up to date, skipped (not a git repository or no remote) or failed
+        error:
+          type: string
+
+    MetadataSource:
+      type: object
+      required: [code, key, name, url, enabled]
+      properties:
+        code:
+          type: string
+          description: al, kt, mal (Binding.source)
+        key:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+          description: the page of a manga, the id appended
+        enabled:
+          type: boolean
+        reason:
+          type: string
+          description: why it can't be searched (not enabled, no API client)
+    MetadataResult:
+      type: object
+      required: [source, id, title, url, score, bad]
+      properties:
+        source:
+          type: string
+          description: the source's code
+        id:
+          type: string
+        title:
+          type: string
+        alternate_titles:
+          type: array
+          items:
+            type: string
+        year:
+          type: integer
+        format:
+          type: string
+        status:
+          type: string
+        chapters:
+          type: integer
+        cover:
+          type: string
+        url:
+          type: string
+        authors:
+          type: array
+          items:
+            type: string
+        score:
+          type: number
+          format: double
+          description: how close it is to the query, 0 to 1
+        bad:
+          type: boolean
+          description: too unlike the query to be used automatically (it can still be picked)
 
     Manga:
       type: object
@@ -2747,6 +2958,11 @@ components:
           format: int64
         type:
           type: string
+        width:
+          type: integer
+          description: in pixels, when known (a library page whose header could be read)
+        height:
+          type: integer
     ReaderPosition:
       type: object
       required: [chapter, page]

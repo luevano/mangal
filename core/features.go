@@ -64,14 +64,17 @@ func (f Feature) Has(m Mode) bool {
 const (
 	noLibraryScripts = "scripts don't change the library (docs/core.md: read-only Lua modules or the serve API, to decide)"
 	cliEnough        = "a one-off command, the CLI is enough"
-	apiNotYet        = "not in the API yet (docs/core.md Progress)"
 )
 
 // Features are mangal's features.
 var Features = []Feature{
 	{Name: "providers", Web: []string{"providers"}, API: []string{"listProviders", "getProviderInfo"}, CLI: []string{"providers ls"}, TUI: "enter (home)", Script: "client.info"},
-	{Name: "provider install", CLI: []string{"providers add", "providers up", "providers rm", "providers new"},
+	{Name: "provider install", CLI: []string{"providers add", "providers rm", "providers new"},
 		NotApplicable: map[Mode]string{ModeWeb: "providers run code: never installed over HTTP", ModeAPI: "providers run code: never installed over HTTP", ModeTUI: "git installs are a terminal's job", ModeScript: "a script doesn't install code"}},
+	{Name: "provider update", Web: []string{"providers"}, API: []string{"updateProviders"}, CLI: []string{"providers up"},
+		NotApplicable: map[Mode]string{ModeTUI: "git updates are a terminal's job", ModeScript: "a script doesn't update code"}},
+	{Name: "mirrors", Web: []string{"providers"}, API: []string{"setProviderMirror"}, CLI: []string{"providers ls", "config set"}, TUI: "alt+m (providers)", TUIKey: "alt+m",
+		NotApplicable: map[Mode]string{ModeScript: cliEnough}},
 	{Name: "search and browse", Web: []string{"search", "provider-manga"}, API: []string{"searchProvider", "getProviderManga", "listProviderChapters", "proxyImage"}, CLI: []string{"inline json"}, TUI: "s (mangas)", TUIKey: "s", Script: "client.search_mangas"},
 	{Name: "download", Web: []string{"provider-manga", "jobs"}, API: []string{"startDownload", "listJobs", "getJob", "cancelJob", "retryJob", "removeJob", "clearJobQueue"}, CLI: []string{"inline download"}, TUI: "d (chapters)", TUIKey: "d", Script: "client.download_chapter"},
 	{Name: "read", Web: []string{"read-library", "read-online"}, API: []string{"listChapterPages", "getChapterPage", "getChapterFile", "listProviderPages", "getProviderPage", "recordRead", "getReaderPosition", "putReaderPosition"}, TUI: "r (chapters)", TUIKey: "r",
@@ -80,7 +83,7 @@ var Features = []Feature{
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
 	{Name: "history clear", Web: []string{"history"}, API: []string{"clearHistory"}, CLI: []string{"history clear"}, TUI: "d, backspace (read history)", TUIKey: "d", Change: KindHistoryClear,
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
-	{Name: "library list", Web: []string{"library", "library-manga"}, API: []string{"listLibraryMangas", "getLibraryManga", "getLibraryCover", "listLibraryChapters", "listDownloads"}, CLI: []string{"library ls", "library downloads"}, TUI: "L (home)", TUIKey: "L",
+	{Name: "library list", Web: []string{"library", "library-manga"}, API: []string{"listLibraryMangas", "getLibraryManga", "getLibraryCover", "listLibraryChapters", "listDownloads", "getLibraryMangaZip"}, CLI: []string{"library ls", "library downloads"}, TUI: "L (home)", TUIKey: "L",
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
 	{Name: "library scan", Web: []string{"library"}, API: []string{"scanLibrary"}, CLI: []string{"library scan"}, TUI: "u, S (library)", TUIKey: "u",
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
@@ -112,7 +115,7 @@ var Features = []Feature{
 		NotApplicable: map[Mode]string{ModeScript: "scripts bind titles to AniList ids only (anilist.bind_title_with_id)"}},
 	{Name: "unbind", Web: []string{"provider-manga"}, API: []string{"removeBinding"}, CLI: []string{"bind"}, TUI: "d (bindings)", TUIKey: "d", Change: KindUnbind,
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
-	{Name: "metadata search", CLI: []string{"bind"}, TUI: "s (bindings)", TUIKey: "s", Script: "anilist.search_mangas", NotApplicable: map[Mode]string{ModeWeb: apiNotYet, ModeAPI: apiNotYet}},
+	{Name: "metadata search", Web: []string{"provider-manga", "library-manga"}, API: []string{"listMetadataSources", "searchMetadata"}, CLI: []string{"bind"}, TUI: "s (bindings)", TUIKey: "s", Script: "anilist.search_mangas"},
 	{Name: "health", Web: []string{"health"}, API: []string{"getHealth", "getHealthJob", "dismissHealthFindings"}, CLI: []string{"health"}, TUI: "! (home)", TUIKey: "!",
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
 	{Name: "health fix", Web: []string{"health"}, API: []string{"fixHealthFinding"}, CLI: []string{"health fix"}, TUI: "x (health)", TUIKey: "x", Change: KindHealthFix,

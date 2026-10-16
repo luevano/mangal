@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
@@ -85,7 +86,11 @@ func (a *API) libraryChapter(ctx context.Context, id int64, path string) (*pages
 func toAPIPages(format string, list []pages.Page) apiv1.ChapterPages {
 	out := apiv1.ChapterPages{Format: format, Pages: []apiv1.ChapterPage{}}
 	for i, p := range list {
-		out.Pages = append(out.Pages, apiv1.ChapterPage{Index: i, Name: ptr(p.Name), Size: ptr(p.Size), Type: ptr(p.Type())})
+		page := apiv1.ChapterPage{Index: i, Name: ptr(p.Name), Size: ptr(p.Size), Type: ptr(p.Type())}
+		if p.Width > 0 && p.Height > 0 {
+			page.Width, page.Height = ptr(p.Width), ptr(p.Height)
+		}
+		out.Pages = append(out.Pages, page)
 	}
 	return out
 }
@@ -96,6 +101,7 @@ func (a *API) ListChapterPages(ctx context.Context, request apiv1.ListChapterPag
 	if err != nil {
 		return nil, err
 	}
+	ch.ReadDimensions()
 	out := toAPIPages(ch.Format.String(), ch.Pages)
 	if ch.Format == libmangal.FormatPDF {
 		out.Pdf = ptr(true)
@@ -395,4 +401,75 @@ func (a *API) PutReaderPosition(ctx context.Context, request apiv1.PutReaderPosi
 		return nil, err
 	}
 	return apiv1.PutReaderPosition200JSONResponse{Chapter: pos.Chapter, Page: pos.Page, Updated: ptr(pos.Updated), Found: ptr(true)}, nil
+}
+
+// GetLibraryMangaZip implements apiv1.StrictServerInterface: the manga's downloaded
+// chapters streamed as one stored zip (the files are compressed already), a folder of
+// images as a zip inside. Chapters whose file is gone are left out.
+func (a *API) GetLibraryMangaZip(ctx context.Context, request apiv1.GetLibraryMangaZipRequestObject) (apiv1.GetLibraryMangaZipResponseObject, error) {
+	c, err := a.services(ctx)
+	if err != nil {
+		return nil, err
+	}
+	m, err := c.Library.Manga(request.Id)
+	if err != nil {
+		return nil, err
+	}
+	downloads, err := c.Library.Downloads(m.ID)
+	if err != nil {
+		return nil, err
+	}
+	fsys := c.Env().FS
+	var chapters []*pages.Chapter
+	for _, d := range downloads {
+		ch, err := pages.Open(fsys, d.Path)
+		if err != nil {
+			continue
+		}
+		chapters = append(chapters, ch)
+	}
+	if len(chapters) == 0 {
+		return nil, newAPIError(http.StatusNotFound, watch.CodeNotFound, "%s has no downloaded chapters", m.Title)
+	}
+	root := m.Path()
+	pr, pw := io.Pipe()
+	go func() { pw.CloseWithError(writeMangaZip(ctx, pw, root, chapters)) }()
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(root) + ".zip"})
+	return apiv1.GetLibraryMangaZip200ApplicationzipResponse{Body: pr, Headers: apiv1.GetLibraryMangaZip200ResponseHeaders{ContentDisposition: &disposition}}, nil
+}
+
+// writeMangaZip writes the chapters to w as a zip, each under its path from root.
+func writeMangaZip(ctx context.Context, w io.Writer, root string, chapters []*pages.Chapter) error {
+	zw := zip.NewWriter(w)
+	names := map[string]bool{}
+	for _, ch := range chapters {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		name, err := filepath.Rel(root, ch.Path)
+		if err != nil || strings.HasPrefix(name, "..") {
+			name = filepath.Base(ch.Path)
+		}
+		if ch.Format == libmangal.FormatImages {
+			name += ".zip"
+		}
+		name = filepath.ToSlash(name)
+		// two downloads of one file
+		if names[name] {
+			continue
+		}
+		names[name] = true
+		header := &zip.FileHeader{Name: name, Method: zip.Store}
+		if info, err := ch.FS.Stat(ch.Path); err == nil {
+			header.Modified = info.ModTime()
+		}
+		out, err := zw.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		if err := ch.WriteFile(out); err != nil {
+			return fmt.Errorf("zip %s: %w", name, err)
+		}
+	}
+	return zw.Close()
 }
