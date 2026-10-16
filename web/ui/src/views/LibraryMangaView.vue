@@ -3,9 +3,10 @@ import { computed, reactive, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import client, { ok } from '@/api/client'
 import { change } from '@/api/changes'
-import { chapterFileURL, coverURL } from '@/api/urls'
-import type { LibraryChapter } from '@/api/schemas'
+import { chapterFileURL, coverURL, mangaZipURL } from '@/api/urls'
+import type { LibraryChapter, MetadataResult } from '@/api/schemas'
 import FormModal from '@/components/FormModal.vue'
+import MetadataPicker from '@/components/MetadataPicker.vue'
 import LoadState from '@/components/LoadState.vue'
 import MetaIDs from '@/components/MetaIDs.vue'
 import { useLoad } from '@/composables/useLoad'
@@ -80,6 +81,12 @@ function openLinks() {
   for (const k of Object.keys(links)) links[k] = manga.value?.metadata_ids.find((i) => i.source === k)?.id ?? ''
   linksOpen.value = true
 }
+// the metadata search for a link's id (the TUI's links pick)
+const pickSource = ref<string>()
+function pickedLink(r: MetadataResult) {
+  links[r.source] = r.id
+  pickSource.value = undefined
+}
 function planLinks() {
   linksOpen.value = false
   const current = Object.fromEntries((manga.value?.metadata_ids ?? []).map((i) => [i.source, i.id]))
@@ -146,6 +153,7 @@ function watchSource(provider: string, mangaID: string) {
         <div class="d-flex flex-wrap gap-2">
           <button v-if="next" class="btn btn-sm btn-primary" data-test="read-next" @click="read(next)"><i class="bi bi-book" /> Read {{ num(next.download.chapter) }}</button>
           <button class="btn btn-sm btn-outline-primary" @click="openLinks">Links</button>
+          <a v-if="sorted.length" class="btn btn-sm btn-outline-secondary" :href="mangaZipURL(manga.id)" title="Every downloaded chapter in one zip"><i class="bi bi-file-earmark-zip" /> Zip</a>
           <button class="btn btn-sm btn-outline-primary" @click="moveOpen = true">Move</button>
           <button class="btn btn-sm btn-outline-primary" data-test="merge" @click="mergeOpen = true">Merge</button>
           <button class="btn btn-sm btn-outline-primary" @click="rename">Rename</button>
@@ -225,11 +233,16 @@ function watchSource(provider: string, mangaID: string) {
   <FormModal title="Links" :open="linksOpen" submit-text="Plan" @close="linksOpen = false" @submit="planLinks">
     <div v-for="(_, k) in links" :key="k" class="mb-2">
       <label class="form-label small mb-0">{{ sourceNames[k] ?? k }} id</label>
-      <input v-model="links[k]" class="form-control form-control-sm" :placeholder="`empty removes it`" />
+      <div class="input-group input-group-sm">
+        <input v-model="links[k]" class="form-control" :placeholder="`empty removes it`" />
+        <button v-if="k !== 'mu'" type="button" class="btn btn-outline-secondary" :title="`Search ${sourceNames[k] ?? k}`" :data-test="`search-link-${k}`" @click="pickSource = k"><i class="bi bi-search" /></button>
+      </div>
     </div>
     <div class="form-check"><input id="lr" v-model="linkRename" class="form-check-input" type="checkbox" /><label class="form-check-label" for="lr">rename the folder</label></div>
     <div class="form-check"><input id="lw" v-model="linkWatches" class="form-check-input" type="checkbox" /><label class="form-check-label" for="lw">update the watches' AniList binding</label></div>
   </FormModal>
+
+  <MetadataPicker :open="!!pickSource" :title="`Link ${manga?.title ?? ''}`" :query="manga?.title" :source="pickSource" :sources="pickSource ? [pickSource] : undefined" @close="pickSource = undefined" @pick="pickedLink" />
 
   <FormModal title="Move to another provider" :open="moveOpen" submit-text="Plan" :disabled="!move.provider || (!move.manga_id && !move.query)" @close="moveOpen = false" @submit="planMove">
     <label class="form-label small mb-0">Provider</label>

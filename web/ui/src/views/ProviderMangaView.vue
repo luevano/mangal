@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import client, { ok, fetchJSON } from '@/api/client'
 import { change } from '@/api/changes'
 import { imageURL } from '@/api/urls'
-import type { ApplyFields, Binding, ChangeResponse, ProviderChapter } from '@/api/schemas'
-import FormModal from '@/components/FormModal.vue'
+import type { ApplyFields, Binding, ChangeResponse, MetadataResult, MetadataSource, ProviderChapter } from '@/api/schemas'
+import MetadataPicker from '@/components/MetadataPicker.vue'
 import LoadState from '@/components/LoadState.vue'
 import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
@@ -88,10 +88,20 @@ function watchIt() {
 
 // bindings
 const bindOpen = ref(false)
-const bind = reactive({ source: 'al', id: '' })
-function planBind() {
+const bindSource = ref<string>()
+function openBind(source?: string) {
+  bindSource.value = source
+  bindOpen.value = true
+}
+function planBind(r: MetadataResult, src: MetadataSource) {
   bindOpen.value = false
-  plan.open({ title: `Bind to ${sourceNames[bind.source]} ${bind.id}`, verb: 'Bind', run: change('PUT', '/bindings', { provider: provider.value, manga_id: mangaID.value, source: bind.source, id: bind.id }) })
+  const current = pm.data.value?.bindings.find((b) => b.source === r.source)
+  const verb = current ? 'Replace' : 'Bind'
+  plan.open({
+    title: `${verb} ${current ? `${src.name} ${current.id} with ${r.id}` : `to ${src.name} ${r.id}`}: ${r.title}`,
+    verb,
+    run: change('PUT', '/bindings', { provider: provider.value, manga_id: mangaID.value, source: r.source, id: r.id })
+  })
 }
 function unbind(b: Binding) {
   plan.open({
@@ -126,11 +136,12 @@ function unbind(b: Binding) {
           <RouterLink v-if="pm.data.value.library" class="btn btn-sm btn-outline-secondary" :to="{ name: 'library-manga', params: { id: pm.data.value.library } }">In the library</RouterLink>
           <RouterLink v-if="pm.data.value.watch" class="btn btn-sm btn-outline-secondary" :to="{ name: 'watch', params: { id: pm.data.value.watch } }">Watched</RouterLink>
           <button v-else class="btn btn-sm btn-outline-primary" @click="watchIt">Watch</button>
-          <button class="btn btn-sm btn-outline-primary" @click="bindOpen = true">Bind</button>
+          <button class="btn btn-sm btn-outline-primary" data-test="bind" @click="openBind()">Bind</button>
         </div>
         <div class="d-flex flex-wrap gap-1">
           <span v-for="b in pm.data.value.bindings" :key="b.source" class="badge text-bg-secondary">
             {{ sourceNames[b.source] ?? b.source }} {{ b.id }}{{ b.default ? ' (default)' : '' }}
+            <a href="#" class="text-reset ms-1" title="Replace" @click.prevent="openBind(b.source)"><i class="bi bi-arrow-repeat" /></a>
             <a href="#" class="text-reset ms-1" title="Unbind" @click.prevent="unbind(b)"><i class="bi bi-x" /></a>
           </span>
         </div>
@@ -165,13 +176,5 @@ function unbind(b: Binding) {
     </table>
   </template>
 
-  <FormModal title="Bind to metadata" :open="bindOpen" submit-text="Plan" :disabled="!bind.id" @close="bindOpen = false" @submit="planBind">
-    <label class="form-label small mb-0">Source</label>
-    <select v-model="bind.source" class="form-select form-select-sm mb-2">
-      <option v-for="s in ['al', 'mal', 'kt']" :key="s" :value="s">{{ sourceNames[s] }}</option>
-    </select>
-    <label class="form-label small mb-0">Id</label>
-    <input v-model.trim="bind.id" class="form-control form-control-sm" />
-    <p class="small text-secondary mt-2 mb-0">The metadata search to pick from isn't in the API yet: the id comes from the source's site.</p>
-  </FormModal>
+  <MetadataPicker :open="bindOpen" :title="`Bind ${pm.data.value?.manga.title ?? ''}`" :query="pm.data.value?.manga.title" :source="bindSource" @close="bindOpen = false" @pick="planBind" />
 </template>

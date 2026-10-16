@@ -33,3 +33,7 @@ export function providerPageURL(
   if (volume !== undefined) q.set('volume', String(volume))
   return `/api/v1/providers/${encodeURIComponent(provider)}/pages/${page}?${q}`
 }
+
+export function mangaZipURL(manga: number): string {
+  return `/api/v1/library/mangas/${manga}/zip`
+}
