@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"maps"
@@ -73,6 +74,14 @@ func TestV1ProviderMirror(t *testing.T) {
 	}
 	if code := s.call(t, "PUT", "/api/v1/providers/nope/mirror", `{"mirror":""}`, &e); code != http.StatusNotFound {
 		t.Errorf("unknown provider: %d", code)
+	}
+	// no config file: refused with how to make one, not a 500
+	setMirror = func(string, string) error {
+		return fmt.Errorf("write config key %q: %w", "providers.mirrors", config.ErrNoFile)
+	}
+	if code := s.call(t, "PUT", "/api/v1/providers/mirrored/mirror", `{"mirror":"https://b.example/"}`, &e); code != http.StatusConflict ||
+		!strings.Contains(e.Error, "mangal config write") {
+		t.Errorf("no config file: %d %+v", code, e)
 	}
 }
 

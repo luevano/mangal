@@ -15,6 +15,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/netutil"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/log"
@@ -349,6 +350,9 @@ func errorBody(err error) (int, ErrorResponse) {
 		return http.StatusConflict, body
 	case errors.Is(err, core.ErrNothingToDo):
 		body.Code = CodeNothingToDo
+		return http.StatusConflict, body
+	case errors.Is(err, config.ErrNoFile):
+		body.Code = CodeRefused
 		return http.StatusConflict, body
 	case errors.Is(err, core.ErrBusy):
 		body.Code = watch.CodeBusy

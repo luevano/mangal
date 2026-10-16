@@ -281,8 +281,8 @@ func TestWriteKeyOnlyWritesThatKey(t *testing.T) {
 
 func TestWriteKeyDoesNotCreateConfig(t *testing.T) {
 	reset(t)
-	if err := WriteKey(Providers.MangaPlus.FreeSecret.Key, "free-secret"); err == nil {
-		t.Error("wanted an error without a config file")
+	if err := WriteKey(Providers.MangaPlus.FreeSecret.Key, "free-secret"); !errors.Is(err, ErrNoFile) {
+		t.Errorf("got %v, want ErrNoFile", err)
 	}
 	if _, err := os.Stat(Path); err == nil {
 		t.Error("config file was created")

@@ -360,6 +360,10 @@ func WriteKey(key string, value any) error {
 		return err
 	}
 	data, err := afs.Afero.ReadFile(Path)
+	if errors.Is(err, fs.ErrNotExist) {
+		// never created behind the user's back (David)
+		return fmt.Errorf("write config key %q: %w", key, ErrNoFile)
+	}
 	if err != nil {
 		return fmt.Errorf("write config key %q: %w", key, err)
 	}
@@ -438,6 +442,10 @@ func setNested(m map[string]any, path []string, value any) {
 	}
 	m[path[len(path)-1]] = value
 }
+
+// ErrNoFile is a write that needs the config file, which doesn't exist: mangal never
+// creates it on its own, `mangal config write` (or the TUI's config window) does.
+var ErrNoFile = errors.New("no config file, `mangal config write` creates one")
 
 // CreateFile creates an empty config file (and its directory) at Path if there's none.
 func CreateFile() error {
