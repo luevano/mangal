@@ -2,6 +2,7 @@ package inline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -29,7 +30,7 @@ func search(ctx context.Context, args Args) (*libmangal.Client, []MangaResult, e
 	}
 
 	args.status("searching %q on %s", args.Query, args.Provider)
-	mangas, err := c.SearchMangasContext(ctx, args.Query)
+	mangas, err := searchMangas(ctx, c, args.Query)
 	if err != nil {
 		return nil, nil, fmt.Errorf("search %q: %w", args.Query, err)
 	}
@@ -46,6 +47,25 @@ func search(ctx context.Context, args Args) (*libmangal.Client, []MangaResult, e
 		results[i] = MangaResult{Index: index, Manga: mangas[index]}
 	}
 	return c, results, nil
+}
+
+// searchMangas searches the query; a "mid:<id>" one gets the manga by its id when the provider
+// can (Lua providers' MangaByID), else it's searched like any query (mangoprovider takes it).
+func searchMangas(ctx context.Context, c *libmangal.Client, query string) ([]mangadata.Manga, error) {
+	id, ok := selector.IDQuery(query)
+	if !ok {
+		return c.SearchMangasContext(ctx, query)
+	}
+	manga, found, err := c.MangaByIDContext(ctx, id)
+	switch {
+	case errors.Is(err, libmangal.ErrMangaByIDUnsupported):
+		return c.SearchMangasContext(ctx, query)
+	case err != nil:
+		return nil, err
+	case !found:
+		return nil, nil
+	}
+	return []mangadata.Manga{manga}, nil
 }
 
 // chapters are the manga's chapters the chapter selector picks.
