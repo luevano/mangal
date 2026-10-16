@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, ref } from 'vue'
 import client, { ok, fetchJSON } from '@/api/client'
 import { change } from '@/api/changes'
-import type { HealthAction, HealthFinding, HealthJob, HealthReport } from '@/api/schemas'
+import type { HealthFinding, HealthJob, HealthReport, LibraryManga, MetadataResult } from '@/api/schemas'
+import FormModal from '@/components/FormModal.vue'
+import HealthFindingCard from '@/components/HealthFindingCard.vue'
 import LoadState from '@/components/LoadState.vue'
+import MetadataPicker from '@/components/MetadataPicker.vue'
+import PagerNav from '@/components/PagerNav.vue'
 import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
+import { usePager } from '@/composables/usePager'
+import { sourceNames } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
 import { useChanges } from '@/stores/changes'
 import { usePlan } from '@/stores/plan'
@@ -23,32 +28,80 @@ const job = ref<HealthJob>()
 const offline = useLoad(() => ok(client.GET('/v1/health', { params: { query: { all: all.value || undefined } } })) as Promise<HealthReport>, [all, () => changes.version])
 
 const report = computed(() => network.value ?? offline.data.value)
-watch(report, (r) => {
-  for (const f of r?.findings ?? []) {
-    const list = choiceList(f)
-    if (list.length && !choices.value[f.key]) choices.value[f.key] = list[0]!
-  }
-})
 const categories = computed(() => Object.entries(report.value?.counts.by_category ?? {}).sort())
 const findings = computed(() => (report.value?.findings ?? []).filter((f) => !category.value || f.category === category.value))
+const pager = usePager(findings, 100)
 
-const sevClass: Record<string, string> = { error: 'text-bg-danger', warning: 'text-bg-warning', info: 'text-bg-info' }
-
-function actionOf(f: HealthFinding): HealthAction | undefined {
-  return f.fix.action
-}
-const choices = ref<Record<string, string>>({})
-function choiceList(f: HealthFinding): string[] {
-  const a = actionOf(f)
-  if (!a) return []
-  if (a.ids && a.ids.length > 1) return a.ids
-  if (a.kind === 'merge' && a.mangas && a.mangas.length > 1) return a.mangas.map(String)
-  return []
+function planFix(f: HealthFinding, choice?: string, title?: string) {
+  plan.open({ title: title ?? `Fix ${f.check}: ${f.subject.name ?? ''}`, verb: 'Fix', run: change('POST', '/health/fix', choice ? { key: f.key, choice } : { key: f.key }) })
 }
 
-function fix(f: HealthFinding) {
-  const choice = choices.value[f.key]
-  plan.open({ title: `Fix ${f.check}: ${f.subject.name ?? ''}`, verb: 'Fix', run: change('POST', '/health/fix', choice ? { key: f.key, choice } : { key: f.key }) })
+function scan() {
+  action.run(() => ok(client.POST('/v1/library/scan', { body: {} })), (j) => `Scan queued (job ${j.id}): it adds the new folders and finds the ones that moved`)
+}
+
+// the fix of a finding, as the TUI's x: some kinds ask first (which manga stays, scan or
+// forget, which id), the rest go to the plan dialog (its plan is the confirm)
+const merging = ref<{ f: HealthFinding; mangas: LibraryManga[]; keep: number }>()
+const forgetting = ref<HealthFinding>()
+const picking = ref<HealthFinding>()
+
+async function fix(f: HealthFinding, choice?: string) {
+  const a = f.fix.action
+  switch (a?.kind) {
+    case 'scan':
+      scan()
+      return
+    case 'forget':
+      forgetting.value = f
+      return
+    case 'merge': {
+      const ids = a.mangas ?? []
+      const mangas = (
+        await Promise.all(ids.map((id) => ok(client.GET('/v1/library/mangas/{id}', { params: { path: { id } } })).then((d) => d.manga, () => undefined)))
+      ).filter((m): m is LibraryManga => !!m)
+      if (mangas.length < 2) {
+        planFix(f)
+        return
+      }
+      const keep = Number(choice ?? mangas[0]!.id)
+      merging.value = { f, mangas, keep: mangas.some((m) => m.id === keep) ? keep : mangas[0]!.id }
+      return
+    }
+    case 'pick':
+      if (!choice) {
+        picking.value = f
+        return
+      }
+  }
+  planFix(f, choice)
+}
+
+function merge() {
+  const m = merging.value
+  if (!m) return
+  merging.value = undefined
+  planFix(m.f, String(m.keep), `Merge into ${m.mangas.find((x) => x.id === m.keep)?.title ?? m.keep}`)
+}
+
+function forget() {
+  const f = forgetting.value
+  forgetting.value = undefined
+  if (f) planFix(f, undefined, `Forget ${f.subject.name}`)
+}
+
+function scanInstead() {
+  forgetting.value = undefined
+  scan()
+}
+
+// a pick's id from the metadata search: the links' plan
+function picked(r: MetadataResult) {
+  const f = picking.value
+  picking.value = undefined
+  const manga = f?.fix.action?.manga ?? f?.subject.id
+  if (!manga) return
+  plan.open({ title: `Link ${f?.subject.name} to ${sourceNames[r.source] ?? r.source} ${r.id}`, run: change('POST', '/library/links', { manga, links: { [r.source]: r.id } }) })
 }
 
 function dismiss(f: HealthFinding, undo = false) {
@@ -110,40 +163,37 @@ function runNetwork() {
       </li>
     </ul>
     <p v-if="!findings.length" class="text-success">Nothing to fix.</p>
-    <div v-for="f in findings" :key="f.key" class="card mb-2" :class="{ 'opacity-50': f.dismissed }" data-test="finding">
-      <div class="card-body py-2">
-        <div class="d-flex flex-wrap gap-2 align-items-center">
-          <span class="badge" :class="sevClass[f.severity] ?? 'text-bg-secondary'">{{ f.severity }}</span>
-          <span class="badge text-bg-dark">{{ f.check }}</span>
-          <RouterLink v-if="f.subject.kind === 'manga' && f.subject.id" :to="{ name: 'library-manga', params: { id: f.subject.id } }" class="fw-semibold">{{ f.subject.name }}</RouterLink>
-          <RouterLink v-else-if="f.subject.kind === 'watch' && f.subject.id" :to="{ name: 'watch', params: { id: f.subject.id } }" class="fw-semibold">{{ f.subject.name }}</RouterLink>
-          <span v-else class="fw-semibold">{{ f.subject.name }}</span>
-          <span class="me-auto">{{ f.message }}</span>
-          <template v-if="actionOf(f)">
-            <select v-if="choiceList(f).length" v-model="choices[f.key]" class="form-select form-select-sm w-auto" title="the id to link, or the manga to keep">
-              <option v-for="c in choiceList(f)" :key="c" :value="c">{{ c }}</option>
-            </select>
-            <button class="btn btn-sm btn-outline-primary py-0" data-test="fix" @click="fix(f)">Fix</button>
-          </template>
-          <button v-if="!f.dismissed" class="btn btn-sm btn-outline-secondary py-0" title="Fine as it is" @click="dismiss(f)">Dismiss</button>
-          <button v-else class="btn btn-sm btn-outline-secondary py-0" @click="dismiss(f, true)">Bring back</button>
-        </div>
-        <ul v-if="f.details?.length" class="small mb-1 mt-1">
-          <li v-for="(d, i) in f.details" :key="i">{{ d }}</li>
-        </ul>
-        <div v-if="f.fix.note" class="small text-secondary">{{ f.fix.note }}</div>
-        <div v-if="f.fix.commands?.length" class="small">
-          <code v-for="c in f.fix.commands" :key="c" class="me-3 d-inline-block">{{ c }}</code>
-        </div>
-        <details v-if="f.items?.length" class="small mt-1">
-          <summary>{{ f.items.length }} items</summary>
-          <ul class="mb-0">
-            <li v-for="(it, i) in f.items" :key="i">{{ it.subject?.name }}: {{ it.message }}
-              <button v-if="it.fix?.action" class="btn btn-sm btn-link py-0" @click="fix(it)">fix</button>
-            </li>
-          </ul>
-        </details>
-      </div>
-    </div>
+    <HealthFindingCard v-for="f in pager.items.value" :key="f.key" :finding="f" @fix="fix" @dismiss="dismiss" />
+    <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
   </template>
+
+  <FormModal title="Merge: which one stays?" :open="!!merging" submit-text="Plan" size="lg" @close="merging = undefined" @submit="merge">
+    <p class="small text-secondary">The other merges into it (the merge's plan comes next).</p>
+    <div class="list-group" data-test="merge-choices">
+      <label v-for="(m, i) in merging?.mangas ?? []" :key="m.id" class="list-group-item list-group-item-action d-flex gap-2">
+        <input v-if="merging" v-model="merging.keep" class="form-check-input" type="radio" :value="m.id" />
+        <span>
+          {{ m.title }}<span v-if="i === 0" class="badge text-bg-info ms-1">suggested</span>
+          <span class="d-block small text-secondary">#{{ m.id }} · {{ m.chapters }} chapters · {{ m.path }}</span>
+        </span>
+      </label>
+    </div>
+    <p v-if="(merging?.mangas.length ?? 0) > 2" class="small text-secondary mt-2 mb-0">{{ merging?.mangas.length }} folders: this merges two, the finding stays for the rest.</p>
+  </FormModal>
+
+  <FormModal title="Library manga" :open="!!forgetting" submit-text="Forget it" @close="forgetting = undefined" @submit="forget">
+    <p>{{ forgetting?.subject.name }}: {{ forgetting?.message }}</p>
+    <p class="small text-secondary mb-2">Scan the library (it finds folders that moved), or forget the manga?</p>
+    <button type="button" class="btn btn-sm btn-outline-primary" data-test="scan-instead" @click="scanInstead">Scan the library</button>
+  </FormModal>
+
+  <MetadataPicker
+    :open="!!picking"
+    :title="`Pick for ${picking?.subject.name ?? ''}`"
+    :query="picking?.subject.name"
+    :source="picking?.fix.action?.source"
+    :sources="picking?.fix.action?.source ? [picking.fix.action.source] : undefined"
+    @close="picking = undefined"
+    @pick="picked"
+  />
 </template>
