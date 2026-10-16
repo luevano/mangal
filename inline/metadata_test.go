@@ -282,3 +282,42 @@ func TestDownloadPreferProviderMetadata(t *testing.T) {
 		t.Error("metadata searched, the provider's is valid and preferred")
 	}
 }
+
+// apiMetaProvider's search results have valid metadata already (an api's), counting the
+// volume reads.
+type apiMetaProvider struct {
+	metaProvider
+	volumes *int
+}
+
+func (p *apiMetaProvider) SearchMangas(ctx context.Context, query string) ([]mangadata.Manga, error) {
+	mangas, err := p.metaProvider.SearchMangas(ctx, query)
+	if err == nil {
+		_, _ = p.metaProvider.MangaVolumes(ctx, mangas[0])
+	}
+	return mangas, err
+}
+
+func (p *apiMetaProvider) MangaVolumes(ctx context.Context, m mangadata.Manga) ([]mangadata.Volume, error) {
+	*p.volumes++
+	return p.metaProvider.MangaVolumes(ctx, m)
+}
+
+type apiMetaLoader struct {
+	fakeLoader
+	volumes *int
+}
+
+func (l apiMetaLoader) Load(context.Context) (libmangal.Provider, error) {
+	return &apiMetaProvider{volumes: l.volumes}, nil
+}
+
+// TestJSONPreferProviderMetadataValid: valid metadata from the search needs no manga page.
+func TestJSONPreferProviderMetadataValid(t *testing.T) {
+	var volumes int
+	useClient(t, apiMetaLoader{volumes: &volumes})
+	r := runJSON(t, Args{Query: "frieren", Provider: "fake", MangaSelector: "first", ChapterSelector: "all", PreferProviderMetadata: true})
+	if r["metadata_source"] != SourceProvider || volumes != 0 {
+		t.Errorf("metadata_source %v after %d volume reads, want the provider's without any", r["metadata_source"], volumes)
+	}
+}

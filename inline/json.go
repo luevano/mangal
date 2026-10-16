@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"github.com/luevano/libmangal/metadata"
 )
 
 func RunJSON(ctx context.Context, args Args) error {
@@ -23,6 +25,9 @@ func RunJSON(ctx context.Context, args Args) error {
 	} else if args.PreferProviderMetadata {
 		// scrapers read the manga's metadata from its page, with the volumes
 		for _, r := range mangaResults {
+			if metadata.Validate(r.Manga.Metadata()) == nil {
+				continue
+			}
 			args.status("getting the metadata of %q from %s", r.Manga, args.Provider)
 			if _, err := client.MangaVolumesContext(ctx, r.Manga); err != nil {
 				return fmt.Errorf("volumes of %q: %w", r.Manga, err)
