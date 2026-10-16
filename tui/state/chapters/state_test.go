@@ -1,7 +1,9 @@
 package chapters
 
 import (
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/tui/util"
+	"github.com/spf13/afero"
 
 	"context"
 	"errors"
@@ -124,21 +126,18 @@ func TestLibraryDownloads(t *testing.T) {
 	provider := libmangal.ProviderInfo{ID: "mango-new", Name: "New", History: []libmangal.ProviderAlias{{ID: "mango-old"}}}
 
 	manga, _ := chapters(0)
-	m, ok, err := lib.MangaFor(provider, manga, false)
-	if err != nil || !ok {
-		t.Fatalf("library manga: %t, %v", ok, err)
+	c := testCore(t, db)
+	files, err := c.Library.ChapterFiles(t.Context(), core.ChapterFilesReq{Provider: provider, MangaID: manga.Info().ID})
+	if err != nil || !files.Found || len(files.Errors) != 0 {
+		t.Fatalf("library manga: %+v, %v", files, err)
 	}
-	got, err := libraryDownloads(lib, nil, "/dl", m, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := downloadPaths(files.Downloads)
 	if got[1][libmangal.FormatCBZ] != "/dl/Berserk/1.cbz" || got[1][libmangal.FormatPDF] != "/dl/Berserk/1.pdf" || got[2][libmangal.FormatCBZ] != "/dl/Berserk/2.cbz" {
 		t.Errorf("got %v", got)
 	}
 
-	other := &fakeManga{id: "other"}
-	if _, ok, err := lib.MangaFor(provider, other, false); err != nil || ok {
-		t.Errorf("another manga: %t, %v", ok, err)
+	if files, err := c.Library.ChapterFiles(t.Context(), core.ChapterFilesReq{Provider: provider, MangaID: "other"}); err != nil || files.Found {
+		t.Errorf("another manga: %+v, %v", files, err)
 	}
 
 	// the items show the library's formats and read the download first
@@ -168,7 +167,8 @@ func TestReadMarks(t *testing.T) {
 	}
 	provider := libmangal.ProviderInfo{ID: "mango-new", History: []libmangal.ProviderAlias{{ID: "mango-old"}}}
 	manga, list := chapters(2)
-	read, err := readChapters(history, provider, manga, 0)
+	files, err := testCore(t, db).Library.ChapterFiles(t.Context(), core.ChapterFilesReq{Provider: provider, MangaID: manga.Info().ID})
+	read := readSet(files.Read)
 	if err != nil || !read[1] || read[2] {
 		t.Fatalf("read %v, %v", read, err)
 	}
@@ -294,4 +294,20 @@ func TestDownloadQueues(t *testing.T) {
 	if n := len(m.Jobs()); n != 2 {
 		t.Errorf("%d jobs, want 2", n)
 	}
+}
+
+// testCore is a core over the database.
+func testCore(t *testing.T, db *storage.DB) *core.Core {
+	t.Helper()
+	c, err := core.New(t.Context(), core.Env{
+		Storage:      storage.Storage{Data: db},
+		FS:           afero.NewMemMapFs(),
+		Root:         func() string { return "/dl" },
+		ProviderDirs: func() bool { return false },
+		Loaders:      func() ([]libmangal.ProviderLoader, error) { return nil, nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
 }

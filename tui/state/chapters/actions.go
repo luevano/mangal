@@ -15,9 +15,9 @@ import (
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/log"
-	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/tui/base"
 	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
 	"github.com/luevano/mangal/v5/tui/state/downloads"
@@ -97,22 +97,11 @@ func (s *state) askRead(ctx context.Context, hovered *item) tea.Cmd {
 	return nil
 }
 
-// downloadOptions are the config's, for reading if read.
+// downloadOptions are the core's, for reading if read.
 func downloadOptions(read bool) libmangal.DownloadOptions {
-	options := config.DownloadOptions()
+	options := core.DownloadOptions(read)
 	// searched when the manga was opened, a search here would replace a bound one
 	options.SearchMetadata = false
-	if !read {
-		return options
-	}
-	options.Format = config.Read.Format.Get()
-	// without download_on_read, to the temp dir with all the dirs
-	if !config.Read.DownloadOnRead.Get() {
-		options.Directory = path.Temp()
-		options.CreateProviderDir = true
-		options.CreateMangaDir = true
-		options.CreateVolumeDir = true
-	}
 	return options
 }
 

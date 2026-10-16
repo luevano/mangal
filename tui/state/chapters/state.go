@@ -14,9 +14,10 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
-	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -29,7 +30,6 @@ import (
 	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/afs"
-	"github.com/luevano/mangal/v5/util/cache"
 )
 
 var _ base.State = (*state)(nil)
@@ -381,8 +381,7 @@ func (s *state) refresh(ctx context.Context, scan bool) tea.Cmd {
 		chapters[i] = it.chapter
 	}
 	c, manga := s.client, s.manga
-	root, temp := path.Downloads(), path.Temp()
-	providerDirs := config.Download.Provider.CreateDir.Get()
+	temp := path.Temp()
 	return func() tea.Msg {
 		release, ok := base.Track(ctx)
 		if !ok {
@@ -390,32 +389,21 @@ func (s *state) refresh(ctx context.Context, scan bool) tea.Cmd {
 		}
 		defer release()
 		msg := filesMsg{items: items, temp: tempFiles(afs.Afero, c, temp, chapters)}
-		lib, err := cache.Library()
+		lib, err := base.Library()
 		if err != nil {
 			log.Error("library: %s", err)
 			return msg
 		}
-		var scanner *library.Scanner
-		if scan {
-			scanner = &library.Scanner{FS: afs.Afero, Library: lib}
-		}
-		// the chapters still show without it
-		m, found, err := lib.MangaFor(c.Info(), manga, providerDirs)
+		// the chapters still show without what can't be looked up
+		files, err := lib.ChapterFiles(ctx, core.ChapterFilesReq{Provider: c.Info(), MangaID: manga.Info().ID, MetadataIDs: storage.MangaMetadataIDs(manga), Scan: scan})
 		if err != nil {
-			log.Error("library manga of %q: %s", manga, err)
+			log.Error("library of %q: %s", manga, err)
+			return msg
 		}
-		if found {
-			if msg.downloads, err = libraryDownloads(lib, scanner, root, m, providerDirs); err != nil {
-				log.Error("library of %q: %s", manga, err)
-			}
+		for _, e := range files.Errors {
+			log.Error("%q: %s", manga, e)
 		}
-		history, err := cache.History()
-		if err == nil {
-			msg.read, err = readChapters(history, c.Info(), manga, m.ID)
-		}
-		if err != nil {
-			log.Error("read history of %q: %s", manga, err)
-		}
+		msg.downloads, msg.read = downloadPaths(files.Downloads), readSet(files.Read)
 		return msg
 	}
 }
