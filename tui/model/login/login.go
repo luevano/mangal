@@ -14,14 +14,13 @@ import (
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	_list "charm.land/bubbles/v2/list"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
-	"github.com/luevano/mangal/v5/tui/model/form"
+	"github.com/luevano/mangal/v5/tui/model/huhform"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/util"
 )
@@ -150,8 +149,8 @@ type Screen struct {
 	back phase
 
 	list   *list.Model
-	form   *form.Form
-	client *form.Form
+	form   *huhform.Form
+	client *huhform.Form
 	size   base.Size
 	keys   keyMap
 }
@@ -174,22 +173,22 @@ func New(svc Service) *Screen {
 	return s
 }
 
-func newForm(c gocolor.Color, submit string, inputs []Input) *form.Form {
-	fields := make([]*form.Field, len(inputs))
+func newForm(c gocolor.Color, submit string, inputs []Input) *huhform.Form {
+	fields := make([]*huhform.Field, len(inputs))
 	for i, in := range inputs {
 		var validate func(string) error
 		if in.Required {
 			validate = required
 		}
-		f := form.Text(in.Label, "", "", validate)
+		f := huhform.Text(in.Label, "", "", validate)
 		if in.Secret {
-			f = form.Secret(in.Label, "", "", validate)
+			f = huhform.Secret(in.Label, "", "", validate)
 		}
-		f.Input.Placeholder = in.Placeholder
-		f.Input.SetWidth(60)
+		f.SetPlaceholder(in.Placeholder)
+		f.SetWidth(60)
 		fields[i] = f
 	}
-	f := form.New(fields...)
+	f := huhform.New(fields...)
 	f.SetAccent(c)
 	f.SetSubmit(submit)
 	return f
@@ -250,14 +249,14 @@ func (s *Screen) Resize(size base.Size) tea.Cmd {
 
 func (s *Screen) Init(ctx context.Context) tea.Cmd {
 	svc := s.svc
-	return tea.Batch(textinput.Blink, base.Load(ctx, "Checking the "+svc.Name+" login", func(ctx context.Context) (statusMsg, error) {
+	return base.Load(ctx, "Checking the "+svc.Name+" login", func(ctx context.Context) (statusMsg, error) {
 		if err := svc.Check(ctx); err != nil {
 			// still usable, e.g. to log in again
 			log.Warn("%s login: %s", svc.ID, err)
 		}
 		st, err := svc.Status(ctx)
 		return statusMsg{Status: st}, err
-	}, toMsg))
+	}, toMsg)
 }
 
 func toMsg(m statusMsg) tea.Msg { return m }
@@ -292,7 +291,7 @@ func (s *Screen) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 }
 
 // submit passes msg to f, done runs once it's submitted.
-func (s *Screen) submit(ctx context.Context, f *form.Form, msg tea.Msg, done func(context.Context) tea.Cmd) tea.Cmd {
+func (s *Screen) submit(ctx context.Context, f *huhform.Form, msg tea.Msg, done func(context.Context) tea.Cmd) tea.Cmd {
 	submitted, cmd := f.Update(msg)
 	if !submitted {
 		return cmd
@@ -307,8 +306,7 @@ func (s *Screen) setStatus(msg statusMsg) tea.Cmd {
 	s.user, s.users = msg.User, msg.Users
 	if s.form != nil && len(msg.Values) != 0 && s.formEmpty() {
 		for i, v := range msg.Values[:min(len(msg.Values), len(s.form.Fields))] {
-			s.form.Fields[i].Input.SetValue(v)
-			s.form.Fields[i].Input.CursorEnd()
+			s.form.Fields[i].SetValue(v)
 		}
 	}
 	items := make([]_list.Item, len(s.users))
@@ -337,7 +335,7 @@ func (s *Screen) setStatus(msg statusMsg) tea.Cmd {
 
 func (s *Screen) formEmpty() bool {
 	for _, f := range s.form.Fields {
-		if f.Input.Value() != "" {
+		if f.Raw() != "" {
 			return false
 		}
 	}
@@ -363,13 +361,12 @@ func (s *Screen) openClient(values []string) tea.Cmd {
 		if i < len(values) {
 			v = values[i]
 		}
-		f.Input.SetValue(v)
-		f.Input.CursorEnd()
-		f.Err = ""
+		f.SetValue(v)
+		f.ClearErr()
 		if in := s.svc.Client.Fields[i]; in.RequiredUnsaved {
-			f.Validate = nil
+			f.SetValidate(nil)
 			if !s.configured {
-				f.Validate = required
+				f.SetValidate(required)
 			}
 		}
 	}
@@ -443,10 +440,10 @@ func (s *Screen) saveClient(ctx context.Context) tea.Cmd {
 	}, toMsg)
 }
 
-func formValues(f *form.Form) []string {
+func formValues(f *huhform.Form) []string {
 	values := make([]string, len(f.Fields))
 	for i, fl := range f.Fields {
-		values[i] = fl.Input.Value()
+		values[i] = fl.Raw()
 	}
 	return values
 }
@@ -478,7 +475,7 @@ func (s *Screen) loginNew(ctx context.Context) tea.Cmd {
 		values = formValues(s.form)
 		for i, in := range s.svc.Fields {
 			if in.Clear {
-				s.form.Fields[i].Input.SetValue("")
+				s.form.Fields[i].SetValue("")
 			}
 		}
 	}

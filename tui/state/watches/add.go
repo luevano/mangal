@@ -16,7 +16,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/tui/base"
-	"github.com/luevano/mangal/v5/tui/model/form"
+	"github.com/luevano/mangal/v5/tui/model/huhform"
 	"github.com/luevano/mangal/v5/tui/util"
 	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -113,9 +113,9 @@ type addState struct {
 	watched     bool
 	libraryLast *float32
 
-	form          *form.Form
-	from, anilist *form.Field
-	gaps          *form.Field
+	form          *huhform.Form
+	from, anilist *huhform.Field
+	gaps          *huhform.Field
 }
 
 // infoMsg is what the add screen needs to know first.
@@ -141,11 +141,11 @@ func newAddState(connect connector, c *libmangal.Client, manga mangadata.Manga, 
 		manga:    manga,
 		chapters: chapters,
 		connect:  connect,
-		anilist:  form.Text("AniList id", formatAnilistID(anilistID(manga)), "the metadata of its downloads, empty to search it as usual", validateAnilistID),
-		gaps:     form.Toggle("Gaps", config.Watch.Gaps.Get(), "also download the missing chapters below the last one"),
+		anilist:  huhform.Text("AniList id", formatAnilistID(anilistID(manga)), "the metadata of its downloads, empty to search it as usual", validateAnilistID),
+		gaps:     huhform.Toggle("Gaps", config.Watch.Gaps.Get(), "also download the missing chapters below the last one"),
 	}
-	s.from = form.Text("From chapter", fromAll, fromHint(nil, nil), validateFrom)
-	s.form = form.New(s.from, s.anilist, s.gaps)
+	s.from = huhform.Text("From chapter", fromAll, fromHint(nil, nil), validateFrom)
+	s.form = huhform.New(s.from, s.anilist, s.gaps)
 	return s
 }
 
@@ -153,10 +153,9 @@ func newAddState(connect connector, c *libmangal.Client, manga mangadata.Manga, 
 // was changed already.
 func (s *addState) setFrom(libraryLast, latest *float32) {
 	s.libraryLast = libraryLast
-	s.from.Hint = fromHint(libraryLast, latest)
+	s.from.SetHint(fromHint(libraryLast, latest))
 	if s.from.Value() == fromAll {
-		s.from.Input.SetValue(defaultFrom(libraryLast, latest))
-		s.from.Input.CursorEnd()
+		s.from.SetValue(defaultFrom(libraryLast, latest))
 	}
 }
 
@@ -253,7 +252,7 @@ func (s *addState) options() watch.AddOptions {
 	if from != nil && (s.libraryLast == nil || *from != *s.libraryLast) {
 		opts.From = from
 	}
-	gaps := s.gaps.On
+	gaps := s.gaps.On()
 	opts.Gaps = &gaps
 	return opts
 }

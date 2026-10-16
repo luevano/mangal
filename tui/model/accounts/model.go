@@ -12,7 +12,6 @@ import (
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/luevano/libmangal/metadata"
@@ -22,6 +21,7 @@ import (
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/anilist"
+	"github.com/luevano/mangal/v5/tui/model/huhform"
 	"github.com/luevano/mangal/v5/tui/model/kitsu"
 	"github.com/luevano/mangal/v5/tui/model/myanimelist"
 	"github.com/luevano/mangal/v5/tui/util"
@@ -37,8 +37,9 @@ type state struct {
 	entries []client.AccountEntry
 	loaded  bool
 	table   table.Model
-	secret  textinput.Model
-	keys    keyMap
+	// secret is the form of the input
+	secret *huhform.Form
+	keys   keyMap
 
 	inputting bool
 	// discord is true when the input is the Discord webhook, else the MangaPlus secret
@@ -68,15 +69,9 @@ func New(refresh bool) base.State {
 	)
 	util.TableKeys(&t.KeyMap)
 	util.FitTable(&t, style.Normal.Base)
-	secret := util.NewInput()
-	secret.Prompt = "MangaPlus secret: "
-	secret.EchoMode = textinput.EchoPassword
-	secret.SetWidth(50)
-
 	return &state{
 		refresh: refresh,
 		table:   t,
-		secret:  secret,
 		keys:    newKeyMap(),
 	}
 }
@@ -153,8 +148,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 	}
 	if s.inputting {
-		var cmd tea.Cmd
-		s.secret, cmd = s.secret.Update(msg)
+		_, cmd := s.secret.Update(msg)
 		return cmd
 	}
 	var cmd tea.Cmd
@@ -190,28 +184,30 @@ func (s *state) login() tea.Cmd {
 		return func() tea.Msg { return myanimelist.New() }
 	case entry.Provider == mangaPlusID:
 		s.inputting, s.discord = true, false
-		s.secret.Prompt = "MangaPlus secret: "
-		s.secret.SetValue("")
-		return s.secret.Focus()
+		return s.openSecret("MangaPlus secret")
 	case entry.Discord:
 		s.inputting, s.discord = true, true
-		s.secret.Prompt = "Discord webhook: "
-		s.secret.SetValue("")
-		return s.secret.Focus()
+		return s.openSecret("Discord webhook")
 	}
 	return base.Notify("Nothing to log into for " + entry.Service)
+}
+
+// openSecret opens an empty input of a secret.
+func (s *state) openSecret(label string) tea.Cmd {
+	field := huhform.Secret(label, "", "", nil)
+	field.SetWidth(50)
+	s.secret = huhform.New(field)
+	return s.secret.Focus(0)
 }
 
 func (s *state) updateSecret(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, s.keys.cancel):
 		s.inputting = false
-		s.secret.Blur()
 		return nil
 	case key.Matches(msg, s.keys.save):
 		s.inputting = false
-		s.secret.Blur()
-		secret := strings.TrimSpace(s.secret.Value())
+		secret := s.secret.Fields[0].Value()
 		if s.discord {
 			return s.saveWebhook(ctx, secret)
 		}
@@ -227,8 +223,7 @@ func (s *state) updateSecret(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 			}
 		}
 	}
-	var cmd tea.Cmd
-	s.secret, cmd = s.secret.Update(msg)
+	_, cmd := s.secret.Update(msg)
 	return cmd
 }
 

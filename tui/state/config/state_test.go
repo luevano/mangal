@@ -11,7 +11,6 @@ import (
 	"charm.land/bubbles/v2/key"
 	"github.com/luevano/mangal/v5/tui/util"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	mconfig "github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -244,7 +243,7 @@ func TestSecretMasked(t *testing.T) {
 		t.Error("secret shown")
 	}
 	press(s, "enter")
-	if s.input.EchoMode != textinput.EchoPassword || strings.Contains(s.input.View(), "tok") {
+	if !s.input.Secret() || strings.Contains(s.input.View(), "tok") {
 		t.Error("secret not masked while editing")
 	}
 }

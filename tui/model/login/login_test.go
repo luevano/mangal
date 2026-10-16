@@ -159,7 +159,7 @@ func TestForm(t *testing.T) {
 		t.Fatalf("an empty password logged in: %v\n%s", f.logins, s.View())
 	}
 	press(s, "shift+tab", "o", "tab", "pw")
-	if got := s.form.Fields[0].Input.Value(); got != "ino" {
+	if got := s.form.Fields[0].Raw(); got != "ino" {
 		t.Errorf("user %q, want the typed ino", got)
 	}
 	press(s, "enter")
@@ -167,8 +167,8 @@ func TestForm(t *testing.T) {
 		t.Fatalf("logins %q", f.logins)
 	}
 	// rejected: the form stays, without the password
-	if s.phase != newLogin || s.form.Fields[1].Input.Value() != "" || s.form.Fields[0].Input.Value() != "ino" {
-		t.Errorf("after the rejected login: phase %v, fields %q %q", s.phase, s.form.Fields[0].Input.Value(), s.form.Fields[1].Input.Value())
+	if s.phase != newLogin || s.form.Fields[1].Raw() != "" || s.form.Fields[0].Raw() != "ino" {
+		t.Errorf("after the rejected login: phase %v, fields %q %q", s.phase, s.form.Fields[0].Raw(), s.form.Fields[1].Raw())
 	}
 	press(s, "esc")
 	if s.phase != saved || !s.Backable() {
@@ -191,13 +191,13 @@ func TestForm(t *testing.T) {
 func TestValues(t *testing.T) {
 	s := New((&fake{}).service(false))
 	s.Update(context.Background(), Status{Values: []string{"id", "secret"}})
-	if s.form.Fields[0].Input.Value() != "id" || s.form.Fields[1].Input.Value() != "secret" {
+	if s.form.Fields[0].Raw() != "id" || s.form.Fields[1].Raw() != "secret" {
 		t.Fatal("not filled")
 	}
 	press(s, "x")
 	s.Update(context.Background(), Status{Values: []string{"other", ""}})
-	if s.form.Fields[0].Input.Value() != "idx" {
-		t.Errorf("typed value replaced: %q", s.form.Fields[0].Input.Value())
+	if s.form.Fields[0].Raw() != "idx" {
+		t.Errorf("typed value replaced: %q", s.form.Fields[0].Raw())
 	}
 }
 
@@ -225,8 +225,8 @@ func TestClient(t *testing.T) {
 	}
 
 	press(s, "e")
-	if s.phase != client || s.client.Fields[0].Input.Value() != "id" || s.Backable() {
-		t.Fatalf("e: phase %v, id %q", s.phase, s.client.Fields[0].Input.Value())
+	if s.phase != client || s.client.Fields[0].Raw() != "id" || s.Backable() {
+		t.Fatalf("e: phase %v, id %q", s.phase, s.client.Fields[0].Raw())
 	}
 	press(s, "esc")
 	if s.phase != newLogin {

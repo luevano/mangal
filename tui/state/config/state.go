@@ -12,7 +12,6 @@ import (
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	_list "charm.land/bubbles/v2/list"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	mconfig "github.com/luevano/mangal/v5/config"
@@ -21,6 +20,7 @@ import (
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
+	"github.com/luevano/mangal/v5/tui/model/huhform"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/util"
 )
@@ -51,7 +51,9 @@ type state struct {
 	mode      mode
 	// key being edited or mapped
 	key   string
-	input textinput.Model
+	input *huhform.Field
+	// form has the input
+	form *huhform.Form
 	// err is the last change's error, shown inline
 	err  string
 	maps mapEditor
@@ -82,16 +84,12 @@ type mapEditor struct {
 func New(filter string) base.State {
 	keys := mconfig.Keys()
 	l := list.New(2, 0, "key", "keys", sortedItems(keys), func(i item) _list.DefaultItem { return i })
-	input := util.NewInput()
-	input.Prompt = icon.Item.Raw() + " "
-	inputStyles := input.Styles()
-	inputStyles.Focused.Prompt = style.Bold.Accent
-	inputStyles.Blurred.Prompt = style.Bold.Accent
-	input.SetStyles(inputStyles)
+	input := huhform.Text("", "", "", nil)
 	s := &state{
 		list:     l,
 		expanded: map[string]bool{},
 		input:    input,
+		form:     huhform.New(input),
 		keys:     newKeyMap(),
 		Host:     confirm.NewHost(40, color.Warning),
 		write:    writeKey,
@@ -347,13 +345,9 @@ func (s *state) change(key string) tea.Cmd {
 
 func (s *state) openInput(value, placeholder string, secret bool) tea.Cmd {
 	s.input.SetValue(value)
-	s.input.CursorEnd()
-	s.input.Placeholder = placeholder
-	s.input.EchoMode = textinput.EchoNormal
-	if secret {
-		s.input.EchoMode = textinput.EchoPassword
-	}
-	return s.input.Focus()
+	s.input.SetPlaceholder(placeholder)
+	s.input.SetSecret(secret)
+	return s.form.Focus(0)
 }
 
 // set validates the value, sets it for this run and writes it to the config file. ok is
@@ -399,7 +393,7 @@ func (s *state) updateEditing(msg tea.Msg) tea.Cmd {
 	if msg, ok := msg.(tea.KeyPressMsg); ok {
 		switch {
 		case key.Matches(msg, s.keys.save):
-			cmd, ok := s.set(s.key, s.input.Value())
+			cmd, ok := s.set(s.key, s.input.Raw())
 			if ok {
 				s.closeInput()
 			}
@@ -410,13 +404,11 @@ func (s *state) updateEditing(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 	}
-	var cmd tea.Cmd
-	s.input, cmd = s.input.Update(msg)
+	_, cmd := s.form.Update(msg)
 	return cmd
 }
 
 func (s *state) closeInput() {
-	s.input.Blur()
 	s.input.SetValue("")
 	if s.mode == editing {
 		s.mode = browsing
@@ -435,8 +427,7 @@ func (s *state) updateMapping(msg tea.Msg) tea.Cmd {
 			s.err = ""
 			return nil
 		}
-		var cmd tea.Cmd
-		s.input, cmd = s.input.Update(msg)
+		_, cmd := s.form.Update(msg)
 		return cmd
 	}
 	if !ok {
@@ -492,7 +483,7 @@ func (s *state) removeEntry(msg removeEntryMsg) tea.Cmd {
 // saveEntry takes the id of a new entry, or sets the url of the entry.
 func (s *state) saveEntry() tea.Cmd {
 	m := &s.maps
-	value := strings.TrimSpace(s.input.Value())
+	value := s.input.Value()
 	if m.adding && m.id == "" {
 		if value == "" {
 			s.err = "the id is empty"
@@ -571,7 +562,7 @@ func (s *state) viewDetails() string {
 		lines = append(lines, style.Normal.Secondary.Width(width).Render(strings.Join(extra, " · ")))
 	}
 	if s.mode == editing {
-		lines = append(lines, s.input.View())
+		lines = append(lines, s.form.View())
 	}
 	if s.err != "" {
 		lines = append(lines, style.Normal.Error.Width(width).Render(s.err))
@@ -600,7 +591,7 @@ func (s *state) viewMap() string {
 		if m.adding && m.id == "" {
 			label = "new entry: provider id"
 		}
-		lines = append(lines, "", style.Normal.Secondary.Render(label), s.input.View())
+		lines = append(lines, "", style.Normal.Secondary.Render(label), s.form.View())
 	}
 	if s.err != "" {
 		lines = append(lines, "", lipgloss.NewStyle().Foreground(color.Error).Width(max(20, s.size.Width)).Render(s.err))

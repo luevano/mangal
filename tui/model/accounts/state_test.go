@@ -72,8 +72,8 @@ func TestLogIn(t *testing.T) {
 	}
 	// i and c are typed
 	press(s, "ic")
-	if s.secret.Value() != "ic" {
-		t.Errorf("typed %q", s.secret.Value())
+	if s.secret.Fields[0].Raw() != "ic" {
+		t.Errorf("typed %q", s.secret.Fields[0].Raw())
 	}
 	press(s, "esc")
 	if s.Inputting() || !s.Backable() {

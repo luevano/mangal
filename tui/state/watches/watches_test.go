@@ -499,15 +499,15 @@ func TestEditOptions(t *testing.T) {
 	if opts := s.options(); opts != (watch.UpdateOptions{}) {
 		t.Errorf("unchanged: got %+v", opts)
 	}
-	s.schedule.Input.SetValue(" 0 */12 * * * ")
-	s.gaps.On = false
-	s.anilist.Input.SetValue("")
+	s.schedule.SetValue(" 0 */12 * * * ")
+	s.gaps.SetOn(false)
+	s.anilist.SetValue("")
 	opts := s.options()
 	if opts.Schedule == nil || *opts.Schedule != "0 */12 * * *" || opts.Gaps == nil || *opts.Gaps || opts.AnilistID == nil || *opts.AnilistID != 0 {
 		t.Errorf("changed: got %+v", opts)
 	}
-	s.schedule.Input.SetValue("12h")
-	if s.form.Valid() || s.schedule.Err == "" {
+	s.schedule.SetValue("12h")
+	if s.form.Valid() || s.schedule.Err() == "" {
 		t.Error("12h schedule valid")
 	}
 	if !strings.Contains(s.View(), "has 5 fields") {
@@ -521,16 +521,16 @@ func TestEditSkip(t *testing.T) {
 	if s.skip.Value() != "189.5" || s.options().Skip != nil {
 		t.Errorf("unchanged: %q, %+v", s.skip.Value(), s.options())
 	}
-	s.skip.Input.SetValue("190 189.5,190")
+	s.skip.SetValue("190 189.5,190")
 	if opts := s.options(); opts.Skip == nil || !slices.Equal(*opts.Skip, []float32{189.5, 190}) {
 		t.Errorf("added: %+v", opts)
 	}
-	s.skip.Input.SetValue("")
+	s.skip.SetValue("")
 	if opts := s.options(); opts.Skip == nil || len(*opts.Skip) != 0 {
 		t.Errorf("cleared: %+v", opts)
 	}
-	s.skip.Input.SetValue("189.5, fake")
-	if s.form.Valid() || s.skip.Err == "" {
+	s.skip.SetValue("189.5, fake")
+	if s.form.Valid() || s.skip.Err() == "" {
 		t.Error("fake accepted as a chapter number")
 	}
 }
@@ -788,8 +788,8 @@ func TestRelink(t *testing.T) {
 	moved := m.watches[1]
 	moved.Provider, moved.MangaID, moved.NeedsRelink = "mango-weebcentral", "01J76", false
 	e.Update(ctx, relinkedMsg{w: moved})
-	if !strings.Contains(e.manga.Display, "mango-weebcentral · 01J76") || strings.Contains(e.manga.Display, "needs") {
-		t.Errorf("edit after the re-link: %q", e.manga.Display)
+	if !strings.Contains(e.manga.Display(), "mango-weebcentral · 01J76") || strings.Contains(e.manga.Display(), "needs") {
+		t.Errorf("edit after the re-link: %q", e.manga.Display())
 	}
 }
 

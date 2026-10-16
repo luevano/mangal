@@ -8,12 +8,11 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/help"
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/tui/base"
-	"github.com/luevano/mangal/v5/tui/model/form"
+	"github.com/luevano/mangal/v5/tui/model/huhform"
 	"github.com/luevano/mangal/v5/tui/util"
 )
 
@@ -57,10 +56,9 @@ var _ base.State = (*editState)(nil)
 type editState struct {
 	manager                        watch.Manager
 	w                              watch.Watch
-	form                           *form.Form
-	manga, schedule, gaps, anilist *form.Field
-	skip                           *form.Field
-	relink                         key.Binding
+	form                           *huhform.Form
+	manga, schedule, gaps, anilist *huhform.Field
+	skip                           *huhform.Field
 }
 
 // mangaDisplay is the watch's manga for the edit screen.
@@ -83,24 +81,27 @@ func newEditState(m watch.Manager, w watch.Watch) *editState {
 	s := &editState{
 		manager:  m,
 		w:        w,
-		manga:    form.Action("Manga", mangaDisplay(w), "enter: change it (search a provider), the watch keeps its history and settings"),
-		relink:   util.Bind("change manga", "enter"),
-		schedule: form.Text("Schedule", w.Schedule, fmt.Sprintf(`cron, e.g. "0 */6 * * *" or @daily; empty for the default (%s)`, config.Watch.Schedule.Get()), validateSchedule),
-		gaps:     form.Toggle("Gaps", w.Gaps, "also download the missing chapters below the last one"),
-		anilist:  form.Text("AniList id", formatAnilistID(w.AnilistID), "the metadata of its downloads, empty for none", validateAnilistID),
-		skip:     form.Text("Skip", watch.FormatNumbers(w.Skip), "chapter numbers never to download (fake or broken ones), e.g. 189.5, 190; remove one to get it again", validateSkip),
+		schedule: huhform.Text("Schedule", w.Schedule, fmt.Sprintf(`cron, e.g. "0 */6 * * *" or @daily; empty for the default (%s)`, config.Watch.Schedule.Get()), validateSchedule),
+		gaps:     huhform.Toggle("Gaps", w.Gaps, "also download the missing chapters below the last one"),
+		anilist:  huhform.Text("AniList id", formatAnilistID(w.AnilistID), "the metadata of its downloads, empty for none", validateAnilistID),
+		skip:     huhform.Text("Skip", watch.FormatNumbers(w.Skip), "chapter numbers never to download (fake or broken ones), e.g. 189.5, 190; remove one to get it again", validateSkip),
 	}
-	s.form = form.New(s.manga, s.schedule, s.gaps, s.anilist, s.skip)
+	s.manga = huhform.Action("Manga", mangaDisplay(w), "enter: change it (search a provider), the watch keeps its history and settings",
+		util.Bind("change manga", "enter"), s.relink)
+	s.form = huhform.New(s.manga, s.schedule, s.gaps, s.anilist, s.skip)
 	s.form.Focus(1)
 	return s
 }
 
-func (s *editState) Backable() bool  { return true }
-func (s *editState) Inputting() bool { return true }
-func (s *editState) KeyMap() help.KeyMap {
-	s.relink.SetEnabled(s.form.Focused() == s.manga)
-	return util.KeyMap{Short: append([]key.Binding{s.relink}, s.form.Keys()...)}
+// relink opens the re-link search of the watch's manga.
+func (s *editState) relink() tea.Cmd {
+	m, w := s.manager, s.w
+	return func() tea.Msg { return newRelinkState(m, w) }
 }
+
+func (s *editState) Backable() bool                { return true }
+func (s *editState) Inputting() bool               { return true }
+func (s *editState) KeyMap() help.KeyMap           { return util.KeyMap{Short: s.form.Keys()} }
 func (s *editState) Key() string                   { return fmt.Sprintf("watch-edit/%d", s.w.ID) }
 func (s *editState) Title() base.Title             { return base.Title{Text: "Edit " + s.w.Title} }
 func (s *editState) Subtitle() string              { return s.w.Provider + " · manga id " + s.w.MangaID }
@@ -116,8 +117,8 @@ func (s *editState) options() watch.UpdateOptions {
 	if sched := strings.TrimSpace(s.schedule.Value()); sched != s.w.Schedule {
 		opts.Schedule = &sched
 	}
-	if s.gaps.On != s.w.Gaps {
-		gaps := s.gaps.On
+	if s.gaps.On() != s.w.Gaps {
+		gaps := s.gaps.On()
 		opts.Gaps = &gaps
 	}
 	if id, _ := parseAnilistID(s.anilist.Value()); id != s.w.AnilistID {
@@ -141,15 +142,11 @@ func (s *editState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		// the bindings moved with it, the AniList field stays right
 		s.w.Provider, s.w.MangaID, s.w.Title = msg.w.Provider, msg.w.MangaID, msg.w.Title
 		s.w.NeedsRelink, s.w.RelinkReason, s.w.ProviderMissing = msg.w.NeedsRelink, msg.w.RelinkReason, msg.w.ProviderMissing
-		s.manga.Display = mangaDisplay(s.w)
+		s.manga.SetDisplay(mangaDisplay(s.w))
 		return nil
 	case tea.KeyPressMsg:
 		if base.Busy(ctx) {
 			return nil
-		}
-		if s.form.Focused() == s.manga && key.Matches(msg, s.relink) {
-			m, w := s.manager, s.w
-			return func() tea.Msg { return newRelinkState(m, w) }
 		}
 	}
 	submitted, cmd := s.form.Update(msg)
