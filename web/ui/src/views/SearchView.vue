@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import client, { ok } from '@/api/client'
 import { imageURL } from '@/api/urls'
 import LoadState from '@/components/LoadState.vue'
+import PagerNav from '@/components/PagerNav.vue'
+import { usePager } from '@/composables/usePager'
 import { useLoad } from '@/composables/useLoad'
 import { crumbs } from '@/stores/crumbs'
 
@@ -21,6 +23,7 @@ const { data, loading, error } = useLoad(
   () => (q.value ? ok(client.GET('/v1/providers/{provider}/search', { params: { path: { provider: provider.value }, query: { q: q.value } } })) : Promise.resolve([])),
   [provider, q]
 )
+const pager = usePager(data, 60)
 function submit() {
   router.replace({ query: { q: input.value } })
 }
@@ -36,7 +39,7 @@ function open(id: string) {
   </form>
   <LoadState :loading="loading" :error="error" :empty="!loading && q !== '' && data && !data.length" empty-text="Nothing found." />
   <div v-if="data?.length" class="row">
-    <div v-for="m in data" :key="m.id" class="col-6 col-md-4 col-lg-3 col-xl-2 mb-3">
+    <div v-for="m in pager.items.value" :key="m.id" class="col-6 col-md-4 col-lg-3 col-xl-2 mb-3">
       <div class="card h-100 clickable" data-test="search-result" @click="open(m.id)">
         <img v-if="m.cover && !broken.has(m.id)" :src="imageURL(m.cover, m.url)" class="card-img-top cover-card" loading="lazy" alt="" @error="broken.add(m.id)" />
         <div v-else class="card-img-top cover-card d-flex align-items-center justify-content-center text-secondary"><i class="bi bi-image fs-2" /></div>
@@ -47,4 +50,5 @@ function open(id: string) {
       </div>
     </div>
   </div>
+  <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
 </template>

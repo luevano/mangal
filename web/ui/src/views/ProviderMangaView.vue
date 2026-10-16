@@ -7,6 +7,8 @@ import { imageURL } from '@/api/urls'
 import type { ApplyFields, Binding, ChangeResponse, MetadataResult, MetadataSource, ProviderChapter } from '@/api/schemas'
 import MetadataPicker from '@/components/MetadataPicker.vue'
 import LoadState from '@/components/LoadState.vue'
+import PagerNav from '@/components/PagerNav.vue'
+import { usePager } from '@/composables/usePager'
 import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
 import { num, sourceNames } from '@/composables/format'
@@ -35,6 +37,7 @@ const chapters = useLoad(
 crumbs(() => [{ title: 'Providers', to: { name: 'providers' } }, { title: provider.value }, { title: pm.data.value?.manga.title ?? mangaID.value }])
 
 const selected = ref(new Set<string>())
+const pager = usePager(computed(() => chapters.data.value), 100)
 const key = (c: ProviderChapter) => `${c.volume}/${c.number}`
 function toggle(c: ProviderChapter) {
   const s = new Set(selected.value)
@@ -158,7 +161,7 @@ function unbind(b: Binding) {
     <table v-if="chapters.data.value?.length" class="table table-sm table-hover" data-test="provider-chapters">
       <thead><tr><th style="width: 2rem"></th><th>#</th><th>Title</th><th>Vol</th><th></th><th></th></tr></thead>
       <tbody>
-        <tr v-for="c in chapters.data.value" :key="key(c)" :class="{ 'table-active': selected.has(key(c)) }">
+        <tr v-for="c in pager.items.value" :key="key(c)" :class="{ 'table-active': selected.has(key(c)) }">
           <td><input class="form-check-input" type="checkbox" :checked="selected.has(key(c))" @change="toggle(c)" /></td>
           <td>{{ num(c.number) }}</td>
           <td><a href="#" class="text-decoration-none" @click.prevent="read(c)">{{ c.title }}</a></td>
@@ -174,6 +177,7 @@ function unbind(b: Binding) {
         </tr>
       </tbody>
     </table>
+    <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
   </template>
 
   <MetadataPicker :open="bindOpen" :title="`Bind ${pm.data.value?.manga.title ?? ''}`" :query="pm.data.value?.manga.title" :source="bindSource" @close="bindOpen = false" @pick="planBind" />

@@ -4,6 +4,8 @@ import { RouterLink } from 'vue-router'
 import client, { ok } from '@/api/client'
 import type { Job } from '@/api/schemas'
 import LoadState from '@/components/LoadState.vue'
+import PagerNav from '@/components/PagerNav.vue'
+import { usePager } from '@/composables/usePager'
 import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
 import { date, num } from '@/composables/format'
@@ -16,6 +18,7 @@ const action = useAction()
 onMounted(() => jobs.load())
 
 const sorted = computed(() => [...jobs.list].sort((a, b) => b.id - a.id))
+const pager = usePager(sorted, 50)
 const recent = useLoad(() => ok(client.GET('/v1/library/downloads', { params: { query: { limit: 50 } } })), [() => jobs.finished])
 
 const statusClass: Record<string, string> = { running: 'text-bg-info', waiting: 'text-bg-info', queued: 'text-bg-secondary', done: 'text-bg-success', failed: 'text-bg-danger', cancelled: 'text-bg-dark' }
@@ -40,7 +43,7 @@ function clearQueue() {
     <button class="btn btn-sm btn-outline-danger" :disabled="!jobs.queued" @click="clearQueue">Clear the queue</button>
   </div>
   <LoadState :loading="!jobs.loaded" :error="jobs.error" :empty="jobs.loaded && !jobs.list.length" empty-text="No jobs (downloads and scans asked here or through the API show here)." />
-  <div v-for="j in sorted" :key="j.id" class="card mb-2" data-test="job">
+  <div v-for="j in pager.items.value" :key="j.id" class="card mb-2" data-test="job">
     <div class="card-body py-2">
       <div class="d-flex flex-wrap gap-2 align-items-center">
         <span class="badge" :class="statusClass[j.status] ?? 'text-bg-secondary'">{{ j.status }}</span>
@@ -71,7 +74,7 @@ function clearQueue() {
       </ul>
     </div>
   </div>
-
+  <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
   <h6 class="mt-4">Downloaded lately</h6>
   <LoadState :loading="recent.loading.value && !recent.data.value" :error="recent.error.value" :empty="recent.data.value && !recent.data.value.downloads.length" empty-text="Nothing downloaded yet." />
   <table v-if="recent.data.value?.downloads.length" class="table table-sm">

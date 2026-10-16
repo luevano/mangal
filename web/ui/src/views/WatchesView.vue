@@ -6,6 +6,8 @@ import type { CheckResponse, Watch } from '@/api/schemas'
 import FormModal from '@/components/FormModal.vue'
 import LiveLog from '@/components/LiveLog.vue'
 import LoadState from '@/components/LoadState.vue'
+import PagerNav from '@/components/PagerNav.vue'
+import { usePager } from '@/composables/usePager'
 import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
 import { ago, num } from '@/composables/format'
@@ -33,6 +35,7 @@ const shown = computed(() => {
 })
 
 const providers = useLoad(() => ok(client.GET('/v1/providers')))
+const pager = usePager(shown, 100)
 
 function setEnabled(w: Watch, enabled: boolean) {
   action.run(() => ok(client.PATCH('/v1/watches/{id}', { params: { path: { id: w.id } }, body: { enabled } })), `${w.title} ${enabled ? 'resumed' : 'paused'}`).then(() => watches.load())
@@ -84,7 +87,7 @@ function submitAdd() {
       <tr><th>Title</th><th class="d-none d-md-table-cell">Provider</th><th>Last</th><th class="d-none d-lg-table-cell">Checked</th><th class="d-none d-lg-table-cell">Next</th><th></th></tr>
     </thead>
     <tbody>
-      <tr v-for="w in shown" :key="w.id" :class="{ 'text-secondary': !w.enabled }">
+      <tr v-for="w in pager.items.value" :key="w.id" :class="{ 'text-secondary': !w.enabled }">
         <td>
           <RouterLink :to="{ name: 'watch', params: { id: w.id } }">{{ w.title }}</RouterLink>
           <span v-if="!w.enabled" class="badge text-bg-secondary ms-1">paused</span>
@@ -106,6 +109,7 @@ function submitAdd() {
       </tr>
     </tbody>
   </table>
+  <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
 
   <h6 class="mt-4">Live</h6>
   <LiveLog :events="watches.live" />

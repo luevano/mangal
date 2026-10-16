@@ -8,6 +8,8 @@ import type { LibraryChapter, MetadataResult } from '@/api/schemas'
 import FormModal from '@/components/FormModal.vue'
 import MetadataPicker from '@/components/MetadataPicker.vue'
 import LoadState from '@/components/LoadState.vue'
+import PagerNav from '@/components/PagerNav.vue'
+import { usePager } from '@/composables/usePager'
 import MetaIDs from '@/components/MetaIDs.vue'
 import { useLoad } from '@/composables/useLoad'
 import { useAction } from '@/composables/useAction'
@@ -39,6 +41,7 @@ const sorted = computed(() =>
   [...(chapters.data.value ?? [])].sort((a, b) => a.download.volume - b.download.volume || a.download.chapter - b.download.chapter)
 )
 // the chapter after the last one read, else the first
+const pager = usePager(sorted, 100)
 const next = computed<LibraryChapter | undefined>(() => {
   const list = sorted.value
   let last = -1
@@ -181,7 +184,7 @@ function watchSource(provider: string, mangaID: string) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="c in sorted" :key="c.download.path">
+            <tr v-for="c in pager.items.value" :key="c.download.path">
               <td>{{ num(c.download.chapter) }}<span v-if="c.download.volume" class="text-secondary small"> v{{ num(c.download.volume) }}</span></td>
               <td><a href="#" class="text-decoration-none" @click.prevent="read(c)">{{ c.download.chapter_title }}</a></td>
               <td class="d-none d-md-table-cell small">{{ c.download.provider }}</td>
@@ -198,6 +201,7 @@ function watchSource(provider: string, mangaID: string) {
             </tr>
           </tbody>
         </table>
+        <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
       </div>
       <div class="col-12 col-xl-4">
         <h6>Sources</h6>

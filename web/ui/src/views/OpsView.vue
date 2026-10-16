@@ -4,6 +4,8 @@ import client, { ok } from '@/api/client'
 import { change } from '@/api/changes'
 import type { Op } from '@/api/schemas'
 import LoadState from '@/components/LoadState.vue'
+import PagerNav from '@/components/PagerNav.vue'
+import { usePager } from '@/composables/usePager'
 import { useLoad } from '@/composables/useLoad'
 import { date } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
@@ -14,7 +16,8 @@ crumbs(() => [{ title: 'Library', to: { name: 'library' } }, { title: 'Operation
 const route = useRoute()
 const changes = useChanges()
 const plan = usePlan()
-const { data, loading, error } = useLoad(() => ok(client.GET('/v1/ops', { params: { query: { limit: 100 } } })), [() => changes.version])
+const { data, loading, error } = useLoad(() => ok(client.GET('/v1/ops', { params: { query: { limit: 0 } } })), [() => changes.version])
+const pager = usePager(data, 100)
 
 function undo(o: Op) {
   plan.open({ title: `Undo ${o.kind} #${o.id}`, verb: 'Undo', run: change('POST', `/ops/${o.id}/undo`) })
@@ -28,7 +31,7 @@ function undo(o: Op) {
   <table v-if="data?.length" class="table table-sm" data-test="ops-table">
     <thead><tr><th>#</th><th>Kind</th><th>Summary</th><th class="d-none d-md-table-cell">When</th><th></th></tr></thead>
     <tbody>
-      <tr v-for="o in data" :key="o.id" :class="{ 'table-active': String(o.id) === String(route.query.op) }">
+      <tr v-for="o in pager.items.value" :key="o.id" :class="{ 'table-active': String(o.id) === String(route.query.op) }">
         <td>{{ o.id }}</td>
         <td>{{ o.kind }}</td>
         <td class="small">
@@ -44,4 +47,5 @@ function undo(o: Op) {
       </tr>
     </tbody>
   </table>
+  <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
 </template>

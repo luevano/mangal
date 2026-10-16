@@ -4,6 +4,8 @@ import { RouterLink, useRoute } from 'vue-router'
 import client, { ok } from '@/api/client'
 import LiveLog from '@/components/LiveLog.vue'
 import LoadState from '@/components/LoadState.vue'
+import PagerNav from '@/components/PagerNav.vue'
+import { usePager } from '@/composables/usePager'
 import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
 import { date, num } from '@/composables/format'
@@ -17,6 +19,7 @@ const action = useAction()
 const run = useLoad(() => ok(client.GET('/v1/runs/{id}', { params: { path: { id: id.value } } })), [id, () => watches.runsVersion])
 crumbs(() => [{ title: 'Watches', to: { name: 'watches' } }, { title: 'Check runs', to: { name: 'runs' } }, { title: `#${id.value}` }])
 const live = computed(() => watches.live.filter((e) => e.run === id.value))
+const pager = usePager(computed(() => run.data.value?.results), 100)
 
 function cancel() {
   action.run(() => ok(client.POST('/v1/runs/{id}/cancel', { params: { path: { id: id.value } } })), 'Cancelling')
@@ -36,7 +39,7 @@ function cancel() {
     <table v-if="run.data.value.results?.length" class="table table-sm">
       <thead><tr><th>Watch</th><th>Provider</th><th>Status</th><th>Chapters</th></tr></thead>
       <tbody>
-        <tr v-for="r in run.data.value.results" :key="r.id">
+        <tr v-for="r in pager.items.value" :key="r.id">
           <td><RouterLink v-if="r.watch" :to="{ name: 'watch', params: { id: r.watch } }">{{ r.title }}</RouterLink><span v-else>{{ r.title }}</span></td>
           <td class="small">{{ r.provider }}</td>
           <td :class="{ 'text-danger': r.status === 'error', 'text-success': r.status === 'new' }">{{ r.status }}<span v-if="r.error" class="small"> · {{ r.error }}</span></td>
@@ -44,6 +47,7 @@ function cancel() {
         </tr>
       </tbody>
     </table>
+    <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
     <template v-if="!run.data.value.finished">
       <h6>Live</h6>
       <LiveLog :events="live" />
