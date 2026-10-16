@@ -3,6 +3,7 @@ package util
 import (
 	"errors"
 	"fmt"
+	"strconv"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -48,7 +49,8 @@ func SliceToTable[T any](state *lua.LState, items []T, convert func(T) lua.LValu
 // ErrCyclic is a table that contains itself, it has no Go (JSON) value.
 var ErrCyclic = errors.New("cyclic table")
 
-// ToGoValue is the value in Go: tables are slices (a sequence 1..n) or maps.
+// ToGoValue is the value in Go: tables are slices (a sequence 1..n) or maps with string keys
+// (numbers in their shortest form, like JSON object keys).
 func ToGoValue(value lua.LValue) (any, error) {
 	return toGoValue(value, map[*lua.LTable]bool{})
 }
@@ -87,7 +89,7 @@ func toGoValue(value lua.LValue, path map[*lua.LTable]bool) (any, error) {
 			return slice, nil
 		}
 
-		m := make(map[any]any, count)
+		m := make(map[string]any, count)
 		var err error
 		table.ForEach(func(key lua.LValue, value lua.LValue) {
 			if err != nil {
@@ -100,7 +102,7 @@ func toGoValue(value lua.LValue, path map[*lua.LTable]bool) (any, error) {
 			if v, err = toGoValue(value, path); err != nil {
 				return
 			}
-			m[k] = v
+			m[mapKey(k)] = v
 		})
 		if err != nil {
 			return nil, err
@@ -110,5 +112,16 @@ func toGoValue(value lua.LValue, path map[*lua.LTable]bool) (any, error) {
 		return value.(*lua.LUserData).Value, nil
 	default:
 		return nil, nil
+	}
+}
+
+func mapKey(k any) string {
+	switch k := k.(type) {
+	case string:
+		return k
+	case float64:
+		return strconv.FormatFloat(k, 'g', -1, 64)
+	default:
+		return fmt.Sprint(k)
 	}
 }

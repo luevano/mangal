@@ -37,6 +37,11 @@ func TestPrint(t *testing.T) {
 		{`json.print({a = 1, b = {"x", "y"}})`, `{"a":1,"b":["x","y"]}` + "\n"},
 		{`json.print({1, 2, 3}, ".[] | select(. > 1)")`, "2\n3\n"},
 		{`json.print({name = "M", chapters = {{n = 1}, {n = 2}}}, ".chapters[].n")`, "1\n2\n"},
+		// what json-iterator printed: keys as strings, sorted, html escaped
+		{`json.print({1, x = 2})`, `{"1":1,"x":2}` + "\n"},
+		{`json.print({[1.5] = "f", [true] = 1, [1e21] = 0})`, `{"1.5":"f","1e+21":0,"true":1}` + "\n"},
+		{`json.print({"<a&b>"})`, `["\u003ca\u0026b\u003e"]` + "\n"},
+		{`json.print({})`, "[]\n"},
 	}
 	for _, tt := range tests {
 		out, err := print(t, tt.script)

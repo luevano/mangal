@@ -20,9 +20,9 @@ func TestToGoValue(t *testing.T) {
 		{`{}`, []any{}},
 		{`{1, "a", true}`, []any{1.0, "a", true}},
 		{`(function() local t = {}; t[2] = "b"; t[1] = "a"; return t end)()`, []any{"a", "b"}},
-		{`{[1] = 1, [3] = 3}`, map[any]any{1.0: 1.0, 3.0: 3.0}},
-		{`{a = 1, b = {2}}`, map[any]any{"a": 1.0, "b": []any{2.0}}},
-		{`{1, x = 2}`, map[any]any{1.0: 1.0, "x": 2.0}},
+		{`{[1] = 1, [3] = 3}`, map[string]any{"1": 1.0, "3": 3.0}},
+		{`{a = 1, b = {2}}`, map[string]any{"a": 1.0, "b": []any{2.0}}},
+		{`{1, x = 2}`, map[string]any{"1": 1.0, "x": 2.0}},
 		// a table twice isn't a cycle
 		{`(function() local s = {1}; return {s, s} end)()`, []any{[]any{1.0}, []any{1.0}}},
 	}
