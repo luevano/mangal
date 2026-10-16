@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import client, { ok, fetchJSON } from '@/api/client'
 import { change } from '@/api/changes'
-import type { HealthFinding, HealthJob, HealthReport } from '@/api/schemas'
+import type { HealthAction, HealthFinding, HealthJob, HealthReport } from '@/api/schemas'
 import LoadState from '@/components/LoadState.vue'
 import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
@@ -34,13 +34,8 @@ const findings = computed(() => (report.value?.findings ?? []).filter((f) => !ca
 
 const sevClass: Record<string, string> = { error: 'text-bg-danger', warning: 'text-bg-warning', info: 'text-bg-info' }
 
-interface Action {
-  kind?: string
-  ids?: string[]
-  mangas?: number[]
-}
-function actionOf(f: HealthFinding): Action | undefined {
-  return f.fix.action as Action | undefined
+function actionOf(f: HealthFinding): HealthAction | undefined {
+  return f.fix.action
 }
 const choices = ref<Record<string, string>>({})
 function choiceList(f: HealthFinding): string[] {
@@ -143,8 +138,8 @@ function runNetwork() {
         <details v-if="f.items?.length" class="small mt-1">
           <summary>{{ f.items.length }} items</summary>
           <ul class="mb-0">
-            <li v-for="(it, i) in f.items" :key="i">{{ (it as HealthFinding).subject?.name }}: {{ (it as HealthFinding).message }}
-              <button v-if="(it as HealthFinding).fix?.action" class="btn btn-sm btn-link py-0" @click="fix(it as HealthFinding)">fix</button>
+            <li v-for="(it, i) in f.items" :key="i">{{ it.subject?.name }}: {{ it.message }}
+              <button v-if="it.fix?.action" class="btn btn-sm btn-link py-0" @click="fix(it)">fix</button>
             </li>
           </ul>
         </details>

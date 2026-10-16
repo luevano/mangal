@@ -1276,7 +1276,7 @@ export interface components {
             kind: string;
             message?: string;
             /** @description the topic's object (watch.LiveEvent, Job, Op, LogEntry) */
-            data?: unknown;
+            data?: components["schemas"]["LiveEvent"] | components["schemas"]["Job"] | components["schemas"]["Op"] | components["schemas"]["LogEntry"];
         };
         MetadataID: {
             /** @description the source's code (al, kt, mal, mu, ...) */
@@ -1526,18 +1526,32 @@ export interface components {
                 commands?: string[];
                 note?: string;
                 tui?: string;
-                action?: {
-                    [key: string]: unknown;
-                };
+                action?: components["schemas"]["HealthAction"];
             };
-            /** @description a summary's findings (HealthFinding) */
-            items?: {
-                [key: string]: unknown;
-            }[];
+            /** @description a summary's findings */
+            items?: components["schemas"]["HealthFinding"][];
             part?: string;
             key: string;
             dismissed?: boolean;
             network?: boolean;
+        };
+        /** @description the fix the TUI and health/fix apply (health.Action) */
+        HealthAction: {
+            /** @description link, pick, resume, watch, merge, mark, forget, scan, rename, empty-trash */
+            kind: string;
+            /** Format: int64 */
+            manga?: number;
+            /** Format: int64 */
+            watch?: number;
+            /** @description the metadata source's code (link, pick) */
+            source?: string;
+            /** @description the ids to link (a choice when several) */
+            ids?: string[];
+            provider?: string;
+            manga_id?: string;
+            /** @description the library mangas (merge: the suggested keep first; mark) */
+            mangas?: number[];
+            paths?: string[];
         };
         HealthJob: {
             /** Format: int64 */
@@ -1788,11 +1802,29 @@ export interface components {
             library_manga?: number;
             schedule?: string;
             gaps?: boolean;
+            /**
+             * Format: float
+             * @description the first chapter it downloads
+             */
+            from?: number;
+            /** Format: date-time */
+            added?: string;
             /** Format: date-time */
             last_checked?: string;
+            /** Format: date-time */
+            last_gap_check?: string;
+            /** Format: float */
+            last_new?: number;
+            /** Format: date-time */
+            last_new_at?: string;
             last_error?: string;
+            /** Format: date-time */
+            resumed?: string;
             failures?: number;
             needs_relink?: boolean;
+            relink_reason?: string;
+            /** @description the chapters to try again */
+            retry?: number[];
             /** Format: float */
             last_downloaded?: number;
             /** Format: date-time */
@@ -1804,10 +1836,9 @@ export interface components {
             provider_missing?: boolean;
             bindings?: components["schemas"]["Binding"][];
             library_issue?: string;
+            library_elsewhere?: boolean;
             library_note?: string;
             status?: string;
-        } & {
-            [key: string]: unknown;
         };
         AddWatchRequest: {
             provider: string;
@@ -1851,7 +1882,28 @@ export interface components {
         };
         /** @description a check's report (client/watch.Report) */
         CheckReport: {
-            [key: string]: unknown;
+            /** Format: int64 */
+            id: number;
+            kind: string;
+            /** Format: date-time */
+            started: string;
+            /** Format: date-time */
+            finished?: string;
+            watches: number;
+            new_chapters: number;
+            errors: number;
+            dry_run?: boolean;
+            results: components["schemas"]["CheckResult"][];
+            /** @description the providers another run had (their watches skipped) */
+            busy?: string[];
+        };
+        /** @description a watch's check in a report (client/watch.Result) */
+        CheckResult: components["schemas"]["WatchRun"] & {
+            gaps?: boolean;
+            unavailable?: number;
+            failed?: number;
+            retry?: number[];
+            relink?: string;
         };
         CheckRun: {
             /** Format: int64 */
@@ -1925,9 +1977,7 @@ export interface components {
             pages_done?: number;
         };
         RemovedRun: {
-            run?: {
-                [key: string]: unknown;
-            };
+            run?: components["schemas"]["WatchRun"];
             check_run_removed?: boolean;
             snapshot?: string;
         };

@@ -111,6 +111,33 @@ type CheckRequest = watch.CheckRequest
 // CheckResponse defines model for CheckResponse.
 type CheckResponse = watch.CheckResponse
 
+// CheckResult a watch's check in a report (client/watch.Result)
+type CheckResult struct {
+	Chapters    *[]RunChapter `json:"chapters,omitempty"`
+	CheckRun    int64         `json:"check_run"`
+	Error       *string       `json:"error,omitempty"`
+	Failed      *int          `json:"failed,omitempty"`
+	Finished    time.Time     `json:"finished"`
+	From        *float32      `json:"from,omitempty"`
+	Gaps        *bool         `json:"gaps,omitempty"`
+	Id          int64         `json:"id"`
+	MangaId     string        `json:"manga_id"`
+	NewChapters int           `json:"new_chapters"`
+	Provider    string        `json:"provider"`
+	Relink      *string       `json:"relink,omitempty"`
+	Retry       *[]float32    `json:"retry,omitempty"`
+	Skipped     *[]float32    `json:"skipped,omitempty"`
+	Started     time.Time     `json:"started"`
+
+	// Status new, none, error or skipped
+	Status      string `json:"status"`
+	Title       string `json:"title"`
+	Unavailable *int   `json:"unavailable,omitempty"`
+
+	// Watch 0 once the watch is removed
+	Watch int64 `json:"watch"`
+}
+
 // CheckRun defines model for CheckRun.
 type CheckRun = storage.CheckRun
 
@@ -256,6 +283,26 @@ type ForgetRequest struct {
 type Format struct {
 	Extension *string `json:"extension,omitempty"`
 	Name      string  `json:"name"`
+}
+
+// HealthAction the fix the TUI and health/fix apply (health.Action)
+type HealthAction struct {
+	// Ids the ids to link (a choice when several)
+	Ids *[]string `json:"ids,omitempty"`
+
+	// Kind link, pick, resume, watch, merge, mark, forget, scan, rename, empty-trash
+	Kind    string  `json:"kind"`
+	Manga   *int64  `json:"manga,omitempty"`
+	MangaId *string `json:"manga_id,omitempty"`
+
+	// Mangas the library mangas (merge: the suggested keep first; mark)
+	Mangas   *[]int64  `json:"mangas,omitempty"`
+	Paths    *[]string `json:"paths,omitempty"`
+	Provider *string   `json:"provider,omitempty"`
+
+	// Source the metadata source's code (link, pick)
+	Source *string `json:"source,omitempty"`
+	Watch  *int64  `json:"watch,omitempty"`
 }
 
 // HealthFinding defines model for HealthFinding.

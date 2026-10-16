@@ -1850,6 +1850,11 @@ components:
           type: string
         data:
           description: the topic's object (watch.LiveEvent, Job, Op, LogEntry)
+          anyOf:
+            - $ref: '#/components/schemas/LiveEvent'
+            - $ref: '#/components/schemas/Job'
+            - $ref: '#/components/schemas/Op'
+            - $ref: '#/components/schemas/LogEntry'
 
     MetadataID:
       type: object
@@ -2380,14 +2385,12 @@ components:
             tui:
               type: string
             action:
-              type: object
-              additionalProperties: true
+              $ref: '#/components/schemas/HealthAction'
         items:
           type: array
-          description: a summary's findings (HealthFinding)
+          description: a summary's findings
           items:
-            type: object
-            additionalProperties: true
+            $ref: '#/components/schemas/HealthFinding'
         part:
           type: string
         key:
@@ -2396,6 +2399,42 @@ components:
           type: boolean
         network:
           type: boolean
+    HealthAction:
+      type: object
+      description: the fix the TUI and health/fix apply (health.Action)
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          description: link, pick, resume, watch, merge, mark, forget, scan, rename, empty-trash
+        manga:
+          type: integer
+          format: int64
+        watch:
+          type: integer
+          format: int64
+        source:
+          type: string
+          description: the metadata source's code (link, pick)
+        ids:
+          type: array
+          description: the ids to link (a choice when several)
+          items:
+            type: string
+        provider:
+          type: string
+        manga_id:
+          type: string
+        mangas:
+          type: array
+          description: 'the library mangas (merge: the suggested keep first; mark)'
+          items:
+            type: integer
+            format: int64
+        paths:
+          type: array
+          items:
+            type: string
     HealthJob:
       type: object
       required: [id, started, running]
@@ -2851,15 +2890,42 @@ components:
           type: string
         gaps:
           type: boolean
+        from:
+          type: number
+          format: float
+          description: the first chapter it downloads
+        added:
+          type: string
+          format: date-time
         last_checked:
+          type: string
+          format: date-time
+        last_gap_check:
+          type: string
+          format: date-time
+        last_new:
+          type: number
+          format: float
+        last_new_at:
           type: string
           format: date-time
         last_error:
           type: string
+        resumed:
+          type: string
+          format: date-time
         failures:
           type: integer
         needs_relink:
           type: boolean
+        relink_reason:
+          type: string
+        retry:
+          type: array
+          description: the chapters to try again
+          items:
+            type: number
+            format: float
         last_downloaded:
           type: number
           format: float
@@ -2880,11 +2946,12 @@ components:
             $ref: '#/components/schemas/Binding'
         library_issue:
           type: string
+        library_elsewhere:
+          type: boolean
         library_note:
           type: string
         status:
           type: string
-      additionalProperties: true
     AddWatchRequest:
       type: object
       x-go-type: watch.AddRequest
@@ -2988,7 +3055,55 @@ components:
       x-go-type-import:
         path: github.com/luevano/mangal/v5/client/watch
       description: a check's report (client/watch.Report)
-      additionalProperties: true
+      required: [id, kind, started, watches, new_chapters, errors, results]
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+        started:
+          type: string
+          format: date-time
+        finished:
+          type: string
+          format: date-time
+        watches:
+          type: integer
+        new_chapters:
+          type: integer
+        errors:
+          type: integer
+        dry_run:
+          type: boolean
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckResult'
+        busy:
+          type: array
+          description: the providers another run had (their watches skipped)
+          items:
+            type: string
+    CheckResult:
+      description: a watch's check in a report (client/watch.Result)
+      allOf:
+        - $ref: '#/components/schemas/WatchRun'
+        - type: object
+          properties:
+            gaps:
+              type: boolean
+            unavailable:
+              type: integer
+            failed:
+              type: integer
+            retry:
+              type: array
+              items:
+                type: number
+                format: float
+            relink:
+              type: string
     CheckRun:
       type: object
       x-go-type: storage.CheckRun
@@ -3123,8 +3238,7 @@ components:
         path: github.com/luevano/mangal/v5/client/watch
       properties:
         run:
-          type: object
-          additionalProperties: true
+          $ref: '#/components/schemas/WatchRun'
         check_run_removed:
           type: boolean
         snapshot:
