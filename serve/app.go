@@ -120,6 +120,7 @@ func (a *API) NewApp(opts AppOptions) (*echo.Echo, error) {
 	g.GET("/api/health/jobs/:id", w.GetHealthJob)
 	g.POST("/api/health/fix", a.legacyHealthFix, a.need(ScopeWrite))
 	g.GET("/api/events", a.legacyEvents, a.need(ScopeRead))
+	a.registerOPDS(e)
 
 	if opts.Web {
 		if a.Browser == nil {
