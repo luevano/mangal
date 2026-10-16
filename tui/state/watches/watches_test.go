@@ -600,7 +600,7 @@ func TestLibraryLink(t *testing.T) {
 	found := storage.Manga{ID: 7, Title: "Berserk"}
 	orig := findLibrary
 	t.Cleanup(func() { findLibrary = orig })
-	findLibrary = func(w watch.Watch) (storage.Manga, bool, error) {
+	findLibrary = func(_ context.Context, w watch.Watch) (storage.Manga, bool, error) {
 		return found, w.LibraryManga == 7, nil
 	}
 	var opened storage.Manga
@@ -610,12 +610,12 @@ func TestLibraryLink(t *testing.T) {
 	}
 
 	w := watch.Watch{Watch: storage.Watch{Title: "Dandadan"}}
-	msg, err := libraryScreen(screen, w)
+	msg, err := libraryScreen(t.Context(), screen, w)
 	if n, ok := msg.(base.NotificationMsg); err != nil || !ok || !strings.Contains(n.Message, "Dandadan isn't in the library") {
 		t.Errorf("missing: %#v, %v", msg, err)
 	}
 	w.LibraryManga = 7
-	if msg, err := libraryScreen(screen, w); err != nil || msg == nil || opened.ID != 7 {
+	if msg, err := libraryScreen(t.Context(), screen, w); err != nil || msg == nil || opened.ID != 7 {
 		t.Errorf("linked: %#v, %v, opened %+v", msg, err, opened)
 	}
 

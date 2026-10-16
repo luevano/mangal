@@ -12,6 +12,15 @@ import (
 // Core is the app's services (core.Default). Swapped in tests.
 var Core = core.Default
 
+// Library is the core's Library.
+func Library() (core.Library, error) {
+	c, err := Core()
+	if err != nil {
+		return nil, err
+	}
+	return c.Library, nil
+}
+
 // Changes is the core's Changes.
 func Changes() (core.Changes, error) {
 	c, err := Core()

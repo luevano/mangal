@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -9,11 +10,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	tuilibrary "github.com/luevano/mangal/v5/tui/state/library"
-	"github.com/luevano/mangal/v5/util/cache"
 )
 
 // libMsg is a confirmed change to the library, run with Load by the State (as runMsg).
@@ -213,21 +212,19 @@ func (s *state) dismiss(ctx context.Context, f health.Finding) tea.Cmd {
 	if f.Key == "" {
 		return base.Notify("This finding can't be dismissed")
 	}
-	return base.Load(ctx, "", func(context.Context) (dismissedMsg, error) {
-		check, subject, err := health.SplitKey(f.Key)
+	return base.Load(ctx, "", func(ctx context.Context) (dismissedMsg, error) {
+		c, err := base.Core()
 		if err != nil {
 			return dismissedMsg{}, err
 		}
-		st, err := cache.Storage()
-		if err != nil {
-			return dismissedMsg{}, err
-		}
-		ignores := storage.HealthIgnores{DB: st.Data}
 		if f.Dismissed {
-			_, err = ignores.Undismiss(check, subject)
-			return dismissedMsg{key: f.Key}, err
+			// already back is fine
+			if err := c.Health.Undismiss(ctx, f.Key); err != nil && !errors.Is(err, core.ErrNotFound) {
+				return dismissedMsg{}, err
+			}
+			return dismissedMsg{key: f.Key}, nil
 		}
-		err = ignores.Dismiss(storage.HealthIgnore{Check: check, Subject: subject, Message: f.Message})
+		_, err = c.Health.Dismiss(ctx, core.DismissReq{Keys: []string{f.Key}, Known: []health.Finding{f}})
 		return dismissedMsg{key: f.Key, dismissed: true}, err
 	}, func(msg dismissedMsg) tea.Msg { return msg })
 }

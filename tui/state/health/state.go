@@ -3,6 +3,7 @@
 package health
 
 import (
+	"errors"
 	gocolor "image/color"
 
 	"context"
@@ -18,6 +19,7 @@ import (
 	"charm.land/lipgloss/v2"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
@@ -30,7 +32,6 @@ import (
 	"github.com/luevano/mangal/v5/tui/state/migrate"
 	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
-	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
@@ -325,12 +326,11 @@ func (s *state) load(ctx context.Context, network bool) tea.Cmd {
 	}
 	all := s.all
 	return base.LoadWithStatus(ctx, label, func(ctx context.Context, status func(string)) (loadedMsg, error) {
-		checker, err := health.New(ctx)
+		c, err := base.Core()
 		if err != nil {
 			return loadedMsg{}, err
 		}
-		checker.OnProgress = status
-		report, err := checker.Run(ctx, health.Options{Network: network, All: all})
+		report, err := c.Health.Report(base.WithStatus(ctx, status), health.Options{Network: network, All: all})
 		return loadedMsg{report: report, network: network}, err
 	}, func(msg loadedMsg) tea.Msg { return msg })
 }
@@ -576,17 +576,17 @@ func (s *state) jump(ctx context.Context, f health.Finding) tea.Cmd {
 
 // loadManga loads the library manga, then makes the msg of it.
 func loadManga(ctx context.Context, id int64, then func(storage.Manga) (tea.Msg, error)) tea.Cmd {
-	return base.Load(ctx, "Loading the manga", func(context.Context) (tea.Msg, error) {
-		lib, err := cache.Library()
+	return base.Load(ctx, "Loading the manga", func(ctx context.Context) (tea.Msg, error) {
+		lib, err := base.Library()
 		if err != nil {
 			return nil, err
 		}
-		m, ok, err := lib.MangaByID(id)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
+		m, err := lib.Manga(ctx, id)
+		if errors.Is(err, core.ErrNotFound) {
 			return base.NotificationMsg{Message: fmt.Sprintf("Library manga %d is gone", id)}, nil
+		}
+		if err != nil {
+			return nil, err
 		}
 		return then(m)
 	}, func(msg tea.Msg) tea.Msg { return msg })
@@ -647,17 +647,17 @@ func (s *state) apply(ctx context.Context, f health.Finding) tea.Cmd {
 // library's merge of the other into it (its plan and confirm).
 func (s *state) merge(ctx context.Context, a *health.Action) tea.Cmd {
 	ids := a.Mangas
-	return base.Load(ctx, "Loading the duplicates", func(context.Context) (tea.Msg, error) {
-		lib, err := cache.Library()
+	return base.Load(ctx, "Loading the duplicates", func(ctx context.Context) (tea.Msg, error) {
+		lib, err := base.Library()
 		if err != nil {
 			return nil, err
 		}
 		var mangas []storage.Manga
 		for _, id := range ids {
-			if m, ok, err := lib.MangaByID(id); err != nil {
-				return nil, err
-			} else if ok {
+			if m, err := lib.Manga(ctx, id); err == nil {
 				mangas = append(mangas, m)
+			} else if !errors.Is(err, core.ErrNotFound) {
+				return nil, err
 			}
 		}
 		if len(mangas) < 2 {

@@ -11,20 +11,17 @@ import (
 	"charm.land/bubbles/v2/key"
 	_list "charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
-	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
-	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
-	"github.com/spf13/afero"
 )
 
 var _ base.State = (*mangasState)(nil)
@@ -73,9 +70,6 @@ func (i *mangaItem) Description() string {
 
 type mangasState struct {
 	list.Screen
-	files library.Files
-	// err is opening the library, shown by Init
-	err error
 	// keep is the manga a merge keeps, 0 if none
 	keep  int64
 	trash string
@@ -101,6 +95,7 @@ type mangasLoadedMsg struct {
 // scannedMsg is a finished library scan, otherRoot a directory that has the missing mangas.
 // checked is a scan with an id check, its checks or checkErr.
 type scannedMsg struct {
+	root      string
 	result    library.ScanResult
 	otherRoot string
 	checked   bool
@@ -122,15 +117,11 @@ type setRootMsg struct {
 
 // New is the library: the downloaded mangas.
 func New() base.State {
-	files, err := client.LibraryFiles()
-	s := newMangasState(files)
-	s.err = err
-	return s
+	return newMangasState()
 }
 
-func newMangasState(files library.Files) *mangasState {
+func newMangasState() *mangasState {
 	s := &mangasState{
-		files: files,
 		keys: mangasKeyMap{
 			confirm: util.Bind("chapters", "enter"),
 			scan:    base.KeyScan,
@@ -160,50 +151,42 @@ func (s *mangasState) keyMap() help.KeyMap {
 }
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
-	files := s.files
 	return base.Load(ctx, "", func(ctx context.Context) (mangasLoadedMsg, error) {
-		mangas, err := files.Library.Mangas()
+		lib, err := base.Library()
 		if err != nil {
 			return mangasLoadedMsg{}, err
 		}
-		// from the cached metadata, a mark isn't worth an error screen
-		if err := client.UpdateLibraryStatuses(ctx, files.Library, mangas, false, nil); err != nil {
-			log.Warn("publication statuses: %s", err)
+		// the statuses from the cached metadata
+		list, err := lib.Mangas(ctx, core.MangasOptions{Statuses: true, Missing: true})
+		if err != nil {
+			return mangasLoadedMsg{}, err
+		}
+		if list.StatusError != "" {
+			// a mark isn't worth an error screen
+			log.Warn("publication statuses: %s", list.StatusError)
 		}
 		watched, err := watches.Watched(ctx)
 		if err != nil {
 			// the list without the watch marks
 			log.Warn("library: the watches: %s", err)
 		}
-		dups := duplicates(files.Library, mangas, watched)
-		ids := library.DuplicateIDs(dups)
-		items := make([]*mangaItem, len(mangas))
-		for i, m := range mangas {
-			exists, err := afero.DirExists(files.FS, m.Path())
-			if err != nil {
-				log.Warn("library: %s", err)
-			}
-			keep, dup := ids[m.ID]
-			items[i] = &mangaItem{manga: m, missing: !exists, watches: watched.ForLibrary(m), duplicate: dup, dupKeep: keep}
+		dups, err := lib.Duplicates(ctx)
+		if err != nil {
+			log.Warn("duplicates: %s", err)
 		}
-		return mangasLoadedMsg{items: items, dups: dups, trash: trashSummary(files)}, nil
+		ids := library.DuplicateIDs(dups)
+		items := make([]*mangaItem, len(list.Mangas))
+		for i, m := range list.Mangas {
+			keep, dup := ids[m.ID]
+			items[i] = &mangaItem{manga: m, missing: list.IsMissing(m.ID), watches: watched.ForLibrary(m), duplicate: dup, dupKeep: keep}
+		}
+		return mangasLoadedMsg{items: items, dups: dups, trash: trashSummary(ctx, lib)}, nil
 	}, func(msg mangasLoadedMsg) tea.Msg { return msg })
 }
 
-// duplicates are the library mangas sharing a metadata id, the error is logged (a mark
-// isn't worth an error screen).
-func duplicates(lib storage.Library, mangas []storage.Manga, watched watches.Set) []library.Duplicate {
-	bindings, err := storage.Bindings(lib).List("", "")
-	if err != nil {
-		log.Warn("duplicates: %s", err)
-		return nil
-	}
-	return library.Duplicates(mangas, bindings, func(m storage.Manga) bool { return len(watched.ForLibrary(m)) != 0 })
-}
-
 // trashSummary is the size of the trash, empty if it's empty.
-func trashSummary(files library.Files) string {
-	batches, err := library.Trash(files.FS, files.Root)
+func trashSummary(ctx context.Context, lib core.Library) string {
+	batches, err := lib.Trash(ctx)
 	if err != nil || len(batches) == 0 {
 		return ""
 	}
@@ -249,10 +232,6 @@ func (s *mangasState) Status() string {
 }
 
 func (s *mangasState) Init(ctx context.Context) tea.Cmd {
-	if s.err != nil {
-		err := s.err
-		return func() tea.Msg { return err }
-	}
 	return s.reload(ctx)
 }
 
@@ -292,13 +271,13 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case setRootMsg:
 		// in Update, the config isn't safe to write from the background; there may be no
 		// file yet
-		if err := config.CreateFile(); err != nil {
+		c, err := base.Core()
+		if err == nil {
+			_, err = c.Config.Set(ctx, config.Download.Path.Key, msg.dir)
+		}
+		if err != nil {
 			return func() tea.Msg { return err }
 		}
-		if err := config.WriteKey(config.Download.Path.Key, msg.dir); err != nil {
-			return func() tea.Msg { return err }
-		}
-		s.files.Root = path.Downloads()
 		return s.scanCmd(ctx, msg.check)
 	case actionMsg:
 		return msg.run(ctx)
@@ -308,7 +287,7 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		return withNotify(s.reload(ctx), msg.notify)
 	case tea.KeyPressMsg:
-		if s.List.Filtering() || s.err != nil {
+		if s.List.Filtering() {
 			break
 		}
 		if cmd, ok := s.updateKey(ctx, msg); ok {
@@ -326,13 +305,11 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.C
 		}
 		return s.scanCmd(ctx, key.Matches(msg, s.keys.check)), true
 	case key.Matches(msg, s.keys.trash):
-		files := s.files
-		return func() tea.Msg { return newTrashState(files) }, true
+		return func() tea.Msg { return newTrashState() }, true
 	case key.Matches(msg, s.keys.undo):
 		return s.undo(ctx), true
 	case key.Matches(msg, s.keys.rename):
-		lib := s.files.Library
-		return func() tea.Msg { return newRenameState(lib, nil) }, true
+		return func() tea.Msg { return newRenameState(nil) }, true
 	case key.Matches(msg, s.keys.backups):
 		mangas := make([]storage.Manga, len(s.items))
 		for i, item := range s.items {
@@ -354,10 +331,9 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.C
 	if key.Matches(msg, s.keys.delete) && base.Busy(ctx) {
 		return base.Notify(busyNotice), true
 	}
-	files := s.files
 	switch {
 	case key.Matches(msg, s.keys.confirm):
-		return func() tea.Msg { return newMangaState(files, item.manga) }, true
+		return func() tea.Msg { return newMangaState(item.manga) }, true
 	case key.Matches(msg, s.keys.merge):
 		return s.merge(ctx, item), true
 	case key.Matches(msg, s.keys.move):
@@ -442,17 +418,17 @@ func scan(ctx context.Context, check bool, status func(string)) (scannedMsg, err
 	if err != nil {
 		return scannedMsg{}, err
 	}
-	return scannedMsg{result: rep.Result, otherRoot: rep.OtherRoot, checked: check, checks: rep.Checks, checkErr: rep.CheckErr, dups: rep.Duplicates}, nil
+	return scannedMsg{root: rep.Root, result: rep.Result, otherRoot: rep.OtherRoot, checked: check, checks: rep.Checks, checkErr: rep.CheckErr, dups: rep.Duplicates}, nil
 }
 
 func (s *mangasState) onScanned(msg scannedMsg) tea.Cmd {
 	if dir := msg.otherRoot; dir != "" {
-		message := fmt.Sprintf("%d mangas are in %s, but download.path is %s. Use %s as download.path?", len(msg.result.Missing), dir, s.files.Root, dir)
+		message := fmt.Sprintf("%d mangas are in %s, but download.path is %s. Use %s as download.path?", len(msg.result.Missing), dir, msg.root, dir)
 		s.Confirm.Ask("Download path", message, s.View(), func() tea.Msg { return setRootMsg{dir: dir, check: msg.checked} })
 		return nil
 	}
 	report := scanReport(msg.result)
-	if lines := library.DuplicateLines(msg.dups, s.files.Root); len(lines) != 0 {
+	if lines := library.DuplicateLines(msg.dups, msg.root); len(lines) != 0 {
 		report += "\n\n" + strings.Join(lines, "\n") + "\n(" + s.keys.duplicates.Help().Key + " shows them, " + s.keys.merge.Help().Key + " on one merges it into its keep)"
 	}
 	if msg.checked {

@@ -15,10 +15,10 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/huhform"
 	"github.com/luevano/mangal/v5/tui/util"
-	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
@@ -183,7 +183,6 @@ func (s *addState) Resize(size base.Size) tea.Cmd { return nil }
 
 func (s *addState) Init(ctx context.Context) tea.Cmd {
 	c, manga, chapters, connect := s.client, s.manga, s.chapters, s.connect
-	providerDirs := config.Download.Provider.CreateDir.Get()
 	return base.LoadWithStatus(ctx, "Looking up "+manga.String(), func(ctx context.Context, status func(string)) (infoMsg, error) {
 		var msg infoMsg
 		m, err := connect(ctx)
@@ -199,7 +198,7 @@ func (s *addState) Init(ctx context.Context) tea.Cmd {
 			return msg, err
 		}
 		msg.watched = NewSet(list).Has(c.Info().ID, manga.Info().ID)
-		if msg.libraryLast, err = libraryLast(c.Info(), manga, providerDirs); err != nil {
+		if msg.libraryLast, err = libraryLast(ctx, c.Info(), manga); err != nil {
 			return msg, err
 		}
 		if chapters == nil {
@@ -214,23 +213,23 @@ func (s *addState) Init(ctx context.Context) tea.Cmd {
 }
 
 // libraryLast is the highest chapter number the library has of the manga, nil if none.
-func libraryLast(provider libmangal.ProviderInfo, manga mangadata.Manga, providerDirs bool) (*float32, error) {
-	st, err := cache.Storage()
+func libraryLast(ctx context.Context, provider libmangal.ProviderInfo, manga mangadata.Manga) (*float32, error) {
+	lib, err := base.Library()
 	if err != nil {
 		return nil, err
 	}
-	m, found, err := st.Library().MangaFor(provider, manga, providerDirs)
+	m, found, err := lib.MangaFor(ctx, provider, manga.Info().ID, storage.MangaMetadataIDs(manga))
 	if err != nil || !found {
 		return nil, err
 	}
-	numbers, err := st.Watches().LibraryNumbers(m.ID)
+	downloads, err := lib.Downloads(ctx, m.ID)
 	if err != nil {
 		return nil, err
 	}
 	var last *float32
-	for n := range numbers {
-		if last == nil || n > *last {
-			n := n
+	for _, dl := range downloads {
+		if last == nil || dl.Chapter > *last {
+			n := dl.Chapter
 			last = &n
 		}
 	}

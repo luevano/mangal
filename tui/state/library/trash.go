@@ -31,15 +31,13 @@ func (i *batchItem) Description() string {
 
 type trashState struct {
 	list.Screen
-	files library.Files
 	empty key.Binding
 }
 
 type trashLoadedMsg []_list.Item
 
-func newTrashState(files library.Files) *trashState {
+func newTrashState() *trashState {
 	s := &trashState{
-		files: files,
 		empty: base.KeyEmptyTrash,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "trashed batch", "trashed batches", []*batchItem{}, func(i *batchItem) _list.DefaultItem { return i }), s.keyMap)
@@ -50,8 +48,12 @@ func newTrashState(files library.Files) *trashState {
 func (s *trashState) keyMap() help.KeyMap { return util.KeyMap{Short: []key.Binding{s.empty}} }
 
 func (s *trashState) reload(ctx context.Context) tea.Cmd {
-	return base.Load(ctx, "", func(context.Context) (trashLoadedMsg, error) {
-		batches, err := library.Trash(s.files.FS, s.files.Root)
+	return base.Load(ctx, "", func(ctx context.Context) (trashLoadedMsg, error) {
+		lib, err := base.Library()
+		if err != nil {
+			return nil, err
+		}
+		batches, err := lib.Trash(ctx)
 		if err != nil {
 			return nil, err
 		}

@@ -15,13 +15,11 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/util"
-	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
@@ -68,7 +66,6 @@ func (i *renameItem) Description() string {
 // library undoes.
 type renameState struct {
 	list.Screen
-	lib storage.Library
 	// paths keep only the renames of these folders and provider directories (a health
 	// finding's), nil keeps every one
 	paths  []string
@@ -89,16 +86,11 @@ type renamePlannedMsg struct{ plan client.RenamePlan }
 // NewRename is library rename's screen, of every folder (paths nil) or only the renames
 // of paths (manga folders, provider directories).
 func NewRename(paths []string) (base.State, error) {
-	lib, err := cache.Library()
-	if err != nil {
-		return nil, err
-	}
-	return newRenameState(lib, paths), nil
+	return newRenameState(paths), nil
 }
 
-func newRenameState(lib storage.Library, paths []string) *renameState {
+func newRenameState(paths []string) *renameState {
 	s := &renameState{
-		lib:        lib,
 		paths:      paths,
 		unselected: map[string]bool{},
 		keys: renameKeyMap{

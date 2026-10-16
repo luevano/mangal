@@ -91,12 +91,12 @@ func (s *state) Init(ctx context.Context) tea.Cmd {
 func (s *state) checkHealth(ctx context.Context) tea.Cmd {
 	key := s.healthKey.Help().Key
 	return base.Load(ctx, "", func(ctx context.Context) (healthMsg, error) {
-		checker, err := health.New(ctx)
+		c, err := base.Core()
 		if err != nil {
 			warnHealth(err)
 			return healthMsg{}, nil
 		}
-		report, err := checker.Run(ctx, health.Options{})
+		report, err := c.Health.Report(ctx, health.Options{})
 		if err != nil {
 			warnHealth(err)
 			return healthMsg{}, nil

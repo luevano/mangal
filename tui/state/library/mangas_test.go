@@ -22,7 +22,7 @@ func press(k string) tea.KeyPressMsg {
 }
 
 func TestOnScanned(t *testing.T) {
-	s := newMangasState(library.Files{Root: "/dl"})
+	s := newMangasState()
 	missing := []storage.Manga{{Title: "Berserk", Parent: "/old", Dir: "Berserk"}}
 
 	if cmd := s.onScanned(scannedMsg{result: library.ScanResult{Missing: missing}, otherRoot: "/old"}); cmd != nil {
@@ -45,7 +45,7 @@ func TestOnScanned(t *testing.T) {
 }
 
 func TestDeleteKeepsTheMergeMarkUntilDone(t *testing.T) {
-	s := newMangasState(library.Files{})
+	s := newMangasState()
 	items := []*mangaItem{{manga: storage.Manga{ID: 1, Title: "A"}}, {manga: storage.Manga{ID: 2, Title: "B"}}}
 	s.onLoaded(mangasLoadedMsg{items: items})
 	ctx := context.Background()
@@ -75,7 +75,7 @@ func TestDeleteKeepsTheMergeMarkUntilDone(t *testing.T) {
 
 func TestMangaWatches(t *testing.T) {
 	ctx := context.Background()
-	s := newMangaState(library.Files{Root: "/dl"}, storage.Manga{ID: 7, Title: "Berserk"})
+	s := newMangaState(storage.Manga{ID: 7, Title: "Berserk"})
 	s.Resize(base.Size{Width: 100, Height: 30})
 	if n, ok := s.Update(ctx, press("W"))().(base.NotificationMsg); !ok || n.Message != "Not watched" {
 		t.Errorf("W not watched: %#v", n)
@@ -110,12 +110,12 @@ func TestFormatBindings(t *testing.T) {
 
 // TestKeys: no key means two things on a screen (its keys, the list's, the global ones).
 func TestKeys(t *testing.T) {
-	mangas := newMangasState(library.Files{})
-	manga := newMangaState(library.Files{}, storage.Manga{ID: 7, Title: "Berserk"})
-	trash := newTrashState(library.Files{})
+	mangas := newMangasState()
+	manga := newMangaState(storage.Manga{ID: 7, Title: "Berserk"})
+	trash := newTrashState()
 	move := newMoveState(storage.Manga{ID: 7, Title: "Berserk"}, "mango-mangapill")
 	links := newLinksState(storage.Manga{ID: 7, Title: "Berserk"})
-	rename := newRenameState(storage.Library{}, nil)
+	rename := newRenameState(nil)
 	providers := pick.NewProviders("", nil)
 	for name, keys := range map[string][]string{
 		"move":      base.KeyCollisions(move.Keys(), move.List.KeyMap.Browsing()...),
@@ -140,7 +140,7 @@ func TestSourcesShown(t *testing.T) {
 	if d := (&mangaItem{manga: m}).Description(); !strings.Contains(d, "mango-weebcentral (was mango-asurascans)") {
 		t.Errorf("row %q", d)
 	}
-	h := newMangaState(library.Files{}, m).header()
+	h := newMangaState(m).header()
 	if !strings.Contains(h, "source: mango-weebcentral 01J · moved 2026-10-12\nprevious: mango-asurascans dungeon-odyssey") {
 		t.Errorf("header %q", h)
 	}
@@ -148,7 +148,7 @@ func TestSourcesShown(t *testing.T) {
 
 func TestDuplicatesFilter(t *testing.T) {
 	ctx := context.Background()
-	s := newMangasState(library.Files{})
+	s := newMangasState()
 	keep := storage.Manga{ID: 2, Title: "One-Punch Man", Dir: "OPM2", Chapters: 40}
 	other := storage.Manga{ID: 1, Title: "OPM", Dir: "OPM1", Chapters: 3}
 	dups := []library.Duplicate{{ID: "al", Raw: "74347", Mangas: []library.DuplicateManga{{Manga: keep}, {Manga: other}}}}
@@ -212,7 +212,7 @@ func TestAskLinks(t *testing.T) {
 
 // TestDeleteMissing: d on a manga whose folder is gone forgets it, d (or y) confirms.
 func TestDeleteMissing(t *testing.T) {
-	s := newMangasState(library.Files{})
+	s := newMangasState()
 	s.onLoaded(mangasLoadedMsg{items: []*mangaItem{{manga: storage.Manga{ID: 1, Title: "A"}, missing: true}}})
 	s.Update(context.Background(), press("d"))
 	if !s.Confirm.Active() || !strings.Contains(s.Confirm.View(), "Its folder is gone") {
@@ -222,9 +222,9 @@ func TestDeleteMissing(t *testing.T) {
 
 // a merge asked for (health) while the library is in the history: that library does it
 func TestRestoredWithMerge(t *testing.T) {
-	s := newMangasState(library.Files{})
+	s := newMangasState()
 	// NewMerge's, without opening the library
-	req := newMangasState(library.Files{})
+	req := newMangasState()
 	req.keep, req.duplicates, req.pendingMerge = 2, true, 1
 	if req.Key() != s.Key() {
 		t.Fatal("the merge's library isn't the library window")
@@ -238,7 +238,7 @@ func TestRestoredWithMerge(t *testing.T) {
 // emptying the trash lists the undos it blocks, like the cli
 func TestEmptyTrashListsBlockedUndos(t *testing.T) {
 	ctx := context.Background()
-	s := newTrashState(library.Files{Root: "/dl"})
+	s := newTrashState()
 	s.Resize(base.Size{Width: 120, Height: 40})
 	s.Update(ctx, trashLoadedMsg{&batchItem{batch: library.TrashBatch{Name: "b"}}})
 	if cmd := s.Update(ctx, press("d")); cmd == nil || s.Confirm.Active() {

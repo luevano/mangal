@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,10 +12,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/client/watch"
-	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
-	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
@@ -51,7 +50,6 @@ func (i *downloadItem) Description() string {
 
 type mangaState struct {
 	list.Screen
-	files library.Files
 	manga storage.Manga
 	// watches and bindings are the manga's, for the header
 	watches  []watch.Watch
@@ -73,9 +71,8 @@ type mangaScannedMsg struct {
 	manga  storage.Manga
 }
 
-func newMangaState(files library.Files, manga storage.Manga) *mangaState {
+func newMangaState(manga storage.Manga) *mangaState {
 	s := &mangaState{
-		files:  files,
 		manga:  manga,
 		open:   util.Bind("open", "enter"),
 		scan:   base.KeyScan,
@@ -102,13 +99,17 @@ type mangaMsg storage.Manga
 
 // mangaCmd loads the manga again (its title or folder may have changed).
 func (s *mangaState) mangaCmd(ctx context.Context) tea.Cmd {
-	lib, id := s.files.Library, s.manga.ID
-	return base.Load(ctx, "", func(context.Context) (mangaMsg, error) {
-		m, ok, err := lib.MangaByID(id)
-		if err != nil || !ok {
+	id := s.manga.ID
+	return base.Load(ctx, "", func(ctx context.Context) (mangaMsg, error) {
+		lib, err := base.Library()
+		if err != nil {
 			return mangaMsg{}, err
 		}
-		return mangaMsg(m), nil
+		m, err := lib.Manga(ctx, id)
+		if errors.Is(err, core.ErrNotFound) {
+			return mangaMsg{}, nil
+		}
+		return mangaMsg(m), err
 	}, func(m mangaMsg) tea.Msg {
 		if m.ID == 0 {
 			return nil
@@ -119,9 +120,13 @@ func (s *mangaState) mangaCmd(ctx context.Context) tea.Cmd {
 
 // bindingsCmd loads the manga's metadata bindings.
 func (s *mangaState) bindingsCmd(ctx context.Context) tea.Cmd {
-	bindings, id := storage.Bindings{DB: s.files.Library.DB}, s.manga.ID
-	return base.Load(ctx, "", func(context.Context) (mangaBindingsMsg, error) {
-		return bindings.OfLibraryManga(id)
+	id := s.manga.ID
+	return base.Load(ctx, "", func(ctx context.Context) (mangaBindingsMsg, error) {
+		lib, err := base.Library()
+		if err != nil {
+			return nil, err
+		}
+		return lib.MangaBindings(ctx, id)
 	}, func(b mangaBindingsMsg) tea.Msg { return b })
 }
 
@@ -180,9 +185,13 @@ func formatBindings(bindings []storage.Binding) string {
 }
 
 func (s *mangaState) reload(ctx context.Context) tea.Cmd {
-	lib, id := s.files.Library, s.manga.ID
-	return base.Load(ctx, "", func(context.Context) (downloadsMsg, error) {
-		downloads, err := lib.Downloads(id)
+	id := s.manga.ID
+	return base.Load(ctx, "", func(ctx context.Context) (downloadsMsg, error) {
+		lib, err := base.Library()
+		if err != nil {
+			return nil, err
+		}
+		downloads, err := lib.Downloads(ctx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -196,22 +205,17 @@ func (s *mangaState) reload(ctx context.Context) tea.Cmd {
 
 // scanCmd reconciles this manga with its folder, the list then shows what's really there.
 func (s *mangaState) scanCmd(ctx context.Context) tea.Cmd {
-	files, manga := s.files, s.manga
-	providerDirs := config.Download.Provider.CreateDir.Get()
-	return base.LoadWithStatus(ctx, "", func(_ context.Context, status func(string)) (mangaScannedMsg, error) {
-		root, err := path.ExistingDownloads()
+	id := s.manga.ID
+	return base.LoadWithStatus(ctx, "", func(ctx context.Context, status func(string)) (mangaScannedMsg, error) {
+		lib, err := base.Library()
 		if err != nil {
 			return mangaScannedMsg{}, err
 		}
-		scanner := library.Scanner{FS: files.FS, Library: files.Library, OnProgress: func(p library.Progress) { status(p.String()) }}
-		res, err := scanner.ScanManga(manga, root, providerDirs)
+		scan, err := lib.ScanManga(base.WithStatus(ctx, status), id)
 		if err != nil {
 			return mangaScannedMsg{}, err
 		}
-		if m, ok, err := files.Library.MangaByID(manga.ID); err == nil && ok {
-			manga = m
-		}
-		return mangaScannedMsg{result: res, manga: manga}, nil
+		return mangaScannedMsg{result: scan.Result, manga: scan.Manga}, nil
 	}, func(msg mangaScannedMsg) tea.Msg { return msg })
 }
 

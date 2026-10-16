@@ -97,7 +97,11 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			if err != nil {
 				return migratedMsg{}, err
 			}
-			watches, err := c.Env().Storage.Watches().List()
+			m, err := c.Watches(ctx)
+			if err != nil {
+				return migratedMsg{}, err
+			}
+			watches, err := m.List(ctx)
 			msg := migratedMsg{}
 			for _, w := range watches {
 				if w.NeedsRelink {

@@ -11,7 +11,6 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
@@ -40,7 +39,7 @@ func TestRename(t *testing.T) {
 		return renamePlannedMsg{plan: plan}
 	}
 
-	s := newRenameState(storage.Library{}, nil)
+	s := newRenameState(nil)
 	s.Resize(base.Size{Width: 120, Height: 40})
 	s.Update(ctx, planned(false))
 	items := s.items()
@@ -117,7 +116,7 @@ func TestRename(t *testing.T) {
 
 // a health finding's paths are its own window
 func TestRenamePaths(t *testing.T) {
-	if s := newRenameState(storage.Library{}, []string{"/dl/MangaDex"}); s.Key() == newRenameState(storage.Library{}, nil).Key() {
+	if s := newRenameState([]string{"/dl/MangaDex"}); s.Key() == newRenameState(nil).Key() {
 		t.Error("a finding's renames are the whole library's window")
 	}
 }
