@@ -16,7 +16,6 @@ import (
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/afs"
-	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/spf13/cobra"
 )
@@ -137,12 +136,12 @@ var libraryDownloadsCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(2),
 	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		lib, err := cache.Library()
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
 		provider, mangaID := providerManga(args)
-		downloads, err := lib.ListDownloads(provider, mangaID)
+		downloads, err := c.Library.ProviderDownloads(ctxOf(cmd), provider, mangaID)
 		if err != nil {
 			return err
 		}
@@ -214,22 +213,22 @@ ongoing, hiatus, cancelled, upcoming; from the AniList metadata already cached, 
 asks AniList), folder and sources.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		lib, err := cache.Library()
-		if err != nil {
-			return err
-		}
-		mangas, err := lib.Mangas()
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
 		st := newStatus(cmd)
-		err = client.UpdateLibraryStatuses(st.Context(cmd.Context()), lib, mangas, libraryLsArgs.Refresh, st.Progress)
+		list, err := c.Library.Mangas(changeCtx(cmd, st), core.MangasOptions{Statuses: true, Fetch: libraryLsArgs.Refresh})
 		st.Done()
 		if err != nil {
+			return err
+		}
+		mangas := list.Mangas
+		if list.StatusError != "" {
 			if libraryLsArgs.Refresh {
-				return err
+				return errors.New(list.StatusError)
 			}
-			cmd.PrintErrf("warning: publication statuses: %s\n", err)
+			cmd.PrintErrf("warning: publication statuses: %s\n", list.StatusError)
 		}
 		if len(mangas) == 0 {
 			cmd.Println(`the library is empty, "mangal library scan" adds the mangas already downloaded`)

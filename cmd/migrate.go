@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/luevano/mangal/v5/core"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/util/sanitize"
 	"github.com/spf13/cobra"
@@ -65,14 +64,18 @@ Only lists what would change unless --apply is set.`,
 			return err
 		}
 		cmd.Println("migrated")
-		return relinkWarning(cmd, c.Env().Storage.Watches())
+		return relinkWarning(cmd, c)
 	},
 }
 
 // relinkWarning lists the watches that need a re-link (e.g. moved from an old provider
 // id whose site changed) and how to fix them.
-func relinkWarning(cmd *cobra.Command, watches storage.Watches) error {
-	all, err := watches.List()
+func relinkWarning(cmd *cobra.Command, c *core.Core) error {
+	watches, err := c.Watches(ctxOf(cmd))
+	if err != nil {
+		return err
+	}
+	all, err := watches.List(ctxOf(cmd))
 	if err != nil {
 		return err
 	}

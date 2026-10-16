@@ -6,7 +6,6 @@ import (
 
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/sanitize"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/spf13/cobra"
@@ -38,12 +37,12 @@ is set (the default).`,
 	Args:              cobra.MaximumNArgs(2),
 	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		history, err := cache.History()
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
 		provider, mangaID := providerManga(args)
-		reads, err := history.List(provider, mangaID)
+		reads, err := c.Library.History(ctxOf(cmd), provider, mangaID)
 		if err != nil {
 			return err
 		}

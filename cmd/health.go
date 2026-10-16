@@ -6,9 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
-	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 )
 
@@ -99,15 +98,14 @@ error (a watch that isn't checked any more).`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
 		defer st.Done()
-		checker, err := health.New(cmd.Context())
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
-		checker.OnProgress = st.Set
 		if len(healthArgs.Dismiss) != 0 || len(healthArgs.Undismiss) != 0 {
-			return dismissFindings(cmd, checker, st)
+			return dismissFindings(cmd, c, st)
 		}
-		report, err := checker.Run(st.Context(cmd.Context()), health.Options{Only: healthArgs.Only, Network: healthArgs.Network, All: healthArgs.All})
+		report, err := c.Health.Report(changeCtx(cmd, st), health.Options{Only: healthArgs.Only, Network: healthArgs.Network, All: healthArgs.All})
 		st.Done()
 		if err != nil {
 			return err
@@ -131,54 +129,23 @@ error (a watch that isn't checked any more).`,
 
 // dismissFindings dismisses (the findings must be there now) and undismisses findings by
 // key.
-func dismissFindings(cmd *cobra.Command, checker health.Checker, st *status) error {
-	st2, err := cache.Storage()
-	if err != nil {
-		return err
-	}
-	ignores := storage.HealthIgnores{DB: st2.Data}
+func dismissFindings(cmd *cobra.Command, c *core.Core, st *status) error {
+	ctx := changeCtx(cmd, st)
 	for _, key := range healthArgs.Undismiss {
-		check, subject, err := health.SplitKey(key)
-		if err != nil {
+		if err := c.Health.Undismiss(ctx, key); err != nil {
 			return err
-		}
-		ok, err := ignores.Undismiss(check, subject)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return fmt.Errorf("%s isn't dismissed", key)
 		}
 		cmd.Printf("undismissed %s\n", key)
 	}
 	if len(healthArgs.Dismiss) == 0 {
 		return nil
 	}
-	var only []string
-	for _, key := range healthArgs.Dismiss {
-		check, _, err := health.SplitKey(key)
-		if err != nil {
-			return err
-		}
-		only = append(only, check)
-	}
-	report, err := checker.Run(st.Context(cmd.Context()), health.Options{Only: only, Network: healthArgs.Network, All: true})
+	dismissed, err := c.Health.Dismiss(ctx, core.DismissReq{Keys: healthArgs.Dismiss, Network: healthArgs.Network})
 	st.Done()
-	if err != nil {
-		return err
-	}
-	for _, key := range healthArgs.Dismiss {
-		check, subject, _ := health.SplitKey(key)
-		f, ok := report.Find(check + "/" + subject)
-		if !ok {
-			return fmt.Errorf("no finding %s now (mangal health shows the keys; a network check's needs --network)", key)
-		}
-		if err := ignores.Dismiss(storage.HealthIgnore{Check: check, Subject: subject, Message: f.Message}); err != nil {
-			return err
-		}
+	for _, f := range dismissed {
 		cmd.Printf("dismissed %s: %s\n", f.Key, f.Message)
 	}
-	return nil
+	return err
 }
 
 // printHealth prints the findings by category: a header with the counts, each finding

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/tui/base"
 	accountsViewer "github.com/luevano/mangal/v5/tui/model/accounts"
 	"github.com/spf13/cobra"
@@ -33,7 +33,7 @@ MangaPlus secret set.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if accountsArgs.Plain || !term.IsTerminal(int(os.Stdout.Fd())) {
-			entries, err := client.Accounts(cmd.Context(), accountsArgs.Refresh)
+			entries, err := core.NewAccounts().List(cmd.Context(), core.AccountsOptions{Refresh: accountsArgs.Refresh})
 			if err != nil {
 				return err
 			}
@@ -46,8 +46,8 @@ MangaPlus secret set.`,
 					fields = append(fields, "renews/expires "+e.Expires.Format(time.DateOnly))
 				}
 				fields = append(fields, e.Details...)
-				if e.Err != nil {
-					fields = append(fields, "error: "+e.Err.Error())
+				if e.Error != "" {
+					fields = append(fields, "error: "+e.Error)
 				}
 				cmd.Println(strings.Join(fields, "  "))
 			}

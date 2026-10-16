@@ -216,6 +216,9 @@ func Default() (*Core, error) {
 	return defaultCore, defaultErr
 }
 
+// Watches are the watches: the running mangal serve's, else the local service.
+func (c *Core) Watches(ctx context.Context) (watch.Manager, error) { return c.env.Watches(ctx) }
+
 // Env is the environment the services work on (the defaults filled in).
 func (c *Core) Env() Env { return c.env }
 

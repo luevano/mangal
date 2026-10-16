@@ -11,8 +11,8 @@ import (
 	lmanilist "github.com/luevano/libmangal/metadata/anilist"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/log"
-	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/sanitize"
 )
 
@@ -95,14 +95,14 @@ func assignMetadata(ctx context.Context, c *libmangal.Client, args Args, results
 // assignBound sets the metadata of the bound mangas: their default binding's (or the next
 // that can be fetched), the unbound ones are left.
 func assignBound(ctx context.Context, c *libmangal.Client, args Args, results []MangaResult, pending []int) ([]int, error) {
-	bindings, err := cache.Bindings()
+	app, err := core.Default()
 	if err != nil {
 		return nil, err
 	}
 	var unbound []int
 	for _, i := range pending {
 		manga := results[i].Manga
-		list, err := bindings.Get(c.Info().ID, manga.Info().ID)
+		list, err := app.Library.Bindings(ctx, c.Info().ID, manga.Info().ID)
 		if err != nil {
 			return nil, err
 		}

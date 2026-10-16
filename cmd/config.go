@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/spf13/cobra"
 )
@@ -47,20 +48,15 @@ var configInfoCmd = &cobra.Command{
 			Description string `json:"description"`
 		}
 
-		keys := config.Keys()
+		entries, err := core.NewConfig().List(ctxOf(cmd))
+		if err != nil {
+			return err
+		}
+		keys := make([]string, len(entries))
 		configEntries := map[string]configEntry{}
-		for _, key := range keys {
-			value, err := config.Get(key)
-			if err != nil {
-				return err
-			}
-			def, _ := config.Default(key)
-			description, _ := config.Description(key)
-			configEntries[key] = configEntry{
-				Value:       config.Masked(key, value),
-				Default:     config.Masked(key, def),
-				Description: description,
-			}
+		for i, e := range entries {
+			keys[i] = e.Key
+			configEntries[e.Key] = configEntry{Value: e.Value, Default: e.Default, Description: e.Description}
 		}
 
 		if configInfoArgs.JSON {
@@ -152,18 +148,12 @@ key changes, the rest of the file (comments, order) stays as it is.`,
 	ValidArgsFunction: completionConfigKeys,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]
-		raw, err := config.Parse(key, value)
+		e, err := core.NewConfig().Set(ctxOf(cmd), key, value)
 		if err != nil {
 			return err
 		}
-		if err := config.CreateFile(); err != nil {
-			return err
-		}
-		if err := config.WriteKey(key, raw); err != nil {
-			return err
-		}
-		successf(cmd, "set %q to %v", key, config.Masked(key, raw))
-		if mode, readable := config.ReadableByOthers(); readable && config.IsSecret(key) {
+		successf(cmd, "set %q to %v", key, config.Masked(key, value))
+		if mode, readable := config.ReadableByOthers(); readable && e.Secret {
 			cmd.PrintErrf("warning: %s holds secrets but others can read it (mode %o): chmod 600 it\n", config.Path, mode)
 		}
 		return nil

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,7 +11,6 @@ import (
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 )
 
@@ -109,10 +109,6 @@ manga) share the bindings.`,
 			mangaID, title = mangas[indexes[0]].Info().ID, mangas[indexes[0]].Info().Title
 		}
 
-		bindings, err := cache.Bindings()
-		if err != nil {
-			return err
-		}
 		app, err := newCore()
 		if err != nil {
 			return err
@@ -135,7 +131,7 @@ manga) share the bindings.`,
 			}
 		}
 
-		list, err := bindings.Get(provider, mangaID)
+		list, err := app.Library.Bindings(ctx, provider, mangaID)
 		if err != nil {
 			return err
 		}
@@ -179,12 +175,12 @@ var bindLsCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(2),
 	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		bindings, err := cache.Bindings()
+		c, err := newCore()
 		if err != nil {
 			return err
 		}
 		provider, mangaID := providerManga(args)
-		list, err := bindings.List(provider, mangaID)
+		list, err := c.Library.Bindings(ctxOf(cmd), provider, mangaID)
 		if err != nil {
 			return err
 		}
@@ -198,7 +194,7 @@ var bindLsCmd = &cobra.Command{
 			cmd.Println("no bindings")
 			return nil
 		}
-		titles := knownTitles()
+		titles := knownTitles(ctxOf(cmd), c)
 		for start := 0; start < len(list); {
 			end := start + 1
 			for end < len(list) && list[end].Provider == list[start].Provider && list[end].MangaID == list[start].MangaID {
@@ -218,19 +214,17 @@ var bindLsCmd = &cobra.Command{
 
 // knownTitles are the titles of the watched and downloaded mangas by provider and id,
 // best effort.
-func knownTitles() map[[2]string]string {
+func knownTitles(ctx context.Context, c *core.Core) map[[2]string]string {
 	titles := map[[2]string]string{}
-	if lib, err := cache.Library(); err == nil {
-		if mangas, err := lib.Mangas(); err == nil {
-			for _, m := range mangas {
-				for _, s := range m.Sources {
-					titles[[2]string{s.Provider, s.MangaID}] = s.Title
-				}
+	if list, err := c.Library.Mangas(ctx, core.MangasOptions{}); err == nil {
+		for _, m := range list.Mangas {
+			for _, s := range m.Sources {
+				titles[[2]string{s.Provider, s.MangaID}] = s.Title
 			}
 		}
 	}
-	if watches, err := cache.Watches(); err == nil {
-		if list, err := watches.List(); err == nil {
+	if watches, err := c.Watches(ctx); err == nil {
+		if list, err := watches.List(ctx); err == nil {
 			for _, w := range list {
 				titles[[2]string{w.Provider, w.MangaID}] = w.Title
 			}

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/spf13/cobra"
@@ -46,7 +48,7 @@ func init() {
 	logsCmd.MarkFlagsMutuallyExclusive("all", "file")
 	_ = logsCmd.RegisterFlagCompletionFunc("level", cobra.FixedCompletions([]string{"debug", "info", "warn", "error"}, cobra.ShellCompDirectiveNoFileComp))
 	_ = logsCmd.RegisterFlagCompletionFunc("file", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-		files, _ := log.Files(path.Logs())
+		files, _ := core.NewLogs(path.Logs).Files(context.Background())
 		names := make([]string, len(files))
 		for i, f := range files {
 			names[i] = f.Name
@@ -72,21 +74,25 @@ are read too. --follow keeps printing the new entries, of every mangal process.`
 }
 
 func runLogs(cmd *cobra.Command, dir string, now time.Time) error {
-	files, err := log.Files(dir)
+	logs := core.NewLogs(func() string { return dir })
+	ctx := ctxOf(cmd)
+	files, err := logs.Files(ctx)
 	if err != nil {
-		return fmt.Errorf("list log files: %w", err)
+		return err
 	}
 	if logsArgs.List {
 		return listLogFiles(cmd, files)
 	}
 
-	filter, err := logsFilter(now)
+	q, err := logsQuery(now)
 	if err != nil {
 		return err
 	}
-	files, err = pickLogFiles(files, now)
-	if err != nil {
+	if files, err = pickLogFiles(files, now); err != nil {
 		return err
+	}
+	for _, f := range files {
+		q.Files = append(q.Files, f.Name)
 	}
 
 	show := func(e log.Entry) error {
@@ -96,33 +102,23 @@ func runLogs(cmd *cobra.Command, dir string, now time.Time) error {
 		cmd.Println(e.String())
 		return nil
 	}
-	lines := logsArgs.Last
+	q.Limit = logsArgs.Last
 	if logsArgs.Follow && !cmd.Flags().Changed("lines") {
-		lines = 10
+		q.Limit = 10
 	}
 	n := 0
-	if lines > 0 {
-		// the last N: a ring of them
-		last := make([]log.Entry, lines)
-		err = log.Scan(cmd.Context(), files, filter, func(e log.Entry) error {
-			last[n%len(last)] = e
-			n++
-			return nil
-		})
-		for i := max(0, n-len(last)); err == nil && i < n; i++ {
-			err = show(last[i%len(last)])
-		}
-	} else {
-		err = log.Scan(cmd.Context(), files, filter, func(e log.Entry) error {
+	// no files (none of the current period) is nothing to read, no names would be every file
+	if len(files) != 0 {
+		err = logs.Entries(ctx, q, func(e log.Entry) error {
 			n++
 			return show(e)
 		})
 	}
-	if err != nil && !errors.Is(err, cmd.Context().Err()) {
+	if err != nil && !errors.Is(err, ctx.Err()) {
 		return fmt.Errorf("read logs: %w", err)
 	}
 	if logsArgs.Follow {
-		return log.Follow(cmd.Context(), dir, 500*time.Millisecond, filter, show)
+		return logs.Follow(ctx, q, show)
 	}
 	if n == 0 && !logsArgs.JSON {
 		hint := ""
@@ -175,21 +171,20 @@ func listLogFiles(cmd *cobra.Command, files []log.File) error {
 	return nil
 }
 
-// logsFilter is the filter of the flags.
-func logsFilter(now time.Time) (log.Filter, error) {
-	var filter log.Filter
+// logsQuery is the query of the flags (the files picked apart).
+func logsQuery(now time.Time) (core.LogQuery, error) {
+	q := core.LogQuery{Level: logsArgs.Level, Grep: logsArgs.Grep, CaseSensitive: logsArgs.CaseSensitive}
+	if _, err := log.ParseLevel(logsArgs.Level); err != nil {
+		return q, err
+	}
 	var err error
-	if filter.Level, err = log.ParseLevel(logsArgs.Level); err != nil {
-		return filter, err
+	if q.Since, err = parseLogTime(logsArgs.Since, now, false); err != nil {
+		return q, fmt.Errorf("--since: %w", err)
 	}
-	if filter.Since, err = parseLogTime(logsArgs.Since, now, false); err != nil {
-		return filter, fmt.Errorf("--since: %w", err)
+	if q.Until, err = parseLogTime(logsArgs.Until, now, true); err != nil {
+		return q, fmt.Errorf("--until: %w", err)
 	}
-	if filter.Until, err = parseLogTime(logsArgs.Until, now, true); err != nil {
-		return filter, fmt.Errorf("--until: %w", err)
-	}
-	filter.Pattern = log.Pattern(logsArgs.Grep, logsArgs.CaseSensitive)
-	return filter, nil
+	return q, nil
 }
 
 // pickLogFiles are the files the flags read.

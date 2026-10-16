@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,10 +15,10 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
-	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cron"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -664,13 +665,15 @@ func moveArgs(args []string, isProvider func(string) bool) (provider, query stri
 // isProvider tells the installed providers' ids (old ids too); every id is one when the
 // providers can't be loaded (the error comes when the watch service needs them).
 func isProvider() func(string) bool {
-	loaders, err := manager.Loaders()
+	infos, err := core.NewProviders(nil).List(context.Background())
 	if err != nil {
 		return func(string) bool { return true }
 	}
 	return func(id string) bool {
-		_, _, ok := libmangal.FindLoader(loaders, id)
-		return ok
+		return slices.ContainsFunc(infos, func(info libmangal.ProviderInfo) bool {
+			_, old := info.Alias(id)
+			return info.ID == id || old
+		})
 	}
 }
 

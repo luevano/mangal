@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -11,7 +12,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
-	"github.com/luevano/mangal/v5/provider/manager"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/samber/lo"
@@ -44,13 +45,13 @@ func styledAdaptive(w io.Writer) io.Writer {
 
 // completionProviderIDs completes a provider id (a flag's value).
 func completionProviderIDs(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-	loaders, err := manager.Loaders()
+	infos, err := core.NewProviders(nil).List(context.Background())
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
 	}
 
-	IDs := lo.Map(loaders, func(loader libmangal.ProviderLoader, _ int) string {
-		return loader.Info().ID
+	IDs := lo.Map(infos, func(info libmangal.ProviderInfo, _ int) string {
+		return info.ID
 	})
 
 	return IDs, cobra.ShellCompDirectiveNoFileComp
