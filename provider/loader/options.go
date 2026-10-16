@@ -19,6 +19,7 @@ import (
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/netguard"
 	"github.com/luevano/mangoplus"
+	"github.com/luevano/mangoprovider/scraper/headless/flaresolverr"
 )
 
 // HTTPTimeout is the timeout of every HTTP request mangal and the providers make.
@@ -78,6 +79,18 @@ func debugLog() func(format string, a ...any) {
 	}
 }
 
+// flareSolverr is the FlareSolverr transport for Lua providers from the config, nil if it's off.
+func flareSolverr() func() http.RoundTripper {
+	if !config.Providers.Headless.UseFlaresolverr.Get() {
+		return nil
+	}
+	url := config.Providers.Headless.FlaresolverrURL.Get()
+	return func() http.RoundTripper {
+		// no timeout, each solve has its own; not guarded, the user chose it
+		return flaresolverr.NewTransportClient(url, &http.Client{Transport: DebugTransport(nil)})
+	}
+}
+
 func redactURL(u *url.URL) string {
 	return mangoplus.RedactURL(netutil.RedactURL(u))
 }
@@ -109,6 +122,7 @@ func LuaOptions(dir string) luaprovider.Options {
 		CacheStore:   cache.CacheStore,
 		PackagePaths: []string{dir},
 		Filter:       c.Filter,
+		FlareSolverr: flareSolverr(),
 		Debug:        debugLog(),
 	}
 }
@@ -124,13 +138,14 @@ func SDKOptions(name string) (*sdk.Options, io.Closer, error) {
 	c := commonOptions()
 	t := &tracker{}
 	return &sdk.Options{
-		HTTPClient: ProviderHTTPClient(),
-		CacheStore: store,
-		UserAgent:  c.UserAgent,
-		Log:        log.ProviderHook(name),
-		Track:      t.track,
-		Filter:     c.Filter,
-		Debug:      debugLog(),
+		HTTPClient:   ProviderHTTPClient(),
+		CacheStore:   store,
+		UserAgent:    c.UserAgent,
+		Log:          log.ProviderHook(name),
+		Track:        t.track,
+		Filter:       c.Filter,
+		FlareSolverr: flareSolverr(),
+		Debug:        debugLog(),
 	}, t, nil
 }
 
