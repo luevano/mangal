@@ -218,4 +218,7 @@ type configServe struct {
 	AllowedHosts   *entry[string, []string]
 	AllowedOrigins *entry[string, []string]
 	TrustedProxies *entry[string, []string]
+	// TLSCert and TLSKey serve HTTPS when set.
+	TLSCert *entry[string, string]
+	TLSKey  *entry[string, string]
 }

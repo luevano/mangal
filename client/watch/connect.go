@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/adrg/xdg"
@@ -23,6 +24,7 @@ import (
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/proc"
+	"github.com/luevano/mangal/v5/util/tlsutil"
 )
 
 // Discovery is the file a running `mangal serve` writes so the CLI and the TUI of the same
@@ -93,6 +95,9 @@ func Find(ctx context.Context, dataDB, token string) (*Remote, Discovery, error)
 		return nil, d, nil
 	}
 	remote := NewRemote(d.Address, token)
+	if remote.Client, err = LocalClient(d.Address, remote.Client.Timeout); err != nil {
+		return nil, d, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	if _, err := remote.Status(ctx); err != nil {
@@ -104,6 +109,17 @@ func Find(ctx context.Context, dataDB, token string) (*Remote, Discovery, error)
 		return nil, d, nil
 	}
 	return remote, d, nil
+}
+
+// LocalClient is the HTTP client of this config's own server at address: with HTTPS
+// (serve.tls_cert) it trusts the certificate of the config's file, whatever names it has
+// (the address is a loopback one).
+func LocalClient(address string, timeout time.Duration) (*http.Client, error) {
+	cert := config.Serve.TLSCert.Get()
+	if cert == "" || !strings.HasPrefix(address, "https://") {
+		return &http.Client{Timeout: timeout}, nil
+	}
+	return tlsutil.PinnedClient(cert, timeout)
 }
 
 // Token is the token of the serve API: the saved one (mangal serve token), else serve.token.

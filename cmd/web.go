@@ -47,6 +47,8 @@ loopback, requests for other host names are refused (DNS rebinding).`,
 			AllowedHosts:    config.Serve.AllowedHosts.Get(),
 			AllowedOrigins:  config.Serve.AllowedOrigins.Get(),
 			TrustedProxies:  config.Serve.TrustedProxies.Get(),
+			TLSCert:         config.Serve.TLSCert.Get(),
+			TLSKey:          config.Serve.TLSKey.Get(),
 		}, webArgs.Open, cmd.ErrOrStderr())
 	},
 }

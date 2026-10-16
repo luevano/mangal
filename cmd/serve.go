@@ -64,6 +64,8 @@ serve.trusted_proxies. One server per data db: a second instance needs another c
 			AllowedHosts:    config.Serve.AllowedHosts.Get(),
 			AllowedOrigins:  config.Serve.AllowedOrigins.Get(),
 			TrustedProxies:  config.Serve.TrustedProxies.Get(),
+			TLSCert:         config.Serve.TLSCert.Get(),
+			TLSKey:          config.Serve.TLSKey.Get(),
 		}, cmd.ErrOrStderr())
 	},
 }

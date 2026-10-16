@@ -598,6 +598,9 @@ var Serve = configServe{
 		"Origins (https://mangal.example.com) whose pages may change things through `mangal serve` (POST, PUT, PATCH, DELETE): a reverse proxy's public address when the browser's Origin isn't the Host the server sees. Other sites' pages are refused."),
 	TrustedProxies: listEntry("serve.trusted_proxies",
 		"Addresses or CIDRs (127.0.0.1, 10.0.0.0/8) of reverse proxies whose X-Forwarded-For and X-Forwarded-Host `mangal serve` believes: the client's address (whether it's on the same machine) and the host. Empty believes none: a request with forwarding headers is never treated as local."),
+	TLSCert: stringEntry("serve.tls_cert", "",
+		"Certificate file (PEM, with its chain) for `mangal serve` and `mangal web` to serve HTTPS, with serve.tls_key; read again when it changes (a renewal). Empty serves plain HTTP (a reverse proxy can do TLS instead)."),
+	TLSKey: stringEntry("serve.tls_key", "", "Private key file (PEM) of serve.tls_cert."),
 }
 
 var Log = configLog{

@@ -2,9 +2,7 @@ package serve
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"net"
 	"time"
 
 	"github.com/luevano/mangal/v5/client/jobs"
@@ -22,9 +20,9 @@ import (
 // process's jobs. The auth is serve's (args). It stops when ctx is cancelled.
 func RunWeb(ctx context.Context, args Args, openIt bool, out io.Writer) error {
 	lg := newLogger(out)
-	listener, err := listen("tcp", net.JoinHostPort(args.Host, fmt.Sprint(args.Port)))
+	listener, err := listenArgs(args)
 	if err != nil {
-		return fmt.Errorf("listen: %w", err)
+		return err
 	}
 	defer listener.Close()
 	auth, err := listenerAuth(args, listener.Addr(), lg)
@@ -46,7 +44,7 @@ func RunWeb(ctx context.Context, args Args, openIt bool, out io.Writer) error {
 	go events.forwardJobs(ctx, jobManager)
 	go events.forwardLogs(ctx, log.Dir())
 
-	address := watch.LocalAddress(listener.Addr())
+	address := serverAddress(listener.Addr(), args)
 	api := &API{
 		Manager: func() watch.Manager { return m },
 		Info:    watch.Status{Server: true, Address: address, Version: meta.Version, Started: time.Now()},

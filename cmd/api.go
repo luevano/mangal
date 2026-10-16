@@ -96,7 +96,13 @@ the same with ?apply=1 and "expect": "<hash>" applies it.`,
 		if apiArgs.SSE {
 			req.Header.Set("Accept", "text/event-stream")
 		}
-		res, err := http.DefaultClient.Do(req)
+		httpClient := http.DefaultClient
+		if apiArgs.Server == "" {
+			if httpClient, err = watch.LocalClient(server, 0); err != nil {
+				return err
+			}
+		}
+		res, err := httpClient.Do(req)
 		if err != nil {
 			return err
 		}

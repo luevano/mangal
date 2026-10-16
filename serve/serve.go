@@ -24,6 +24,7 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/cron"
+	"github.com/luevano/mangal/v5/util/tlsutil"
 	"github.com/luevano/mangal/v5/web"
 )
 
@@ -44,6 +45,8 @@ type Args struct {
 	LoopbackScopes []string
 	// AllowedHosts, AllowedOrigins and TrustedProxies are for reverse proxies (web.GuardOptions).
 	AllowedHosts, AllowedOrigins, TrustedProxies []string
+	// TLSCert and TLSKey are the certificate and key files to serve HTTPS with.
+	TLSCert, TLSKey string
 }
 
 // MinTokenLen is the shortest token used without a warning.
@@ -120,9 +123,9 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	stopBeat := heartbeat(lock, lg, func(err error) { stop(err) })
 	defer stopBeat()
 
-	listener, err := listen("tcp", net.JoinHostPort(args.Host, fmt.Sprint(args.Port)))
+	listener, err := listenArgs(args)
 	if err != nil {
-		return fmt.Errorf("listen: %w", err)
+		return err
 	}
 	defer listener.Close()
 	loopback := isLoopback(listener.Addr())
@@ -146,7 +149,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	var current atomic.Pointer[watch.Service]
 	current.Store(svc)
 	r := &runs{}
-	address := watch.LocalAddress(listener.Addr())
+	address := serverAddress(listener.Addr(), args)
 	started := time.Now()
 	rl := &reloader{current: &current, log: lg}
 	sched := newScheduler(rl.reload, lg, r)
@@ -275,6 +278,32 @@ func (a *Auth) describe() string {
 
 // listen is net.Listen, swapped in tests.
 var listen = net.Listen
+
+// listenArgs listens on the args' host and port, with TLS when its files are set.
+func listenArgs(args Args) (net.Listener, error) {
+	listener, err := listen("tcp", net.JoinHostPort(args.Host, fmt.Sprint(args.Port)))
+	if err != nil {
+		return nil, fmt.Errorf("listen: %w", err)
+	}
+	if args.TLSCert == "" && args.TLSKey == "" {
+		return listener, nil
+	}
+	tlsListener, err := tlsutil.TLSListener(listener, args.TLSCert, args.TLSKey)
+	if err != nil {
+		listener.Close()
+		return nil, err
+	}
+	return tlsListener, nil
+}
+
+// serverAddress is the address the server is reached at on this machine, https with TLS.
+func serverAddress(addr net.Addr, args Args) string {
+	address := watch.LocalAddress(addr)
+	if args.TLSCert != "" {
+		address = "https://" + strings.TrimPrefix(address, "http://")
+	}
+	return address
+}
 
 // heartbeatEvery is how often the lock's heartbeat is written.
 var heartbeatEvery = lockStale / 4
