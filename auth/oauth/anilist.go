@@ -2,11 +2,11 @@ package oauth
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/labstack/echo/v5"
 	"github.com/luevano/libmangal/metadata/anilist"
 	"golang.org/x/oauth2"
 )
@@ -140,38 +140,30 @@ func (o *AnilistLoginOption) paste(ctx context.Context, state, input string) (*o
 // implicitGrantHandler handles the login and callback of an implicit grant (ClientSecret
 // empty).
 func (o *AnilistLoginOption) implicitGrantHandler(state string, done func(result)) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc(anilistLoginPath, func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, anilist.ImplicitGrantURL(o.ClientID, state), http.StatusTemporaryRedirect)
-	})
-	handle := callback(state, func(w http.ResponseWriter, r *http.Request) {
-		if e := r.FormValue("error"); e != "" {
-			fail(w, done, providerError(e, r.FormValue("error_description")))
-			return
+	handle := callback(state, func(c *echo.Context) error {
+		if e := c.FormValue("error"); e != "" {
+			return fail(c, done, providerError(e, c.FormValue("error_description")))
 		}
-		accessToken := r.FormValue("access_token")
+		accessToken := c.FormValue("access_token")
 		if accessToken == "" {
-			fail(w, done, ErrEmptyCode)
-			return
+			return fail(c, done, ErrEmptyCode)
 		}
 		var expiresIn time.Duration
-		if secs, err := strconv.Atoi(r.FormValue("expires_in")); err == nil {
+		if secs, err := strconv.Atoi(c.FormValue("expires_in")); err == nil {
 			expiresIn = time.Duration(secs) * time.Second
 		}
-		_, _ = w.Write([]byte("successfully got access token (implicit grant)" + closeMsg))
+		writeErr := c.String(http.StatusOK, "successfully got access token (implicit grant)"+closeMsg)
 		done(result{token: anilist.ImplicitToken(accessToken, expiresIn)})
+		return writeErr
 	})
-	mux.HandleFunc(anilistCallbackPath, func(w http.ResponseWriter, r *http.Request) {
+	return loginServer(anilistLoginPath, anilist.ImplicitGrantURL(o.ClientID, state), anilistCallbackPath, func(c *echo.Context) error {
 		// the token comes in the url fragment, which only the browser sees: a page resends
 		// it as url params
-		if r.URL.RawQuery == "" {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = fmt.Fprint(w, resendFragmentAsParam)
-			return
+		if c.Request().URL.RawQuery == "" {
+			return c.HTML(http.StatusOK, resendFragmentAsParam)
 		}
-		handle(w, r)
+		return handle(c)
 	})
-	return mux
 }
 
 // Token returns the authorization token (useful for caching).

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/labstack/echo/v5"
 	"github.com/skratchdot/open-golang/open"
 	"golang.org/x/oauth2"
 )
@@ -166,58 +167,61 @@ func randomState() (string, error) {
 const closeMsg = "; this window can now be closed"
 
 // fail answers the browser and ends the login with the error.
-func fail(w http.ResponseWriter, done func(result), err error) {
-	http.Error(w, "error: "+err.Error()+closeMsg, http.StatusBadRequest)
+func fail(c *echo.Context, done func(result), err error) error {
+	writeErr := c.String(http.StatusBadRequest, "error: "+err.Error()+closeMsg)
 	done(result{err: err})
+	return writeErr
 }
 
 // callback handles the provider's redirect: a request without the login's state doesn't end
 // the login, a second one is refused.
-func callback(state string, handle func(w http.ResponseWriter, r *http.Request)) http.HandlerFunc {
+func callback(state string, handle echo.HandlerFunc) echo.HandlerFunc {
 	var mu sync.Mutex
 	called := false
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.FormValue("state") != state {
-			http.Error(w, "error: "+ErrInvalidState.Error(), http.StatusBadRequest)
-			return
+	return func(c *echo.Context) error {
+		if c.FormValue("state") != state {
+			return c.String(http.StatusBadRequest, "error: "+ErrInvalidState.Error())
 		}
 		mu.Lock()
 		again := called
 		called = true
 		mu.Unlock()
 		if again {
-			http.Error(w, "error: "+ErrTooManyCallbacks.Error()+closeMsg, http.StatusBadRequest)
-			return
+			return c.String(http.StatusBadRequest, "error: "+ErrTooManyCallbacks.Error()+closeMsg)
 		}
-		handle(w, r)
+		return handle(c)
 	}
+}
+
+// loginServer is the callback server's app: loginPath redirects to the provider's
+// authorize url, callbackPath takes its answer.
+func loginServer(loginPath, authURL, callbackPath string, handle echo.HandlerFunc) *echo.Echo {
+	e := echo.New()
+	e.GET(loginPath, func(c *echo.Context) error {
+		return c.Redirect(http.StatusTemporaryRedirect, authURL)
+	})
+	e.Any(callbackPath, handle)
+	return e
 }
 
 // codeGrantHandler handles the login page and the callback of a code grant.
 func codeGrantHandler(ctx context.Context, loginPath, callbackPath, authURL string, exchange func(ctx context.Context, code string) (*oauth2.Token, error), state string, done func(result)) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-	})
-	mux.HandleFunc(callbackPath, callback(state, func(w http.ResponseWriter, r *http.Request) {
-		if e := r.FormValue("error"); e != "" {
-			fail(w, done, providerError(e, r.FormValue("error_description")))
-			return
+	return loginServer(loginPath, authURL, callbackPath, callback(state, func(c *echo.Context) error {
+		if e := c.FormValue("error"); e != "" {
+			return fail(c, done, providerError(e, c.FormValue("error_description")))
 		}
-		code := r.FormValue("code")
+		code := c.FormValue("code")
 		if code == "" {
-			fail(w, done, ErrEmptyCode)
-			return
+			return fail(c, done, ErrEmptyCode)
 		}
 		token, err := exchange(ctx, code)
 		if err != nil {
-			fail(w, done, err)
-			return
+			return fail(c, done, err)
 		}
-		_, _ = w.Write([]byte("successfully got access token" + closeMsg))
+		writeErr := c.String(http.StatusOK, "successfully got access token"+closeMsg)
 		done(result{token: token})
+		return writeErr
 	}))
-	return mux
 }
 
 // ProviderError is the provider's answer instead of a code or token (e.g. access_denied).
