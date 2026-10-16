@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/luevano/mangal/v5/auth/oauth"
@@ -124,13 +123,4 @@ func manualLogin(cmd *cobra.Command, in *bufio.Reader, browser bool) oauth.Manua
 			fmt.Fprintf(out, "Can't use that (%s), paste the address again:\n", err)
 		},
 	}
-}
-
-func prompt(cmd *cobra.Command, in *bufio.Reader, label string) (string, error) {
-	fmt.Fprint(cmd.ErrOrStderr(), label)
-	line, err := in.ReadString('\n')
-	if err != nil && (err != io.EOF || line == "") {
-		return "", fmt.Errorf("read %s: %w", strings.TrimSuffix(strings.TrimSpace(label), ":"), err)
-	}
-	return strings.TrimSpace(line), nil
 }
