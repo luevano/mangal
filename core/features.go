@@ -74,7 +74,7 @@ var Features = []Feature{
 		NotApplicable: map[Mode]string{ModeWeb: "providers run code: never installed over HTTP", ModeAPI: "providers run code: never installed over HTTP", ModeTUI: "git installs are a terminal's job", ModeScript: "a script doesn't install code"}},
 	{Name: "search and browse", Web: []string{"search", "provider-manga"}, API: []string{"searchProvider", "getProviderManga", "listProviderChapters", "proxyImage"}, CLI: []string{"inline json"}, TUI: "s (mangas)", TUIKey: "s", Script: "client.search_mangas"},
 	{Name: "download", Web: []string{"provider-manga", "jobs"}, API: []string{"startDownload", "listJobs", "getJob", "cancelJob", "retryJob", "removeJob", "clearJobQueue"}, CLI: []string{"inline download"}, TUI: "d (chapters)", TUIKey: "d", Script: "client.download_chapter"},
-	{Name: "read", Web: []string{"read-library", "read-online"}, API: []string{"listChapterPages", "getChapterPage", "getChapterFile", "listProviderPages", "getProviderPage", "recordRead"}, TUI: "r (chapters)", TUIKey: "r",
+	{Name: "read", Web: []string{"read-library", "read-online"}, API: []string{"listChapterPages", "getChapterPage", "getChapterFile", "listProviderPages", "getProviderPage", "recordRead", "getReaderPosition", "putReaderPosition"}, TUI: "r (chapters)", TUIKey: "r",
 		NotApplicable: map[Mode]string{ModeCLI: "reading is interactive (the TUI opens the default app, the web UI has a reader)", ModeScript: "reading is interactive"}},
 	{Name: "read history", Web: []string{"history"}, API: []string{"listHistory"}, CLI: []string{"history"}, TUI: "alt+h (home)", TUIKey: "alt+h",
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { clampPage, keyAction, loadSettings, neighbors, nextFit, preload, saveSettings, step, zoneAction, loadPosition, savePosition } from '../reader'
+import { clampPage, keyAction, loadSettings, neighbors, nextFit, preload, saveSettings, step, zoneAction, loadPosition, savePosition, newer } from '../reader'
 
 describe('reader', () => {
   beforeEach(() => localStorage.clear())
@@ -56,8 +56,14 @@ describe('reader', () => {
     expect(loadSettings('lib:1').mode).toBe('webtoon')
     localStorage.setItem('mangal.reader.manga.lib:3', '{"mode":"nope"}')
     expect(loadSettings('lib:3').mode).toBe('rtl')
-    savePosition('c', 4)
-    expect(loadPosition('c')).toBe(4)
-    expect(loadPosition('d')).toBe(0)
+    savePosition('c', 4, 100)
+    expect(loadPosition('c')).toEqual({ page: 4, at: 100 })
+    expect(loadPosition('d')).toEqual({ page: 0, at: 0 })
+    // saved by an older version: a plain number
+    localStorage.setItem('mangal.reader.pos.e', '7')
+    expect(loadPosition('e')).toEqual({ page: 7, at: 0 })
+    expect(newer({ page: 4, at: 100 }, { page: 9, at: 200 })).toEqual({ page: 9, at: 200 })
+    expect(newer({ page: 4, at: 300 }, { page: 9, at: 200 })).toEqual({ page: 4, at: 300 })
+    expect(newer({ page: 4, at: 300 })).toEqual({ page: 4, at: 300 })
   })
 })

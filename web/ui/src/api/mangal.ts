@@ -845,6 +845,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reader/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The page a chapter was left on in the web reader
+         * @description Saved by putReaderPosition from any device; the reader takes the newer of this and
+         *     the browser's own.
+         */
+        get: operations["getReaderPosition"];
+        /**
+         * Save the page a chapter is on in the web reader
+         * @description Kept unless a newer position is saved (updated). The reader skips it in incognito.
+         */
+        put: operations["putReaderPosition"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/formats": {
         parameters: {
             query?: never;
@@ -1678,6 +1703,19 @@ export interface components {
             /** Format: int64 */
             size?: number;
             type?: string;
+        };
+        ReaderPosition: {
+            /** @description the reader's chapter key */
+            chapter: string;
+            /** @description the page index, 0 the first */
+            page: number;
+            /**
+             * Format: date-time
+             * @description when it was on that page (now when not given)
+             */
+            updated?: string;
+            /** @description a position was saved (getReaderPosition) */
+            found?: boolean;
         };
         /** @description a chapter of a provider's manga, or of a library manga (a scanned folder without a source has no manga_id; it's synced, not in the history) */
         ReadRequest: {
@@ -3108,6 +3146,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getReaderPosition: {
+        parameters: {
+            query: {
+                /** @description the reader's chapter key */
+                chapter: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the position, found false if none was saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReaderPosition"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putReaderPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReaderPosition"];
+            };
+        };
+        responses: {
+            /** @description the position saved (a newer one if another device moved on) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReaderPosition"];
                 };
             };
             default: components["responses"]["Error"];

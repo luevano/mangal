@@ -357,3 +357,42 @@ func syncedNote(synced []string) string {
 	}
 	return " (synced to " + strings.Join(synced, ", ") + ")"
 }
+
+func (a *API) GetReaderPosition(ctx context.Context, request apiv1.GetReaderPositionRequestObject) (apiv1.GetReaderPositionResponseObject, error) {
+	if request.Params.Chapter == "" {
+		return nil, badRequest("chapter is needed")
+	}
+	svc, err := a.services(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pos, found, err := storage.ReaderPositions{DB: svc.Env().Storage.Data}.Get(request.Params.Chapter)
+	if err != nil {
+		return nil, err
+	}
+	out := apiv1.GetReaderPosition200JSONResponse{Chapter: request.Params.Chapter, Found: ptr(found)}
+	if found {
+		out.Page, out.Updated = pos.Page, ptr(pos.Updated)
+	}
+	return out, nil
+}
+
+func (a *API) PutReaderPosition(ctx context.Context, request apiv1.PutReaderPositionRequestObject) (apiv1.PutReaderPositionResponseObject, error) {
+	b := deref(request.Body)
+	if b.Chapter == "" || b.Page < 0 {
+		return nil, badRequest("chapter and a page (0 or more) are needed")
+	}
+	svc, err := a.services(ctx)
+	if err != nil {
+		return nil, err
+	}
+	positions := storage.ReaderPositions{DB: svc.Env().Storage.Data}
+	if err := positions.Set(storage.ReaderPosition{Chapter: b.Chapter, Page: b.Page, Updated: deref(b.Updated)}); err != nil {
+		return nil, err
+	}
+	pos, _, err := positions.Get(b.Chapter)
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.PutReaderPosition200JSONResponse{Chapter: pos.Chapter, Page: pos.Page, Updated: ptr(pos.Updated), Found: ptr(true)}, nil
+}

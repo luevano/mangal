@@ -203,13 +203,34 @@ export function saveSettings(manga: string, s: Settings) {
   put('default', raw)
 }
 
-export function loadPosition(chapter: string): number {
-  const n = Number(get(`pos.${chapter}`))
-  return Number.isFinite(n) && n > 0 ? n : 0
+// Position is the page index a chapter was left on and when (ms, 0 if unknown).
+export interface Position {
+  page: number
+  at: number
 }
 
-export function savePosition(chapter: string, index: number) {
-  put(`pos.${chapter}`, String(index))
+export function loadPosition(chapter: string): Position {
+  const raw = get(`pos.${chapter}`)
+  if (!raw) return { page: 0, at: 0 }
+  try {
+    const v = JSON.parse(raw) as unknown
+    // a plain number: saved before the time was kept
+    if (typeof v === 'number') return { page: Number.isFinite(v) && v > 0 ? v : 0, at: 0 }
+    const p = v as Partial<Position>
+    const page = Number(p.page)
+    return { page: Number.isFinite(page) && page > 0 ? page : 0, at: Number(p.at) || 0 }
+  } catch {
+    return { page: 0, at: 0 }
+  }
+}
+
+export function savePosition(chapter: string, index: number, at = Date.now()) {
+  put(`pos.${chapter}`, JSON.stringify({ page: index, at }))
+}
+
+// newer is the position saved last (the server's when it's another device's).
+export function newer(local: Position, remote?: Position): Position {
+  return remote && remote.at > local.at ? remote : local
 }
 
 export function loadIncognito(): boolean {

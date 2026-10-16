@@ -1041,6 +1041,53 @@ paths:
                 $ref: '#/components/schemas/ReadResponse'
         default:
           $ref: '#/components/responses/Error'
+  /v1/reader/position:
+    get:
+      summary: The page a chapter was left on in the web reader
+      description: |
+        Saved by putReaderPosition from any device; the reader takes the newer of this and
+        the browser's own.
+      operationId: getReaderPosition
+      tags: [v1, reader]
+      x-mangal-scope: read
+      parameters:
+        - name: chapter
+          in: query
+          required: true
+          description: the reader's chapter key
+          schema:
+            type: string
+      responses:
+        '200':
+          description: the position, found false if none was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReaderPosition'
+        default:
+          $ref: '#/components/responses/Error'
+    put:
+      summary: Save the page a chapter is on in the web reader
+      description: |
+        Kept unless a newer position is saved (updated). The reader skips it in incognito.
+      operationId: putReaderPosition
+      tags: [v1, reader]
+      x-mangal-scope: progress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReaderPosition'
+      responses:
+        '200':
+          description: the position saved (a newer one if another device moved on)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReaderPosition'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/formats:
     get:
       summary: The download formats
@@ -2661,6 +2708,23 @@ components:
           format: int64
         type:
           type: string
+    ReaderPosition:
+      type: object
+      required: [chapter, page]
+      properties:
+        chapter:
+          type: string
+          description: the reader's chapter key
+        page:
+          type: integer
+          description: the page index, 0 the first
+        updated:
+          type: string
+          format: date-time
+          description: when it was on that page (now when not given)
+        found:
+          type: boolean
+          description: a position was saved (getReaderPosition)
     ReadRequest:
       type: object
       description: a chapter of a provider's manga, or of a library manga (a scanned folder without a source has no manga_id; it's synced, not in the history)

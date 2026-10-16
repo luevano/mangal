@@ -55,7 +55,9 @@
         "getChapterFile",
         "listProviderPages",
         "getProviderPage",
-        "recordRead"
+        "recordRead",
+        "getReaderPosition",
+        "putReaderPosition"
       ]
     },
     {

@@ -17,6 +17,7 @@ import {
   loadPosition,
   loadSettings,
   modes,
+  newer,
   fits,
   neighbors,
   nextFit,
@@ -156,7 +157,7 @@ async function load() {
     if (library.value) await loadLibrary()
     else await loadOnline()
     const asked = route.query.page === 'last' ? count.value : Number(route.query.page ?? 0)
-    const saved = loadPosition(chapterKey.value)
+    const saved = newer(loadPosition(chapterKey.value), await remotePosition(chapterKey.value)).page
     index.value = clampPage(asked || (saved < count.value - 1 ? saved + 1 : 1), count.value)
     if (pdf.value) record()
   } catch (e) {
@@ -187,8 +188,38 @@ async function record() {
   }
 }
 
+// the position on the server, for another device to resume; none when it can't be read
+async function remotePosition(chapter: string) {
+  try {
+    const p = await ok(client.GET('/v1/reader/position', { params: { query: { chapter } } }))
+    if (p.found && p.updated) return { page: p.page, at: Date.parse(p.updated) }
+  } catch {
+    // offline or no read scope: the browser's position
+  }
+  return undefined
+}
+
+// the page goes to the server a moment after it settles (not on every page turn), and
+// right away when the chapter is left; not in incognito
+let pending: { chapter: string; page: number; at: number } | undefined
+let pushTimer: ReturnType<typeof setTimeout> | undefined
+function pushPosition() {
+  clearTimeout(pushTimer)
+  const p = pending
+  pending = undefined
+  if (!p) return
+  client.PUT('/v1/reader/position', { body: { chapter: p.chapter, page: p.page, updated: new Date(p.at).toISOString() } }).catch(() => {})
+}
+
 watch(index, (i) => {
-  savePosition(chapterKey.value, i)
+  const at = Date.now()
+  savePosition(chapterKey.value, i, at)
+  if (!incognito.value) {
+    if (pending && pending.chapter !== chapterKey.value) pushPosition()
+    pending = { chapter: chapterKey.value, page: i, at }
+    clearTimeout(pushTimer)
+    pushTimer = setTimeout(pushPosition, 1500)
+  }
   if (count.value && i >= count.value - 1) record()
 })
 
@@ -336,6 +367,7 @@ onMounted(() => {
   window.addEventListener('scroll', onWebtoonEnd, { passive: true })
 })
 onUnmounted(() => {
+  pushPosition()
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('scroll', onWebtoonEnd)
   observer?.disconnect()

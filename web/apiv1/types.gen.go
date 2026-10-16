@@ -640,6 +640,21 @@ type ReadResponse struct {
 	Synced []string `json:"synced"`
 }
 
+// ReaderPosition defines model for ReaderPosition.
+type ReaderPosition struct {
+	// Chapter the reader's chapter key
+	Chapter string `json:"chapter"`
+
+	// Found a position was saved (getReaderPosition)
+	Found *bool `json:"found,omitempty"`
+
+	// Page the page index, 0 the first
+	Page int `json:"page"`
+
+	// Updated when it was on that page (now when not given)
+	Updated *time.Time `json:"updated,omitempty"`
+}
+
 // RelinkRequest defines model for RelinkRequest.
 type RelinkRequest = watch.RelinkOptions
 
@@ -1075,6 +1090,12 @@ type SearchProviderParams struct {
 	Q string `form:"q" json:"q"`
 }
 
+// GetReaderPositionParams defines parameters for GetReaderPosition.
+type GetReaderPositionParams struct {
+	// Chapter the reader's chapter key
+	Chapter string `form:"chapter" json:"chapter"`
+}
+
 // ListRunsParams defines parameters for ListRuns.
 type ListRunsParams struct {
 	// Since a time (RFC 3339) or a duration ago (7d, 12h)
@@ -1156,6 +1177,9 @@ type EmptyTrashJSONRequestBody = ApplyFields
 
 // UndoOpJSONRequestBody defines body for UndoOp for application/json ContentType.
 type UndoOpJSONRequestBody = ApplyFields
+
+// PutReaderPositionJSONRequestBody defines body for PutReaderPosition for application/json ContentType.
+type PutReaderPositionJSONRequestBody = ReaderPosition
 
 // RecordReadJSONRequestBody defines body for RecordRead for application/json ContentType.
 type RecordReadJSONRequestBody = ReadRequest

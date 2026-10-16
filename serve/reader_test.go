@@ -262,3 +262,24 @@ func (readerProvider) ChapterPages(_ context.Context, c mangadata.Chapter) ([]ma
 func (readerProvider) GetPageImage(context.Context, mangadata.Page) ([]byte, error) {
 	return pngData, nil
 }
+
+func TestV1ReaderPosition(t *testing.T) {
+	s := newTestServer(t, "")
+	var pos apiv1.ReaderPosition
+	if code := s.call(t, "GET", "/api/v1/reader/position?chapter=lib:1:a.cbz", "", &pos); code != http.StatusOK || pos.Found == nil || *pos.Found {
+		t.Fatalf("none saved: %d %+v", code, pos)
+	}
+	if code := s.call(t, "PUT", "/api/v1/reader/position", `{"chapter":"lib:1:a.cbz","page":5,"updated":"2026-10-15T10:00:00Z"}`, &pos); code != http.StatusOK || pos.Page != 5 {
+		t.Fatalf("put %d %+v", code, pos)
+	}
+	// another device that was offline: its older position doesn't win
+	if code := s.call(t, "PUT", "/api/v1/reader/position", `{"chapter":"lib:1:a.cbz","page":2,"updated":"2026-10-15T09:00:00Z"}`, &pos); code != http.StatusOK || pos.Page != 5 {
+		t.Fatalf("older put %d %+v", code, pos)
+	}
+	if code := s.call(t, "GET", "/api/v1/reader/position?chapter=lib:1:a.cbz", "", &pos); code != http.StatusOK || !*pos.Found || pos.Page != 5 || pos.Updated == nil {
+		t.Fatalf("get %d %+v", code, pos)
+	}
+	if code := s.call(t, "PUT", "/api/v1/reader/position", `{"chapter":"","page":1}`, nil); code != http.StatusBadRequest {
+		t.Errorf("no chapter: %d", code)
+	}
+}
