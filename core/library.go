@@ -194,7 +194,7 @@ func (r DeleteReq) plan(_ context.Context, c *Core) (*prepared, error) {
 			apply: func(ctx context.Context, _ ApplyOpts, res *OpResult) error {
 				return c.journaled(ctx, "delete", summary, res, func(j library.Journal) error {
 					files.Journal = j
-					return files.DeleteDownload(m, dl)
+					return files.DeleteDownloadContext(ctx, m, dl)
 				})
 			},
 		}, nil
@@ -230,7 +230,7 @@ func (r DeleteReq) plan(_ context.Context, c *Core) (*prepared, error) {
 		apply: func(ctx context.Context, _ ApplyOpts, res *OpResult) error {
 			return c.journaled(ctx, "delete", summary, res, func(j library.Journal) error {
 				files.Journal = j
-				return files.DeleteManga(m)
+				return files.DeleteMangaContext(ctx, m)
 			})
 		},
 	}, nil

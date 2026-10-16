@@ -655,7 +655,8 @@ func (f Files) ApplyLinksContext(ctx context.Context, plan LinkPlan, opts LinkOp
 			return rollback(err)
 		}
 		change.From, change.To = plan.Rename.From, plan.Rename.To
-		undo = append(undo, func() error { return moveDir(context.Background(), f.FS, nil, change.To, change.From, f.Modes) })
+		// the rollback reports its copy too, and isn't stopped half way by a cancel
+		undo = append(undo, func() error { return moveDir(context.WithoutCancel(ctx), f.FS, nil, change.To, change.From, f.Modes) })
 	}
 	if err := f.Library.SetLinks(change); err != nil {
 		return rollback(err)
