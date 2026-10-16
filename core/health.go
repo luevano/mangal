@@ -23,7 +23,8 @@ const KindHealthFix Kind = "health-fix"
 // to: a link or pick is a LinkReq (Choice: the id, when there are several), mark a
 // MarkReq, forget a ForgetReq, rename a RenameReq of its paths (cached metadata), merge a
 // MergeReq (Choice: the library manga to keep, the suggested one by default), empty-trash
-// an EmptyTrashReq; resume and watch change the watches. A scan isn't a change
+// an EmptyTrashReq, backups links (journaled as a LinkReq) the backup ids still missing
+// (a summary's: each item's); resume and watch change the watches. A scan isn't a change
 // (*health.NotFixableError). Plan.Detail and OpResult.Detail are a health.FixResult.
 type HealthFixReq struct {
 	Finding health.Finding `json:"finding"`
@@ -79,6 +80,8 @@ func (r HealthFixReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 		}
 	case health.ActionResume, health.ActionWatch:
 		return r.planWatch(ctx, c)
+	case health.ActionBackups:
+		return r.planBackups(ctx, c)
 	case health.ActionMark:
 		ids := a.Mangas
 		if a.Manga != 0 {
@@ -184,6 +187,88 @@ func (r HealthFixReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 		}
 	}
 	return &wrapped, nil
+}
+
+// planBackups gives the library manga, or each of the summary's items, the backup links
+// it still has no id of: one journaled link.
+func (r HealthFixReq) planBackups(ctx context.Context, c *Core) (*prepared, error) {
+	f := r.Finding
+	todo := []health.Action{*f.Fix.Action}
+	if len(f.Items) != 0 {
+		todo = nil
+		for _, item := range f.Items {
+			if a := item.Fix.Action; a != nil && a.Kind == health.ActionBackups && a.Manga != 0 {
+				todo = append(todo, *a)
+			}
+		}
+	}
+	linker, err := c.linker(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var plans []library.LinkPlan
+	var lines []string
+	for _, a := range todo {
+		m, err := c.manga(a.Manga)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		info, err := linker.LinkInfo(m)
+		if err != nil {
+			return nil, err
+		}
+		links := library.Links{}
+		for code, id := range a.Links {
+			// one linked meanwhile keeps its id
+			if id != "" && !info.Source(code).Linked() {
+				links[code] = id
+			}
+		}
+		if len(links) == 0 {
+			continue
+		}
+		lp, err := linker.PlanLinks(ctx, m, links, library.PlanOptions{NoImplied: true})
+		if err != nil {
+			return nil, err
+		}
+		if len(lp.Changes) != 0 {
+			plans = append(plans, lp)
+			lines = append(lines, lp.Lines()...)
+		}
+	}
+	fix := health.FixResult{Key: f.Key, Kind: health.ActionBackups, Plan: lines}
+	if len(plans) == 0 {
+		return gone(f, "nothing to set any more"), nil
+	}
+	summary := "backup links of " + stringutil.Quantify(len(plans), "manga", "mangas")
+	if len(plans) == 1 {
+		summary = fmt.Sprintf("backup links of %d %q", plans[0].Manga().ID, plans[0].Manga().Title)
+	}
+	return &prepared{
+		plan:   Plan{Summary: summary, Lines: lines, Detail: fix},
+		tables: libraryTables,
+		apply: func(ctx context.Context, _ ApplyOpts, res *OpResult) error {
+			err := c.journaled(ctx, "link", summary, res, func(j library.Journal) error {
+				linker.Journal = j
+				for i, lp := range plans {
+					report(ctx, library.Progress{Phase: "linking", Done: i + 1, Total: len(plans), Item: lp.Manga().Title})
+					if err := linker.ApplyLinksContext(ctx, lp, library.LinkOptions{}); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			fix.Applied, fix.Message, fix.Snapshot = true, "set the "+summary, res.Snapshot
+			res.Detail = fix
+			return nil
+		},
+	}, nil
 }
 
 func mangaIDs(mangas []storage.Manga) string {

@@ -75,12 +75,22 @@ func NewWith(m watch.Manager) (Checker, error) {
 		Probe: func(ctx context.Context, provider string, m ProviderManga) Probe {
 			return probeProvider(ctx, loaders, provider, m)
 		},
-		SearchAnilist: searchAnilist,
-		Ignores:       storage.HealthIgnores{DB: st.Data}.List,
-		FS:            afs.Afero,
-		Mark:          library.MarkOptions{ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider},
-		ProviderName:  template.Provider,
-		MangaName:     template.Manga,
+		SearchAnilist:  searchAnilist,
+		AnilistFromMAL: anilistFromMAL,
+		IDCheck:        checkIDs,
+		Backups: func(ctx context.Context, mangas []storage.Manga) ([]library.Backup, error) {
+			finder, err := client.LibraryBackups()
+			if err != nil {
+				return nil, err
+			}
+			return finder.Find(ctx, mangas)
+		},
+		MyAnimeList:  config.Metadata.MyAnimeList.Enabled.Get(),
+		Ignores:      storage.HealthIgnores{DB: st.Data}.List,
+		FS:           afs.Afero,
+		Mark:         library.MarkOptions{ProviderDirs: config.Download.Provider.CreateDir.Get(), ProviderName: template.Provider},
+		ProviderName: template.Provider,
+		MangaName:    template.Manga,
 		Metadata: func(ctx context.Context, ids [][]metadata.ID, fetch bool) ([]metadata.Metadata, error) {
 			if fetch {
 				return anilist.MetadataByIDsBatch(ctx, ids)
@@ -227,6 +237,31 @@ func searchAnilist(ctx context.Context, queries []metadata.Query) ([]metadata.Ma
 		return nil, nil, err
 	}
 	return ani.FindClosestManyContext(ctx, queries)
+}
+
+// anilistFromMAL maps MyAnimeList ids to AniList ones (cached, batched).
+func anilistFromMAL(ctx context.Context, ids []int) (map[int]int, error) {
+	ani, err := anilist.Anilist()
+	if err != nil {
+		return nil, err
+	}
+	return ani.IDsFromContext(ctx, metadata.IDCodeMyAnimeList, ids)
+}
+
+// checkIDs checks the AniList and Kitsu ids of the adopted folders, as library scan
+// --check does (without its suggestions: M1 has them).
+func checkIDs(ctx context.Context, mangas []storage.Manga) ([]library.IDCheck, error) {
+	ani, err := anilist.Anilist()
+	if err != nil {
+		return nil, err
+	}
+	kt, err := kitsu.Kitsu()
+	if err != nil {
+		return nil, err
+	}
+	checker := library.IDChecker{FS: afs.Afero,
+		Providers: map[metadata.IDSource]library.IDProvider{metadata.IDSourceAnilist: ani, metadata.IDSourceKitsu: kt}}
+	return checker.Check(ctx, mangas)
 }
 
 // expiresSoon is when a login that expires counts, as anilist.LoginNotice.

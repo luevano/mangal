@@ -23,6 +23,7 @@ var checks = []check{
 	{id: "W4", category: Watches, needs: []part{partWatches}, run: checkFailing},
 	{id: "W5", category: Watches, needs: []part{partWatches}, run: checkStale},
 	{id: "W6", category: Watches, needs: []part{partWatches}, run: checkProviderMissing},
+	{id: "W7", category: Watches, needs: []part{partWatches}, wants: []part{partProbes}, run: checkProviderFailing},
 	{id: "W8", category: Watches, needs: []part{partWatches}, run: checkWatchOldID},
 	{id: "W9", category: Watches, needs: []part{partWatches}, run: checkSchedule},
 	{id: "W10", category: Watches, needs: []part{partWatches, partLibrary}, run: checkNotWatched},
@@ -33,8 +34,10 @@ var checks = []check{
 	{id: "G2", category: Gaps, needs: []part{partLibrary, partWatches, partChapters}, run: checkGapsConfirmed, network: true},
 	{id: "G3", category: Gaps, needs: []part{partWatches}, run: checkRetry},
 	{id: "M1", category: Metadata, needs: []part{partLibrary}, wants: []part{partWatches, partSearch}, run: checkNoAnilist},
+	{id: "M2", category: Metadata, needs: []part{partLibrary, partBackups}, wants: []part{partIDChecks}, run: checkBackups, network: true},
 	{id: "M3", category: Metadata, needs: []part{partLibrary}, wants: []part{partFS}, run: checkDisagreements},
 	{id: "M4", category: Metadata, needs: []part{partLibrary, partFS}, run: checkBrokenMarkers},
+	{id: "M5", category: Metadata, needs: []part{partLibrary, partIDChecks}, wants: []part{partSearch, partBackups}, run: checkAdoptedIDs, network: true},
 	{id: "M6", category: Metadata, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkDuplicates},
 	{id: "L1", category: Library, needs: []part{partLibrary, partFS}, run: checkMissing},
 	{id: "L2", category: Library, needs: []part{partLibrary, partFS}, run: checkUnmarked},
@@ -246,6 +249,63 @@ func checkProviderMissing(s *snapshot) []Finding {
 				Note:     "install the provider again, or move the watch to another one",
 				TUI:      tuiWatches + ": re-link manga (another provider)",
 			}})
+	}
+	return out
+}
+
+// W7: providers whose every enabled watch failed its last check (two or more): the
+// provider or its site is broken, not the mangas. With the network checks A2's probe
+// says whether it answers now.
+func checkProviderFailing(s *snapshot) []Finding {
+	byProvider := map[string][]watch.Watch{}
+	var providers []string
+	for _, w := range s.watches {
+		if !w.Enabled || w.ProviderMissing || w.NeedsRelink {
+			continue
+		}
+		p := s.providerInfo(w.Provider).ID
+		if _, ok := byProvider[p]; !ok {
+			providers = append(providers, p)
+		}
+		byProvider[p] = append(byProvider[p], w)
+	}
+	slices.Sort(providers)
+	var out []Finding
+	for _, p := range providers {
+		ws := byProvider[p]
+		if len(ws) < 2 || slices.ContainsFunc(ws, func(w watch.Watch) bool { return w.Failures == 0 }) {
+			continue
+		}
+		f := Finding{Severity: Warning, Subject: Subject{Kind: "provider", Name: p},
+			Message: fmt.Sprintf("all %d of its watches failed their last checks", len(ws))}
+		if s.backoff > 0 && !slices.ContainsFunc(ws, func(w watch.Watch) bool { return w.Failures < s.backoff }) {
+			f.Severity = Error
+			f.Message += " (backing off)"
+		}
+		for _, w := range ws {
+			line := fmt.Sprintf("watch %d %s: %s", w.ID, w.Title, plural(w.Failures, "failed check"))
+			if w.LastError != "" {
+				line += ": " + w.LastError
+			}
+			f.Details = append(f.Details, line)
+		}
+		f.Fix.Commands = []string{fmt.Sprintf("mangal watch log --provider %s", p), fmt.Sprintf("mangal watch check --provider %s", p)}
+		if probe, ok := s.probes[p]; ok {
+			switch {
+			case probe.answered():
+				f.Details = append(f.Details, "it answers now (A2): checking them again tells whether it's over")
+			case probe.Skipped == "":
+				f.Details = append(f.Details, "it doesn't answer now either (A2): "+probe.Err.Error())
+			}
+		} else if !s.network {
+			f.Fix.Commands = append(f.Fix.Commands, "mangal health --network --only W7,A2")
+		}
+		f.Fix.Note = "see why they failed, check them again; a site down comes back, a changed site needs a newer mangal"
+		if s.isLua(p) {
+			f.Fix.Note = "see why they failed, check them again; a site down comes back, a changed site needs a provider update (mangal providers up)"
+		}
+		f.Fix.TUI = tuiWatches + ": check now, details"
+		out = append(out, f)
 	}
 	return out
 }
@@ -712,6 +772,10 @@ func checkNoAnilist(s *snapshot) []Finding {
 		switch {
 		case suggest != "":
 			f.Details = []string{fmt.Sprintf("%s AniList %s", from, suggest)}
+		case s.fromMAL[m.ID] != "":
+			suggest = s.fromMAL[m.ID]
+			f.Network = true
+			f.Details = []string{fmt.Sprintf("AniList %s has its MyAnimeList id %s", suggest, info.Source(metadata.IDCodeMyAnimeList).Current())}
 		case searched && !match.Bad():
 			suggest = match.Metadata.ID().Raw
 			f.Network = true

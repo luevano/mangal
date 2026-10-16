@@ -268,15 +268,24 @@ func (c Checker) loadChapters(ctx context.Context, s *snapshot) error {
 	return ctx.Err()
 }
 
-// loadSearch looks for an AniList id of the mangas M1 has no suggestion for.
+// loadSearch looks for an AniList id of the mangas M1 has no suggestion for (by their
+// MyAnimeList id, else their title), and of those whose AniList id M5 found wrong.
 func (c Checker) loadSearch(ctx context.Context, s *snapshot) error {
+	var errs []error
+	if s.running["M1"] && c.AnilistFromMAL != nil {
+		if err := c.loadFromMAL(ctx, s); err != nil {
+			errs = append(errs, fmt.Errorf("MyAnimeList ids: %w", err))
+		}
+	}
 	if c.SearchAnilist == nil {
-		return errors.New("not available")
+		return errors.Join(append(errs, errors.New("not available"))...)
 	}
 	var mangas []storage.Manga
 	var queries []metadata.Query
 	for _, m := range s.mangas {
-		if linked, suggest, _ := s.anilistSuggestion(m); linked || suggest != "" {
+		_, wrong := s.adoptedIssue(m, metadata.IDCodeAnilist)
+		wrong = wrong && s.running["M5"]
+		if linked, suggest, _ := s.anilistSuggestion(m); !wrong && (!s.running["M1"] || linked || suggest != "" || s.fromMAL[m.ID] != "") {
 			continue
 		}
 		if q := library.MangaQuery(m); len(q.Titles) != 0 {
@@ -284,19 +293,19 @@ func (c Checker) loadSearch(ctx context.Context, s *snapshot) error {
 		}
 	}
 	if len(queries) == 0 {
-		return nil
+		return errors.Join(errs...)
 	}
 	c.progress(fmt.Sprintf("searching AniList for %s", plural(len(queries), "manga")))
 	matches, found, err := c.SearchAnilist(ctx, queries)
 	if err != nil {
-		return err
+		return errors.Join(append(errs, err)...)
 	}
 	for i, m := range mangas {
 		if i < len(found) && found[i] && matches[i].Metadata != nil {
 			s.anilist[m.ID] = matches[i]
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // W12 (network): unwatched library mangas whose source has chapters newer than the

@@ -97,7 +97,7 @@ type fixPlannedMsg struct {
 	res health.FixResult
 }
 
-// applyLibrary asks to apply a library fix (mark, forget, scan, rename, empty the trash),
+// applyLibrary asks to apply a library fix (mark, forget, scan, rename, backups, empty the trash),
 // false when the action isn't one. The Fixer applies them but the scan and emptying the
 // trash, it refuses those.
 func (s *state) applyLibrary(ctx context.Context, f health.Finding) (tea.Cmd, bool) {
@@ -120,6 +120,11 @@ func (s *state) applyLibrary(ctx context.Context, f health.Finding) (tea.Cmd, bo
 	case health.ActionScan:
 		s.Confirm.Ask("Scan", "Scan the library? It adds the folders it doesn't have and finds the ones that moved.", s.View(),
 			libChange("Scanning the library", scanLibrary))
+	case health.ActionBackups:
+		return base.Load(ctx, "Planning the links", func(ctx context.Context) (fixPlannedMsg, error) {
+			res, err := fixFinding(ctx, f, false, nil)
+			return fixPlannedMsg{f: f, res: res}, err
+		}, func(msg fixPlannedMsg) tea.Msg { return msg }), true
 	case health.ActionRename:
 		return base.Load(ctx, "Planning the renames", func(ctx context.Context) (fixPlannedMsg, error) {
 			res, err := fixFinding(ctx, f, false, nil)
@@ -156,12 +161,16 @@ func (s *state) askEmptyTrash(msg trashCheckedMsg) tea.Cmd {
 	return nil
 }
 
-// askRename asks to do the planned renames.
-func (s *state) askRename(msg fixPlannedMsg) tea.Cmd {
+// askPlanned asks to apply the planned fix (the renames, the backup links).
+func (s *state) askPlanned(msg fixPlannedMsg) tea.Cmd {
 	if msg.res.Nothing {
 		return base.Notify(capitalize(msg.res.Message))
 	}
-	s.Confirm.Ask("Rename", strings.Join(append(msg.res.Plan, "", "Rename?"), "\n"), s.View(), fix("Renaming", msg.f, false, 0))
+	title, question, label := "Rename", "Rename?", "Renaming"
+	if msg.res.Kind == health.ActionBackups {
+		title, question, label = "Link", "Set these links?", "Linking"
+	}
+	s.Confirm.Ask(title, strings.Join(append(msg.res.Plan, "", question), "\n"), s.View(), fix(label, msg.f, false, 0))
 	return nil
 }
 

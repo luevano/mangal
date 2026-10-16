@@ -93,7 +93,7 @@ func jumpLabel(f health.Finding) string {
 		return fmt.Sprintf("list them (%d)", len(f.Items))
 	case f.Fix.Action != nil && f.Fix.Action.Kind == health.ActionRename:
 		return "rename screen"
-	case f.Check == "M1" || f.Check == "M3":
+	case f.Check == "M1" || f.Check == "M2" || f.Check == "M3" || f.Check == "M5":
 		return "links"
 	case f.Check == "L3" || f.Check == "W8":
 		return "migrate"
@@ -146,6 +146,11 @@ func applyLabel(f health.Finding) string {
 		return "rename"
 	case health.ActionEmptyTrash:
 		return "empty"
+	case health.ActionBackups:
+		if len(a.Mangas) > 1 {
+			return fmt.Sprintf("set the backup ids of %d", len(a.Mangas))
+		}
+		return "set the backup ids"
 	}
 	return ""
 }
@@ -349,7 +354,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case libMsg:
 		return s.runLib(ctx, msg)
 	case fixPlannedMsg:
-		return s.askRename(msg)
+		return s.askPlanned(msg)
 	case trashCheckedMsg:
 		return s.askEmptyTrash(msg)
 	case linkMsg:

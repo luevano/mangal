@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/health"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 )
 
@@ -151,5 +152,45 @@ func TestHealthFixes(t *testing.T) {
 	}
 	if _, err := fix(t, c, health.Finding{}, "", false); !errors.As(err, &nf) {
 		t.Errorf("no action: %v", err)
+	}
+}
+
+func TestHealthFixBackups(t *testing.T) {
+	c, _ := testLinkCore(t)
+	berserk := addManga(t, c, "Berserk", "p", "b", "Berserk", 1)
+	vagabond := addManga(t, c, "Vagabond", "q", "v", "Vagabond", 1)
+	item := func(id int64, links library.Links) health.Finding {
+		return health.Finding{Key: fmt.Sprintf("M2/manga/%d", id), Fix: health.Fix{Action: &health.Action{Kind: health.ActionBackups, Manga: id, Links: links}}}
+	}
+	summary := health.Finding{Key: "M2/library", Fix: health.Fix{Action: &health.Action{Kind: health.ActionBackups, Mangas: []int64{berserk.ID, vagabond.ID}}},
+		Items: []health.Finding{
+			item(berserk.ID, library.Links{metadata.IDCodeKitsu: "8", metadata.IDCodeMyAnimeList: "2"}),
+			item(vagabond.ID, library.Links{metadata.IDCodeKitsu: "9"}),
+		}}
+	// one linked meanwhile keeps its id
+	if _, err := fix(t, c, item(vagabond.ID, library.Links{metadata.IDCodeKitsu: "7"}), "", true); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := fix(t, c, summary, "", false)
+	if err != nil || plan.Nothing || plan.Kind != health.ActionBackups {
+		t.Fatalf("plan %+v %v", plan, err)
+	}
+	if lines := strings.Join(plan.Plan, "\n"); !strings.Contains(lines, "Kitsu: none -> 8") || !strings.Contains(lines, "MyAnimeList: none -> 2") || strings.Contains(lines, "Vagabond") {
+		t.Errorf("plan %q", plan.Plan)
+	}
+	res, err := fix(t, c, summary, "", true)
+	if err != nil || !res.Applied || res.Snapshot == "" || res.Message != `set the backup links of 1 "Berserk"` {
+		t.Fatalf("applied %+v %v", res, err)
+	}
+	m, _ := c.Library.Manga(berserk.ID)
+	if ids := fmt.Sprint(m.MetadataIDs); !strings.Contains(ids, "kt") || !strings.Contains(ids, "mal") {
+		t.Errorf("ids %v", m.MetadataIDs)
+	}
+	if again, err := fix(t, c, summary, "", false); err != nil || !again.Nothing {
+		t.Errorf("again %+v %v", again, err)
+	}
+	undoLast(t, c)
+	if m, _ := c.Library.Manga(berserk.ID); len(m.MetadataIDs) != 0 {
+		t.Errorf("not undone: %v", m.MetadataIDs)
 	}
 }

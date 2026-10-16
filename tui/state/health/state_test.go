@@ -49,6 +49,13 @@ func TestHints(t *testing.T) {
 		{health.Finding{Check: "L4", Subject: health.Subject{Kind: "directory", Name: "mango-mangasee"},
 			Fix: health.Fix{Action: &health.Action{Kind: health.ActionRename, Paths: []string{"/dl/mango-mangasee"}}}},
 			"enter rename screen · x rename"},
+		{health.Finding{Check: "M2", Subject: health.Subject{Kind: "library", Name: "library"}, Items: make([]health.Finding, 2),
+			Fix: health.Fix{Action: &health.Action{Kind: health.ActionBackups, Mangas: []int64{1, 2}}}},
+			"enter list them (2) · x set the backup ids of 2"},
+		{health.Finding{Check: "M2", Subject: health.Subject{Kind: "manga", ID: 1}, Fix: health.Fix{Action: &health.Action{Kind: health.ActionBackups, Manga: 1}}},
+			"enter links · x set the backup ids"},
+		{health.Finding{Check: "W7", Subject: health.Subject{Kind: "provider", Name: "mango-mangadex"}, Fix: health.Fix{Commands: []string{"mangal watch log --provider mango-mangadex"}}},
+			"mangal watch log --provider mango-mangadex"},
 	} {
 		if got := s.hint(c.f); got != c.want {
 			t.Errorf("%s: %q, want %q", c.f.Check, got, c.want)

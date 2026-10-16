@@ -14,6 +14,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangoprovider"
 	"github.com/spf13/afero"
 )
 
@@ -62,6 +63,13 @@ type snapshot struct {
 	probed     map[string]ProviderManga
 	chapters   map[int64]chapterResult
 	anilist    map[int64]metadata.Match
+	// idChecks are what the id checks found of the adopted folders (M5), fromMAL the AniList
+	// ids of the MyAnimeList ids of mangas without one (M1), backups the backup ids by
+	// library manga (M2), mal is true when M2 suggests MyAnimeList ids
+	idChecks []library.IDCheck
+	fromMAL  map[int64]string
+	backups  map[int64]library.Backup
+	mal      bool
 
 	// errors are what didn't load without skipping a check, and what a check couldn't do
 	errors []string
@@ -127,6 +135,16 @@ func siteHost(website string) string {
 		return ""
 	}
 	return strings.TrimPrefix(strings.ToLower(u.Host), "www.")
+}
+
+// isLua is true when the installed provider is a Lua one (not built in).
+func (s *snapshot) isLua(provider string) bool {
+	l, _, ok := libmangal.FindLoader(s.loaders, provider)
+	if !ok {
+		return false
+	}
+	_, mango := l.(*mangoprovider.Loader)
+	return !mango
 }
 
 // providerInfo is the provider's info, just its id when it isn't installed.

@@ -17,7 +17,7 @@ func init() {
 	f := healthFixCmd.Flags()
 	f.StringVar(&healthFixArgs.Choice, "choice", "", "The id to link when the fix offers several, the library manga to keep of a merge")
 	f.BoolVar(&healthFixArgs.Apply, "apply", false, "Fix it, instead of only listing what would happen")
-	f.BoolVar(&healthFixArgs.Network, "network", false, "Run the finding's check with the network checks (W12, G2, A2, M1's AniList search)")
+	f.BoolVar(&healthFixArgs.Network, "network", false, "Run the finding's check with the network checks (W12, G2, A2, M2, M5, M1's AniList lookups)")
 }
 
 var healthFixCmd = &cobra.Command{
@@ -26,8 +26,9 @@ var healthFixCmd = &cobra.Command{
 	Long: `Fix the finding with the key (from "mangal health") with the change its fix makes, as the
 TUI's health screen does: link an id (--choice when it offers several), merge duplicates
 (--choice the library manga to keep, the suggested one by default), mark folders, forget
-a manga whose folder is gone, rename folders (with the cached metadata), empty the trash
-(can't be undone), resume a watch or watch a manga. A scan has no plan: "mangal library
+a manga whose folder is gone, rename folders (with the cached metadata), set backup ids
+(M2: one manga's, or all of them with the summary's key), empty the trash (can't be
+undone), resume a watch or watch a manga. A scan has no plan: "mangal library
 scan" does it.
 
 Its check runs again first (with --network for the network checks), so the fix is of the

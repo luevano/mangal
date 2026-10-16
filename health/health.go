@@ -112,6 +112,9 @@ const (
 	ActionRename = "rename"
 	// ActionEmptyTrash empties the trash.
 	ActionEmptyTrash = "empty-trash"
+	// ActionBackups gives the library Manga the backup Links (those it still has no id
+	// of); a summary's (Mangas) gives each of its items theirs.
+	ActionBackups = "backups"
 )
 
 // Action is a fix the TUI can apply: the same change as the fix's command.
@@ -125,6 +128,7 @@ type Action struct {
 	MangaID  string          `json:"manga_id,omitempty"`
 	Mangas   []int64         `json:"mangas,omitempty"`
 	Paths    []string        `json:"paths,omitempty"`
+	Links    library.Links   `json:"links,omitempty"`
 }
 
 // Finding is a problem a check found.
@@ -204,12 +208,15 @@ type Report struct {
 	// Dismissed is how many findings (and summary items) were dismissed: hidden and not
 	// counted, shown (Finding.Dismissed) with Options.All.
 	Dismissed int `json:"dismissed,omitempty"`
+	// links are the library mangas' linked ids when the library loaded: KeepNetwork
+	// keeps M2 and M5 while they still hold
+	links map[int64]library.Links
 }
 
 // Options of a run.
 type Options struct {
-	// Network also runs the checks that make requests (W12, G2, A2, M1's AniList search)
-	// and fetches the publication statuses.
+	// Network also runs the checks that make requests (W12, G2, A2, M2, M5, M1's AniList
+	// lookups) and fetches the publication statuses.
 	Network bool
 	// Only runs these categories or checks (ids), all when empty.
 	Only []string
@@ -275,6 +282,17 @@ type Checker struct {
 	// SearchAnilist is AniList's closest match to each query (FindClosestManyContext),
 	// M1's suggestions with the network checks; nil skips them.
 	SearchAnilist func(ctx context.Context, queries []metadata.Query) ([]metadata.Match, []bool, error)
+	// AnilistFromMAL maps MyAnimeList ids to AniList ones (AniList's idMal), M1's
+	// suggestions for mangas linked to MyAnimeList; nil skips them.
+	AnilistFromMAL func(ctx context.Context, ids []int) (map[int]int, error)
+	// IDCheck checks the metadata ids of the adopted folders (library.IDChecker), M5; nil
+	// skips it.
+	IDCheck func(ctx context.Context, mangas []storage.Manga) ([]library.IDCheck, error)
+	// Backups are the Kitsu and MyAnimeList ids mangas linked to AniList can get
+	// (library.BackupFinder), M2 and M5's suggestions; nil skips M2.
+	Backups func(ctx context.Context, mangas []storage.Manga) ([]library.Backup, error)
+	// MyAnimeList is true when M2 suggests MyAnimeList ids (metadata.myanimelist.enabled).
+	MyAnimeList bool
 	// Parallel is how many providers the network checks ask at once, 1 when 0.
 	Parallel int
 	// FS is the download directory's filesystem (Root), nil skips the fs checks.
@@ -306,16 +324,20 @@ const (
 	// partFS is the folders and markers, partRenames what library rename would do
 	partFS
 	partRenames
-	// partProbes is what the providers answered, partChapters their chapters, partSearch
-	// AniList's matches (network checks only: partSearch isn't loaded without them)
+	// partProbes is what the providers answered, partChapters their chapters, partIDChecks
+	// the adopted ids checked, partSearch AniList's matches, partBackups the backup ids
+	// (network checks only: partProbes, partIDChecks, partSearch and partBackups aren't
+	// loaded without them)
 	partProbes
 	partChapters
+	partIDChecks
 	partSearch
+	partBackups
 )
 
 var partNames = map[part]string{partLibrary: "the library", partWatches: "the watches", partOldIDs: "the old provider ids",
 	partAccounts: "the accounts", partFS: "the folders", partRenames: "the rename plan", partProbes: "the providers' answers",
-	partChapters: "the providers' chapters", partSearch: "the AniList search"}
+	partChapters: "the providers' chapters", partIDChecks: "the id checks", partSearch: "the AniList search", partBackups: "the backup ids"}
 
 // check is one check over the snapshot.
 type check struct {
@@ -406,7 +428,10 @@ func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 	}
 	report.Errors = append(report.Errors, s.errors...)
 	loadErrors := len(s.errors)
-	for p := partLibrary; p <= partSearch; p++ {
+	if needed[partLibrary] && failed[partLibrary] == nil {
+		report.links = s.linked()
+	}
+	for p := partLibrary; p <= partBackups; p++ {
 		if err := failed[p]; err != nil {
 			report.Errors = append(report.Errors, fmt.Sprintf("load %s: %s", partNames[p], err))
 		}
@@ -465,8 +490,9 @@ func (r *Report) recount() {
 
 // KeepNetwork is the offline report next with the findings of the network run last (the
 // caller knows it was one) that still hold: W12 while its manga is still unwatched (a W10 item), G2 while its manga
-// still has the gaps G1 found, A2, and M1's AniList matches while the manga still has
-// no AniList link.
+// still has the gaps G1 found, A2, M1's AniList matches while the manga still has
+// no AniList link, M2's backup ids the mangas still have no id of, and M5 while the
+// manga still has the id.
 func KeepNetwork(last, next Report) Report {
 	if next.Network {
 		return next
@@ -506,6 +532,17 @@ func KeepNetwork(last, next Report) Report {
 			}
 			continue
 		case "A2":
+		case "M2":
+			kept, still := keepBackups(f, next.links)
+			if !still {
+				continue
+			}
+			f = kept
+		case "M5":
+			code, id, _ := strings.Cut(f.Part, "/")
+			if next.links == nil || next.links[f.Subject.ID][metadata.IDCode(code)] != id {
+				continue
+			}
 		default:
 			continue
 		}
@@ -627,7 +664,8 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool, r
 	mark.Loaders = c.Loaders
 	s := &snapshot{now: c.now(), root: c.Root, providerDirs: c.ProviderDirs, staleAfter: staleAfter, backoff: c.Backoff,
 		loaders: c.Loaders, fsys: c.FS, mark: mark, providerName: c.ProviderName, bindings: map[[2]string][]storage.Binding{}, network: network, running: running,
-		probes: map[string]Probe{}, probed: map[string]ProviderManga{}, chapters: map[int64]chapterResult{}, anilist: map[int64]metadata.Match{}}
+		probes: map[string]Probe{}, probed: map[string]ProviderManga{}, chapters: map[int64]chapterResult{}, anilist: map[int64]metadata.Match{},
+		fromMAL: map[int64]string{}, backups: map[int64]library.Backup{}, mal: c.MyAnimeList}
 	failed := map[part]error{}
 	if needed[partLibrary] {
 		c.progress("loading the library")
@@ -690,7 +728,7 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool, r
 			failed[partRenames] = err
 		}
 	}
-	if needed[partProbes] {
+	if needed[partProbes] && network {
 		if failed[partLibrary] != nil {
 			failed[partProbes] = errors.New("needs the library")
 		} else if err := c.loadProbes(ctx, s); err != nil {
@@ -707,9 +745,20 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool, r
 			}
 		}
 	}
+	if needed[partIDChecks] && network && failed[partLibrary] == nil {
+		c.progress("checking the adopted ids")
+		if err := c.loadIDChecks(ctx, s); err != nil {
+			failed[partIDChecks] = err
+		}
+	}
 	if needed[partSearch] && network && failed[partLibrary] == nil {
 		if err := c.loadSearch(ctx, s); err != nil {
-			s.errors = append(s.errors, "M1: AniList search: "+err.Error())
+			s.errors = append(s.errors, "M1/M5: AniList search: "+err.Error())
+		}
+	}
+	if needed[partBackups] && network && failed[partLibrary] == nil {
+		if err := c.loadBackups(ctx, s); err != nil {
+			failed[partBackups] = err
 		}
 	}
 	return s, failed
