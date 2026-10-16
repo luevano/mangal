@@ -33,7 +33,7 @@ func loaded() *state {
 		{Account: libmangal.Account{Service: "Anilist", User: "nick", Status: "logged in", URL: "https://anilist.co/user/nick"}, Metadata: metadata.IDSourceAnilist, Checked: time.Now()},
 		{Account: libmangal.Account{Service: "MangaPlus", Status: "free device", Details: []string{"no secret"}}, Provider: mangaPlusID, Checked: time.Now().Add(-2 * time.Hour)},
 		{Account: libmangal.Account{Service: "Discord", Status: "not set"}, Discord: true, Checked: time.Now()},
-		{Account: libmangal.Account{Service: "Other"}, Provider: "mango-other", Err: errTest, Checked: time.Now()},
+		{Account: libmangal.Account{Service: "Other"}, Provider: "mango-other", Error: errTest.Error(), Checked: time.Now()},
 	})
 	return s
 }

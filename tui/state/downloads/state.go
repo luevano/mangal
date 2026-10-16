@@ -15,6 +15,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	_list "charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
@@ -32,7 +33,7 @@ import (
 var _ base.State = (*state)(nil)
 
 type item struct {
-	job jobs.Job
+	job core.Job
 	// group is the job's providers, the queue it's in
 	group string
 }
@@ -74,7 +75,7 @@ func (i *item) Description() string {
 		}
 		return line
 	case jobs.Failed:
-		return j.Kind.String() + " · " + style.Normal.Error.Render(j.Err.Error())
+		return j.Kind.String() + " · " + style.Normal.Error.Render(j.Error)
 	case jobs.Cancelled:
 		return j.Kind.String() + " · cancelled " + ago(j.Finished)
 	}
@@ -117,7 +118,7 @@ func New() base.State {
 	}}
 	s.Screen = list.NewScreen(list.New(2, 1, "job", "jobs", []*item{}, func(i *item) _list.DefaultItem { return i }), s.keyMap)
 	s.Confirm = confirm.NewDialog(40, color.Warning)
-	s.setItems(true)
+	s.setItems(context.Background(), true)
 	return s
 }
 
@@ -153,15 +154,18 @@ func (s *state) Subtitle() string {
 	return strings.Join(parts, " · ")
 }
 
-func (s *state) Init(context.Context) tea.Cmd {
-	return s.setItems(true)
+func (s *state) Init(ctx context.Context) tea.Cmd {
+	return s.setItems(ctx, true)
 }
 
 // setItems lists the jobs: the active ones by queue (providers, in the order their first
 // job came; the running one first, then the queue in order), then the finished ones, the
 // latest first. selectNew selects the newest active job if it's newer than the ones seen.
-func (s *state) setItems(selectNew bool) tea.Cmd {
-	all := tuijobs.Manager().Jobs()
+func (s *state) setItems(ctx context.Context, selectNew bool) tea.Cmd {
+	all, err := tuijobs.Service().List(ctx)
+	if err != nil {
+		return func() tea.Msg { return err }
+	}
 	order := map[string]int{}
 	var active, finished []*item
 	for _, j := range all {
@@ -203,17 +207,17 @@ func (s *state) setItems(selectNew bool) tea.Cmd {
 }
 
 // queuedRank puts the running (and waiting) job before the queued ones.
-func queuedRank(j jobs.Job) int {
+func queuedRank(j core.Job) int {
 	if j.Status == jobs.Queued {
 		return 1
 	}
 	return 0
 }
 
-func (s *state) selected() (jobs.Job, bool) {
+func (s *state) selected() (core.Job, bool) {
 	i, ok := s.List.SelectedItem().(*item)
 	if !ok {
-		return jobs.Job{}, false
+		return core.Job{}, false
 	}
 	return i.job, true
 }
@@ -228,7 +232,7 @@ func (s *state) updateKeys() {
 		s.keys.cancel = base.KeyRemove
 	}
 	s.keys.cancel.SetEnabled(ok)
-	s.keys.retry.SetEnabled(ok && !active && j.Kind == jobs.KindDownload && (len(j.Results.Failed()) != 0 || len(j.Results.ToDownload()) != 0))
+	s.keys.retry.SetEnabled(ok && j.Retryable())
 	s.keys.clearQueue.SetEnabled(active)
 }
 
@@ -239,14 +243,17 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	if cmd, ok := s.Answer(msg); ok {
 		return cmd
 	}
-	m := tuijobs.Manager()
+	svc := tuijobs.Service()
 	switch msg := msg.(type) {
 	case tuijobs.ChangedMsg:
-		return s.setItems(false)
+		return s.setItems(ctx, false)
 	case base.RestoredMsg:
-		return s.setItems(true)
+		return s.setItems(ctx, true)
 	case cancelAllMsg:
-		n := m.CancelAll()
+		n, err := svc.CancelAll(ctx)
+		if err != nil {
+			return func() tea.Msg { return err }
+		}
 		return base.Notify("Cancelled " + stringutil.Quantify(n, "job", "jobs"))
 	case tea.KeyPressMsg:
 		if s.List.Filtering() {
@@ -255,14 +262,23 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		k := s.keys
 		switch {
 		case key.Matches(msg, k.cancelAll):
-			active := m.Active()
-			if len(active) == 0 {
+			active := 0
+			for _, i := range s.List.Items() {
+				if i.(*item).job.Status.Active() {
+					active++
+				}
+			}
+			if active == 0 {
 				return base.Notify("Nothing to cancel")
 			}
-			s.Confirm.Ask("Cancel all", "Cancel "+stringutil.Quantify(len(active), "job", "jobs")+"? The running ones stop, the queues are cleared; the chapters downloaded stay.", s.View(), func() tea.Msg { return cancelAllMsg{} })
+			s.Confirm.Ask("Cancel all", "Cancel "+stringutil.Quantify(active, "job", "jobs")+"? The running ones stop, the queues are cleared; the chapters downloaded stay.", s.View(), func() tea.Msg { return cancelAllMsg{} })
 			return nil
 		case key.Matches(msg, k.clearQueues):
-			return base.Notify("Cleared " + stringutil.Quantify(m.ClearQueue(""), "queued job", "queued jobs"))
+			n, err := svc.ClearQueue(ctx, "")
+			if err != nil {
+				return func() tea.Msg { return err }
+			}
+			return base.Notify("Cleared " + stringutil.Quantify(n, "queued job", "queued jobs"))
 		}
 		j, ok := s.selected()
 		if !ok {
@@ -277,22 +293,30 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		case key.Matches(msg, k.origin):
 			return base.JumpTo(j.Origin)
 		case key.Matches(msg, k.cancel) && !j.Status.Active():
-			m.Remove(j.ID)
-			return s.setItems(false)
+			if _, err := svc.Remove(ctx, j.ID); err != nil {
+				return func() tea.Msg { return err }
+			}
+			return s.setItems(ctx, false)
 		case key.Matches(msg, k.cancel):
-			if m.Cancel(j.ID) {
+			if ok, err := svc.Cancel(ctx, j.ID); err != nil {
+				return func() tea.Msg { return err }
+			} else if ok {
 				return base.Notify("Cancelling " + j.Title)
 			}
 			return nil
 		case key.Matches(msg, k.retry):
-			if _, err := m.Retry(j.ID); err != nil {
+			if _, err := svc.Retry(ctx, j.ID); err != nil {
 				return func() tea.Msg { return err }
 			}
-			return s.setItems(false)
+			return s.setItems(ctx, false)
 		case key.Matches(msg, k.clearQueue):
 			var cleared int
 			for _, p := range j.Providers {
-				cleared += m.ClearQueue(p)
+				n, err := svc.ClearQueue(ctx, p)
+				if err != nil {
+					return func() tea.Msg { return err }
+				}
+				cleared += n
 			}
 			return base.Notify("Cleared " + stringutil.Quantify(cleared, "queued job", "queued jobs") + " of " + strings.Join(j.Providers, ", "))
 		}

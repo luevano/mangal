@@ -15,6 +15,7 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
@@ -53,6 +54,9 @@ func Manager() *jobs.Manager {
 	}
 	return manager
 }
+
+// Service is the process's jobs as the core's service.
+func Service() core.Jobs { return core.LocalJobs(Manager()) }
 
 // SetManager replaces the manager, for tests.
 func SetManager(m *jobs.Manager) {

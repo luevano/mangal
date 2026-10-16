@@ -15,14 +15,12 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/log"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/model/metadata"
 	"github.com/luevano/mangal/v5/tui/util"
-	"github.com/luevano/mangal/v5/util/cache"
 )
 
 var _ base.State = (*bindingsState)(nil)
@@ -91,11 +89,11 @@ func (s *bindingsState) Init(ctx context.Context) tea.Cmd {
 func (s *bindingsState) load(ctx context.Context) tea.Cmd {
 	c, manga := s.client, s.manga
 	return base.Load(ctx, "Loading the metadata bindings", func(ctx context.Context) (loadedMsg, error) {
-		bindings, err := cache.Bindings()
+		lib, err := base.Library()
 		if err != nil {
 			return nil, err
 		}
-		bound, err := bindings.Get(c.Info().ID, manga.Info().ID)
+		bound, err := lib.Bindings(ctx, c.Info().ID, manga.Info().ID)
 		if err != nil {
 			return nil, err
 		}
@@ -129,13 +127,14 @@ func (s *bindingsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case removeMsg:
 		src := msg.src
-		return s.change(ctx, func(b storage.Bindings) (string, error) {
-			_, err := base.ApplyChange(ctx, core.UnbindReq{Provider: s.client.Info().ID, MangaID: s.manga.Info().ID, Code: src.Code}, func(string) {})
+		req := core.UnbindReq{Provider: s.client.Info().ID, MangaID: s.manga.Info().ID, Code: src.Code}
+		return base.Load(ctx, "", func(ctx context.Context) (changedMsg, error) {
+			_, err := base.ApplyChange(ctx, req, func(string) {})
 			if errors.Is(err, core.ErrNothingToDo) {
 				err = nil
 			}
-			return fmt.Sprintf("Removed the %s binding", src.Name), err
-		})
+			return changedMsg{notice: fmt.Sprintf("Removed the %s binding", src.Name)}, err
+		}, func(msg changedMsg) tea.Msg { return msg })
 	case loadedMsg:
 		items := make([]_list.Item, len(msg))
 		for i, it := range msg {
@@ -178,17 +177,6 @@ func (s *bindingsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 	}
 	return s.List.Update(msg)
-}
-
-func (s *bindingsState) change(ctx context.Context, change func(storage.Bindings) (string, error)) tea.Cmd {
-	return base.Load(ctx, "", func(context.Context) (changedMsg, error) {
-		bindings, err := cache.Bindings()
-		if err != nil {
-			return changedMsg{}, err
-		}
-		notice, err := change(bindings)
-		return changedMsg{notice: notice}, err
-	}, func(msg changedMsg) tea.Msg { return msg })
 }
 
 // applyDefault sets the default binding's metadata on the manga (the first bound source

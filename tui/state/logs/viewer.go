@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -406,18 +407,17 @@ func (v *viewer) start(ctx context.Context) tea.Cmd {
 		case tail != nil:
 			return entries, tail.Next(log.Filter{}, add)
 		case search:
-			files, err := log.Files(dir)
-			if err != nil || m == nil {
-				return nil, err
+			if m == nil {
+				return nil, nil
 			}
-			return entries, log.Scan(ctx, files, log.Filter{}, func(e log.Entry) error {
+			return entries, logsOf(dir).Entries(ctx, core.LogQuery{}, func(e log.Entry) error {
 				if !m.match(e.Message) {
 					return nil
 				}
 				return add(e)
 			})
 		default:
-			return entries, log.Scan(ctx, []log.File{file}, log.Filter{}, add)
+			return entries, logsOf(dir).Entries(ctx, core.LogQuery{Files: []string{file.Name}}, add)
 		}
 	}, func(entries []log.Entry) tea.Msg {
 		msg := entriesMsg{gen: gen, entries: entries, replace: true}
@@ -426,6 +426,22 @@ func (v *viewer) start(ctx context.Context) tea.Cmd {
 		}
 		return msg
 	})
+}
+
+// logsOf are the logs of the directory. The current period's tail stays local: it reads
+// on from where it was.
+func logsOf(dir string) core.Logs { return core.NewLogs(func() string { return dir }) }
+
+// scanFiles tells add the entries of the files, none for none.
+func scanFiles(ctx context.Context, dir string, files []log.File, add func(log.Entry) error) error {
+	if len(files) == 0 {
+		return nil
+	}
+	names := make([]string, len(files))
+	for i, f := range files {
+		names[i] = f.Name
+	}
+	return logsOf(dir).Entries(ctx, core.LogQuery{Files: names}, add)
 }
 
 // keepLast adds the entries to a slice that keeps about the last maxEntries.
@@ -448,7 +464,7 @@ func (v *viewer) loadPeriod(ctx context.Context, gen int) tea.Cmd {
 	}
 	return base.Load(ctx, label, func(ctx context.Context) (periodMsg, error) {
 		msg := periodMsg{gen: gen, period: period}
-		files, err := log.Files(dir)
+		files, err := logsOf(dir).Files(ctx)
 		if err != nil && period == "" {
 			msg.unreadable = err
 			return msg, nil
@@ -478,7 +494,7 @@ func (v *viewer) loadPeriod(ctx context.Context, gen int) tea.Cmd {
 		}
 		add := keepLast(&msg.entries)
 		if period != "" {
-			return msg, log.Scan(ctx, picked, log.Filter{}, add)
+			return msg, scanFiles(ctx, dir, picked, add)
 		}
 		// the current period: the compressed files (the tail skips them), then a tail from
 		// the first one written, or from the next file that comes
@@ -486,7 +502,7 @@ func (v *viewer) loadPeriod(ctx context.Context, gen int) tea.Cmd {
 		if first < 0 {
 			first = len(picked)
 		}
-		if err := log.Scan(ctx, picked[:first], log.Filter{}, add); err != nil {
+		if err := scanFiles(ctx, dir, picked[:first], add); err != nil {
 			return msg, err
 		}
 		if first < len(picked) {

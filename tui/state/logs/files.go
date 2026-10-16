@@ -147,11 +147,12 @@ func (s *files) Resize(size base.Size) tea.Cmd {
 type filesMsg struct{ files []log.File }
 
 func (s *files) load(ctx context.Context) tea.Cmd {
-	return base.Load(ctx, "", func(context.Context) ([]log.File, error) {
-		if s.dir == "" {
+	dir := s.dir
+	return base.Load(ctx, "", func(ctx context.Context) ([]log.File, error) {
+		if dir == "" {
 			return nil, nil
 		}
-		return log.Files(s.dir)
+		return logsOf(dir).Files(ctx)
 	}, func(f []log.File) tea.Msg { return filesMsg{f} })
 }
 

@@ -54,10 +54,16 @@ func (localAccounts) List(ctx context.Context, opts AccountsOptions) ([]Account,
 	}
 	accounts := make([]Account, len(entries))
 	for i, e := range entries {
-		accounts[i] = Account{Account: e.Account, Provider: e.Provider, Metadata: e.Metadata, Checked: e.Checked, Discord: e.Discord}
-		if e.Err != nil {
-			accounts[i].Error = e.Err.Error()
-		}
+		accounts[i] = AccountOf(e)
 	}
 	return accounts, nil
+}
+
+// AccountOf is the entry's account.
+func AccountOf(e client.AccountEntry) Account {
+	a := Account{Account: e.Account, Provider: e.Provider, Metadata: e.Metadata, Checked: e.Checked, Discord: e.Discord}
+	if e.Err != nil {
+		a.Error = e.Err.Error()
+	}
+	return a
 }
