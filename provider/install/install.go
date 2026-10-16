@@ -162,66 +162,99 @@ func readInfo(dir string) (info.Info, error) {
 // Update pulls every provider repository in dir, even if some fail. The git progress
 // goes to progress.
 func Update(ctx context.Context, dir string, progress io.Writer) error {
-	dirEntries, err := os.ReadDir(dir)
+	results, err := UpdateEach(ctx, dir, progress)
 	if err != nil {
-		return fmt.Errorf("read providers dir: %w", err)
+		return err
 	}
-
 	var errs []error
-	for _, dirEntry := range dirEntries {
-		if !dirEntry.IsDir() {
-			continue
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := pull(ctx, filepath.Join(dir, dirEntry.Name()), progress); err != nil {
-			errs = append(errs, fmt.Errorf("update %s: %w", dirEntry.Name(), err))
+	for _, r := range results {
+		if r.Err != nil {
+			errs = append(errs, fmt.Errorf("update %s: %w", r.Dir, r.Err))
 		}
 	}
 	return errors.Join(errs...)
 }
 
+// The statuses of an UpdateResult.
+const (
+	StatusUpdated  = "updated"
+	StatusUpToDate = "up to date"
+	// StatusSkipped is a directory that isn't a git repository, or one without a remote.
+	StatusSkipped = "skipped"
+	StatusFailed  = "failed"
+)
+
+// UpdateResult is what Update did with a provider directory.
+type UpdateResult struct {
+	Dir    string
+	Status string
+	Err    error
+}
+
+// UpdateEach is Update, with what each provider directory did.
+func UpdateEach(ctx context.Context, dir string, progress io.Writer) ([]UpdateResult, error) {
+	dirEntries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read providers dir: %w", err)
+	}
+	var results []UpdateResult
+	for _, dirEntry := range dirEntries {
+		// dot dirs aren't providers (an add in progress)
+		if !dirEntry.IsDir() || strings.HasPrefix(dirEntry.Name(), ".") {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return results, err
+		}
+		status, err := pull(ctx, filepath.Join(dir, dirEntry.Name()), progress)
+		if err != nil {
+			status = StatusFailed
+		}
+		results = append(results, UpdateResult{Dir: dirEntry.Name(), Status: status, Err: err})
+	}
+	return results, nil
+}
+
 // pull updates the repository in dir, if it's one with a remote.
-func pull(ctx context.Context, dir string, progress io.Writer) error {
+func pull(ctx context.Context, dir string, progress io.Writer) (string, error) {
 	repo, err := git.PlainOpen(dir)
 	if errors.Is(err, git.ErrRepositoryNotExists) {
-		return nil
+		return StatusSkipped, nil
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	remote, err := repo.Remote(git.DefaultRemoteName)
 	if errors.Is(err, git.ErrRemoteNotFound) {
-		return nil
+		return StatusSkipped, nil
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
 	var url string
 	if urls := remote.Config().URLs; len(urls) > 0 {
 		url = urls[0]
 		if err := checkURL(url); err != nil {
-			return fmt.Errorf("%w: change the remote (git remote set-url origin https://...)", err)
+			return "", fmt.Errorf("%w: change the remote (git remote set-url origin https://...)", err)
 		}
 	}
 
 	worktree, err := repo.Worktree()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	err = worktree.PullContext(ctx, &git.PullOptions{Progress: progress})
 	switch {
 	case errors.Is(err, git.NoErrAlreadyUpToDate):
-		return nil
+		return StatusUpToDate, nil
 	case errors.Is(err, git.ErrNonFastForwardUpdate):
-		return fmt.Errorf("%w: its history was rewritten upstream or it has local commits; remove it and add it again (mangal providers rm, add) to take the new one", err)
+		return "", fmt.Errorf("%w: its history was rewritten upstream or it has local commits; remove it and add it again (mangal providers rm, add) to take the new one", err)
 	case err != nil:
-		return redact(err, url)
+		return "", redact(err, url)
 	}
-	return nil
+	return StatusUpdated, nil
 }
 
 // Remove removes the provider dir named tag from dir.
