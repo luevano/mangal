@@ -56,7 +56,7 @@ type mangaState struct {
 	bindings []storage.Binding
 	size     base.Size
 
-	open, scan, delete, watch, links key.Binding
+	open, scan, delete, watch, itsWatch, links key.Binding
 }
 
 type downloadsMsg []_list.Item
@@ -73,12 +73,13 @@ type mangaScannedMsg struct {
 
 func newMangaState(manga storage.Manga) *mangaState {
 	s := &mangaState{
-		manga:  manga,
-		open:   util.Bind("open", "enter"),
-		scan:   base.KeyScan,
-		delete: base.KeyDelete,
-		watch:  base.KeyItsWatch,
-		links:  base.KeyBindings,
+		manga:    manga,
+		open:     util.Bind("open", "enter"),
+		scan:     base.KeyScan,
+		delete:   base.KeyDelete,
+		watch:    base.KeyWatch,
+		itsWatch: base.KeyItsWatch,
+		links:    base.KeyBindings,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "chapter", "chapters", []*downloadItem{}, func(i *downloadItem) _list.DefaultItem { return i }), s.keyMap)
 	s.Confirm = newDialog()
@@ -86,7 +87,7 @@ func newMangaState(manga storage.Manga) *mangaState {
 }
 
 func (s *mangaState) keyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete, s.watch, s.links}}
+	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete, s.watch, s.itsWatch, s.links}}
 }
 
 // watchesCmd loads the manga's watches.
@@ -280,8 +281,10 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			break
 		}
 		switch {
+		case key.Matches(msg, s.itsWatch):
+			return watches.JumpCmd(s.watches, s.watch.Help().Key+" watches it")
 		case key.Matches(msg, s.watch):
-			return watches.JumpCmd(s.watches, "")
+			return s.addWatch(ctx)
 		case key.Matches(msg, s.links):
 			return linksCmd(s.manga)
 		case key.Matches(msg, s.scan):
@@ -314,6 +317,28 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 	}
 	return s.List.Update(msg)
+}
+
+// addWatch watches the manga on its current source (the one its folder follows), with
+// the watch screen's options; it opens its watch when it's watched there already.
+func (s *mangaState) addWatch(ctx context.Context) tea.Cmd {
+	if len(s.manga.Sources) == 0 {
+		return base.Notify("No source to watch it on")
+	}
+	src := s.manga.Sources[0]
+	for _, w := range s.watches {
+		if w.Provider == src.Provider && w.MangaID == src.MangaID {
+			return func() tea.Msg { return watches.NewDetails(w) }
+		}
+	}
+	if base.Busy(ctx) {
+		return nil
+	}
+	title := src.Title
+	if title == "" {
+		title = s.manga.Title
+	}
+	return watches.AddCmd(ctx, src.Provider, src.MangaID, title)
 }
 
 func (s *mangaState) View() string {

@@ -77,8 +77,12 @@ func TestMangaWatches(t *testing.T) {
 	ctx := context.Background()
 	s := newMangaState(storage.Manga{ID: 7, Title: "Berserk"})
 	s.Resize(base.Size{Width: 100, Height: 30})
-	if n, ok := s.Update(ctx, press("W"))().(base.NotificationMsg); !ok || n.Message != "Not watched" {
+	if n, ok := s.Update(ctx, press("W"))().(base.NotificationMsg); !ok || n.Message != "Not watched, w watches it" {
 		t.Errorf("W not watched: %#v", n)
+	}
+	// w without a source: nothing to watch it on
+	if n, ok := s.Update(ctx, press("w"))().(base.NotificationMsg); !ok || !strings.Contains(n.Message, "No source") {
+		t.Errorf("w without a source: %#v", n)
 	}
 	w := watch.Watch{Watch: storage.Watch{ID: 3, Title: "Berserk", Provider: "mango-mangapill", Enabled: true}, NextCheck: time.Now().Add(3*time.Hour + time.Minute), NextScheduled: time.Now().Add(3*time.Hour + time.Minute)}
 	paused := watch.Watch{Watch: storage.Watch{ID: 4, Title: "Berserk", Provider: "mango-mangadex"}, ProviderMissing: true}
@@ -91,6 +95,11 @@ func TestMangaWatches(t *testing.T) {
 	}
 	if _, ok := s.Update(ctx, press("W"))().(base.State); !ok {
 		t.Error("W on a watched manga isn't its watch")
+	}
+	// w on its source's watch opens it
+	s.Update(ctx, mangaMsg(storage.Manga{ID: 7, Title: "Berserk", Sources: []storage.Source{{Provider: "mango-mangapill", MangaID: "", Title: "Berserk"}}}))
+	if _, ok := s.Update(ctx, press("w"))().(base.State); !ok {
+		t.Error("w on the watched source isn't its watch")
 	}
 }
 

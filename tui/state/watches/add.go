@@ -106,6 +106,8 @@ type addState struct {
 	manga    mangadata.Manga
 	chapters []mangadata.Chapter
 	connect  connector
+	// release lets go of a client held for this screen (AddCmd), nil if none
+	release func()
 
 	// set once loaded
 	manager     watch.Manager
@@ -234,6 +236,64 @@ func libraryLast(ctx context.Context, provider libmangal.ProviderInfo, manga man
 		}
 	}
 	return last, nil
+}
+
+// AddCmd watches the provider's manga of a library manga: the manga is looked up (by its
+// id, a title search when the provider can't), the client held while the screen is.
+func AddCmd(ctx context.Context, provider, mangaID, title string) tea.Cmd {
+	return base.Load(ctx, "Looking up "+title+" on "+provider, func(ctx context.Context) (*addState, error) {
+		c, _, release, err := client.HoldByID(ctx, provider)
+		if err != nil {
+			return nil, err
+		}
+		manga, err := findManga(ctx, c, mangaID, title)
+		if err != nil {
+			release()
+			return nil, err
+		}
+		s := newAddState(Connect, c, manga, nil)
+		s.release = release
+		return s, nil
+	}, func(s *addState) tea.Msg {
+		// left meanwhile: nobody gets it
+		if ctx.Err() != nil {
+			s.Destroy()
+			return nil
+		}
+		return s
+	})
+}
+
+// findManga is the provider's manga with the id, found by a title search when the
+// provider can't get one by its id.
+func findManga(ctx context.Context, c *libmangal.Client, id, title string) (mangadata.Manga, error) {
+	manga, found, err := c.MangaByIDContext(ctx, id)
+	if errors.Is(err, libmangal.ErrMangaByIDUnsupported) {
+		mangas, err := c.SearchMangasContext(ctx, title)
+		if err != nil {
+			return nil, fmt.Errorf("search %q: %w", title, err)
+		}
+		for _, m := range mangas {
+			if m.Info().ID == id {
+				return m, nil
+			}
+		}
+		found = false
+	} else if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("manga %q of %s: %w", id, c.Info().Name, watch.ErrMangaNotFound)
+	}
+	return manga, nil
+}
+
+// Destroy lets go of a client held for the screen.
+func (s *addState) Destroy() {
+	if s.release != nil {
+		s.release()
+		s.release = nil
+	}
 }
 
 // options are what to add, valid once the form is.
