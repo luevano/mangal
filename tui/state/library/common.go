@@ -33,8 +33,12 @@ func action(label string, do func() (string, error)) tea.Cmd {
 	}
 }
 
-// applyChange applies a change through the core. Swapped in tests.
-var applyChange = base.ApplyChange
+// applyChange applies a change through the core, applyVariant a variant of a plan.
+// Swapped in tests.
+var (
+	applyChange  = base.ApplyChange
+	applyVariant = base.ApplyVariant
+)
 
 // change is a confirmed change, planned again and applied by the core (the screen's
 // question said what it does), notify the notification.

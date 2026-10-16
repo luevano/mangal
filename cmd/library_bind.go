@@ -311,7 +311,8 @@ func libraryBackups(cmd *cobra.Command, st *status, c *core.Core, mangas []int64
 			}
 		}
 		if len(req.Replace) != 0 {
-			if plan, err = c.Changes.Plan(ctx, req); err != nil {
+			// the links shown, those confirmed replaced
+			if plan, err = c.Changes.Variant(ctx, plan, req); err != nil {
 				return err
 			}
 			found = plan.Detail.(core.BackupsDetail)

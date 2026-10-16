@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/luevano/mangal/v5/client"
@@ -116,6 +117,11 @@ type Changes interface {
 	// ApplyPlan applies a plan: unless the library changed since it was made (then it's
 	// planned again, refused when the new plan differs), the plan is applied as it is.
 	ApplyPlan(ctx context.Context, p Plan, opts ApplyOpts) (OpResult, error)
+	// Variant is the plan of ch, p's change with other choices (a link's rename, the
+	// backups to replace, the renames selected), made from what p was made from: applied
+	// with ApplyPlan, it's refused when the library changed since p and the variant
+	// differs now. A ch that isn't a variant of p is planned anew.
+	Variant(ctx context.Context, p Plan, ch Change) (Plan, error)
 }
 
 var (
@@ -191,6 +197,9 @@ type prepared struct {
 	// refuse is why it can't be applied (with force), nil: the Blocked reasons
 	refuse func(force bool) error
 	apply  func(ctx context.Context, opts ApplyOpts, res *OpResult) error
+	// vary prepares a variant of the change from what this was planned from, false
+	// when ch isn't one (nil: no variants)
+	vary func(ch Change) (*prepared, bool)
 }
 
 // Tables a library change is planned from.
@@ -221,18 +230,41 @@ func (c *changes) prepare(ctx context.Context, ch Change) (*prepared, error) {
 	if err != nil {
 		return nil, err
 	}
-	p.plan.Kind, p.plan.Change, p.plan.prep = ch.Kind(), ch, p
-	if p.plan.Lines == nil {
-		p.plan.Lines = []string{}
-	}
-	if p.plan.fp, err = c.core.env.Storage.Data.Fingerprint(p.tables...); err != nil {
-		return nil, err
-	}
-	p.plan.Hash, err = hashPlan(p.plan)
+	fp, err := c.core.env.Storage.Data.Fingerprint(p.tables...)
 	if err != nil {
 		return nil, err
 	}
-	return p, nil
+	return p, finish(ch, p, fp)
+}
+
+// finish makes p the plan of ch made from the tables as fp says they were.
+func finish(ch Change, p *prepared, fp string) error {
+	p.plan.Kind, p.plan.Change, p.plan.prep, p.plan.fp = ch.Kind(), ch, p, fp
+	if p.plan.Lines == nil {
+		p.plan.Lines = []string{}
+	}
+	var err error
+	p.plan.Hash, err = hashPlan(p.plan)
+	return err
+}
+
+func (c *changes) Variant(ctx context.Context, p Plan, ch Change) (Plan, error) {
+	if ch == nil {
+		return Plan{}, invalid("no change")
+	}
+	if p.prep != nil && p.prep.vary != nil && ch.Kind() == p.Kind {
+		if v, ok := p.prep.vary(ch); ok {
+			if !slices.Equal(v.tables, p.prep.tables) {
+				return Plan{}, fmt.Errorf("%s variant: planned from other tables", ch.Kind())
+			}
+			// the variant holds while the library is as p was made from
+			if err := finish(ch, v, p.fp); err != nil {
+				return Plan{}, err
+			}
+			return v.plan, nil
+		}
+	}
+	return c.Plan(ctx, ch)
 }
 
 // hashPlan hashes what the plan says and what it was planned from.

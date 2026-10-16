@@ -359,9 +359,9 @@ func askLinks(d *confirm.Dialog, behind string, msg linkPlannedMsg) tea.Cmd {
 				if opts == (library.LinkOptions{}) {
 					_, err = base.ApplyPlan(ctx, msg.plan, status)
 				} else {
-					// what the choice adds, planned again
+					// what the choice adds, from the plan shown
 					req.Rename, req.Watches = opts.Rename, opts.Watches
-					_, err = base.ApplyChange(ctx, req, status)
+					_, err = applyVariant(ctx, msg.plan, req, status)
 				}
 				if err != nil {
 					return reloadMsg{}, err
@@ -428,7 +428,7 @@ func askBackups(d *confirm.Dialog, behind string, msg backupsFoundMsg) tea.Cmd {
 				var err error
 				if req, ok := plan.Change.(core.BackupsReq); ok && replace {
 					req.ReplaceAll = true
-					res, err = base.ApplyChange(ctx, req, status)
+					res, err = applyVariant(ctx, plan, req, status)
 				} else {
 					res, err = base.ApplyPlan(ctx, plan, status)
 				}

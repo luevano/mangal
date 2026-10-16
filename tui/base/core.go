@@ -60,6 +60,20 @@ func ApplyPlan(ctx context.Context, p core.Plan, status func(string)) (core.OpRe
 	return changes.ApplyPlan(WithStatus(ctx, status), p, ApplyOpts(status))
 }
 
+// ApplyVariant applies ch, a variant of the plan p (another of its choices), made from
+// what p was made from: what the user saw, refused when the library changed since.
+func ApplyVariant(ctx context.Context, p core.Plan, ch core.Change, status func(string)) (core.OpResult, error) {
+	changes, err := Changes()
+	if err != nil {
+		return core.OpResult{}, err
+	}
+	v, err := changes.Variant(WithStatus(ctx, status), p, ch)
+	if err != nil {
+		return core.OpResult{}, err
+	}
+	return changes.ApplyPlan(WithStatus(ctx, status), v, ApplyOpts(status))
+}
+
 // ApplyChange plans and applies the change (confirmed by the user as the screen says it).
 func ApplyChange(ctx context.Context, ch core.Change, status func(string)) (core.OpResult, error) {
 	changes, err := Changes()

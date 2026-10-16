@@ -163,3 +163,62 @@ func TestLink(t *testing.T) {
 		t.Error("renamed folder left")
 	}
 }
+
+func TestVariants(t *testing.T) {
+	c, root := testLinkCore(t)
+	ctx := context.Background()
+	m := addManga(t, c, filepath.Join("Asura Scans", "Berserk"), "mango-asurascans", "b", "Berserk", 1)
+	req := LinkReq{Manga: m.ID, Links: library.Links{metadata.IDCodeAnilist: "30002"}}
+	checks := 0
+	env := c.env
+	env.CheckLink = func(context.Context, metadata.IDCode, string) (metadata.Metadata, error) {
+		checks++
+		return nil, nil
+	}
+	c, _ = New(ctx, env)
+	p, err := c.Changes.Plan(ctx, req)
+	if err != nil || p.Detail.(LinkDetail).Renames {
+		t.Fatalf("%+v %v", p, err)
+	}
+	req.Rename = true
+	v, err := c.Changes.Variant(ctx, p, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checks != 1 || v.Hash == p.Hash || !v.Detail.(LinkDetail).Renames || v.Lines[len(v.Lines)-1] != "rename to Berserk (1989) [alid-30002]" {
+		t.Fatalf("variant %q (%d checks)", v.Lines, checks)
+	}
+	// the variant hashes as the change planned anew
+	if again, _ := c.Changes.Plan(ctx, req); again.Hash != v.Hash {
+		t.Errorf("hash %s, planned anew %s", v.Hash, again.Hash)
+	}
+	// another manga's links aren't a variant: planned anew
+	if _, err := c.Changes.Variant(ctx, p, LinkReq{Manga: m.ID, Links: library.Links{metadata.IDCodeAnilist: "30003"}}); err != nil || checks != 3 {
+		t.Errorf("not a variant: %v (%d checks)", err, checks)
+	}
+	if _, err := c.Changes.ApplyPlan(ctx, v, ApplyOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(filepath.Join(root, "Asura Scans", "Berserk (1989) [alid-30002]")) {
+		t.Fatal("not renamed")
+	}
+	undoLast(t, c)
+
+	// a variant of a plan the library moved on from is refused
+	p, _ = c.Changes.Plan(ctx, BackupsReq{Mangas: []int64{m.ID}})
+	addManga(t, c, "Other", "p", "o", "Other", 1)
+	if _, err := c.Changes.Plan(ctx, LinkReq{Manga: m.ID, Links: library.Links{metadata.IDCodeAnilist: "30002"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Changes.Apply(ctx, LinkReq{Manga: m.ID, Links: library.Links{metadata.IDCodeAnilist: "30002"}}, ApplyOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	v, err = c.Changes.Variant(ctx, p, BackupsReq{Mangas: []int64{m.ID}, ReplaceAll: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var changed *PlanChangedError
+	if _, err := c.Changes.ApplyPlan(ctx, v, ApplyOpts{}); !errors.As(err, &changed) {
+		t.Errorf("stale variant applied: %v", err)
+	}
+}

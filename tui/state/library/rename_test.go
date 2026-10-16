@@ -20,9 +20,9 @@ import (
 func TestRename(t *testing.T) {
 	ctx := context.Background()
 	var applied []core.RenameReq
-	old := applyChange
-	t.Cleanup(func() { applyChange = old })
-	applyChange = func(_ context.Context, ch core.Change, _ func(string)) (core.OpResult, error) {
+	old := applyVariant
+	t.Cleanup(func() { applyVariant = old })
+	applyVariant = func(_ context.Context, _ core.Plan, ch core.Change, _ func(string)) (core.OpResult, error) {
 		req := ch.(core.RenameReq)
 		applied = append(applied, req)
 		return core.OpResult{Detail: client.RenameResult{Folders: len(req.Only)}}, nil

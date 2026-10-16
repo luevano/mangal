@@ -98,9 +98,6 @@ func (r RenameReq) planRenames(ctx context.Context, c *Core) (client.RenamePlan,
 			return !slices.Contains(r.Paths, rn.From) && !slices.Contains(r.Paths, rn.ProviderDir)
 		})
 	}
-	if r.Only != nil {
-		renames = slices.DeleteFunc(renames, func(rn library.Rename) bool { return !slices.Contains(r.Only, rn.From) })
-	}
 	plan.Renames = renames
 	if unmarked, err := library.Unmarked(c.env.FS, dir, providerDirs); err == nil {
 		plan.Unmarked = len(unmarked)
@@ -109,9 +106,21 @@ func (r RenameReq) planRenames(ctx context.Context, c *Core) (client.RenamePlan,
 }
 
 func (r RenameReq) plan(ctx context.Context, c *Core) (*prepared, error) {
-	rp, err := r.planRenames(ctx, c)
+	every := r
+	every.Only = nil
+	all, err := every.planRenames(ctx, c)
 	if err != nil {
 		return nil, err
+	}
+	return r.prepare(c, all), nil
+}
+
+// prepare is the plan of r's renames of all (every rename of r's options), its variants
+// are other selections (Only).
+func (r RenameReq) prepare(c *Core, all client.RenamePlan) *prepared {
+	rp := all
+	if r.Only != nil {
+		rp.Renames = slices.DeleteFunc(slices.Clone(all.Renames), func(rn library.Rename) bool { return !slices.Contains(r.Only, rn.From) })
 	}
 	var lines []string
 	var renames []library.Rename
@@ -133,6 +142,13 @@ func (r RenameReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 	return &prepared{
 		plan:   Plan{Summary: summary, Lines: lines, Warnings: warnings, Nothing: folders == 0 && chapterFiles == 0, Detail: rp},
 		tables: libraryTables,
+		vary: func(ch Change) (*prepared, bool) {
+			v, ok := ch.(RenameReq)
+			if !ok || v.Refresh != r.Refresh || v.Chapters != r.Chapters || v.Fallback != r.Fallback || v.Cached != r.Cached || !slices.Equal(v.Paths, r.Paths) {
+				return nil, false
+			}
+			return v.prepare(c, all), true
+		},
 		apply: func(ctx context.Context, opts ApplyOpts, res *OpResult) error {
 			var done client.RenameResult
 			defer func() { res.Detail = done }()
@@ -163,5 +179,5 @@ func (r RenameReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 				})
 			})
 		},
-	}, nil
+	}
 }

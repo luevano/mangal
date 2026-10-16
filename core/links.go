@@ -3,7 +3,9 @@ package core
 import (
 	"context"
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -135,31 +137,44 @@ func (r LinkReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 		return nil, err
 	}
 	d.Plan = lp
-	opts := library.LinkOptions{Rename: r.Rename, Watches: r.Watches}
-	d.Renames = opts.Rename && lp.Rename != nil && lp.Rename.Skip == ""
-	d.BindsWatches = opts.Watches && len(lp.Watches) != 0
-	lines := lp.Lines()
-	if d.Renames {
-		lines = append(lines, "rename to "+filepath.Base(lp.Rename.To))
-	}
-	if d.BindsWatches {
-		lines = append(lines, fmt.Sprintf("bind %d watches", len(lp.Watches)))
-	}
-	summary := fmt.Sprintf("link %d %q", m.ID, m.Title)
 	tables := libraryTables
-	if r.Watches {
+	if r.Watches || len(lp.Watches) != 0 {
 		tables = append(append([]string{}, libraryTables...), watchTables...)
 	}
-	return &prepared{
-		plan:   Plan{Summary: summary, Lines: lines, Nothing: len(lp.Changes) == 0 && !d.Renames && !d.BindsWatches, Detail: d},
-		tables: tables,
-		apply: func(ctx context.Context, _ ApplyOpts, res *OpResult) error {
-			return c.journaled(ctx, "link", summary, res, func(j library.Journal) error {
-				linker.Journal, linker.OnProgress = j, progressOf(ctx)
-				return linker.ApplyLinksContext(ctx, lp, opts)
-			})
-		},
-	}, nil
+	// the variants are the same links with or without what they imply
+	var build func(r LinkReq) *prepared
+	build = func(r LinkReq) *prepared {
+		d := d
+		opts := library.LinkOptions{Rename: r.Rename, Watches: r.Watches}
+		d.Renames = opts.Rename && lp.Rename != nil && lp.Rename.Skip == ""
+		d.BindsWatches = opts.Watches && len(lp.Watches) != 0
+		lines := lp.Lines()
+		if d.Renames {
+			lines = append(lines, "rename to "+filepath.Base(lp.Rename.To))
+		}
+		if d.BindsWatches {
+			lines = append(lines, fmt.Sprintf("bind %d watches", len(lp.Watches)))
+		}
+		summary := fmt.Sprintf("link %d %q", m.ID, m.Title)
+		return &prepared{
+			plan:   Plan{Summary: summary, Lines: lines, Nothing: len(lp.Changes) == 0 && !d.Renames && !d.BindsWatches, Detail: d},
+			tables: tables,
+			apply: func(ctx context.Context, _ ApplyOpts, res *OpResult) error {
+				return c.journaled(ctx, "link", summary, res, func(j library.Journal) error {
+					linker.Journal, linker.OnProgress = j, progressOf(ctx)
+					return linker.ApplyLinksContext(ctx, lp, opts)
+				})
+			},
+			vary: func(ch Change) (*prepared, bool) {
+				v, ok := ch.(LinkReq)
+				if !ok || v.Manga != r.Manga || !maps.Equal(v.Links, r.Links) {
+					return nil, false
+				}
+				return build(v), true
+			},
+		}
+	}
+	return build(r), nil
 }
 
 // BackupsReq fills the Kitsu and MyAnimeList links of the library mangas (nil: all)
@@ -221,7 +236,16 @@ func (r BackupsReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := BackupsDetail{Backups: backups, Summary: finder.Summary(backups)}
+	linker, err := c.linker(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return r.prepare(c, backups, finder.Summary(backups), linker), nil
+}
+
+// prepare is the plan of the backups found, its variants replace other links.
+func (r BackupsReq) prepare(c *Core, backups []library.Backup, found string, linker library.Linker) *prepared {
+	d := BackupsDetail{Backups: backups, Summary: found}
 	d.Fill, d.Conflicts, _, _ = library.BackupSummary(backups)
 	var lines []string
 	for _, b := range backups {
@@ -233,13 +257,16 @@ func (r BackupsReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 		}
 	}
 	summary := fmt.Sprintf("backup links of %d mangas", d.ToSet)
-	linker, err := c.linker(ctx)
-	if err != nil {
-		return nil, err
-	}
 	return &prepared{
 		plan:   Plan{Summary: summary, Lines: append(lines, d.Summary), Nothing: d.ToSet == 0, Detail: d},
 		tables: libraryTables,
+		vary: func(ch Change) (*prepared, bool) {
+			v, ok := ch.(BackupsReq)
+			if !ok || !slices.Equal(v.Mangas, r.Mangas) {
+				return nil, false
+			}
+			return v.prepare(c, backups, found, linker), true
+		},
 		apply: func(ctx context.Context, _ ApplyOpts, res *OpResult) error {
 			n := 0
 			// Detail is how many mangas got their links
@@ -264,5 +291,5 @@ func (r BackupsReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 				return nil
 			})
 		},
-	}, nil
+	}
 }

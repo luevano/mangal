@@ -68,9 +68,11 @@ type renameState struct {
 	list.Screen
 	// paths keep only the renames of these folders and provider directories (a health
 	// finding's), nil keeps every one
-	paths  []string
-	opts   core.RenameReq
+	paths []string
+	opts  core.RenameReq
+	// plan is the renames shown, of base
 	plan   client.RenamePlan
+	base   core.Plan
 	loaded bool
 	// unselected are the renames (by From) the user unselected: they stay so on a new plan
 	unselected map[string]bool
@@ -81,7 +83,10 @@ type renameKeyMap struct {
 	rename, toggle, all, none, chapters, fallback, refresh, info key.Binding
 }
 
-type renamePlannedMsg struct{ plan client.RenamePlan }
+type renamePlannedMsg struct {
+	plan client.RenamePlan
+	base core.Plan
+}
 
 // NewRename is library rename's screen, of every folder (paths nil) or only the renames
 // of paths (manga folders, provider directories).
@@ -182,7 +187,7 @@ func (s *renameState) replan(ctx context.Context, refresh bool) tea.Cmd {
 		if err != nil {
 			return renamePlannedMsg{}, err
 		}
-		return renamePlannedMsg{plan: p.Detail.(client.RenamePlan)}, nil
+		return renamePlannedMsg{plan: p.Detail.(client.RenamePlan), base: p}, nil
 	}, func(msg renamePlannedMsg) tea.Msg { return msg })
 }
 
@@ -208,7 +213,7 @@ func (s *renameState) selected() []library.Rename {
 }
 
 func (s *renameState) onPlanned(msg renamePlannedMsg) tea.Cmd {
-	s.plan, s.loaded = msg.plan, true
+	s.plan, s.base, s.loaded = msg.plan, msg.base, true
 	items := make([]_list.Item, len(msg.plan.Renames))
 	for i, r := range msg.plan.Renames {
 		items[i] = &renameItem{s: s, r: r, selected: r.Skip == "" && !s.unselected[r.From]}
@@ -337,9 +342,13 @@ func (s *renameState) ask(ctx context.Context) tea.Cmd {
 		}
 		return base.Notify("Nothing selected to rename")
 	}
-	plan := s.plan
-	req := s.opts
-	req.Paths, req.Only = s.paths, []string{}
+	plan, shown := s.plan, s.base
+	req, ok := shown.Change.(core.RenameReq)
+	if !ok {
+		req = s.opts
+		req.Paths = s.paths
+	}
+	req.Only = []string{}
 	for _, r := range renames {
 		req.Only = append(req.Only, r.From)
 	}
@@ -357,8 +366,8 @@ func (s *renameState) ask(ctx context.Context) tea.Cmd {
 	question := fmt.Sprintf("Rename %s? %s in the library undoes it.", strings.Join(what, " and "), base.KeyUndo.Help().Key)
 	s.Confirm.Ask("Rename", strings.Join(append(lines, "", question), "\n"), s.View(), func() tea.Msg {
 		return actionMsg{label: "Renaming", do: func(ctx context.Context, status func(string)) (reloadMsg, error) {
-			// only the selected ones, planned again
-			res, err := applyChange(ctx, req, status)
+			// only the selected ones, of the plan shown
+			res, err := applyVariant(ctx, shown, req, status)
 			if err != nil {
 				return reloadMsg{}, err
 			}

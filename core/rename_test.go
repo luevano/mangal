@@ -150,3 +150,30 @@ func TestMigrateNothing(t *testing.T) {
 		t.Fatalf("%+v %v", p, err)
 	}
 }
+
+func TestRenameSelection(t *testing.T) {
+	c, root := testLinkCore(t)
+	ctx := context.Background()
+	env := c.env
+	env.ProviderDirs = func() bool { return false }
+	c, _ = New(ctx, env)
+	addManga(t, c, "Berserk", "p", "b", "Berserk", 1)
+	markFolder(t, filepath.Join(root, "Berserk"), "p", "b", "Berserk", "30002")
+	p, err := c.Changes.Plan(ctx, RenameReq{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	only := RenameReq{Only: []string{filepath.Join(root, "Berserk")}}
+	v, err := c.Changes.Variant(ctx, p, only)
+	// the one rename selected: the same plan
+	if err != nil || len(v.Lines) != 1 || v.Hash != p.Hash {
+		t.Fatalf("%q %v", v.Lines, err)
+	}
+	if again, _ := c.Changes.Plan(ctx, only); again.Hash != v.Hash {
+		t.Errorf("hash %s, planned anew %s", v.Hash, again.Hash)
+	}
+	none, err := c.Changes.Variant(ctx, p, RenameReq{Only: []string{}})
+	if err != nil || !none.Nothing || none.Hash == p.Hash {
+		t.Errorf("none selected: %+v %v", none, err)
+	}
+}
