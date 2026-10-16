@@ -3,6 +3,7 @@ package web
 import (
 	"container/list"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/util/netguard"
 )
 
 const (
@@ -61,6 +63,9 @@ func (s *Server) fetchImage(ctx context.Context, rawURL, referer string) (cached
 	}
 
 	resp, err := s.httpClient.Do(req)
+	if errors.Is(err, netguard.ErrRefused) {
+		return cachedImage{}, fmt.Errorf("get image: %w: %w", err, ErrBadRequest)
+	}
 	if err != nil {
 		return cachedImage{}, fmt.Errorf("get image: %w", err)
 	}

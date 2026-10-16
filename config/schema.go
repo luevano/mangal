@@ -113,6 +113,7 @@ type configProviders struct {
 	Parallelism *entry[int64, uint8]
 	Headless    configProvidersHeadless
 	Mirrors     *entry[map[string]any, map[string]string]
+	Private     configProvidersPrivate
 	Filter      configProvidersFilter
 	MangaDex    configProvidersMangaDex
 	MangaPlus   configProvidersMangaPlus
@@ -127,6 +128,11 @@ type configCache struct {
 type configProvidersHeadless struct {
 	UseFlaresolverr *entry[bool, bool]
 	FlaresolverrURL *entry[string, string]
+}
+
+type configProvidersPrivate struct {
+	Allow     *entry[bool, bool]
+	Allowlist *entry[string, []string]
 }
 
 type configProvidersFilter struct {

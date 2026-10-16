@@ -20,6 +20,7 @@ import (
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/util/cron"
+	"github.com/luevano/mangal/v5/util/netguard"
 	// before the defaults below read the xdg dirs: tests never touch the user's files
 	_ "github.com/luevano/mangal/v5/util/testenv"
 )
@@ -456,6 +457,23 @@ var Providers = configProviders{
 			return nil
 		},
 	}),
+	Private: configProvidersPrivate{
+		Allow: boolEntry("providers.allow_private_addresses", false,
+			"Let the providers (and the web UI's image proxy) reach loopback, LAN and other non-public addresses. Off, a site's urls and redirects can't make mangal reach the host or the network it's on (the router, FlareSolverr); providers.mirrors, the environment's proxies and FlareSolverr itself are always reached. Headless browsers (rod) aren't covered."),
+		Allowlist: func() *entry[string, []string] {
+			e := listEntry("providers.private_allowlist",
+				`Host names, IPs or CIDRs the providers may reach even when they're private (see providers.allow_private_addresses), comma separated, e.g. "komga.lan, 192.168.1.0/24". A host name is reached whatever it resolves to.`)
+			e.Validate = func(list []string) error {
+				for _, item := range list {
+					if _, err := netguard.ParseAllow(item); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+			return e
+		}(),
+	},
 	Filter: configProvidersFilter{
 		NSFW: boolEntry("providers.filter.nsfw", true, "If NSFW content should be included, usually used for MangaDex."),
 		Language: reg(entry[string, string]{

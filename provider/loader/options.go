@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/util/cache"
+	"github.com/luevano/mangal/v5/util/netguard"
 	"github.com/luevano/mangoplus"
 )
 
@@ -25,6 +27,32 @@ const HTTPTimeout = time.Minute
 // HTTPClient is a new client with HTTPTimeout, its requests logged with --debug.
 func HTTPClient() *http.Client {
 	return &http.Client{Timeout: HTTPTimeout, Transport: DebugTransport(nil)}
+}
+
+// Guard is the private address guard from the config (providers.allow_private_addresses,
+// providers.private_allowlist), the hosts of providers.mirrors allowed.
+func Guard() *netguard.Guard {
+	allow := slices.Clone(config.Providers.Private.Allowlist.Get())
+	for _, mirror := range config.Providers.Mirrors.Get() {
+		if u, err := url.Parse(mirror); err == nil && u.Hostname() != "" {
+			allow = append(allow, u.Hostname())
+		}
+	}
+	options := netguard.Options{AllowPrivate: config.Providers.Private.Allow.Get(), Allow: allow}
+	guard, err := netguard.New(options)
+	if err != nil {
+		// the config validates the allowlist, so only the mirrors are left
+		log.Error("private address guard: %s", err)
+		options.Allow = nil
+		guard, _ = netguard.New(options)
+	}
+	return guard
+}
+
+// ProviderHTTPClient is HTTPClient through Guard: the client of the providers and of what
+// fetches their urls.
+func ProviderHTTPClient() *http.Client {
+	return Guard().Client(HTTPClient())
 }
 
 // DebugTransport is next (nil: http.DefaultTransport) logging every request at debug level
@@ -65,7 +93,7 @@ func commonOptions() common {
 func LuaOptions(dir string) luaprovider.Options {
 	c := commonOptions()
 	return luaprovider.Options{
-		HTTPClient:   HTTPClient(),
+		HTTPClient:   ProviderHTTPClient(),
 		UserAgent:    c.UserAgent,
 		CacheStore:   cache.CacheStore,
 		PackagePaths: []string{dir},
@@ -84,7 +112,7 @@ func SDKOptions(name string) (*sdk.Options, io.Closer, error) {
 	c := commonOptions()
 	t := &tracker{}
 	return &sdk.Options{
-		HTTPClient: HTTPClient(),
+		HTTPClient: ProviderHTTPClient(),
 		CacheStore: store,
 		UserAgent:  c.UserAgent,
 		Log:        log.ProviderHook(name),

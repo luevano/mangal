@@ -40,14 +40,14 @@ func mangoOptions() mango.Options {
 	o := mango.DefaultOptions()
 
 	c := commonOptions()
-	o.HTTPClient = HTTPClient()
+	o.HTTPClient = ProviderHTTPClient()
 	o.UserAgent = c.UserAgent
 	o.CacheStore = cache.CacheStore
 	o.Parallelism = config.Providers.Parallelism.Get()
 	o.Filter = c.Filter
 	o.Headless.UseFlaresolverr = config.Providers.Headless.UseFlaresolverr.Get()
 	o.Headless.FlaresolverrURL = config.Providers.Headless.FlaresolverrURL.Get()
-	// no timeout, each solve has its own
+	// no timeout, each solve has its own; not guarded, the user chose it
 	o.Headless.FlaresolverrClient = &http.Client{Transport: DebugTransport(nil)}
 	o.Mirrors = config.Providers.Mirrors.Get()
 	o.MangaDex.DataSaver = config.Providers.MangaDex.DataSaver.Get()

@@ -373,7 +373,8 @@ func closeAll(force bool) error {
 func newClient(ctx context.Context, loader libmangal.ProviderLoader) (*libmangal.Client, error) {
 	options := libmangal.DefaultClientOptions()
 	options.FS = afs.Afero
-	options.HTTPClient = providerloader.HTTPClient()
+	// cover and banner urls come from the sites
+	options.HTTPClient = providerloader.ProviderHTTPClient()
 	options.UserAgent = config.Download.UserAgent.Get()
 	options.ModeDir = config.Download.ModeDir.Get()
 	options.ModeFile = config.Download.ModeFile.Get()

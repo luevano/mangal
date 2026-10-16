@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -293,41 +292,6 @@ func TestCrossOrigin(t *testing.T) {
 }
 
 func TestImagePublicOnly(t *testing.T) {
-	for addr, want := range map[string]bool{
-		"93.184.215.14":   true,
-		"2606:4700::1111": true,
-		"127.0.0.1":       false,
-		"10.0.0.1":        false,
-		"192.168.1.100":   false,
-		"172.16.0.1":      false,
-		"169.254.169.254": false,
-		"100.100.1.1":     false,
-		"0.0.0.0":         false,
-		"::1":             false,
-		"fe80::1":         false,
-		"fd00::1":         false,
-		"::ffff:10.0.0.1": false,
-		"224.0.0.1":       false,
-		"8.8.8.8":         true,
-		"1.1.1.1":         true,
-		"2001:4860::8888": true,
-		"0.0.0.1":         false,
-		"192.0.0.8":       false,
-		"198.18.0.1":      false,
-		"240.0.0.1":       false,
-		"192.0.2.1":       false,
-		"64:ff9b::7f00:1": false, // NAT64 of 127.0.0.1
-		"2002:7f00:1::":   false, // 6to4 of 127.0.0.1
-		"::127.0.0.1":     false, // IPv4-compatible
-		"::ffff:8.8.8.8":  false,
-		"2001:db8::1":     false,
-		"ff02::1":         false,
-	} {
-		if got := isPublic(netip.MustParseAddr(addr)); got != want {
-			t.Errorf("%s: %t", addr, got)
-		}
-	}
-
 	// the upstream is on loopback, directly or through a redirect
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
