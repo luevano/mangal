@@ -21,6 +21,7 @@ import (
 	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/core"
@@ -77,11 +78,44 @@ func TestWebUI(t *testing.T) {
 	}
 	page.Keyboard.MustType(input.ArrowRight)
 	step().MustElementR("[data-test=reader-page]", "^2 / 3$")
+	// double pages: the first alone, then 2-3; thumbnails; zoom
+	page.Keyboard.MustType('d')
+	step().MustElementR("[data-test=reader-page]", "^2-3 / 3$")
+	if n := len(step().MustElements("[data-test=reader-paged] .reader-zoom img")); n != 2 {
+		t.Errorf("%d pages in the spread", n)
+	}
+	page.Keyboard.MustType('t')
+	if n := len(step().MustElements("[data-test=reader-thumbs] img")); n != 3 {
+		t.Errorf("%d thumbnails", n)
+	}
+	page.Keyboard.MustType('+')
+	step().MustElement("[data-test=reader-paged].zoomed")
+	page.Keyboard.MustType('0')
+	page.Keyboard.MustType('d')
+	step().MustElementR("[data-test=reader-page]", "^2 / 3$")
 	step().MustElement("[data-test=mode-webtoon]").MustClick()
 	step().MustElement("[data-test=reader-webtoon]")
 	if n := len(step().MustElements("[data-test=reader-webtoon] img")); n != 3 {
 		t.Errorf("%d pages in the strip", n)
 	}
+
+	// the metadata search fills a link's id
+	metadataProvider = func(metadata.IDSource) (metadataSearcher, error) {
+		return fakeSearcher{results: []metadata.Metadata{
+			&mangadata.Metadata{EnglishTitle: "Berserk: The Prototype", ProviderID: "1", ProviderIDCode: "al"},
+			&mangadata.Metadata{EnglishTitle: "Berserk", DateStart: metadata.Date{Year: 1989}, ProviderID: "30002", ProviderIDCode: "al"},
+		}}, nil
+	}
+	t.Cleanup(func() { metadataProvider = defaultMetadataProvider })
+	step().MustNavigate(s.URL + "/#/library")
+	step().MustElementR("[data-test=library-table] a", "^Berserk$").MustClick()
+	step().MustElementR("button", "^Links$").MustClick()
+	step().MustElement("[data-test=search-link-al]").MustClick()
+	step().MustElementR("[data-test=metadata-result]", "Berserk \\(1989\\)").MustElement("[data-test=metadata-pick]").MustClick()
+	if v := step().MustElementX(`//button[@data-test="search-link-al"]/preceding-sibling::input`).MustProperty("value").String(); v != "30002" {
+		t.Errorf("picked id %q", v)
+	}
+	step().MustElementR(".modal-footer button", "Cancel").MustClick()
 
 	// merge the duplicates through the plan dialog, then undo it
 	step().MustNavigate(s.URL + "/#/library/duplicates")
