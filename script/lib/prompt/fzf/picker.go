@@ -1,25 +1,31 @@
 package fzf
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"os"
+	"strconv"
+	"strings"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/paginator"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/mangal/v5/theme/color"
+	"github.com/luevano/mangal/v5/theme/huhtheme"
 	"github.com/luevano/mangal/v5/theme/icon"
 )
 
 // the picker's own keys: typing goes to the filter, so the TUI's k/j and h/l can't move
 var (
-	keyPick     = key.NewBinding(key.WithKeys("enter"))
-	keyCancel   = key.NewBinding(key.WithKeys("esc", "ctrl+c"))
+	keyPick = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "pick"))
+	// the form's quit key
+	keyCancel   = key.NewBinding(key.WithKeys("esc", "ctrl+c"), key.WithHelp("esc", "cancel"))
 	keyUp       = key.NewBinding(key.WithKeys("up", "ctrl+p"))
 	keyDown     = key.NewBinding(key.WithKeys("down", "ctrl+n"))
 	keyPrevPage = key.NewBinding(key.WithKeys("pgup"))
@@ -32,10 +38,16 @@ func (i item) FilterValue() string { return string(i) }
 func (i item) Title() string       { return string(i) }
 func (i item) Description() string { return "" }
 
-// picker is a full-screen list that is always filtering (list.DefaultFilter, sahilm/fuzzy).
+var _ huh.Field = (*picker)(nil)
+
+// picker is a huh field: a full-screen list that is always filtering (list.DefaultFilter,
+// sahilm/fuzzy: ranked, the matches highlighted). huh's Select only filters by substring
+// (unexported, not pluggable) and keeps the options' order.
 type picker struct {
 	list   list.Model
+	items  []string
 	picked int // index in the items, -1 until one is picked
+	height int
 }
 
 func newPicker(items []string) *picker {
@@ -56,7 +68,7 @@ func newPicker(items []string) *picker {
 	l.SetFilterText("")
 	l.SetFilterState(list.Filtering)
 
-	return &picker{list: l, picked: -1}
+	return &picker{list: l, items: items, picked: -1}
 }
 
 // delegate draws the cursor while filtering, the default one only does after
@@ -91,12 +103,22 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, it list.Item) {
 	fmt.Fprint(w, style.Render(title))
 }
 
-func (p *picker) Init() tea.Cmd { return tea.RequestBackgroundColor }
+func (p *picker) Init() tea.Cmd { return nil }
 
-func (p *picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Focus implements huh.Field: the form focuses it when it starts.
+func (p *picker) Focus() tea.Cmd { return tea.RequestBackgroundColor }
+
+func (p *picker) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		p.list.SetSize(msg.Width, msg.Height)
+		// huh's group takes the height of its content as it was before this msg (and
+		// caps it at the window's): once the list has the window's, a new size makes
+		// the group as high
+		if msg.Height != p.height {
+			p.height = msg.Height
+			return p, tea.RequestWindowSize
+		}
 	case tea.BackgroundColorMsg:
 		p.setDark(msg.IsDark())
 	case tea.PasteMsg:
@@ -112,9 +134,7 @@ func (p *picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if p.list.FilterInput.Value() == "" {
 				p.picked = p.list.Index()
 			}
-			return p, tea.Quit
-		case key.Matches(msg, keyCancel):
-			return p, tea.Quit
+			return p, huh.NextField
 		case key.Matches(msg, keyUp):
 			p.list.CursorUp()
 		case key.Matches(msg, keyDown):
@@ -151,10 +171,59 @@ func (p *picker) input(msg tea.Msg) {
 	p.list.FilterInput.SetCursor(pos)
 }
 
-func (p *picker) View() tea.View {
-	v := tea.NewView(p.list.View())
-	v.AltScreen = true
-	return v
+func (p *picker) View() string { return p.list.View() }
+
+func (p *picker) Blur() tea.Cmd                            { return nil }
+func (p *picker) Error() error                             { return nil }
+func (p *picker) Run() error                               { return huh.Run(p) }
+func (p *picker) Skip() bool                               { return false }
+func (p *picker) Zoom() bool                               { return false }
+func (p *picker) KeyBinds() []key.Binding                  { return []key.Binding{keyPick, keyCancel} }
+func (p *picker) WithTheme(huh.Theme) huh.Field            { return p }
+func (p *picker) WithKeyMap(*huh.KeyMap) huh.Field         { return p }
+func (p *picker) WithWidth(int) huh.Field                  { return p }
+func (p *picker) WithHeight(int) huh.Field                 { return p }
+func (p *picker) WithPosition(huh.FieldPosition) huh.Field { return p }
+func (p *picker) GetKey() string                           { return "" }
+func (p *picker) GetValue() any                            { return p.picked }
+
+// RunAccessible implements huh.Field (huh's accessible mode, e.g. TERM=dumb): the items
+// numbered, a number picks one, an empty line cancels.
+func (p *picker) RunAccessible(w io.Writer, r io.Reader) error {
+	for i, it := range p.items {
+		fmt.Fprintf(w, "%d. %s\n", i+1, it)
+	}
+	scanner := bufio.NewScanner(r)
+	for {
+		fmt.Fprintf(w, "Pick one (1-%d, empty to cancel): ", len(p.items))
+		if !scanner.Scan() {
+			fmt.Fprintln(w)
+			return scanner.Err()
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			return nil
+		}
+		if n, err := strconv.Atoi(line); err == nil && n >= 1 && n <= len(p.items) {
+			p.picked = n - 1
+			return nil
+		}
+	}
+}
+
+// newForm is the form that runs the picker: full screen, esc and ctrl+c cancel.
+func newForm(p *picker) *huh.Form {
+	km := huh.NewDefaultKeyMap()
+	km.Quit = keyCancel
+	return huh.NewForm(huh.NewGroup(p)).
+		WithShowHelp(false).
+		WithShowErrors(false).
+		WithKeyMap(km).
+		WithTheme(huhtheme.New(nil)).
+		WithViewHook(func(v tea.View) tea.View {
+			v.AltScreen = true
+			return v
+		})
 }
 
 // pick shows the picker, ok is false when cancelled.
@@ -163,12 +232,12 @@ func pick(ctx context.Context, items []string) (index int, ok bool, err error) {
 		return 0, false, nil
 	}
 	p := newPicker(items)
-	// stderr: a script's stdout may be piped
-	_, err = tea.NewProgram(p, tea.WithContext(ctx), tea.WithOutput(os.Stderr)).Run()
+	// huh draws on stderr: a script's stdout may be piped
+	err = newForm(p).RunWithContext(ctx)
 	if ctx.Err() != nil {
 		return 0, false, ctx.Err()
 	}
-	if err != nil {
+	if err != nil && !errors.Is(err, huh.ErrUserAborted) {
 		return 0, false, err
 	}
 	return p.picked, p.picked >= 0, nil
