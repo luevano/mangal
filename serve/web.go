@@ -5,8 +5,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/notify"

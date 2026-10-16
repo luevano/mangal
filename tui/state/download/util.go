@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
-	"github.com/luevano/mangal/v5/client/jobs"
+	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
 	stringutil "github.com/luevano/mangal/v5/util/string"

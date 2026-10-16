@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"

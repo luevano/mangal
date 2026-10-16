@@ -1,4 +1,4 @@
-// Package jobs is the TUI's background downloads and checks: one client/jobs.Manager for
+// Package jobs is the TUI's background downloads and checks: one core/jobs.Manager for
 // the process, its line in the header, its notices, the quit question (base.Activity) and
 // the marks of the lists.
 package jobs
@@ -13,9 +13,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/mangal/v5/client/jobs"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/path"

@@ -15,7 +15,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	_list "charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
-	"github.com/luevano/mangal/v5/client/jobs"
+	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luevano/mangal/v5/client/jobs"
+	"github.com/luevano/mangal/v5/core/jobs"
 )
 
 // A job its screen announced has no added notice, the others do.
