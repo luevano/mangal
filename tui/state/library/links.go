@@ -223,7 +223,13 @@ func (s *linksState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		return s.load(ctx)
 	case linkPickedMsg:
-		return planLinks(ctx, s.manga, library.Links{msg.code: msg.id})
+		links := library.Links{msg.code: msg.id}
+		if base.Busy(ctx) {
+			// back from the search the links reload: planned once they're there
+			s.autoLinks = links
+			return nil
+		}
+		return planLinks(ctx, s.manga, links)
 	case pickLoadedMsg:
 		s.askPick(msg)
 		return nil
