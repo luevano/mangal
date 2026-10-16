@@ -9,9 +9,11 @@ export interface Settings {
   mode: Mode
   fit: Fit
   background: Background
+  // double: two pages side by side in the paged modes (the first and wide ones alone)
+  double: boolean
 }
 
-export const defaultSettings: Settings = { mode: 'ltr', fit: 'screen', background: 'black' }
+export const defaultSettings: Settings = { mode: 'ltr', fit: 'screen', background: 'black', double: false }
 export const fits: Fit[] = ['screen', 'width', 'height', 'original']
 export const modes: Mode[] = ['ltr', 'rtl', 'webtoon']
 
@@ -31,6 +33,11 @@ export type Action =
   | 'mode-ltr'
   | 'mode-rtl'
   | 'mode-webtoon'
+  | 'double'
+  | 'thumbnails'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'zoom-reset'
 
 // keyAction is what a key does in the mode (one key per action, like the TUI's): arrows
 // follow the reading direction; in webtoon mode ↑/↓ and space scroll the page natively.
@@ -75,6 +82,17 @@ export function keyAction(key: string, mode: Mode): Action | undefined {
       return 'mode-rtl'
     case 'w':
       return 'mode-webtoon'
+    case 'd':
+      return paged ? 'double' : undefined
+    case 't':
+      return 'thumbnails'
+    case '+':
+    case '=':
+      return paged ? 'zoom-in' : undefined
+    case '-':
+      return paged ? 'zoom-out' : undefined
+    case '0':
+      return paged ? 'zoom-reset' : undefined
   }
   return undefined
 }
@@ -90,13 +108,16 @@ export function keyHelp(mode: Mode): [string, string][] {
       : [
           [mode === 'rtl' ? '← ↓ space' : '→ ↓ space', 'next page'],
           [mode === 'rtl' ? '→ ↑' : '← ↑', 'previous page'],
-          ['tap the sides', mode === 'rtl' ? 'left: next, right: previous' : 'left: previous, right: next']
+          ['tap the sides', mode === 'rtl' ? 'left: next, right: previous' : 'left: previous, right: next'],
+          ['d', 'double page (the first and wide pages alone)'],
+          ['+ - 0, ctrl+wheel, pinch', 'zoom in, out, back; drag to move, double-click/tap zooms']
         ]
   return [
     ...list,
     ['Home / End', 'first / last page'],
     ['N / P', 'next / previous chapter'],
     ['g', 'jump to a page'],
+    ['t', 'thumbnails'],
     ['l r w', 'left to right, right to left, webtoon'],
     ['c', 'fit: screen, width, height, original'],
     ['f', 'fullscreen'],
@@ -143,6 +164,73 @@ export function preload(index: number, count: number, radius = 2): number[] {
   return out
 }
 
+// PageSize is a page's size in pixels, when known.
+export interface PageSize {
+  width?: number
+  height?: number
+}
+
+function wide(s?: PageSize): boolean {
+  return !!s?.width && !!s?.height && s.width > s.height
+}
+
+// spreads are the pages shown together, in reading order: one each, or with double two
+// side by side, the first (the cover) and wide pages (already a spread) alone. A page of
+// unknown size counts as a single page.
+export function spreads(sizes: (PageSize | undefined)[], double: boolean): number[][] {
+  if (!double) return sizes.map((_, i) => [i])
+  const out: number[][] = []
+  let i = 0
+  while (i < sizes.length) {
+    if (i === 0 || i === sizes.length - 1 || wide(sizes[i]) || wide(sizes[i + 1])) {
+      out.push([i])
+      i++
+    } else {
+      out.push([i, i + 1])
+      i += 2
+    }
+  }
+  return out
+}
+
+// spreadOf is the index of the spread with the page.
+export function spreadOf(list: number[][], page: number): number {
+  const i = list.findIndex((s) => s.includes(page))
+  return i < 0 ? 0 : i
+}
+
+// spreadStep is step over spreads: the first page of the spread to show.
+export function spreadStep(list: number[][], page: number, action: Action): { index: number; edge?: 'start' | 'end' } {
+  const r = step(spreadOf(list, page), list.length, action)
+  return { index: list[r.index]?.[0] ?? 0, edge: r.edge }
+}
+
+// View is the zoom of the paged image: the scale, and the offset of its center (px).
+export interface View {
+  scale: number
+  x: number
+  y: number
+}
+
+export const unzoomed: View = { scale: 1, x: 0, y: 0 }
+export const maxZoom = 5
+
+// zoomAt scales the view by factor keeping the point (cx, cy) where it is (px from the
+// container's center); back at 1 it's centered again.
+export function zoomAt(v: View, factor: number, cx = 0, cy = 0): View {
+  const scale = Math.min(Math.max(v.scale * factor, 1), maxZoom)
+  if (scale === 1) return { ...unzoomed }
+  const k = scale / v.scale
+  return { scale, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k }
+}
+
+// clampPan keeps the zoomed image over the container (width and height in px).
+export function clampPan(v: View, width: number, height: number): View {
+  const mx = ((v.scale - 1) * width) / 2
+  const my = ((v.scale - 1) * height) / 2
+  return { scale: v.scale, x: Math.min(Math.max(v.x, -mx), mx), y: Math.min(Math.max(v.y, -my), my) }
+}
+
 export function nextFit(f: Fit): Fit {
   return fits[(fits.indexOf(f) + 1) % fits.length]!
 }
@@ -185,6 +273,7 @@ function parse(raw: string | null): Partial<Settings> {
     if (v.mode && modes.includes(v.mode)) out.mode = v.mode
     if (v.fit && fits.includes(v.fit)) out.fit = v.fit
     if (v.background && ['black', 'gray', 'white'].includes(v.background)) out.background = v.background
+    if (typeof v.double === 'boolean') out.double = v.double
     return out
   } catch {
     return {}

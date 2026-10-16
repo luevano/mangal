@@ -25,10 +25,17 @@ import {
   saveIncognito,
   savePosition,
   saveSettings,
-  step,
+  spreadOf,
+  spreads,
+  spreadStep,
+  unzoomed,
+  zoomAt,
+  clampPan,
   zoneAction,
   type Action,
-  type Settings
+  type PageSize,
+  type Settings,
+  type View
 } from '@/reader/reader'
 
 type ReadRequest = components['schemas']['ReadRequest']
@@ -82,7 +89,35 @@ const near = computed(() => {
 })
 const chapter = computed(() => chapters.value[current.value])
 const count = computed(() => urls.value.length)
-const preloads = computed(() => (settings.value.mode === 'webtoon' ? [] : preload(index.value, count.value)))
+const paged = computed(() => settings.value.mode !== 'webtoon')
+
+// double pages: the sizes the server read, else the images' once loaded
+const sizes = ref<PageSize[]>([])
+const spreadList = computed(() => spreads(urls.value.map((_, i) => sizes.value[i]), settings.value.double && paged.value))
+const shown = computed(() => spreadList.value[spreadOf(spreadList.value, index.value)] ?? [index.value])
+// in display order: right to left shows the first page on the right
+const displayed = computed(() => (settings.value.mode === 'rtl' ? [...shown.value].reverse() : shown.value))
+const preloads = computed(() => {
+  if (!paged.value) return []
+  const last = shown.value[shown.value.length - 1] ?? index.value
+  return preload(last, count.value, 3).filter((i) => !shown.value.includes(i))
+})
+
+function sized(i: number, e: Event) {
+  const img = e.target as HTMLImageElement
+  if (sizes.value[i]?.width || !img.naturalWidth) return
+  const next = [...sizes.value]
+  next[i] = { width: img.naturalWidth, height: img.naturalHeight }
+  sizes.value = next
+}
+
+const thumbs = ref(false)
+const thumbStrip = ref<HTMLElement>()
+watch([thumbs, index], async () => {
+  if (!thumbs.value) return
+  await nextTick()
+  thumbStrip.value?.querySelector('.current')?.scrollIntoView({ block: 'nearest', inline: 'center' })
+})
 
 watch(settings, (s) => saveSettings(mangaKey.value, s), { deep: true })
 watch(incognito, saveIncognito)
@@ -106,6 +141,7 @@ async function loadLibrary() {
   })
   title.value = sorted[0]?.download.manga_title ?? ''
   pages.value = pg
+  sizes.value = pg.pages.map((p) => ({ width: p.width, height: p.height }))
   if (pg.pdf) {
     // a blob url: the API's answers are sandboxed (CSP), which a pdf viewer can't run in
     const res = await fetch(chapterFileURL(id, path, true), { headers: authHeaders() })
@@ -142,6 +178,7 @@ async function loadOnline() {
     if (c) router.replace({ query: { ...route.query, volume: String(c.volume) } })
   }
   pages.value = pg
+  sizes.value = []
   urls.value = pg.pages.map((p) => providerPageURL(provider, mangaID, number, volume ?? list.find((x) => x.number === number)?.volume, p.index))
 }
 
@@ -220,7 +257,10 @@ watch(index, (i) => {
     clearTimeout(pushTimer)
     pushTimer = setTimeout(pushPosition, 1500)
   }
-  if (count.value && i >= count.value - 1) record()
+})
+watch(shown, (pages) => {
+  view.value = { ...unzoomed }
+  if (count.value && pages.includes(count.value - 1)) record()
 })
 
 function go(i: number) {
@@ -255,7 +295,7 @@ function act(a: Action) {
         prompt.value = undefined
         return
       }
-      const r = step(index.value, count.value, a)
+      const r = spreadStep(spreadList.value, index.value, a)
       if (r.edge === 'end') {
         prompt.value = 'end'
         record()
@@ -296,6 +336,21 @@ function act(a: Action) {
     case 'mode-webtoon':
       setMode(a.slice(5) as Settings['mode'])
       return
+    case 'double':
+      settings.value.double = !settings.value.double
+      return
+    case 'thumbnails':
+      thumbs.value = !thumbs.value
+      return
+    case 'zoom-in':
+      view.value = zoomAt(view.value, 1.5)
+      return
+    case 'zoom-out':
+      view.value = zoomAt(view.value, 1 / 1.5)
+      return
+    case 'zoom-reset':
+      view.value = { ...unzoomed }
+      return
   }
 }
 
@@ -321,10 +376,84 @@ function onKey(e: KeyboardEvent) {
 }
 
 function onTap(e: MouseEvent) {
+  // a drag or a pinch isn't a tap; zoomed, taps don't turn the page
+  if (dragged || view.value.scale > 1) {
+    dragged = false
+    return
+  }
   const el = e.currentTarget as HTMLElement
   const rect = el.getBoundingClientRect()
   act(zoneAction(e.clientX - rect.left, rect.width, settings.value.mode))
 }
+
+// zoom of the paged images: pinch, ctrl+wheel, double-click the middle, + - 0; a drag
+// moves the zoomed image
+const view = ref<View>({ ...unzoomed })
+const pagedEl = ref<HTMLElement>()
+const pointers = new Map<number, { x: number; y: number }>()
+let dragged = false
+let lastPinch: { d: number; x: number; y: number } | undefined
+
+// center is the point relative to the container's center
+function center(x: number, y: number) {
+  const r = pagedEl.value?.getBoundingClientRect()
+  return r ? { x: x - r.left - r.width / 2, y: y - r.top - r.height / 2 } : { x: 0, y: 0 }
+}
+function clamped(v: View): View {
+  const r = pagedEl.value?.getBoundingClientRect()
+  return r ? clampPan(v, r.width, r.height) : v
+}
+function pinch() {
+  const [a, b] = [...pointers.values()]
+  if (!a || !b) return undefined
+  return { d: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+function onPointerDown(e: PointerEvent) {
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  if (pointers.size === 2) lastPinch = pinch()
+}
+function onPointerMove(e: PointerEvent) {
+  const prev = pointers.get(e.pointerId)
+  if (!prev) return
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  if (pointers.size === 2 && lastPinch) {
+    const p = pinch()
+    if (!p || !lastPinch.d) return
+    const c = center(p.x, p.y)
+    const v = zoomAt(view.value, p.d / lastPinch.d, c.x, c.y)
+    view.value = clamped(v.scale > 1 ? { ...v, x: v.x + p.x - lastPinch.x, y: v.y + p.y - lastPinch.y } : v)
+    lastPinch = p
+    dragged = true
+  } else if (pointers.size === 1 && view.value.scale > 1) {
+    const dx = e.clientX - prev.x
+    const dy = e.clientY - prev.y
+    if (Math.abs(dx) + Math.abs(dy) > 0) {
+      view.value = clamped({ ...view.value, x: view.value.x + dx, y: view.value.y + dy })
+      dragged = true
+    }
+  }
+}
+function onPointerUp(e: PointerEvent) {
+  pointers.delete(e.pointerId)
+  if (pointers.size < 2) lastPinch = undefined
+}
+function onWheel(e: WheelEvent) {
+  if (!e.ctrlKey) return
+  e.preventDefault()
+  const c = center(e.clientX, e.clientY)
+  view.value = clamped(zoomAt(view.value, Math.exp(-e.deltaY * 0.01), c.x, c.y))
+}
+function onDoubleClick(e: MouseEvent) {
+  const el = e.currentTarget as HTMLElement
+  const rect = el.getBoundingClientRect()
+  if (view.value.scale === 1 && zoneAction(e.clientX - rect.left, rect.width, settings.value.mode) !== 'menu') return
+  // the two clicks toggled the menu twice
+  const c = center(e.clientX, e.clientY)
+  view.value = view.value.scale > 1 ? { ...unzoomed } : clamped(zoomAt(view.value, 2.5, c.x, c.y))
+}
+const zoomStyle = computed(() =>
+  view.value.scale === 1 ? {} : { transform: `translate(${view.value.x}px, ${view.value.y}px) scale(${view.value.scale})` }
+)
 
 function submitJump() {
   jumpOpen.value = false
@@ -365,17 +494,23 @@ function onWebtoonEnd() {
 onMounted(() => {
   window.addEventListener('keydown', onKey)
   window.addEventListener('scroll', onWebtoonEnd, { passive: true })
+  window.addEventListener('wheel', onWheelWindow, { passive: false })
 })
+// ctrl+wheel zooms the page, not the browser, in the paged modes
+function onWheelWindow(e: WheelEvent) {
+  if (e.ctrlKey && paged.value && pagedEl.value?.contains(e.target as Node)) onWheel(e)
+}
 onUnmounted(() => {
   pushPosition()
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('scroll', onWebtoonEnd)
+  window.removeEventListener('wheel', onWheelWindow)
   observer?.disconnect()
   if (pdf.value) URL.revokeObjectURL(pdf.value)
 })
 
 const bg = computed(() => ({ black: '#000', gray: '#555', white: '#fff' })[settings.value.background])
-const imgClass = computed(() => `fit-${settings.value.fit}`)
+const imgClass = computed(() => `fit-${settings.value.fit}${shown.value.length > 1 ? ' half' : ''}`)
 document.title = 'Reader · mangal'
 watch([title, chapter], () => {
   document.title = `${title.value}${chapter.value ? ` ${chapter.value.label}` : ''} · mangal`
@@ -411,6 +546,7 @@ watch([title, chapter], () => {
         <input id="incog" v-model="incognito" class="form-check-input" type="checkbox" data-test="incognito" />
         <label class="form-check-label" for="incog"><i class="bi bi-incognito" /></label>
       </div>
+      <button v-if="paged && !pdf" class="btn btn-sm" :class="settings.double ? 'btn-light' : 'btn-outline-light'" title="Double page (d)" data-test="double" @click="act('double')"><i class="bi bi-book-half" /></button>
       <button class="btn btn-sm btn-outline-light" title="Fullscreen (f)" @click="act('fullscreen')"><i class="bi bi-arrows-fullscreen" /></button>
       <button class="btn btn-sm btn-outline-light" title="Help (h)" @click="help = !help"><i class="bi bi-question-lg" /></button>
     </div>
@@ -421,9 +557,32 @@ watch([title, chapter], () => {
     <iframe v-else-if="pdf" :src="pdf" class="reader-pdf" title="PDF" />
 
     <!-- paged -->
-    <div v-else-if="settings.mode !== 'webtoon'" class="reader-page" data-test="reader-paged" @click="onTap">
-      <img v-if="urls[index]" :key="urls[index]" :src="urls[index]" :class="imgClass" :alt="`page ${index + 1}`" data-test="reader-image" />
-      <img v-for="i in preloads" :key="'p' + i" :src="urls[i]" class="d-none" alt="" loading="eager" />
+    <div
+      v-else-if="settings.mode !== 'webtoon'"
+      ref="pagedEl"
+      class="reader-page"
+      :class="{ zoomed: view.scale > 1 }"
+      data-test="reader-paged"
+      @click="onTap"
+      @dblclick="onDoubleClick"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+      @pointercancel="onPointerUp"
+    >
+      <div class="reader-zoom" :style="zoomStyle" :data-spread="shown.length">
+        <img
+          v-for="i in displayed"
+          :key="urls[i]"
+          :src="urls[i]"
+          :class="imgClass"
+          :alt="`page ${i + 1}`"
+          :data-test="i === index ? 'reader-image' : 'reader-image-2'"
+          draggable="false"
+          @load="sized(i, $event)"
+        />
+      </div>
+      <img v-for="i in preloads" :key="'p' + i" :src="urls[i]" class="d-none" alt="" loading="eager" @load="sized(i, $event)" />
     </div>
 
     <!-- webtoon -->
@@ -431,15 +590,24 @@ watch([title, chapter], () => {
       <img v-for="(u, i) in urls" :key="u" :src="u" :data-index="i" :class="imgClass" :alt="`page ${i + 1}`" loading="lazy" />
     </div>
 
-    <!-- bottom bar: page -->
-    <div v-show="menu && count" class="reader-bar bottom d-flex align-items-center gap-2 px-2 py-1">
+    <!-- bottom bar: thumbnails, page -->
+    <div v-show="menu && count" class="reader-bar bottom px-2 py-1">
+      <div v-if="thumbs" ref="thumbStrip" class="reader-thumbs d-flex gap-1 pb-1" :style="settings.mode === 'rtl' ? 'flex-direction: row-reverse' : ''" data-test="reader-thumbs">
+        <button v-for="(u, i) in urls" :key="'t' + u" class="btn p-0 border-0 position-relative" :class="{ current: shown.includes(i) }" :title="`page ${i + 1}`" @click="go(i)">
+          <img :src="u" loading="lazy" alt="" />
+          <span class="thumb-n">{{ i + 1 }}</span>
+        </button>
+      </div>
+      <div class="d-flex align-items-center gap-2">
       <button class="btn btn-sm btn-outline-light" :disabled="!near.prev" title="Previous chapter (P)" @click="act('prev-chapter')"><i class="bi bi-skip-start" /></button>
       <input type="range" class="form-range flex-grow-1" min="1" :max="count" :value="index + 1" :style="settings.mode === 'rtl' ? 'direction: rtl' : ''" @change="go(Number(($event.target as HTMLInputElement).value) - 1)" />
       <form v-if="jumpOpen" class="d-flex" @submit.prevent="submitJump">
         <input v-model="jumpTo" type="number" min="1" :max="count" class="form-control form-control-sm" style="width: 5rem" autofocus />
       </form>
-      <button v-else class="btn btn-sm btn-outline-light text-nowrap" title="Jump to a page (g)" data-test="reader-page" @click="act('jump')">{{ index + 1 }} / {{ count }}</button>
+      <button v-else class="btn btn-sm btn-outline-light text-nowrap" title="Jump to a page (g)" data-test="reader-page" @click="act('jump')">{{ shown.length > 1 ? `${shown[0]! + 1}-${shown[1]! + 1}` : index + 1 }} / {{ count }}</button>
+      <button class="btn btn-sm" :class="thumbs ? 'btn-light' : 'btn-outline-light'" title="Thumbnails (t)" data-test="thumbnails" @click="act('thumbnails')"><i class="bi bi-grid-3x2" /></button>
       <button class="btn btn-sm btn-outline-light" :disabled="!near.next" title="Next chapter (N)" @click="act('next-chapter')"><i class="bi bi-skip-end" /></button>
+      </div>
     </div>
 
     <!-- end / start of chapter -->
@@ -499,6 +667,48 @@ watch([title, chapter], () => {
   align-items: center;
   justify-content: center;
   user-select: none;
+  overflow: hidden;
+  /* one finger scrolls a tall page, pinches are the reader's */
+  touch-action: pan-y;
+}
+.reader-page.zoomed {
+  touch-action: none;
+  cursor: grab;
+}
+.reader-zoom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center;
+}
+.reader-zoom .half.fit-screen,
+.reader-zoom .half.fit-width {
+  max-width: 50vw;
+  width: auto;
+}
+.reader-zoom .half.fit-width {
+  width: 50vw;
+}
+.reader-thumbs {
+  overflow-x: auto;
+}
+.reader-thumbs img {
+  height: 6rem;
+  width: auto;
+  display: block;
+  opacity: 0.7;
+}
+.reader-thumbs .current img {
+  opacity: 1;
+  outline: 2px solid var(--bs-primary);
+}
+.thumb-n {
+  position: absolute;
+  bottom: 0;
+  right: 2px;
+  font-size: 0.7rem;
+  color: #fff;
+  text-shadow: 0 0 2px #000;
 }
 .reader-strip {
   display: flex;

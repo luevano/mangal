@@ -49,10 +49,10 @@ describe('reader', () => {
 
   it('remembers the settings per manga, the last as the default', () => {
     expect(loadSettings('lib:1').mode).toBe('ltr')
-    saveSettings('lib:1', { mode: 'webtoon', fit: 'width', background: 'gray' })
-    expect(loadSettings('lib:1')).toEqual({ mode: 'webtoon', fit: 'width', background: 'gray' })
+    saveSettings('lib:1', { mode: 'webtoon', fit: 'width', background: 'gray', double: true })
+    expect(loadSettings('lib:1')).toEqual({ mode: 'webtoon', fit: 'width', background: 'gray', double: true })
     expect(loadSettings('lib:2').mode).toBe('webtoon')
-    saveSettings('lib:2', { mode: 'rtl', fit: 'screen', background: 'black' })
+    saveSettings('lib:2', { mode: 'rtl', fit: 'screen', background: 'black', double: false })
     expect(loadSettings('lib:1').mode).toBe('webtoon')
     localStorage.setItem('mangal.reader.manga.lib:3', '{"mode":"nope"}')
     expect(loadSettings('lib:3').mode).toBe('rtl')
@@ -65,5 +65,41 @@ describe('reader', () => {
     expect(newer({ page: 4, at: 100 }, { page: 9, at: 200 })).toEqual({ page: 9, at: 200 })
     expect(newer({ page: 4, at: 300 }, { page: 9, at: 200 })).toEqual({ page: 4, at: 300 })
     expect(newer({ page: 4, at: 300 })).toEqual({ page: 4, at: 300 })
+  })
+})
+
+describe('reader extras', () => {
+  it('makes spreads: the first and wide pages alone', async () => {
+    const { spreads, spreadStep } = await import('../reader')
+    const tall = { width: 800, height: 1200 }
+    const wide = { width: 1600, height: 1200 }
+    expect(spreads([tall, tall, tall, tall, tall], false)).toEqual([[0], [1], [2], [3], [4]])
+    expect(spreads([tall, tall, tall, wide, tall, tall, tall], true)).toEqual([[0], [1, 2], [3], [4, 5], [6]])
+    expect(spreads([tall, tall, wide, tall], true)).toEqual([[0], [1], [2], [3]])
+    // an unknown size pairs like a single page
+    expect(spreads([tall, undefined, undefined, tall], true)).toEqual([[0], [1, 2], [3]])
+    const list = spreads([tall, tall, tall, tall, tall], true)
+    expect(list).toEqual([[0], [1, 2], [3, 4]])
+    expect(spreadStep(list, 0, 'next')).toEqual({ index: 1 })
+    expect(spreadStep(list, 2, 'next')).toEqual({ index: 3 })
+    expect(spreadStep(list, 2, 'prev')).toEqual({ index: 0 })
+    expect(spreadStep(list, 4, 'next')).toEqual({ index: 3, edge: 'end' })
+  })
+
+  it('zooms at a point and keeps the image over the screen', async () => {
+    const { zoomAt, clampPan, unzoomed } = await import('../reader')
+    const z = zoomAt(unzoomed, 2, 100, 50)
+    expect(z).toEqual({ scale: 2, x: -100, y: -50 })
+    expect(zoomAt(z, 0.25)).toEqual(unzoomed)
+    expect(zoomAt(z, 10).scale).toBe(5)
+    expect(clampPan({ scale: 2, x: -900, y: 10 }, 400, 600)).toEqual({ scale: 2, x: -200, y: 10 })
+  })
+
+  it('has keys for the extras in the paged modes', () => {
+    expect(keyAction('d', 'ltr')).toBe('double')
+    expect(keyAction('d', 'webtoon')).toBeUndefined()
+    expect(keyAction('t', 'webtoon')).toBe('thumbnails')
+    expect(keyAction('+', 'rtl')).toBe('zoom-in')
+    expect(keyAction('0', 'ltr')).toBe('zoom-reset')
   })
 })
