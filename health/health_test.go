@@ -181,6 +181,10 @@ func newChecker(t *testing.T) Checker {
 				Notify:  watch.NotifyBoth,
 			}, nil
 		},
+		Config: func() ([]ConfigKey, error) {
+			return []ConfigKey{{Key: "serve.wbe", Suggestion: "serve.web"}, {Key: "old.key"},
+				{Key: "library.path", Retired: true, Reason: "the library is download.path"}}, nil
+		},
 		Root:         "/dl",
 		ProviderDirs: true,
 		Backoff:      3,
@@ -278,6 +282,9 @@ func TestRun(t *testing.T) {
 		{"L3", Warning, "provider", 0, "mangal migrate", "mango-mangasee"},
 		{"L7", Warning, "manga", 4, "mangal library move 4 <provider>", "mango-old"},
 		{"A1", Info, "account", 0, "mangal kitsu", "expired"},
+		{"A3", Warning, "config", 0, "mangal config set serve.web <value>", `did you mean "serve.web"`},
+		{"A3", Warning, "config", 0, "mangal config clean --apply", "does nothing"},
+		{"A3", Info, "config", 0, "mangal config clean --apply", "no longer used"},
 		{"L1", Warning, "manga", 4, "mangal library scan", "mango-old/Vagabond"},
 		{"L2", Warning, "library", 0, "mangal library scan --mark", "5 folders without a .libmangal.json: 4 can be marked, 1 with nothing"},
 		{"L4", Warning, "directory", 0, "mangal library rename", "MangaSee is Weeb Central's old directory name"},

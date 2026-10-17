@@ -46,6 +46,7 @@ type snapshot struct {
 
 	oldIDs   []storage.OldID
 	accounts Accounts
+	config   []ConfigKey
 
 	// fs is what the fs checks read (nil when not loaded), renames what library rename
 	// would do; fsys is the download directory's filesystem, mark how scan --mark marks

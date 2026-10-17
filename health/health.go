@@ -252,6 +252,15 @@ type Accounts struct {
 	Notify  string
 }
 
+// ConfigKey is a stale key of the config file: unknown (Suggestion is the closest known
+// key) or retired (Reason says why).
+type ConfigKey struct {
+	Key        string
+	Retired    bool
+	Reason     string
+	Suggestion string
+}
+
 // DefaultStaleAfter is how long a watch can go without a new chapter before it's stale.
 const DefaultStaleAfter = 90 * 24 * time.Hour
 
@@ -267,6 +276,8 @@ type Checker struct {
 	OldIDs func() ([]storage.OldID, error)
 	// Accounts are the logins and notices, nil skips A1.
 	Accounts func() (Accounts, error)
+	// Config are the stale keys of the config file, nil skips A3.
+	Config func() ([]ConfigKey, error)
 	// Root is download.path, ProviderDirs download.provider.create_dir.
 	Root         string
 	ProviderDirs bool
@@ -330,6 +341,7 @@ const (
 	partWatches
 	partOldIDs
 	partAccounts
+	partConfig
 	// partFS is the folders and markers, partRenames what library rename would do
 	partFS
 	partRenames
@@ -345,7 +357,7 @@ const (
 )
 
 var partNames = map[part]string{partLibrary: "the library", partWatches: "the watches", partOldIDs: "the old provider ids",
-	partAccounts: "the accounts", partFS: "the folders", partRenames: "the rename plan", partProbes: "the providers' answers",
+	partAccounts: "the accounts", partConfig: "the config file", partFS: "the folders", partRenames: "the rename plan", partProbes: "the providers' answers",
 	partChapters: "the providers' chapters", partIDChecks: "the id checks", partSearch: "the AniList search", partBackups: "the backup ids"}
 
 // check is one check over the snapshot.
@@ -721,6 +733,17 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool, r
 		}
 		if err != nil {
 			failed[partAccounts] = err
+		}
+	}
+	if needed[partConfig] {
+		var err error
+		if c.Config == nil {
+			err = errors.New("not available")
+		} else {
+			s.config, err = c.Config()
+		}
+		if err != nil {
+			failed[partConfig] = err
 		}
 	}
 	if needed[partFS] {

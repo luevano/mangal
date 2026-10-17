@@ -53,6 +53,7 @@ var checks = []check{
 	{id: "L10", category: Library, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkOldSiteSources},
 	{id: "A1", category: Global, needs: []part{partAccounts}, wants: []part{partWatches}, run: checkAccounts},
 	{id: "A2", category: Global, needs: []part{partLibrary, partProbes}, wants: []part{partWatches}, run: checkProviders, network: true},
+	{id: "A3", category: Global, needs: []part{partConfig}, run: checkConfig},
 }
 
 // TUI hints name the screen and the action, not the key: the keys are the TUI's
@@ -1040,6 +1041,31 @@ func checkUninstalled(s *snapshot) []Finding {
 				Note:     "install one again, or move it to another provider",
 				TUI:      tuiLibrary + ": move to a provider",
 			}})
+	}
+	return out
+}
+
+// A3: keys of the config file mangal doesn't know (removed ones, typos) or no longer uses.
+func checkConfig(s *snapshot) []Finding {
+	var out []Finding
+	fix := Fix{
+		Commands: []string{"mangal config clean", "mangal config clean --apply"},
+		Note:     "list the stale keys, then drop them; a copy of the file is kept",
+	}
+	for _, k := range s.config {
+		f := Finding{Severity: Warning, Subject: Subject{Kind: "config", Name: "config"}, Part: k.Key, Fix: fix}
+		switch {
+		case k.Retired:
+			f.Severity = Info
+			f.Message = fmt.Sprintf("config key %q is no longer used: %s", k.Key, k.Reason)
+		case k.Suggestion != "":
+			f.Message = fmt.Sprintf("config key %q isn't mangal's, did you mean %q?", k.Key, k.Suggestion)
+			f.Fix.Commands = append(f.Fix.Commands, fmt.Sprintf("mangal config set %s <value>", k.Suggestion))
+			f.Fix.Note = "drop it, or set the key it was meant to be"
+		default:
+			f.Message = fmt.Sprintf("config key %q isn't mangal's (removed, or a typo): it does nothing", k.Key)
+		}
+		out = append(out, f)
 	}
 	return out
 }

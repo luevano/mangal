@@ -171,7 +171,14 @@ func setup(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	for _, key := range config.Unsupported() {
-		cmd.PrintErrf("warning: config key %q is not supported, update the config file\n", key)
+		hint := ""
+		if s := config.Suggest(key); s != "" {
+			hint = fmt.Sprintf(" (did you mean %q?)", s)
+		}
+		cmd.PrintErrf("warning: config key %q is not supported%s, mangal config clean drops it\n", key, hint)
+	}
+	for _, key := range config.Retired() {
+		cmd.PrintErrf("warning: config key %q is no longer used (%s), mangal config clean drops it\n", key, config.RetiredReason(key))
 	}
 	if err := config.Validate(); err != nil && level != startupConfig {
 		return err

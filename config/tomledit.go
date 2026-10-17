@@ -38,15 +38,26 @@ type tomlTable struct {
 	// where a key is added: after its last key/value or its header, -1 when unknown
 	insertAt int
 	// start of the header line
-	start int
-	kvs   []*tomlKV
+	start    int
+	kvs      []*tomlKV
+	defaults []*tomlDefault
+}
+
+// tomlDefault is a commented default of a key ("# key = value", see Write), a comment
+// line naming a registered or retired key.
+type tomlDefault struct {
+	key []string
+	// the line, lineEnd after its newline
+	lineStart, lineEnd int
+	table              *tomlTable
 }
 
 type tomlDoc struct {
-	data   []byte
-	nl     string
-	tables []*tomlTable
-	kvs    []*tomlKV
+	data     []byte
+	nl       string
+	tables   []*tomlTable
+	kvs      []*tomlKV
+	defaults []*tomlDefault
 	// quote of the first string value, new strings use it
 	quote byte
 }
@@ -112,7 +123,67 @@ func parseTOMLDoc(data []byte) (*tomlDoc, error) {
 	if err := p.Error(); err != nil {
 		return nil, err
 	}
+	d.findDefaults()
 	return d, nil
+}
+
+var commentedKey = regexp.MustCompile(`^[ \t]*#[ \t]*([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)[ \t]*=`)
+
+// findDefaults finds the commented defaults: the comment lines "# key = ..." of a
+// registered (not a map) or retired key, outside the values.
+func (d *tomlDoc) findDefaults() {
+	for start := 0; start < len(d.data); {
+		end := d.lineEnd(start)
+		m := commentedKey.FindSubmatch(d.data[start:end])
+		if m == nil || d.inValue(start) {
+			start = end
+			continue
+		}
+		t := d.tables[0]
+		for _, table := range d.tables[1:] {
+			if table.start <= start {
+				t = table
+			}
+		}
+		key := append(slices.Clone(t.path), strings.Split(string(m[1]), ".")...)
+		if !t.array && isListedKey(strings.Join(key, ".")) {
+			def := &tomlDefault{key: key, lineStart: start, lineEnd: end, table: t}
+			t.defaults = append(t.defaults, def)
+			d.defaults = append(d.defaults, def)
+			if end > t.insertAt && t.insertAt >= 0 && (t.header || len(t.kvs) > 0) {
+				t.insertAt = end
+			}
+		}
+		start = end
+	}
+}
+
+// isListedKey is true for the keys a commented default can be of.
+func isListedKey(key string) bool {
+	if f, ok := fields[key]; ok {
+		return !f.isMap()
+	}
+	_, ok := retired[key]
+	return ok
+}
+
+// inValue is true when offset is inside a value spanning lines (a multi-line string).
+func (d *tomlDoc) inValue(offset int) bool {
+	for _, kv := range d.kvs {
+		if kv.start >= 0 && kv.start < offset && offset < kv.end {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *tomlDoc) findDefault(key []string) *tomlDefault {
+	for _, def := range d.defaults {
+		if slices.Equal(def.key, key) {
+			return def
+		}
+	}
+	return nil
 }
 
 // keyParts returns the parts of a key and the offsets where it starts and ends.
@@ -196,7 +267,7 @@ func editTOML(data []byte, key string, raw any) ([]byte, error) {
 			if d.find(entry) != nil {
 				continue
 			}
-			e, err := d.insert(entry, m[id], added)
+			e, err := d.insert(entry, m[id], added, "")
 			if err != nil {
 				return nil, err
 			}
@@ -209,8 +280,15 @@ func editTOML(data []byte, key string, raw any) ([]byte, error) {
 			return nil, err
 		}
 		edits = append(edits, e)
+	} else if def := d.findDefault(path); def != nil {
+		// the key's commented default becomes its line
+		e, err := d.defaultLine(def, raw, "")
+		if err != nil {
+			return nil, err
+		}
+		edits = append(edits, e)
 	} else {
-		e, err := d.insert(path, raw, nil)
+		e, err := d.insert(path, raw, nil, "")
 		if err != nil {
 			return nil, err
 		}
@@ -248,10 +326,129 @@ func (d *tomlDoc) replace(kv *tomlKV, raw any) (edit, error) {
 	return edit{start: kv.start, end: kv.end, text: text}, nil
 }
 
+// defaultTOML returns the document with key as a commented default ("# key = value"): its
+// line (or its commented default) replaced, or a commented default added to its table.
+func defaultTOML(data []byte, key string, raw any) ([]byte, error) {
+	d, err := parseTOMLDoc(data)
+	if err != nil {
+		return nil, err
+	}
+	path := strings.Split(key, ".")
+	var edits []edit
+	def := d.findDefault(path)
+	if kv := d.find(path); kv != nil {
+		if kv.lineEnd < 0 || kv.lineStart != d.lineStart(kv.start) {
+			// a value spanning lines, or not on a line of its own
+			return nil, fmt.Errorf("%w: %s", errCantEdit, key)
+		}
+		text, err := d.keyLine(kv.table, path, raw, indentOf(d.data[kv.lineStart:]), "# ")
+		if err != nil {
+			return nil, err
+		}
+		// its trailing comment stays
+		text = strings.TrimSuffix(text, d.nl) + string(d.data[kv.end:kv.lineEnd])
+		if d.isDefaultValue(kv, strings.Join(path, ".")) {
+			// as written (e.g. an enum's case)
+			line := d.data[kv.lineStart:kv.lineEnd]
+			indent := indentOf(line)
+			text = indent + "# " + string(line[len(indent):])
+		}
+		edits = append(edits, edit{start: kv.lineStart, end: kv.lineEnd, text: text})
+		if def != nil {
+			edits = append(edits, edit{start: def.lineStart, end: def.lineEnd})
+		}
+	} else if def != nil {
+		e, err := d.defaultLine(def, raw, "# ")
+		if err != nil {
+			return nil, err
+		}
+		if string(d.data[e.start:e.end]) == e.text {
+			return data, nil
+		}
+		edits = append(edits, e)
+	} else {
+		e, err := d.insert(path, raw, nil, "# ")
+		if err != nil {
+			return nil, err
+		}
+		edits = append(edits, e)
+	}
+	return apply(data, edits), nil
+}
+
+// isDefaultValue is true when the key/value has the key's default.
+func (d *tomlDoc) isDefaultValue(kv *tomlKV, key string) bool {
+	f, ok := fields[key]
+	if !ok {
+		return false
+	}
+	var v struct{ V any }
+	if err := toml.Unmarshal(append([]byte("V = "), d.data[kv.start:kv.end]...), &v); err != nil {
+		return false
+	}
+	raw, err := f.toRaw(v.V)
+	return err == nil && isDefault(key, raw)
+}
+
+// removeTOMLDefault returns the document without the key's commented default.
+func removeTOMLDefault(data []byte, key string) ([]byte, error) {
+	d, err := parseTOMLDoc(data)
+	if err != nil {
+		return nil, err
+	}
+	def := d.findDefault(strings.Split(key, "."))
+	if def == nil {
+		return data, nil
+	}
+	t := def.table
+	return apply(data, d.removeLine(def.lineStart, def.lineEnd, t, len(t.kvs) == 0 && len(t.defaults) == 1)), nil
+}
+
+// removeLine removes data[start:end] and, when emptied, the header of table t with the
+// blank line after it when there's one before it too.
+func (d *tomlDoc) removeLine(start, end int, t *tomlTable, emptied bool) []edit {
+	edits := []edit{{start: start, end: end}}
+	if !emptied || !t.header || t.array {
+		return edits
+	}
+	header := edit{start: t.start, end: d.lineEnd(t.start)}
+	last := max(end, header.end)
+	blankBefore := t.start == 0 || (t.start >= 2 && d.data[t.start-1] == '\n' && len(bytes.TrimSpace(d.data[d.lineStart(t.start-1):t.start])) == 0)
+	if blankBefore && last < len(d.data) {
+		if next := d.lineEnd(last); len(bytes.TrimSpace(d.data[last:next])) == 0 {
+			edits = append(edits, edit{start: last, end: next})
+		}
+	}
+	if header.end <= start || header.start >= end {
+		edits = append(edits, header)
+	}
+	slices.SortFunc(edits, func(a, b edit) int { return a.start - b.start })
+	return edits
+}
+
+// defaultLine replaces the commented default's line with the key set to raw, commented
+// with prefix "# ".
+func (d *tomlDoc) defaultLine(def *tomlDefault, raw any, prefix string) (edit, error) {
+	text, err := d.keyLine(def.table, def.key, raw, indentOf(d.data[def.lineStart:]), prefix)
+	if err != nil {
+		return edit{}, err
+	}
+	return edit{start: def.lineStart, end: def.lineEnd, text: text}, nil
+}
+
+// keyLine is the line of the key in table t.
+func (d *tomlDoc) keyLine(t *tomlTable, key []string, raw any, indent, prefix string) (string, error) {
+	value, err := encodeTOMLValue(raw, d.quote)
+	if err != nil {
+		return "", err
+	}
+	return indent + prefix + encodeTOMLKey(key[len(t.path):]) + " = " + value + d.nl, nil
+}
+
 // insert adds the key to the table that has it (the closest one defining its parent),
 // or to a new table after its relatives; previous are the inserts already made, a new
-// table made by one of them takes the next ones.
-func (d *tomlDoc) insert(key []string, raw any, previous []edit) (edit, error) {
+// table made by one of them takes the next ones. prefix "# " adds it commented.
+func (d *tomlDoc) insert(key []string, raw any, previous []edit, prefix string) (edit, error) {
 	value, err := encodeTOMLValue(raw, d.quote)
 	if err != nil {
 		return edit{}, err
@@ -265,26 +462,26 @@ func (d *tomlDoc) insert(key []string, raw any, previous []edit) (edit, error) {
 	}
 
 	if t := d.table(parent); t != nil {
-		return d.insertInto(t, key, value)
+		return d.insertInto(t, key, value, prefix)
 	}
 	// defined by dotted keys in an ancestor table
 	for _, kv := range d.kvs {
 		t := kv.table
 		if !t.array && len(t.path) < len(parent) && slices.Equal(t.path, parent[:len(t.path)]) &&
 			len(kv.key) > len(parent) && slices.Equal(kv.key[:len(parent)], parent) {
-			return d.insertInto(kv.table, key, value)
+			return d.insertInto(kv.table, key, value, prefix)
 		}
 	}
 
 	for _, e := range previous {
 		if strings.Contains(e.text, "["+encodeTOMLKey(parent)+"]") {
 			// right after the key the new table got
-			line := encodeTOMLKey(key[len(parent):]) + " = " + value + d.nl
+			line := prefix + encodeTOMLKey(key[len(parent):]) + " = " + value + d.nl
 			return edit{start: e.start, end: e.end, text: line}, nil
 		}
 	}
 
-	block := "[" + encodeTOMLKey(parent) + "]" + d.nl + encodeTOMLKey(key[len(parent):]) + " = " + value + d.nl
+	block := "[" + encodeTOMLKey(parent) + "]" + d.nl + prefix + encodeTOMLKey(key[len(parent):]) + " = " + value + d.nl
 	at := -1
 	// after the last table of the same family (sharing the first part)
 	for _, t := range d.tables[1:] {
@@ -295,14 +492,14 @@ func (d *tomlDoc) insert(key []string, raw any, previous []edit) (edit, error) {
 	if at < 0 {
 		at = len(d.data)
 	}
-	prefix := d.nl
+	lead := d.nl
 	if at > 0 && d.data[at-1] != '\n' {
-		prefix = d.nl + d.nl
+		lead = d.nl + d.nl
 	}
 	if at == 0 {
-		prefix = ""
+		lead = ""
 	}
-	return edit{start: at, end: at, text: prefix + block}, nil
+	return edit{start: at, end: at, text: lead + block}, nil
 }
 
 // table is the table with the header (or the root), nil if there's none.
@@ -318,14 +515,16 @@ func (d *tomlDoc) table(path []string) *tomlTable {
 	return nil
 }
 
-func (d *tomlDoc) insertInto(t *tomlTable, key []string, value string) (edit, error) {
-	line := encodeTOMLKey(key[len(t.path):]) + " = " + value + d.nl
+func (d *tomlDoc) insertInto(t *tomlTable, key []string, value, prefix string) (edit, error) {
+	line := prefix + encodeTOMLKey(key[len(t.path):]) + " = " + value + d.nl
 	if len(t.kvs) > 0 {
 		last := t.kvs[len(t.kvs)-1]
 		line = indentOf(d.data[last.lineStart:]) + line
 	}
 	at := t.insertAt
-	if !t.header && len(t.kvs) == 0 {
+	if !t.header && len(t.kvs) == 0 && len(t.defaults) > 0 {
+		at = t.defaults[len(t.defaults)-1].lineEnd
+	} else if !t.header && len(t.kvs) == 0 {
 		// before the first table and the comments over it
 		at = len(d.data)
 		if len(d.tables) > 1 {
@@ -467,6 +666,26 @@ func normalizeTOML(m map[string]any) {
 	}
 }
 
+// checkTOMLRemoved parses both documents and checks that edited has the values of
+// original without key.
+func checkTOMLRemoved(original, edited []byte, key string) error {
+	want := map[string]any{}
+	if err := toml.Unmarshal(original, &want); err != nil {
+		return fmt.Errorf("parse the file: %w", err)
+	}
+	deleteNested(want, strings.Split(key, "."))
+	got := map[string]any{}
+	if err := toml.Unmarshal(edited, &got); err != nil {
+		return fmt.Errorf("parse the edited file: %w", err)
+	}
+	normalizeTOML(want)
+	normalizeTOML(got)
+	if !reflect.DeepEqual(want, got) {
+		return fmt.Errorf("the edited file has other values")
+	}
+	return nil
+}
+
 // removeTOMLKey returns the document without the key's line, and without its table's
 // header when the key was all the table had.
 func removeTOMLKey(data []byte, key string) ([]byte, error) {
@@ -481,10 +700,6 @@ func removeTOMLKey(data []byte, key string) ([]byte, error) {
 	if kv.lineEnd < 0 {
 		return nil, fmt.Errorf("%w: %s", errCantEdit, key)
 	}
-	edits := []edit{{start: kv.lineStart, end: kv.lineEnd}}
-	if t := kv.table; t.header && !t.array && len(t.kvs) == 1 {
-		edits = append(edits, edit{start: t.start, end: d.lineEnd(t.start)})
-	}
-	slices.SortFunc(edits, func(a, b edit) int { return a.start - b.start })
-	return apply(data, edits), nil
+	t := kv.table
+	return apply(data, d.removeLine(kv.lineStart, kv.lineEnd, t, len(t.kvs) == 1 && len(t.defaults) == 0)), nil
 }

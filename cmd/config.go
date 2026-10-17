@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
@@ -103,15 +104,74 @@ func init() {
 var configWriteCmd = &cobra.Command{
 	Use:   "write",
 	Short: "Write configuration to disk",
-	Long: `Write every config key to the config file: its current values and the defaults of the
-keys it doesn't have (values from environment variables or flags aren't written). The file is
-edited in place: its comments and order stay, retired keys are dropped.`,
+	Long: `Write every config key to the config file: its values stay, the keys it doesn't have
+are listed as commented defaults ("# key = value": still the default, they follow mangal's;
+set one with "mangal config set" or uncomment it). Values from environment variables or flags
+aren't written. The file is edited in place: its comments and order stay, retired keys are
+dropped. "mangal config clean" drops the unknown keys and comments out values that are the
+default.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := config.Write(); err != nil {
 			return err
 		}
 		successf(cmd, "wrote the config to %s", config.Path)
+		return nil
+	},
+}
+
+var configCleanArgs = struct {
+	Apply bool
+}{}
+
+func init() {
+	configCmd.AddCommand(configCleanCmd)
+	configCleanCmd.Flags().BoolVar(&configCleanArgs.Apply, "apply", false, "Change the config file, instead of only listing the changes")
+}
+
+var configCleanCmd = &cobra.Command{
+	Use:   "clean",
+	Short: "Drop stale keys from the config file",
+	Long: `Drop the keys mangal doesn't know (removed ones, typos: the closest key is suggested) and
+the retired ones from the config file, and comment out the values that are the default
+("# key = value", so they follow mangal's default). The rest of the file stays as it is,
+comments included; a copy is saved next to it first (mangal.toml.<time>.bak).
+
+Only lists the changes unless --apply is set.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		stale, err := config.StaleKeys()
+		if err != nil {
+			return err
+		}
+		if stale.Empty() {
+			successf(cmd, "nothing to clean in %s", config.Path)
+			return nil
+		}
+		verb := map[bool]string{false: "would ", true: ""}[configCleanArgs.Apply]
+		for _, k := range stale.Unknown {
+			hint := "not a mangal key"
+			if k.Suggestion != "" {
+				hint += fmt.Sprintf(", did you mean %q? (set it with mangal config set %s <value>)", k.Suggestion, k.Suggestion)
+			}
+			cmd.Printf("%sdrop %s (%s)\n", verb, k.Key, hint)
+		}
+		for _, k := range stale.Retired {
+			cmd.Printf("%sdrop %s (no longer used: %s)\n", verb, k.Key, k.Reason)
+		}
+		if n := len(stale.Defaults); n > 0 {
+			cmd.Printf("%scomment out %d %s set to the default, they follow mangal's default: %s\n", verb, n,
+				map[bool]string{true: "key", false: "keys"}[n == 1], strings.Join(stale.Defaults, ", "))
+		}
+		if !configCleanArgs.Apply {
+			cmd.Println("run with --apply to change the config file")
+			return nil
+		}
+		backup, err := config.Clean(stale)
+		if err != nil {
+			return err
+		}
+		successf(cmd, "cleaned %s (the old file is %s)", config.Path, backup)
 		return nil
 	},
 }

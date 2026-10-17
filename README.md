@@ -95,7 +95,7 @@ Mangal comes with sensible defaults that can be changed in the config file, with
 mangal config write
 ```
 
-It will be written to `$XDG_CONFIG_HOME/mangal/mangal.toml`.
+It will be written to `$XDG_CONFIG_HOME/mangal/mangal.toml`, every key the file doesn't set listed as a commented default (`# port = 6977`): still the default, it follows mangal's when that changes. Keys mangal doesn't know (removed ones, typos) or no longer uses get a warning; `mangal config clean` lists them and the values that are the default, `--apply` drops the stale keys and comments the defaults out (a copy of the file is kept).
 
 Then, the config can be set by modifying the file itself, from the TUI's config window (`,` on any screen, changes apply right away), or by running:
 

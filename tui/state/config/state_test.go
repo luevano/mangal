@@ -131,7 +131,8 @@ func TestInvalidIntNotWritten(t *testing.T) {
 	if s.mode != browsing || s.err != "" {
 		t.Fatalf("not saved: %q", s.err)
 	}
-	if !strings.Contains(read(t, path), "parallelism = 4 # default") {
+	// the default is commented out, the line's comment stays
+	if !strings.Contains(read(t, path), "# parallelism = 4 # default") {
 		t.Errorf("file:\n%s", read(t, path))
 	}
 

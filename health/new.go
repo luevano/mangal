@@ -68,6 +68,7 @@ func NewWith(m watch.Manager) (Checker, error) {
 				Notify:  config.Watch.Notify.Get(),
 			}, nil
 		},
+		Config: configKeys,
 		Statuses: func(ctx context.Context, mangas []storage.Manga, bindings []storage.Binding, fetch bool) error {
 			return client.LibraryStatuses(st.Library()).Update(ctx, mangas, bindings, fetch)
 		},
@@ -294,4 +295,16 @@ func savedLogins() []Login {
 		add("MyAnimeList", l.User, "mangal myanimelist login", l.Expires, true, read.SaveMyAnimeList)
 	}
 	return logins
+}
+
+// configKeys are the stale keys of the loaded config file (A3).
+func configKeys() ([]ConfigKey, error) {
+	var keys []ConfigKey
+	for _, key := range config.Unsupported() {
+		keys = append(keys, ConfigKey{Key: key, Suggestion: config.Suggest(key)})
+	}
+	for _, key := range config.Retired() {
+		keys = append(keys, ConfigKey{Key: key, Retired: true, Reason: config.RetiredReason(key)})
+	}
+	return keys, nil
 }
