@@ -91,6 +91,13 @@ type Result struct {
 	// Relink is set when the provider doesn't have the manga (ErrMangaNotFound): the
 	// watch needs a re-link (not counted as a failure, not notified).
 	Relink string `json:"relink,omitempty"`
+	// Coverage is what the provider misses of the library's chapters (see Coverage): it
+	// may need another provider. HeldBack are the new chapters not downloaded for it,
+	// they'd leave a gap (Continuation).
+	Coverage string    `json:"coverage,omitempty"`
+	HeldBack []float32 `json:"held_back,omitempty"`
+	// listed is true when the check got the provider's chapters (Coverage is current).
+	listed bool
 }
 
 // Newest is the highest chapter number of the result, nil if none.
@@ -567,9 +574,18 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 		skip[n] = true
 	}
 	picked, unavailable, skipped := Pick(chapters, have, highest(have), w.From, gaps, retry, skip)
-	r.Unavailable, r.Skipped = unavailable, skipped
+	r.Unavailable, r.Skipped, r.listed = unavailable, skipped, true
+	if last := highest(have); last != nil && !slices.Contains(s.Options.CoverageExempt, src.Info().ID) {
+		listed := make([]float32, len(chapters))
+		for i, ch := range chapters {
+			listed[i] = ch.Info().Number
+		}
+		if r.Coverage = Coverage(listed, have, s.Options.CoverageMin); r.Coverage != "" {
+			picked, r.HeldBack = Continuation(picked, *last)
+		}
+	}
 	if onFound != nil {
-		found := Found{Chapters: len(chapters), From: r.From, Unavailable: unavailable, Skipped: skipped}
+		found := Found{Chapters: len(chapters), From: r.From, Unavailable: unavailable, Skipped: skipped, Coverage: r.Coverage, HeldBack: r.HeldBack}
 		for _, ch := range picked {
 			found.Picked = append(found.Picked, ch.Info().Number)
 		}
@@ -739,7 +755,13 @@ func (s *Service) finish(ctx context.Context, w storage.Watch, r *Result) {
 		w.Failures++
 	default:
 		w.Failures = 0
-		w.NeedsRelink, w.RelinkReason = false, ""
+		if w.RelinkKind != storage.RelinkProvider {
+			// found it; one that needs another provider still does
+			w.NeedsRelink, w.RelinkReason = false, ""
+		}
+	}
+	if r.listed {
+		w.Coverage = r.Coverage
 	}
 	w.LastError = r.Error
 	if r.downloaded {

@@ -305,6 +305,17 @@
       ]
     },
     {
+      "name": "hold marks",
+      "web": [
+        "watch",
+        "library-manga"
+      ],
+      "api": [
+        "holdWatch",
+        "holdLibraryManga"
+      ]
+    },
+    {
       "name": "watch check",
       "web": [
         "watches",

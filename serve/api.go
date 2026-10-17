@@ -331,6 +331,42 @@ func (a *API) RelinkWatch(ctx context.Context, request apiv1.RelinkWatchRequestO
 	return apiv1.RelinkWatch200JSONResponse(got), nil
 }
 
+// HoldWatch implements apiv1.StrictServerInterface.
+func (a *API) HoldWatch(ctx context.Context, request apiv1.HoldWatchRequestObject) (apiv1.HoldWatchResponseObject, error) {
+	res, err := a.hold(ctx, watch.HoldOptions{Watch: request.Id}, deref(request.Body))
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.HoldWatch200JSONResponse(res), nil
+}
+
+// HoldLibraryManga implements apiv1.StrictServerInterface.
+func (a *API) HoldLibraryManga(ctx context.Context, request apiv1.HoldLibraryMangaRequestObject) (apiv1.HoldLibraryMangaResponseObject, error) {
+	res, err := a.hold(ctx, watch.HoldOptions{Manga: request.Id}, deref(request.Body))
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.HoldLibraryManga200JSONResponse(res), nil
+}
+
+func (a *API) hold(ctx context.Context, opts watch.HoldOptions, req watch.HoldRequest) (watch.HoldResult, error) {
+	if req.Mark != "" && !slices.Contains(watch.Marks, req.Mark) {
+		return watch.HoldResult{}, badRequest("mark %q: not one of %s", req.Mark, strings.Join(watch.Marks, ", "))
+	}
+	opts.Mark, opts.Reason, opts.NoCheck = req.Mark, req.Reason, req.NoCheck
+	res, err := a.Manager().Hold(ctx, opts)
+	if err != nil {
+		return res, err
+	}
+	what := fmt.Sprintf("watch %d", opts.Watch)
+	if opts.Manga != 0 {
+		what = fmt.Sprintf("library manga %d", opts.Manga)
+	}
+	a.Log.Infof("marked %s %s", what, cmp.Or(req.Mark, "(cleared)"))
+	a.changed()
+	return res, nil
+}
+
 // RemoveWatch implements apiv1.StrictServerInterface.
 func (a *API) RemoveWatch(ctx context.Context, request apiv1.RemoveWatchRequestObject) (apiv1.RemoveWatchResponseObject, error) {
 	if err := a.Manager().Remove(ctx, request.Id); err != nil {

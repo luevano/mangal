@@ -575,6 +575,14 @@ var Watch = configWatch{
 		"After this many failed checks in a row a watch skips ticks of its schedule (waits 2, 4, then 8 ticks). 0 never skips."),
 	Notify: oneOfEntry("watch.notify", "both",
 		"What watch checks notify (Discord): new chapters, errors, both or none.", "new", "errors", "both", "none"),
+	CoverageMin: intEntry("watch.coverage_min", 50, 0, 100,
+		"A check suggests another provider (health W15) when the provider has under this percent of the chapters the library has (it lost them, or only lists the latest few), or none at or below the library's last (only newer ones, or none at all). Such a watch only downloads the new chapters that continue the library's without a gap. 0 only checks the second case."),
+	CoverageExempt: func() *entry[string, []string] {
+		e := listEntry("watch.coverage_exempt",
+			"Providers whose watches are never suggested another provider for their chapters (see watch.coverage_min), comma separated: sites that only ever list some chapters, as MangaPlus (the first and latest few).")
+		e.Default = []string{"mango-mangaplus"}
+		return e
+	}(),
 }
 
 var Serve = configServe{

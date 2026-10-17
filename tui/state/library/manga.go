@@ -56,7 +56,7 @@ type mangaState struct {
 	bindings []storage.Binding
 	size     base.Size
 
-	open, scan, delete, watch, itsWatch, links key.Binding
+	open, scan, delete, watch, itsWatch, links, hold key.Binding
 }
 
 type downloadsMsg []_list.Item
@@ -80,6 +80,7 @@ func newMangaState(manga storage.Manga) *mangaState {
 		watch:    base.KeyWatch,
 		itsWatch: base.KeyItsWatch,
 		links:    base.KeyBindings,
+		hold:     base.KeyHold,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "chapter", "chapters", []*downloadItem{}, func(i *downloadItem) _list.DefaultItem { return i }), s.keyMap)
 	s.Confirm = newDialog()
@@ -87,7 +88,7 @@ func newMangaState(manga storage.Manga) *mangaState {
 }
 
 func (s *mangaState) keyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete, s.watch, s.itsWatch, s.links}}
+	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete, s.watch, s.itsWatch, s.links, s.hold}}
 }
 
 // watchesCmd loads the manga's watches.
@@ -135,6 +136,12 @@ func (s *mangaState) bindingsCmd(ctx context.Context) tea.Cmd {
 // none.
 func (s *mangaState) header() string {
 	lines := library.SourceLines(s.manga.Sources)
+	if s.manga.Hold != "" {
+		lines = append(lines, library.HoldLabel(s.manga.Hold)+" ("+s.hold.Help().Key+" changes it)")
+	}
+	if s.manga.NewProvider != "" {
+		lines = append(lines, "needs a new provider: "+s.manga.NewProvider)
+	}
 	for _, w := range s.watches {
 		lines = append(lines, watches.Describe(w))
 	}
@@ -287,6 +294,9 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return s.addWatch(ctx)
 		case key.Matches(msg, s.links):
 			return linksCmd(s.manga)
+		case key.Matches(msg, s.hold):
+			holdCmd(s.Confirm, s.View(), s.manga, s.watches)
+			return nil
 		case key.Matches(msg, s.scan):
 			if base.Busy(ctx) {
 				return nil

@@ -19,6 +19,7 @@ import (
 	"charm.land/lipgloss/v2"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/library"
@@ -119,6 +120,14 @@ func applyLabel(f health.Finding) string {
 	switch a.Kind {
 	case health.ActionResume:
 		return "resume"
+	case health.ActionHold:
+		switch a.Mark {
+		case "":
+			return "clear the hold"
+		case watch.MarkProvider:
+			return "mark: needs a new provider"
+		}
+		return "hold: " + a.Mark
 	case health.ActionWatch:
 		return "watch it"
 	case health.ActionLink:
@@ -608,6 +617,18 @@ func (s *state) apply(ctx context.Context, f health.Finding) tea.Cmd {
 	switch a.Kind {
 	case health.ActionResume:
 		s.Confirm.Ask("Resume", fmt.Sprintf("Resume watch %d (%s)?", a.Watch, f.Subject.Name), s.View(), fix("Resuming", f, true, 0))
+	case health.ActionHold:
+		var message, label string
+		switch a.Mark {
+		case "":
+			message, label = fmt.Sprintf("Clear the hold of %s? Its watches resume.", f.Subject.Name), "Clearing the hold"
+		case watch.MarkProvider:
+			message, label = fmt.Sprintf("Mark %s as needing a new provider? It's not checked until it's re-linked.", f.Subject.Name), "Marking"
+		default:
+			message = fmt.Sprintf("Put %s on hold (%s)? It's checked once more for the last chapters, then paused.", f.Subject.Name, a.Mark)
+			label = "Checking once more, then holding"
+		}
+		s.Confirm.Ask("Hold", message, s.View(), fix(label, f, true, 0))
 	case health.ActionWatch:
 		message := fmt.Sprintf("Watch %q on %s? Its first check downloads the chapters after the library's last.", f.Subject.Name, a.Provider)
 		s.Confirm.Ask("Watch", message, s.View(), fix("Adding the watch", f, true, f.Subject.ID))

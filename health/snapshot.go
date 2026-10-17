@@ -27,6 +27,9 @@ type snapshot struct {
 	backoff      int
 	loaders      []libmangal.ProviderLoader
 
+	coverageMin    float64
+	coverageExempt []string
+
 	mangas []storage.Manga
 	// numbers are the downloaded chapter numbers by library manga, sorted
 	numbers map[int64][]float32

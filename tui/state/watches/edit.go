@@ -65,7 +65,7 @@ type editState struct {
 func mangaDisplay(w watch.Watch) string {
 	display := fmt.Sprintf("%s · %s · %s", w.Title, w.Provider, w.MangaID)
 	if w.NeedsRelink {
-		display += " · " + relinkStyle.Render("needs re-link: "+w.RelinkReason)
+		display += " · " + relinkStyle.Render(w.RelinkLabel()+": "+w.RelinkReason)
 	} else if w.ProviderMissing {
 		display += " · " + relinkStyle.Render("provider missing")
 	}

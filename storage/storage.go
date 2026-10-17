@@ -135,6 +135,7 @@ CREATE INDEX downloads_manga ON downloads (provider, manga_id)`),
 	sqlMigration(healthIgnoresTable),
 	sqlMigration(journalInterfered),
 	sqlMigration(readerPositionsTable),
+	sqlMigration(holdColumns),
 }
 
 // DB is an open SQLite database.

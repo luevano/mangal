@@ -24,6 +24,12 @@ func toAPILibraryManga(m storage.Manga, watched bool) apiv1.LibraryManga {
 		out.Status = &m.Status
 	}
 	out.StatusUpdated = optTime(m.StatusUpdated)
+	if m.Hold != "" {
+		out.Hold = &m.Hold
+	}
+	if m.NewProvider != "" {
+		out.NewProvider = &m.NewProvider
+	}
 	for _, id := range m.MetadataIDs {
 		out.MetadataIds = append(out.MetadataIds, apiv1.MetadataID{Source: string(id.Code), Id: id.Raw})
 	}

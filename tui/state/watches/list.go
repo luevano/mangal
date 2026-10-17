@@ -74,7 +74,7 @@ type listState struct {
 
 type listKeyMap struct {
 	details, check, checkDue, checkProvider, pause, pauseProvider, delete, edit, gaps, refresh, runs,
-	library, history, nextProvider, group, live, running, relink, missing, unlinked key.Binding
+	library, history, nextProvider, group, live, running, relink, missing, unlinked, hold key.Binding
 }
 
 type loadedMsg struct {
@@ -126,6 +126,7 @@ func newListState(connect connector) *listState {
 			relink:        base.KeyRelink,
 			missing:       base.KeyNeedsRelink,
 			unlinked:      base.KeyNotInLibrary,
+			hold:          base.KeyHold,
 		},
 		live:          map[int64]liveWatch{},
 		liveProviders: map[string]bool{},
@@ -141,7 +142,7 @@ func (s *listState) keyMap() help.KeyMap {
 	short := []key.Binding{k.details, k.check, k.live, k.pause, k.edit, k.runs}
 	return util.KeyMap{Short: short, Full: [][]key.Binding{
 		short,
-		{k.checkDue, k.checkProvider, k.gaps, k.pauseProvider, k.delete, k.refresh},
+		{k.checkDue, k.checkProvider, k.gaps, k.hold, k.pauseProvider, k.delete, k.refresh},
 		{k.library, k.history, k.nextProvider, k.group, k.running},
 		{k.relink, k.missing, k.unlinked},
 	}}
@@ -466,7 +467,7 @@ func (s *listState) providers() []string {
 func (s *listState) updateKeys() {
 	enable := len(s.List.Items()) != 0
 	for _, k := range []*key.Binding{&s.keys.details, &s.keys.check, &s.keys.checkDue, &s.keys.checkProvider, &s.keys.pause, &s.keys.pauseProvider,
-		&s.keys.delete, &s.keys.edit, &s.keys.gaps, &s.keys.library, &s.keys.history, &s.keys.live, &s.keys.relink} {
+		&s.keys.delete, &s.keys.edit, &s.keys.gaps, &s.keys.library, &s.keys.history, &s.keys.live, &s.keys.relink, &s.keys.hold} {
 		k.SetEnabled(enable)
 	}
 }

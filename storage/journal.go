@@ -58,9 +58,10 @@ var keptTables = []string{
 // unfingerprinted are the tables (all columns: nil) and columns that are restored but
 // whose changes don't count as the library changing: looked up or worked out again
 // anytime (publication statuses, the link picks a dry run finds), they'd refuse every
-// undo after a "library ls" or a "library bind" dry run.
+// undo after a "library ls" or a "library bind" dry run. Hold marks are set like a
+// watch's pause, which doesn't count either.
 var unfingerprinted = map[string][]string{
-	"library_mangas": {"status", "status_updated"},
+	"library_mangas": {"status", "status_updated", "hold", "new_provider"},
 	"link_picks":     nil,
 }
 

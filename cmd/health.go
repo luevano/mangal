@@ -39,13 +39,17 @@ fixes nothing and makes no requests unless --network; it only writes the publica
 statuses it works out (as "mangal library ls" does, they don't block an undo) and what
 --dismiss and --undismiss say.
 
-Watches: needing a re-link (W1), not in the library (W2), paused (W3), failing (W4), no new
+Watches: needing a re-link or a new provider (W1), not in the library (W2), paused or on
+hold (W3), failing (W4), no new
 chapter for 90 days (W5), provider not installed (W6), every watch of a provider failing
 (W7, two or more: the provider or its site is broken), old provider id (W8), invalid
 schedule (W9), library mangas not watched (W10: one line by publication status, "--only
 W10" lists them), watched on two providers (W11), unwatched mangas with new chapters on
 their source (W12, --network), manga ids of a provider's old site (W13: the downloads'
-chapter URLs are all on it, e.g. MangaSee slugs on Weeb Central).
+chapter URLs are all on it, e.g. MangaSee slugs on Weeb Central), not on hold but on
+hiatus or ended on AniList (W14: "mangal watch hold"), the provider missing the library's
+chapters (W15: its last check found it; --network, the unwatched mangas' providers too;
+see watch.coverage_min).
 Gaps: chapters missing between the first and last downloaded (G1, whole numbers only, not
 up to a watch's --from or in its skip list), which of them the provider has (G2,
 --network), chapters to retry (G3).

@@ -41,6 +41,11 @@ type Manga struct {
 	// unknown; StatusUpdated is when it was looked up.
 	Status        string
 	StatusUpdated time.Time
+	// Hold is a mark that its watches are paused for (HoldHiatus, HoldEnded), "" for none.
+	Hold string
+	// NewProvider is why it needs another provider (marked by hand, for a manga no watch
+	// has: a watch's is its re-link flag), "" when it doesn't.
+	NewProvider string
 }
 
 // Path is the manga's folder.
@@ -423,12 +428,12 @@ func (l Library) mangas(where string, args ...any) ([]Manga, error) {
 		var m Manga
 		var ids string
 		var updated int64
-		if err := rows.Scan(&m.ID, &m.Title, &m.Parent, &m.Dir, &ids, &m.Status, &updated, &m.Chapters); err != nil {
+		if err := rows.Scan(&m.ID, &m.Title, &m.Parent, &m.Dir, &ids, &m.Status, &updated, &m.Hold, &m.NewProvider, &m.Chapters); err != nil {
 			return m, err
 		}
 		m.StatusUpdated = fromUnix(updated)
 		return m, json.Unmarshal([]byte(ids), &m.MetadataIDs)
-	}, `SELECT m.id, m.title, m.parent, m.dir, m.metadata_ids, m.status, m.status_updated,
+	}, `SELECT m.id, m.title, m.parent, m.dir, m.metadata_ids, m.status, m.status_updated, m.hold, m.new_provider,
 	(SELECT count(*) FROM library_chapters c WHERE c.manga = m.id AND EXISTS (SELECT 1 FROM downloads d WHERE d.chapter_id = c.id))
 FROM library_mangas m `+where, args...)
 	if err != nil || len(mangas) == 0 {
@@ -811,6 +816,12 @@ func (l Library) Merge(keep, other int64, moved []MergeMove, trashed []string) e
 		if err := addMetadataIDs(tx, keep, ids); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(`UPDATE library_mangas SET
+	hold = CASE WHEN hold = '' THEN (SELECT hold FROM library_mangas WHERE id = ?1) ELSE hold END,
+	new_provider = CASE WHEN new_provider = '' THEN (SELECT new_provider FROM library_mangas WHERE id = ?1) ELSE new_provider END
+WHERE id = ?2`, other, keep); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(`DELETE FROM library_mangas WHERE id = ?`, other); err != nil {
 			return err
 		}
@@ -867,6 +878,10 @@ func (l Library) Move(m MangaMove) error {
 		}
 		if _, err := tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title, moved) VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (provider, manga_id) DO UPDATE SET title = excluded.title, moved = excluded.moved`, m.Source.Provider, m.Source.MangaID, m.Manga, m.Source.Title, unix(m.At)); err != nil {
+			return err
+		}
+		// on another provider now
+		if _, err := tx.Exec(`UPDATE library_mangas SET new_provider = '' WHERE id = ?`, m.Manga); err != nil {
 			return err
 		}
 		if m.Title != "" {

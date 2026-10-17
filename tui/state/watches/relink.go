@@ -44,7 +44,7 @@ func newRelinkState(m watch.Manager, w watch.Watch) *relinkState {
 		Subtitle: func(string) []string {
 			parts := []string{"now " + w.Provider + " " + w.MangaID}
 			if w.NeedsRelink {
-				parts = append(parts, "needs re-link: "+w.RelinkReason)
+				parts = append(parts, w.RelinkLabel()+": "+w.RelinkReason)
 			}
 			return parts
 		},

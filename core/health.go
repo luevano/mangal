@@ -78,7 +78,7 @@ func (r HealthFixReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 		done = func(OpResult) string {
 			return fmt.Sprintf("linked %s to %s %s", m.Title, client.SourceName(a.Source), id)
 		}
-	case health.ActionResume, health.ActionWatch:
+	case health.ActionResume, health.ActionWatch, health.ActionHold:
 		return r.planWatch(ctx, c)
 	case health.ActionBackups:
 		return r.planBackups(ctx, c)
@@ -305,6 +305,40 @@ func (r HealthFixReq) planWatch(ctx context.Context, c *Core) (*prepared, error)
 				return "", err
 			}
 			return "resumed " + w.Title, nil
+		}
+	case health.ActionHold:
+		w, err := m.Get(ctx, a.Watch)
+		if err != nil {
+			return nil, err
+		}
+		switch a.Mark {
+		case "":
+			fix.Plan = []string{fmt.Sprintf("clear the marks of watch %d %s (%s): it resumes", w.ID, w.Title, w.Provider)}
+		case watch.MarkProvider:
+			fix.Plan = []string{fmt.Sprintf("mark watch %d %s (%s) as needing a new provider: not checked until re-linked", w.ID, w.Title, w.Provider)}
+		default:
+			fix.Plan = []string{fmt.Sprintf("put watch %d %s (%s) on hold (%s): checked once more, then paused", w.ID, w.Title, w.Provider, a.Mark)}
+		}
+		apply = func(ctx context.Context) (string, error) {
+			res, err := m.Hold(ctx, watch.HoldOptions{Watch: w.ID, Mark: a.Mark, Reason: a.Reason})
+			if err != nil {
+				return "", err
+			}
+			msg := "cleared the marks of " + w.Title
+			switch a.Mark {
+			case "":
+			case watch.MarkProvider:
+				msg = w.Title + " needs a new provider"
+			default:
+				msg = fmt.Sprintf("%s is on hold (%s)", w.Title, a.Mark)
+			}
+			if res.Check != nil && res.Check.NewChapters > 0 {
+				msg += fmt.Sprintf(", got %s first", stringutil.Quantify(res.Check.NewChapters, "new chapter", "new chapters"))
+			}
+			if res.CheckError != "" {
+				msg += " (the check before failed: " + res.CheckError + ")"
+			}
+			return msg, nil
 		}
 	default:
 		fix.Plan = []string{fmt.Sprintf("watch %s on %s (mid:%s): its first check downloads the chapters after the library's last", f.Subject.Name, a.Provider, a.MangaID)}

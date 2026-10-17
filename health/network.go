@@ -189,7 +189,7 @@ func (c Checker) loadChapters(ctx context.Context, s *snapshot) error {
 	}
 	var list []todo
 	queued := map[int64]int{}
-	if s.running["W12"] {
+	if s.running["W12"] || s.running["W15"] {
 		for _, m := range s.unwatched() {
 			if library.StatusDone(m.Status) || m.Status == string(metadata.StatusHiatus) {
 				continue

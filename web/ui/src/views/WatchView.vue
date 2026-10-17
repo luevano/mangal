@@ -4,6 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import client, { ok } from '@/api/client'
 import type { CheckResponse } from '@/api/schemas'
 import FormModal from '@/components/FormModal.vue'
+import HoldDialog from '@/components/HoldDialog.vue'
 import LiveLog from '@/components/LiveLog.vue'
 import LoadState from '@/components/LoadState.vue'
 import { useAction } from '@/composables/useAction'
@@ -25,9 +26,10 @@ crumbs(() => [{ title: 'Watches', to: { name: 'watches' } }, { title: w.data.val
 
 const live = computed(() => watches.live.filter((e) => e.watch === id.value))
 
-function check() {
-  action.run(() => ok(client.POST('/v1/check', { body: { ids: [id.value] } })), (r) => `Check run ${(r as CheckResponse).run} started`)
+function check(gaps = false) {
+  action.run(() => ok(client.POST('/v1/check', { body: { ids: [id.value], gaps } })), (r) => `Check run ${(r as CheckResponse).run} started`)
 }
+const holdOpen = ref(false)
 function setEnabled(enabled: boolean) {
   action.run(() => ok(client.PATCH('/v1/watches/{id}', { params: { path: { id: id.value } }, body: { enabled } })), enabled ? 'Resumed' : 'Paused').then(() => w.load())
 }
@@ -89,9 +91,13 @@ function remove() {
   <template v-if="w.data.value">
     <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
       <h4 class="me-auto mb-0">{{ w.data.value.title }}</h4>
-      <button class="btn btn-sm btn-primary" @click="check">Check now</button>
-      <button v-if="w.data.value.enabled" class="btn btn-sm btn-outline-secondary" @click="setEnabled(false)">Pause</button>
-      <button v-else class="btn btn-sm btn-outline-secondary" @click="setEnabled(true)">Resume</button>
+      <button class="btn btn-sm btn-primary" @click="check()">Check now</button>
+      <button class="btn btn-sm btn-outline-primary" title="Also the missing chapters below the last one" @click="check(true)">Fill gaps</button>
+      <template v-if="!w.data.value.hold">
+        <button v-if="w.data.value.enabled" class="btn btn-sm btn-outline-secondary" @click="setEnabled(false)">Pause</button>
+        <button v-else class="btn btn-sm btn-outline-secondary" @click="setEnabled(true)">Resume</button>
+      </template>
+      <button class="btn btn-sm btn-outline-secondary" data-test="hold" @click="holdOpen = true">Hold…</button>
       <button class="btn btn-sm btn-outline-primary" @click="openEdit">Edit</button>
       <button class="btn btn-sm btn-outline-primary" @click="openRelink">Re-link</button>
       <button class="btn btn-sm btn-outline-danger" @click="removeOpen = true">Remove</button>
@@ -103,8 +109,10 @@ function remove() {
       </dd>
       <dt class="col-sm-3">State</dt>
       <dd class="col-sm-9">
-        {{ w.data.value.enabled ? 'enabled' : 'paused' }}<span v-if="w.data.value.status"> · {{ w.data.value.status }}</span>
-        <span v-if="w.data.value.needs_relink" class="badge text-bg-warning ms-1">needs a re-link</span>
+        {{ w.data.value.hold ? `on hold: ${w.data.value.hold}` : w.data.value.enabled ? 'enabled' : 'paused' }}<span v-if="w.data.value.status"> · {{ w.data.value.status }}</span>
+        <span v-if="w.data.value.needs_relink" class="badge text-bg-warning ms-1">{{ w.data.value.relink_kind === 'provider' ? 'needs a new provider' : 'needs a re-link' }}</span>
+        <div v-if="w.data.value.needs_relink && w.data.value.relink_reason" class="text-warning">{{ w.data.value.relink_reason }}</div>
+        <div v-if="w.data.value.coverage && !w.data.value.needs_relink" class="text-warning" data-test="coverage">another provider? {{ w.data.value.coverage }}</div>
       </dd>
       <dt class="col-sm-3">Last downloaded</dt>
       <dd class="col-sm-9">{{ num(w.data.value.last_downloaded) || '—' }}</dd>
@@ -151,6 +159,18 @@ function remove() {
       </div>
     </div>
   </template>
+
+  <HoldDialog
+    :open="holdOpen"
+    :title="w.data.value?.title ?? ''"
+    :watch="id"
+    :hold="w.data.value?.hold"
+    :provider="w.data.value?.needs_relink && w.data.value?.relink_kind === 'provider'"
+    :status="w.data.value?.status"
+    :coverage="w.data.value?.coverage"
+    @close="holdOpen = false"
+    @done="w.load()"
+  />
 
   <FormModal title="Edit the watch" :open="editOpen" submit-text="Save" @close="editOpen = false" @submit="submitEdit">
     <label class="form-label small mb-0">Schedule (cron, empty for the default)</label>

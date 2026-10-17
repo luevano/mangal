@@ -115,6 +115,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/library/mangas/{id}/hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a library manga on hold or as needing another provider
+         * @description hiatus and ended check the watches once more (synchronously, unless no_check), then pause them; provider marks them as needing another provider; an empty mark clears the marks and resumes the watches the hold paused.
+         */
+        post: operations["holdLibraryManga"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/library/mangas/{id}/chapters": {
         parameters: {
             query?: never;
@@ -1186,6 +1206,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/watches/{id}/hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a watch (its library manga) on hold or as needing another provider
+         * @description hiatus and ended check the watches once more (synchronously, unless no_check), then pause them; provider marks them as needing another provider; an empty mark clears the marks and resumes the watches the hold paused.
+         */
+        post: operations["holdWatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/check": {
         parameters: {
             query?: never;
@@ -1454,6 +1494,10 @@ export interface components {
             status?: string;
             /** Format: date-time */
             status_updated?: string;
+            /** @description its hold mark (hiatus, ended), empty when none */
+            hold?: string;
+            /** @description why it needs another provider (a manga no watch has), empty when it doesn't */
+            new_provider?: string;
             metadata_ids: components["schemas"]["MetadataID"][];
             sources: components["schemas"]["LibrarySource"][];
             watched?: boolean;
@@ -1687,7 +1731,7 @@ export interface components {
         };
         /** @description the fix the TUI and health/fix apply (health.Action) */
         HealthAction: {
-            /** @description link, pick, resume, watch, merge, mark, forget, scan, rename, empty-trash */
+            /** @description link, pick, resume, watch, merge, mark, forget, scan, rename, empty-trash, backups, hold */
             kind: string;
             /** Format: int64 */
             manga?: number;
@@ -1702,6 +1746,10 @@ export interface components {
             /** @description the library mangas (merge: the suggested keep first; mark) */
             mangas?: number[];
             paths?: string[];
+            /** @description the mark (hold: hiatus, ended, provider; empty clears) */
+            mark?: string;
+            /** @description why it needs another provider (hold provider) */
+            reason?: string;
         };
         HealthJob: {
             /** Format: int64 */
@@ -1976,6 +2024,14 @@ export interface components {
             failures?: number;
             needs_relink?: boolean;
             relink_reason?: string;
+            /** @description provider when it needs another provider, empty for a manga id that may be wrong */
+            relink_kind?: string;
+            /** @description the watch's own hold mark (a watch without a library manga) */
+            own_hold?: string;
+            /** @description what its last check found missing on the provider (it may need another), empty when nothing */
+            coverage?: string;
+            /** @description its hold mark (its library manga's, else its own), empty when none */
+            hold?: string;
             /** @description the chapters to try again */
             retry?: number[];
             /** Format: float */
@@ -2023,6 +2079,28 @@ export interface components {
             selector?: string;
             anilist_id?: number;
         };
+        HoldRequest: {
+            /**
+             * @description hiatus, ended, provider, or empty to clear the marks
+             * @enum {string}
+             */
+            mark: "" | "hiatus" | "ended" | "provider";
+            /** @description why it needs another provider (provider) */
+            reason?: string;
+            /** @description pause without checking first */
+            no_check?: boolean;
+        };
+        HoldResult: {
+            /**
+             * Format: int64
+             * @description the library manga marked, absent when the watch has none
+             */
+            manga?: number;
+            watches: components["schemas"]["Watch"][];
+            check?: components["schemas"]["CheckReport"];
+            /** @description why the check before pausing failed (held anyway) */
+            check_error?: string;
+        };
         CheckRequest: {
             ids?: number[];
             gaps?: boolean;
@@ -2057,6 +2135,10 @@ export interface components {
             failed?: number;
             retry?: number[];
             relink?: string;
+            /** @description what the provider misses of the library's chapters (it may need another) */
+            coverage?: string;
+            /** @description the new chapters not downloaded, they'd leave a gap */
+            held_back?: number[];
         };
         CheckRun: {
             /** Format: int64 */
@@ -2334,6 +2416,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryMangaDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    holdLibraryManga: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoldRequest"];
+            };
+        };
+        responses: {
+            /** @description what was marked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoldResult"];
                 };
             };
             default: components["responses"]["Error"];
@@ -3919,6 +4028,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Watch"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    holdWatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoldRequest"];
+            };
+        };
+        responses: {
+            /** @description what was marked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoldResult"];
                 };
             };
             default: components["responses"]["Error"];

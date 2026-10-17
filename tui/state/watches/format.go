@@ -59,7 +59,9 @@ func formatNumber(n *float32) string {
 func nextCheck(w watch.Watch, backoff int, now time.Time) string {
 	switch {
 	case w.NeedsRelink:
-		return "needs re-link"
+		return w.RelinkLabel()
+	case w.Hold != "":
+		return markLabel(w.Hold)
 	case !w.Enabled && w.ProviderMissing:
 		return "paused, provider missing"
 	case !w.Enabled:
@@ -172,7 +174,13 @@ func settings(w watch.Watch, backoff int, now time.Time) string {
 		lines = append(lines, "never downloaded (skip list): "+watch.FormatNumbers(w.Skip))
 	}
 	if w.NeedsRelink {
-		lines = append(lines, relinkStyle.Render("needs re-link: "+w.RelinkReason+" ("+base.KeyRelink.Help().Key+": search the manga)"))
+		lines = append(lines, relinkStyle.Render(w.RelinkLabel()+": "+w.RelinkReason+" ("+base.KeyRelink.Help().Key+": search the manga)"))
+	}
+	if w.Hold != "" {
+		lines = append(lines, pausedStyle.Render(markLabel(w.Hold)+" ("+base.KeyHold.Help().Key+" clears it; "+base.KeyFillGaps.Help().Key+" still gets what's missing)"))
+	}
+	if w.Coverage != "" && !w.NeedsRelink {
+		lines = append(lines, relinkStyle.Render("another provider? "+w.Coverage+" ("+base.KeyRelink.Help().Key+": re-link, "+base.KeyHold.Help().Key+": mark it)"))
 	}
 	if p := w.LibraryProblem(); p != "" {
 		lines = append(lines, libraryStyle.Render("not in library: "+p))
@@ -184,7 +192,10 @@ func settings(w watch.Watch, backoff int, now time.Time) string {
 }
 
 func enabled(w watch.Watch) string {
-	if w.Enabled {
+	switch {
+	case w.Hold != "":
+		return markLabel(w.Hold)
+	case w.Enabled:
 		return "enabled"
 	}
 	return "paused"

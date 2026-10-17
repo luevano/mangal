@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -134,6 +135,65 @@ func (r *Remote) Relink(ctx context.Context, id int64, opts RelinkOptions) (Watc
 	var w Watch
 	err := r.do(ctx, http.MethodPost, watchPath(id)+"/relink", opts, &w)
 	return w, err
+}
+
+// Hold checks the watches first as Check does (OnEvent isn't called, the server records
+// it as a manual check), then has the server mark them without checking again.
+func (r *Remote) Hold(ctx context.Context, opts HoldOptions) (HoldResult, error) {
+	var res HoldResult
+	if opts.Mark != "" && !slices.Contains(Marks, opts.Mark) {
+		return res, fmt.Errorf("mark %q: not one of %v", opts.Mark, Marks)
+	}
+	path := "/api/v1/watches/" + strconv.FormatInt(opts.Watch, 10) + "/hold"
+	if opts.Manga != 0 {
+		path = "/api/v1/library/mangas/" + strconv.FormatInt(opts.Manga, 10) + "/hold"
+	}
+	if opts.Mark != "" && opts.Mark != MarkProvider && !opts.NoCheck {
+		ids, err := r.holdWatches(ctx, opts)
+		if err != nil {
+			return res, err
+		}
+		if len(ids) > 0 {
+			report, err := r.Check(ctx, ids, CheckOptions{Kind: KindHold})
+			switch {
+			case ctx.Err() != nil:
+				return res, ctx.Err()
+			case err != nil:
+				res.CheckError = err.Error()
+			default:
+				res.Check = &report
+			}
+		}
+	}
+	checked := res
+	err := r.do(ctx, http.MethodPost, path, HoldRequest{Mark: opts.Mark, Reason: opts.Reason, NoCheck: true}, &res)
+	res.Check, res.CheckError = checked.Check, checked.CheckError
+	return res, err
+}
+
+// holdWatches are the watches a hold checks: the watch's library manga's, or the manga's.
+func (r *Remote) holdWatches(ctx context.Context, opts HoldOptions) ([]int64, error) {
+	manga := opts.Manga
+	if opts.Watch != 0 {
+		w, err := r.Get(ctx, opts.Watch)
+		if err != nil {
+			return nil, err
+		}
+		if manga = w.LibraryManga; manga == 0 {
+			return []int64{w.ID}, nil
+		}
+	}
+	all, err := r.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for _, w := range all {
+		if w.LibraryManga == manga {
+			ids = append(ids, w.ID)
+		}
+	}
+	return ids, nil
 }
 
 func (r *Remote) Stale(ctx context.Context, since time.Duration) ([]Watch, error) {

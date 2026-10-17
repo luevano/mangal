@@ -61,6 +61,16 @@ type Watch struct {
 	// or a check finds the manga. RelinkReason says why.
 	NeedsRelink  bool   `json:"needs_relink,omitempty"`
 	RelinkReason string `json:"relink_reason,omitempty"`
+	// RelinkKind is RelinkProvider when the re-link was asked for because the manga needs
+	// another provider (its provider lost the chapters), "" for a manga id that may be
+	// wrong. A check that finds the manga keeps it.
+	RelinkKind string `json:"relink_kind,omitempty"`
+	// Hold is the watch's own hold mark (HoldHiatus, HoldEnded), for a watch without a
+	// library manga: one with a library manga has the manga's (watch.Watch.Hold).
+	Hold string `json:"own_hold,omitempty"`
+	// Coverage is what its last check found missing on the provider (the library has
+	// chapters the provider doesn't, see watch.Coverage), "" when nothing was.
+	Coverage string `json:"coverage,omitempty"`
 	// Retry are the chapters the last check failed to download: the next one tries them
 	// again, also when they're below the last downloaded one.
 	Retry []float32 `json:"retry,omitempty"`
@@ -215,7 +225,8 @@ func fromUnix(s int64) time.Time {
 }
 
 const watchColumns = `id, provider, manga_id, title, coalesce(library_manga, 0), enabled, schedule, gaps,
-	from_number, added, last_checked, last_gap_check, last_new, last_new_at, last_error, failures, relink, retry, resumed, skip`
+	from_number, added, last_checked, last_gap_check, last_new, last_new_at, last_error, failures, relink, retry, resumed, skip,
+	relink_kind, hold, coverage`
 
 func scanWatch(rows *sql.Rows) (Watch, error) {
 	var w Watch
@@ -223,7 +234,8 @@ func scanWatch(rows *sql.Rows) (Watch, error) {
 	var from, lastNew sql.NullFloat64
 	var retry, skip string
 	err := rows.Scan(&w.ID, &w.Provider, &w.MangaID, &w.Title, &w.LibraryManga, &w.Enabled, &w.Schedule, &w.Gaps,
-		&from, &added, &checked, &gapChecked, &lastNew, &newAt, &w.LastError, &w.Failures, &w.RelinkReason, &retry, &resumed, &skip)
+		&from, &added, &checked, &gapChecked, &lastNew, &newAt, &w.LastError, &w.Failures, &w.RelinkReason, &retry, &resumed, &skip,
+		&w.RelinkKind, &w.Hold, &w.Coverage)
 	w.Retry, w.Skip = parseNumbers(retry), parseNumbers(skip)
 	w.NeedsRelink = w.RelinkReason != ""
 	w.From, w.LastNew = floatPtr(from), floatPtr(lastNew)
@@ -247,9 +259,9 @@ func (s Watches) Add(w Watch) (Watch, error) {
 		if exists != 0 {
 			return ErrWatchExists
 		}
-		res, err := tx.Exec(`INSERT INTO watches (provider, manga_id, title, library_manga, enabled, schedule, gaps, from_number, added, relink, skip)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, w.Provider, w.MangaID, w.Title, nullID(w.LibraryManga), w.Enabled,
-			w.Schedule, w.Gaps, nullFloat(w.From), unix(w.Added), w.relinkColumn(), formatNumbers(w.Skip))
+		res, err := tx.Exec(`INSERT INTO watches (provider, manga_id, title, library_manga, enabled, schedule, gaps, from_number, added, relink, skip, relink_kind, hold)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, w.Provider, w.MangaID, w.Title, nullID(w.LibraryManga), w.Enabled,
+			w.Schedule, w.Gaps, nullFloat(w.From), unix(w.Added), w.relinkColumn(), formatNumbers(w.Skip), w.relinkKindColumn(), w.Hold)
 		if err != nil {
 			return err
 		}
@@ -319,10 +331,11 @@ func (s Watches) SetLibraryManga(id, manga int64) error {
 func (s Watches) Save(w Watch) error {
 	s.DB.touch()
 	res, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = ?, enabled = ?, schedule = ?, gaps = ?,
-	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?, retry = ?, resumed = ?, skip = ?
+	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?, retry = ?, resumed = ?, skip = ?,
+	relink_kind = ?, hold = ?, coverage = ?
 WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, w.Schedule, w.Gaps,
 		nullFloat(w.From), unix(w.LastChecked), unix(w.LastGapCheck), nullFloat(w.LastNew), unix(w.LastNewAt), w.LastError, w.Failures,
-		w.relinkColumn(), formatNumbers(w.Retry), unix(w.Resumed), formatNumbers(w.Skip), w.ID)
+		w.relinkColumn(), formatNumbers(w.Retry), unix(w.Resumed), formatNumbers(w.Skip), w.relinkKindColumn(), w.Hold, w.Coverage, w.ID)
 	if err != nil {
 		return fmt.Errorf("save watch %d: %w", w.ID, err)
 	}
@@ -333,16 +346,16 @@ WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, w.Schedule, w.Gaps,
 }
 
 // SaveCheck writes what a check of the watch changes (title, library manga when it had
-// none, last checked/gap check/new, error, failures, re-link flag, retry), so edits made
+// none, last checked/gap check/new, error, failures, re-link flag, retry, coverage), so edits made
 // while it ran (paused, skip list, schedule) stay. A watch re-linked to another manga
 // meanwhile is left as it is.
 func (s Watches) SaveCheck(w Watch) error {
 	s.DB.touch()
 	_, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = coalesce(library_manga, ?), last_checked = ?, last_gap_check = ?,
-	last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?, retry = ?
+	last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?, retry = ?, relink_kind = ?, coverage = ?
 WHERE id = ? AND provider = ? AND manga_id = ?`, w.Title, nullID(w.LibraryManga), unix(w.LastChecked), unix(w.LastGapCheck),
 		nullFloat(w.LastNew), unix(w.LastNewAt), w.LastError, w.Failures, w.relinkColumn(), formatNumbers(w.Retry),
-		w.ID, w.Provider, w.MangaID)
+		w.relinkKindColumn(), w.Coverage, w.ID, w.Provider, w.MangaID)
 	if err != nil {
 		return fmt.Errorf("save the check of watch %d: %w", w.ID, err)
 	}
@@ -381,7 +394,7 @@ func relinkWatch(tx *sql.Tx, id int64, provider, mangaID, title string, libraryM
 		return fmt.Errorf("%s %q: %w", provider, mangaID, ErrWatchExists)
 	}
 	if _, err := tx.Exec(`UPDATE watches SET provider = ?, manga_id = ?, title = ?, library_manga = coalesce(?, library_manga),
-	resumed = CASE WHEN relink != '' THEN ? ELSE resumed END, relink = '', failures = 0, last_error = '' WHERE id = ?`,
+	resumed = CASE WHEN relink != '' THEN ? ELSE resumed END, relink = '', relink_kind = '', coverage = '', failures = 0, last_error = '' WHERE id = ?`,
 		provider, mangaID, title, nullID(libraryManga), unix(at), id); err != nil {
 		return err
 	}

@@ -36,11 +36,17 @@ func (i *item) Title() string {
 		return st.Render(s)
 	}
 	title := i.w.Title
-	if !i.w.Enabled {
+	switch {
+	case i.w.Hold != "":
+		title += " " + render(pausedStyle, "(hold: "+i.w.Hold+")")
+	case !i.w.Enabled:
 		title += " " + render(pausedStyle, "(paused)")
 	}
-	if i.w.NeedsRelink {
-		title += " " + render(relinkStyle, "(needs re-link)")
+	switch {
+	case i.w.NeedsRelink:
+		title += " " + render(relinkStyle, "("+i.w.RelinkLabel()+")")
+	case i.w.Coverage != "":
+		title += " " + render(relinkStyle, "(another provider?)")
 	}
 	if i.w.LibraryProblem() != "" {
 		title += " " + render(libraryStyle, "(not in library)")
@@ -77,7 +83,7 @@ func (i *item) Description() string {
 		return w.Provider + " · last " + formatNumber(w.LastDownloaded) + " · " + state
 	}
 	if w.NeedsRelink {
-		return w.Provider + " · " + w.MangaID + " · last " + formatNumber(w.LastDownloaded) + " · needs re-link: " + w.RelinkReason
+		return w.Provider + " · " + w.MangaID + " · last " + formatNumber(w.LastDownloaded) + " · " + w.RelinkLabel() + ": " + w.RelinkReason
 	}
 	parts := []string{w.Provider}
 	if status := library.StatusLabel(w.Status); status != "" {

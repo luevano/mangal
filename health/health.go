@@ -115,6 +115,9 @@ const (
 	// ActionBackups gives the library Manga the backup Links (those it still has no id
 	// of); a summary's (Mangas) gives each of its items theirs.
 	ActionBackups = "backups"
+	// ActionHold marks the Watch (its library manga) with Mark (watch.HoldOptions: hiatus,
+	// ended, provider with Reason, "" clears).
+	ActionHold = "hold"
 )
 
 // Action is a fix the TUI can apply: the same change as the fix's command.
@@ -129,6 +132,8 @@ type Action struct {
 	Mangas   []int64         `json:"mangas,omitempty"`
 	Paths    []string        `json:"paths,omitempty"`
 	Links    library.Links   `json:"links,omitempty"`
+	Mark     string          `json:"mark,omitempty"`
+	Reason   string          `json:"reason,omitempty"`
 }
 
 // Finding is a problem a check found.
@@ -269,6 +274,10 @@ type Checker struct {
 	StaleAfter time.Duration
 	// Backoff is watch.backoff.
 	Backoff int
+	// CoverageMin and CoverageExempt are watch.coverage_min (0-1) and watch.coverage_exempt,
+	// for W15's unwatched mangas.
+	CoverageMin    float64
+	CoverageExempt []string
 	// Statuses fills in the publication status of the mangas (in place) from the cached
 	// metadata, fetching from AniList with fetch (the network checks); nil leaves them as
 	// stored.
@@ -663,6 +672,7 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool, r
 	mark := c.Mark
 	mark.Loaders = c.Loaders
 	s := &snapshot{now: c.now(), root: c.Root, providerDirs: c.ProviderDirs, staleAfter: staleAfter, backoff: c.Backoff,
+		coverageMin: c.CoverageMin, coverageExempt: c.CoverageExempt,
 		loaders: c.Loaders, fsys: c.FS, mark: mark, providerName: c.ProviderName, bindings: map[[2]string][]storage.Binding{}, network: network, running: running,
 		probes: map[string]Probe{}, probed: map[string]ProviderManga{}, chapters: map[int64]chapterResult{}, anilist: map[int64]metadata.Match{},
 		fromMAL: map[int64]string{}, backups: map[int64]library.Backup{}, mal: c.MyAnimeList}
@@ -735,7 +745,7 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool, r
 			failed[partProbes] = err
 		}
 	}
-	if needed[partChapters] {
+	if needed[partChapters] && network {
 		switch {
 		case failed[partLibrary] != nil || failed[partWatches] != nil:
 			failed[partChapters] = errors.New("needs the library and the watches")

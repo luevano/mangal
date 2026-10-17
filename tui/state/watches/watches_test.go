@@ -38,6 +38,7 @@ type fakeManager struct {
 	mu       sync.Mutex
 	checked  [][]int64
 	relinked map[int64]watch.RelinkOptions
+	held     []watch.HoldOptions
 	// removedRuns are the watch runs RemoveRun was given
 	removedRuns []int64
 	// events is what Subscribe gives, nil for an error
@@ -74,6 +75,11 @@ func (f *fakeManager) SetEnabled(ctx context.Context, id int64, enabled bool) (w
 func (f *fakeManager) Update(ctx context.Context, id int64, opts watch.UpdateOptions) (watch.Watch, error) {
 	return watch.Watch{}, nil
 }
+func (f *fakeManager) Hold(ctx context.Context, opts watch.HoldOptions) (watch.HoldResult, error) {
+	f.held = append(f.held, opts)
+	return watch.HoldResult{Check: &watch.Report{CheckRun: storage.CheckRun{NewChapters: 2}}}, nil
+}
+
 func (f *fakeManager) Relink(ctx context.Context, id int64, opts watch.RelinkOptions) (watch.Watch, error) {
 	if f.relinked == nil {
 		f.relinked = map[int64]watch.RelinkOptions{}
@@ -1095,5 +1101,44 @@ func TestLiveLogKeepsScroll(t *testing.T) {
 	replay(&feed{}, 25)
 	if !strings.Contains(s.View(), "line 24") {
 		t.Errorf("following:\n%s", s.View())
+	}
+}
+
+func TestHoldKey(t *testing.T) {
+	m := testManager()
+	m.watches[0].Status = "HIATUS"
+	m.watches[2].Hold = storage.HoldEnded
+	s := loaded(t, m)
+	ctx := context.Background()
+
+	// enter takes the suggested mark: AniList's hiatus
+	s.List.Select(0)
+	if cmd := s.Update(ctx, press("alt+p")); cmd != nil || !s.Confirm.Active() {
+		t.Fatal("alt+p: no question")
+	}
+	action, ok := s.Update(ctx, press("enter"))().(actionMsg)
+	if !ok {
+		t.Fatal("enter: not an action")
+	}
+	notify, err := action.do(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.held) != 1 || m.held[0].Watch != 1 || m.held[0].Mark != storage.HoldHiatus || !strings.Contains(notify, "got 2 new chapters first") {
+		t.Errorf("held %+v, notified %q", m.held, notify)
+	}
+
+	// a held watch isn't resumed with p, alt+p then c clears it
+	s.List.Select(2)
+	if cmd := s.Update(ctx, press("p")); cmd == nil || len(m.enabled) != 0 {
+		t.Fatalf("p on a held watch: %v", m.enabled)
+	}
+	if !strings.Contains(s.List.SelectedItem().(*item).Title(), "(hold: ended)") {
+		t.Errorf("title %q", s.List.SelectedItem().(*item).Title())
+	}
+	s.Update(ctx, press("alt+p"))
+	action = s.Update(ctx, press("c"))().(actionMsg)
+	if _, err := action.do(ctx); err != nil || len(m.held) != 2 || m.held[1].Watch != 3 || m.held[1].Mark != "" {
+		t.Errorf("cleared %+v, %v", m.held, err)
 	}
 }

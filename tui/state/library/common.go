@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	lmmeta "github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
@@ -41,6 +42,26 @@ func change(label string, ch core.Change, notify string) tea.Cmd {
 			return reloadMsg{notify: undoNotice(notify)}, nil
 		}}
 	}
+}
+
+// holdCmd asks which mark the manga gets (tui watches.AskHold) and sets it through the
+// watches' manager.
+func holdCmd(d *confirm.Dialog, behind string, m storage.Manga, ws []watch.Watch) {
+	t := watches.MangaHoldTarget(m)
+	for _, w := range ws {
+		t.Provider = t.Provider || w.NeedsRelink && w.RelinkKind == storage.RelinkProvider
+		if wt := watches.WatchHoldTarget(w); t.Suggested == "" && wt.Suggested != "" {
+			t.Suggested, t.Why, t.Reason = wt.Suggested, wt.Why, wt.Reason
+		}
+	}
+	watches.AskHold(d, behind, t, func(opts watch.HoldOptions) tea.Cmd {
+		return func() tea.Msg {
+			return actionMsg{label: watches.HoldLabel(opts, m.Title), do: func(ctx context.Context, _ func(string)) (reloadMsg, error) {
+				notify, err := watches.Hold(ctx, opts, m.Title)
+				return reloadMsg{notify: notify}, err
+			}}
+		}
+	})
 }
 
 // reloadMsg asks the State to reload, after an action.

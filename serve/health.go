@@ -281,7 +281,7 @@ func (a *API) FixHealthFinding(ctx context.Context, request apiv1.FixHealthFindi
 	if err != nil {
 		return nil, err
 	}
-	if resp.Applied && (f.Fix.Action.Kind == health.ActionWatch || f.Fix.Action.Kind == health.ActionResume) {
+	if resp.Applied && (f.Fix.Action.Kind == health.ActionWatch || f.Fix.Action.Kind == health.ActionResume || f.Fix.Action.Kind == health.ActionHold) {
 		a.changed()
 	}
 	return apiv1.FixHealthFinding200JSONResponse{ChangeJSONResponse: apiv1.ChangeJSONResponse(resp)}, nil
@@ -344,7 +344,7 @@ func (a *API) legacyHealthFix(c *echo.Context) error {
 	res.Plan = orEmpty(res.Plan)
 	if res.Applied {
 		a.Log.Infof("health fix %s applied: %s", res.Key, res.Message)
-		if res.Kind == health.ActionWatch || res.Kind == health.ActionResume {
+		if res.Kind == health.ActionWatch || res.Kind == health.ActionResume || res.Kind == health.ActionHold {
 			a.changed()
 		}
 	}

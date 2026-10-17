@@ -210,7 +210,7 @@ ones after --from.`,
 		state := ""
 		switch {
 		case w.NeedsRelink:
-			state = ", needs re-link (mangal watch move)"
+			state = ", " + w.RelinkLabel() + " (mangal watch move)"
 		case !w.Enabled:
 			state = ", paused"
 		case w.ProviderMissing:
@@ -273,7 +273,12 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 		next := watch.FormatNext(w.NextScheduled, now)
 		switch {
 		case w.NeedsRelink:
-			next = "needs re-link: " + firstLine(w.RelinkReason, 50)
+			next = w.RelinkLabel() + ": " + firstLine(w.RelinkReason, 50)
+			if w.Hold != "" {
+				next = library.HoldLabel(w.Hold) + ", " + next
+			}
+		case w.Hold != "":
+			next = library.HoldLabel(w.Hold)
 		case !w.Enabled && w.ProviderMissing:
 			next = "paused, provider missing"
 		case !w.Enabled:
@@ -313,6 +318,17 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 			first = false
 		}
 		fmt.Fprintf(out, "  %d  %s: %s\n", w.ID, firstLine(w.Title, 50), w.LibraryProblem())
+	}
+	first = true
+	for _, w := range watches {
+		if w.Coverage == "" || w.NeedsRelink {
+			continue
+		}
+		if first {
+			fmt.Fprintln(out, "\nanother provider? (mangal watch move <id> <provider>, or mangal watch hold <id> provider):")
+			first = false
+		}
+		fmt.Fprintf(out, "  %d  %s: %s\n", w.ID, firstLine(w.Title, 50), w.Coverage)
 	}
 	first = true
 	for _, w := range watches {

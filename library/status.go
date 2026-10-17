@@ -136,3 +136,12 @@ func (f StatusFinder) Update(ctx context.Context, mangas []storage.Manga, bindin
 	}
 	return f.Library.SetStatuses(statuses, now)
 }
+
+// HoldLabel is a hold mark (storage.Manga.Hold) for people: "on hold: hiatus", "on hold:
+// ended"; "" for none.
+func HoldLabel(hold string) string {
+	if hold == "" {
+		return ""
+	}
+	return "on hold: " + hold
+}

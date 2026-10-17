@@ -117,21 +117,27 @@ type CheckResponse = watch.CheckResponse
 
 // CheckResult a watch's check in a report (client/watch.Result)
 type CheckResult struct {
-	Chapters    *[]RunChapter `json:"chapters,omitempty"`
-	CheckRun    int64         `json:"check_run"`
-	Error       *string       `json:"error,omitempty"`
-	Failed      *int          `json:"failed,omitempty"`
-	Finished    time.Time     `json:"finished"`
-	From        *float32      `json:"from,omitempty"`
-	Gaps        *bool         `json:"gaps,omitempty"`
-	Id          int64         `json:"id"`
-	MangaId     string        `json:"manga_id"`
-	NewChapters int           `json:"new_chapters"`
-	Provider    string        `json:"provider"`
-	Relink      *string       `json:"relink,omitempty"`
-	Retry       *[]float32    `json:"retry,omitempty"`
-	Skipped     *[]float32    `json:"skipped,omitempty"`
-	Started     time.Time     `json:"started"`
+	Chapters *[]RunChapter `json:"chapters,omitempty"`
+	CheckRun int64         `json:"check_run"`
+
+	// Coverage what the provider misses of the library's chapters (it may need another)
+	Coverage *string   `json:"coverage,omitempty"`
+	Error    *string   `json:"error,omitempty"`
+	Failed   *int      `json:"failed,omitempty"`
+	Finished time.Time `json:"finished"`
+	From     *float32  `json:"from,omitempty"`
+	Gaps     *bool     `json:"gaps,omitempty"`
+
+	// HeldBack the new chapters not downloaded, they'd leave a gap
+	HeldBack    *[]float32 `json:"held_back,omitempty"`
+	Id          int64      `json:"id"`
+	MangaId     string     `json:"manga_id"`
+	NewChapters int        `json:"new_chapters"`
+	Provider    string     `json:"provider"`
+	Relink      *string    `json:"relink,omitempty"`
+	Retry       *[]float32 `json:"retry,omitempty"`
+	Skipped     *[]float32 `json:"skipped,omitempty"`
+	Started     time.Time  `json:"started"`
 
 	// Status new, none, error or skipped
 	Status      string `json:"status"`
@@ -294,15 +300,21 @@ type HealthAction struct {
 	// Ids the ids to link (a choice when several)
 	Ids *[]string `json:"ids,omitempty"`
 
-	// Kind link, pick, resume, watch, merge, mark, forget, scan, rename, empty-trash
+	// Kind link, pick, resume, watch, merge, mark, forget, scan, rename, empty-trash, backups, hold
 	Kind    string  `json:"kind"`
 	Manga   *int64  `json:"manga,omitempty"`
 	MangaId *string `json:"manga_id,omitempty"`
 
 	// Mangas the library mangas (merge: the suggested keep first; mark)
-	Mangas   *[]int64  `json:"mangas,omitempty"`
+	Mangas *[]int64 `json:"mangas,omitempty"`
+
+	// Mark the mark (hold: hiatus, ended, provider; empty clears)
+	Mark     *string   `json:"mark,omitempty"`
 	Paths    *[]string `json:"paths,omitempty"`
 	Provider *string   `json:"provider,omitempty"`
+
+	// Reason why it needs another provider (hold provider)
+	Reason *string `json:"reason,omitempty"`
 
 	// Source the metadata source's code (link, pick)
 	Source *string `json:"source,omitempty"`
@@ -357,6 +369,12 @@ type HistoryClearRequest struct {
 	MangaId  *string `json:"manga_id,omitempty"`
 	Provider *string `json:"provider,omitempty"`
 }
+
+// HoldRequest defines model for HoldRequest.
+type HoldRequest = watch.HoldRequest
+
+// HoldResult defines model for HoldResult.
+type HoldResult = watch.HoldResult
 
 // Index defines model for Index.
 type Index struct {
@@ -427,9 +445,15 @@ type LibraryManga struct {
 	Chapters int `json:"chapters"`
 
 	// Dir the folder's name
-	Dir         *string      `json:"dir,omitempty"`
+	Dir *string `json:"dir,omitempty"`
+
+	// Hold its hold mark (hiatus, ended), empty when none
+	Hold        *string      `json:"hold,omitempty"`
 	Id          int64        `json:"id"`
 	MetadataIds []MetadataID `json:"metadata_ids"`
+
+	// NewProvider why it needs another provider (a manga no watch has), empty when it doesn't
+	NewProvider *string `json:"new_provider,omitempty"`
 
 	// Path the folder
 	Path    string          `json:"path"`
@@ -1278,6 +1302,9 @@ type ForgetLibraryMangasJSONRequestBody = ForgetRequest
 // LinkLibraryMangaJSONRequestBody defines body for LinkLibraryManga for application/json ContentType.
 type LinkLibraryMangaJSONRequestBody = LinkRequest
 
+// HoldLibraryMangaJSONRequestBody defines body for HoldLibraryManga for application/json ContentType.
+type HoldLibraryMangaJSONRequestBody = HoldRequest
+
 // MarkLibraryMangasJSONRequestBody defines body for MarkLibraryMangas for application/json ContentType.
 type MarkLibraryMangasJSONRequestBody = MarkRequest
 
@@ -1316,6 +1343,9 @@ type AddWatchJSONRequestBody = AddWatchRequest
 
 // UpdateWatchJSONRequestBody defines body for UpdateWatch for application/json ContentType.
 type UpdateWatchJSONRequestBody = PatchWatchRequest
+
+// HoldWatchJSONRequestBody defines body for HoldWatch for application/json ContentType.
+type HoldWatchJSONRequestBody = HoldRequest
 
 // RelinkWatchJSONRequestBody defines body for RelinkWatch for application/json ContentType.
 type RelinkWatchJSONRequestBody = RelinkRequest

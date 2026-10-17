@@ -84,6 +84,7 @@ var (
 	KeyCheckProvider   = util.Bind("check provider", "alt+c")
 	KeyFillGaps        = util.Bind("fill gaps", "F")
 	KeyPause           = util.Bind("pause/resume", "p")
+	KeyHold            = util.Bind("hold / new provider", "alt+p")
 	KeyPauseProvider   = util.Bind("pause/resume its provider", "P")
 	KeyStopWatching    = util.Bind("stop watching", "d")
 	KeyDeleteRun       = util.Bind("delete check", "d")
@@ -176,7 +177,7 @@ func Keys() (old, newer []key.Binding) {
 		KeyLibrary, KeyWatches, KeyAccounts, KeyMigrate, KeyHealth, KeyWatch, KeyItsWatch, KeyLibraryManga,
 		KeyMirrors, KeyCopyURL, KeyAccountLogIn, KeyAPIClient, KeyRefresh, KeyEdit, KeyAdd, KeyDelete,
 		KeyRemove, KeyCancel, KeyCancelAll, KeyClearQueue, KeyClearQueues, KeyOrigin, KeyReset, KeyExpandAll, KeyChange, KeyOnOff, KeyScan, KeyScanIDs, KeyMerge, KeyMove, KeyTrash, KeyEmptyTrash,
-		KeyUndo, KeyDuplicates, KeyBackups, KeyCheck, KeyCheckDue, KeyCheckProvider, KeyFillGaps, KeyPause,
+		KeyUndo, KeyDuplicates, KeyBackups, KeyCheck, KeyCheckDue, KeyCheckProvider, KeyFillGaps, KeyPause, KeyHold,
 		KeyPauseProvider, KeyStopWatching, KeyDeleteRun, KeyRelink, KeyLiveLog, KeyLiveChecks, KeyRuns,
 		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,
 		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel, KeyNarrow,

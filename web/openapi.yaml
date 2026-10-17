@@ -151,6 +151,30 @@ paths:
                 $ref: '#/components/schemas/LibraryMangaDetail'
         default:
           $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}/hold:
+    post:
+      summary: Mark a library manga on hold or as needing another provider
+      description: hiatus and ended check the watches once more (synchronously, unless no_check), then pause them; provider marks them as needing another provider; an empty mark clears the marks and resumes the watches the hold paused.
+      operationId: holdLibraryManga
+      tags: [v1, library]
+      x-mangal-scope: watch
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HoldRequest'
+      responses:
+        '200':
+          description: what was marked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HoldResult'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/library/mangas/{id}/chapters:
     get:
       summary: A library manga's downloaded chapters, with how often each was read
@@ -1555,6 +1579,30 @@ paths:
                 $ref: '#/components/schemas/Watch'
         default:
           $ref: '#/components/responses/Error'
+  /v1/watches/{id}/hold:
+    post:
+      summary: Mark a watch (its library manga) on hold or as needing another provider
+      description: hiatus and ended check the watches once more (synchronously, unless no_check), then pause them; provider marks them as needing another provider; an empty mark clears the marks and resumes the watches the hold paused.
+      operationId: holdWatch
+      tags: [v1, watches]
+      x-mangal-scope: watch
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HoldRequest'
+      responses:
+        '200':
+          description: what was marked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HoldResult'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/check:
     post:
       summary: Check watches now
@@ -2114,6 +2162,12 @@ components:
         status_updated:
           type: string
           format: date-time
+        hold:
+          type: string
+          description: its hold mark (hiatus, ended), empty when none
+        new_provider:
+          type: string
+          description: why it needs another provider (a manga no watch has), empty when it doesn't
         metadata_ids:
           type: array
           items:
@@ -2617,7 +2671,7 @@ components:
       properties:
         kind:
           type: string
-          description: link, pick, resume, watch, merge, mark, forget, scan, rename, empty-trash
+          description: link, pick, resume, watch, merge, mark, forget, scan, rename, empty-trash, backups, hold
         manga:
           type: integer
           format: int64
@@ -2646,6 +2700,12 @@ components:
           type: array
           items:
             type: string
+        mark:
+          type: string
+          description: 'the mark (hold: hiatus, ended, provider; empty clears)'
+        reason:
+          type: string
+          description: why it needs another provider (hold provider)
     HealthJob:
       type: object
       required: [id, started, running]
@@ -3136,6 +3196,18 @@ components:
           type: boolean
         relink_reason:
           type: string
+        relink_kind:
+          type: string
+          description: provider when it needs another provider, empty for a manga id that may be wrong
+        own_hold:
+          type: string
+          description: the watch's own hold mark (a watch without a library manga)
+        coverage:
+          type: string
+          description: what its last check found missing on the provider (it may need another), empty when nothing
+        hold:
+          type: string
+          description: its hold mark (its library manga's, else its own), empty when none
         retry:
           type: array
           description: the chapters to try again
@@ -3236,6 +3308,43 @@ components:
           type: string
         anilist_id:
           type: integer
+    HoldRequest:
+      type: object
+      x-go-type: watch.HoldRequest
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/client/watch
+      required: [mark]
+      properties:
+        mark:
+          type: string
+          enum: ['', hiatus, ended, provider]
+          description: hiatus, ended, provider, or empty to clear the marks
+        reason:
+          type: string
+          description: why it needs another provider (provider)
+        no_check:
+          type: boolean
+          description: pause without checking first
+    HoldResult:
+      type: object
+      x-go-type: watch.HoldResult
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/client/watch
+      required: [watches]
+      properties:
+        manga:
+          type: integer
+          format: int64
+          description: the library manga marked, absent when the watch has none
+        watches:
+          type: array
+          items:
+            $ref: '#/components/schemas/Watch'
+        check:
+          $ref: '#/components/schemas/CheckReport'
+        check_error:
+          type: string
+          description: why the check before pausing failed (held anyway)
     CheckRequest:
       type: object
       x-go-type: watch.CheckRequest
@@ -3320,6 +3429,15 @@ components:
                 format: float
             relink:
               type: string
+            coverage:
+              type: string
+              description: what the provider misses of the library's chapters (it may need another)
+            held_back:
+              type: array
+              description: the new chapters not downloaded, they'd leave a gap
+              items:
+                type: number
+                format: float
     CheckRun:
       type: object
       x-go-type: storage.CheckRun

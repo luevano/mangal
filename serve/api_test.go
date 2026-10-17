@@ -538,6 +538,24 @@ func TestRemote(t *testing.T) {
 	if stale, err := r.Stale(ctx, 0); err != nil || len(stale) != 1 {
 		t.Errorf("stale: %+v, %v", stale, err)
 	}
+
+	// hold (the check before it is Check's): paused, resuming it is refused
+	held, err := r.Hold(ctx, watch.HoldOptions{Watch: w.ID, Mark: storage.HoldHiatus, NoCheck: true})
+	if err != nil || held.Check != nil || len(held.Watches) != 1 || held.Watches[0].Enabled || held.Watches[0].Hold != storage.HoldHiatus {
+		t.Errorf("hold: %+v, %v", held, err)
+	}
+	if _, err := r.SetEnabled(ctx, w.ID, true); !errors.Is(err, watch.ErrHeld) {
+		t.Errorf("resume a held watch: %v", err)
+	}
+	if held, err = r.Hold(ctx, watch.HoldOptions{Watch: w.ID, Mark: "paused"}); err == nil {
+		t.Errorf("hold with a bad mark: %+v", held)
+	}
+	if _, err = r.Hold(ctx, watch.HoldOptions{Manga: 999, Mark: storage.HoldEnded, NoCheck: true}); !errors.Is(err, watch.ErrNotFound) {
+		t.Errorf("hold a missing manga: %v", err)
+	}
+	if held, err = r.Hold(ctx, watch.HoldOptions{Watch: w.ID}); err != nil || !held.Watches[0].Enabled || held.Watches[0].Hold != "" {
+		t.Errorf("clear: %+v, %v", held, err)
+	}
 	if st, err := r.Status(ctx); err != nil || !st.Server || st.Checking {
 		t.Errorf("status: %+v, %v", st, err)
 	}

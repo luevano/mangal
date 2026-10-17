@@ -263,7 +263,7 @@ func TestRun(t *testing.T) {
 		{"L10", Info, "manga", 8, "mangal library move 8 mango-weebcentral", "Kagurabachi is MangaSee's"},
 		{"W3", Info, "watch", 4, "mangal watch resume 4", "paused"},
 		{"W4", Error, "watch", 1, "mangal watch check 1", "backing off"},
-		{"W5", Info, "watch", 6, "mangal watch pause 6", "200 days"},
+		{"W5", Info, "watch", 6, "mangal watch hold 6 hiatus", "200 days"},
 		{"W6", Error, "watch", 5, "mangal watch move 5 <provider>", "mango-gone"},
 		{"W8", Warning, "watch", 6, "mangal migrate", "now mango-weebcentral"},
 		{"W9", Warning, "watch", 6, "mangal watch set 6 --schedule ''", "bogus"},
@@ -673,3 +673,74 @@ type chapter struct{ info mangadata.ChapterInfo }
 func (c chapter) String() string              { return "" }
 func (c chapter) Info() mangadata.ChapterInfo { return c.info }
 func (c chapter) Volume() mangadata.Volume    { return nil }
+
+func TestHoldChecks(t *testing.T) {
+	c := newChecker(t)
+	now := c.Now()
+	c.Watches = fakeManager{list: []watch.Watch{
+		{Watch: storage.Watch{ID: 10, Provider: "mango-mangadex", MangaID: "a", Title: "Held", Added: now}, Hold: storage.HoldHiatus, Status: string(metadata.StatusFinished)},
+		{Watch: storage.Watch{ID: 11, Provider: "mango-mangadex", MangaID: "b", Title: "Hiatus", Enabled: true, Added: now.Add(-200 * 24 * time.Hour)}, Status: string(metadata.StatusHiatus)},
+		{Watch: storage.Watch{ID: 12, Provider: "mango-mangadex", MangaID: "c", Title: "Lost", Enabled: true, Added: now, Coverage: "the provider has 3 of the library's 20 chapters"}},
+		{Watch: storage.Watch{ID: 13, Provider: "mango-mangadex", MangaID: "d", Title: "Moving", Enabled: true, Added: now,
+			NeedsRelink: true, RelinkKind: storage.RelinkProvider, RelinkReason: "only has 60-63"}},
+	}}
+	report, err := c.Run(context.Background(), Options{Only: []string{"W1", "W3", "W5", "W14", "W15"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range []want{
+		{"W3", Info, "watch", 10, "mangal watch hold 10 --clear", "on hold: hiatus (finished on AniList)"},
+		{"W14", Info, "watch", 11, "mangal watch hold 11 hiatus", "hiatus on AniList: put it on hold (hiatus)?"},
+		{"W15", Warning, "watch", 12, "mangal watch hold 12 provider", "another provider? the provider has 3"},
+		{"W1", Error, "watch", 13, "mangal watch move 13 <provider>", "needs a new provider, not checked: only has 60-63"},
+	} {
+		f, ok := find(report, w)
+		switch {
+		case !ok:
+			t.Errorf("%s on %d missing", w.check, w.id)
+		case f.Severity != w.severity || !slices.Contains(f.Fix.Commands, w.command) || !strings.Contains(f.Message, w.message):
+			t.Errorf("%s on %d: %+v", w.check, w.id, f)
+		case f.Fix.Action == nil && w.check != "W1":
+			t.Errorf("%s on %d: no action", w.check, w.id)
+		}
+	}
+	if f, _ := find(report, want{check: "W15", kind: "watch", id: 12}); f.Fix.Action.Mark != watch.MarkProvider || f.Fix.Action.Reason == "" {
+		t.Errorf("W15 action %+v", f.Fix.Action)
+	}
+	if f, _ := find(report, want{check: "W14", kind: "watch", id: 11}); f.Fix.Action.Kind != ActionHold || f.Fix.Action.Mark != storage.HoldHiatus {
+		t.Errorf("W14 action %+v", f.Fix.Action)
+	}
+	for _, w := range []want{{check: "W14", kind: "watch", id: 10}, {check: "W5", kind: "watch", id: 11}} {
+		if f, ok := find(report, w); ok {
+			t.Errorf("unexpected %+v", f)
+		}
+	}
+}
+
+func TestCoverageNetwork(t *testing.T) {
+	c, asked := networkChecker(t)
+	c.CoverageMin = 0.5
+	dl := storage.Download{Path: "/dl/mango-mangadex/Kagurabachi/1.cbz", Provider: "mango-mangadex", MangaID: "kagura", MangaTitle: "Kagurabachi", Chapter: 1, Format: "CBZ"}
+	if err := c.Library.RecordDownload("/dl/mango-mangadex", "Kagurabachi", dl); err != nil {
+		t.Fatal(err)
+	}
+	report, err := c.Run(context.Background(), Options{Network: true, Only: []string{"W15"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mangas []Finding
+	for _, f := range report.Findings {
+		if f.Check == "W15" && f.Subject.Kind == "manga" {
+			mangas = append(mangas, f)
+		}
+	}
+	// the fake lists no chapters of the unwatched mangas
+	if len(mangas) == 0 || !mangas[0].Network || !strings.Contains(mangas[0].Message, "lists no chapters") || !strings.HasPrefix(mangas[0].Fix.Commands[0], "mangal library move") {
+		t.Errorf("W15 %+v, asked %q", mangas, *asked)
+	}
+	// offline nothing is asked
+	*asked = nil
+	if _, err := c.Run(context.Background(), Options{Only: []string{"W15"}}); err != nil || len(*asked) != 0 {
+		t.Errorf("offline: %v, asked %q", err, *asked)
+	}
+}

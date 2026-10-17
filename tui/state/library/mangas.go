@@ -54,6 +54,12 @@ func (i *mangaItem) Title() string {
 	if len(i.watches) != 0 {
 		title += " " + watches.Mark()
 	}
+	if i.manga.Hold != "" {
+		title += " (hold: " + i.manga.Hold + ")"
+	}
+	if i.manga.NewProvider != "" {
+		title += " (needs a new provider)"
+	}
 	return title
 }
 
@@ -83,7 +89,7 @@ type mangasState struct {
 }
 
 type mangasKeyMap struct {
-	confirm, scan, check, merge, move, trash, delete, watch, undo, duplicates, links, backups, rename key.Binding
+	confirm, scan, check, merge, move, trash, delete, watch, undo, duplicates, links, backups, rename, hold key.Binding
 }
 
 type mangasLoadedMsg struct {
@@ -137,6 +143,7 @@ func newMangasState() *mangasState {
 			links:      base.KeyBindings,
 			backups:    base.KeyBackups,
 			rename:     base.KeyRename,
+			hold:       base.KeyHold,
 		},
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "manga", "mangas", []*mangaItem{}, func(i *mangaItem) _list.DefaultItem { return i }), s.keyMap)
@@ -147,7 +154,7 @@ func newMangasState() *mangasState {
 func (s *mangasState) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.confirm, k.scan, k.merge, k.delete, k.trash, k.undo}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.rename, k.check, k.watch, k.duplicates, k.links, k.backups)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, k.move, k.hold, k.rename, k.check, k.watch, k.duplicates, k.links, k.backups)}}
 }
 
 func (s *mangasState) reload(ctx context.Context) tea.Cmd {
@@ -342,6 +349,9 @@ func (s *mangasState) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.C
 		return linksCmd(item.manga), true
 	case key.Matches(msg, s.keys.watch):
 		return watches.JumpCmd(item.watches, ""), true
+	case key.Matches(msg, s.keys.hold):
+		holdCmd(s.Confirm, s.View(), item.manga, item.watches)
+		return nil, true
 	case key.Matches(msg, s.keys.delete) && !item.missing:
 		m := item.manga
 		message := fmt.Sprintf("Delete %q? Its folder (%d chapters) goes to the trash and it leaves the library.", m.Title, m.Chapters)

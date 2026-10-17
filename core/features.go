@@ -125,6 +125,8 @@ var Features = []Feature{
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
 	{Name: "watches", Web: []string{"watches", "watch"}, API: []string{"listWatches", "addWatch", "getWatch", "updateWatch", "removeWatch", "relinkWatch", "listStaleWatches"}, CLI: []string{"watch ls", "watch add", "watch rm", "watch set", "watch pause", "watch resume", "watch move", "watch stale"}, TUI: "W (home)", TUIKey: "W",
 		NotApplicable: map[Mode]string{ModeScript: "watches are serve's (its API)"}},
+	{Name: "hold marks", Web: []string{"watch", "library-manga"}, API: []string{"holdWatch", "holdLibraryManga"}, CLI: []string{"watch hold", "library hold"}, TUI: "alt+p (watches, library)", TUIKey: "alt+p",
+		NotApplicable: map[Mode]string{ModeScript: "watches are serve's (its API)"}},
 	{Name: "watch check", Web: []string{"watches", "watch", "run"}, API: []string{"checkWatches", "cancelRun"}, CLI: []string{"watch check"}, TUI: "u (watches)", TUIKey: "u",
 		NotApplicable: map[Mode]string{ModeScript: "watches are serve's (its API)"}},
 	{Name: "watch history", Web: []string{"runs", "run", "watch"}, API: []string{"listRuns", "getRun", "removeWatchRun"}, CLI: []string{"watch log"}, TUI: "V (watches)", TUIKey: "V",

@@ -77,6 +77,7 @@ const (
 	CodeNotFound = "not_found"
 	CodeExists   = "exists"
 	CodeBusy     = "busy"
+	CodeHeld     = "held"
 	// CodeRunNotFound and CodeRunUnfinished are a not found and a busy too.
 	CodeRunNotFound   = "run_not_found"
 	CodeRunUnfinished = "run_unfinished"
@@ -85,7 +86,7 @@ const (
 // ErrorResponse is the body of an API error.
 type ErrorResponse struct {
 	Error string `json:"error"`
-	// Code is set for the errors that match ErrNotFound, ErrExists and ErrBusy (and the
+	// Code is set for the errors that match ErrNotFound, ErrExists, ErrBusy and ErrHeld (and the
 	// storage run errors).
 	Code string `json:"code,omitempty"`
 }
@@ -103,6 +104,8 @@ func ErrorCode(err error) string {
 		return CodeExists
 	case errors.Is(err, ErrBusy):
 		return CodeBusy
+	case errors.Is(err, ErrHeld):
+		return CodeHeld
 	}
 	return ""
 }
@@ -132,6 +135,8 @@ func (e *APIError) Is(target error) bool {
 		return target == ErrExists
 	case CodeBusy:
 		return target == ErrBusy
+	case CodeHeld:
+		return target == ErrHeld
 	}
 	return false
 }

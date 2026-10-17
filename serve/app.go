@@ -365,7 +365,7 @@ func errorBody(err error) (int, ErrorResponse) {
 		return http.StatusBadRequest, body
 	case watch.NotFound(body.Code):
 		return http.StatusNotFound, body
-	case body.Code == watch.CodeExists, watch.Busy(body.Code):
+	case body.Code == watch.CodeExists, body.Code == watch.CodeHeld, watch.Busy(body.Code):
 		return http.StatusConflict, body
 	case errors.Is(err, core.ErrNotFound), errors.Is(err, libmangal.ErrNotFound), errors.Is(err, web.ErrNotFound), errors.Is(err, storage.ErrRunNotFound):
 		body.Code = watch.CodeNotFound

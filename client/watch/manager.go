@@ -19,6 +19,9 @@ type Manager interface {
 	Update(ctx context.Context, id int64, opts UpdateOptions) (Watch, error)
 	// Relink points the watch to another manga, keeping the watch.
 	Relink(ctx context.Context, id int64, opts RelinkOptions) (Watch, error)
+	// Hold marks a watch or a library manga on hold, as needing another provider, or
+	// clears the marks.
+	Hold(ctx context.Context, opts HoldOptions) (HoldResult, error)
 	// Check checks the watches now (every due one without ids). OnEvent may be dropped by
 	// a remote manager.
 	Check(ctx context.Context, ids []int64, opts CheckOptions) (Report, error)

@@ -30,6 +30,8 @@ var checks = []check{
 	{id: "W11", category: Watches, needs: []part{partWatches, partLibrary}, run: checkWatchedTwice},
 	{id: "W12", category: Watches, needs: []part{partWatches, partLibrary, partChapters}, run: checkNewChapters, network: true},
 	{id: "W13", category: Watches, needs: []part{partWatches, partLibrary}, run: checkOldSiteWatches},
+	{id: "W14", category: Watches, needs: []part{partWatches}, run: checkHoldSuggested},
+	{id: "W15", category: Watches, needs: []part{partWatches}, wants: []part{partLibrary, partChapters}, run: checkCoverage},
 	{id: "G1", category: Gaps, needs: []part{partLibrary, partWatches}, run: checkGaps},
 	{id: "G2", category: Gaps, needs: []part{partLibrary, partWatches, partChapters}, run: checkGapsConfirmed, network: true},
 	{id: "G3", category: Gaps, needs: []part{partWatches}, run: checkRetry},
@@ -70,6 +72,16 @@ func checkRelink(s *snapshot) []Finding {
 		reason := w.RelinkReason
 		if reason == "" {
 			reason = "its manga id may be wrong"
+		}
+		if w.RelinkKind == storage.RelinkProvider {
+			out = append(out, Finding{Severity: Error, Subject: watchSubject(w),
+				Message: "needs a new provider, not checked: " + reason,
+				Fix: Fix{
+					Commands: []string{fmt.Sprintf("mangal watch move %d <provider>", w.ID), fmt.Sprintf("mangal watch hold %d --clear", w.ID)},
+					Note:     "re-link it to the provider with the most chapters (mangal library move moves its folder there too); --clear if it stays",
+					TUI:      tuiWatches + ": re-link manga",
+				}})
+			continue
 		}
 		f := Finding{Severity: Error, Subject: watchSubject(w),
 			Message: "needs re-link, not checked: " + reason,
@@ -155,11 +167,22 @@ func checkLibraryIssue(s *snapshot) []Finding {
 	return out
 }
 
-// W3: paused watches.
+// W3: paused watches, those on hold with their mark.
 func checkPaused(s *snapshot) []Finding {
 	var out []Finding
 	for _, w := range s.watches {
 		if w.Enabled {
+			continue
+		}
+		if w.Hold != "" {
+			msg := library.HoldLabel(w.Hold)
+			if status := library.StatusLabel(w.Status); status != "" {
+				msg += " (" + status + " on AniList)"
+			}
+			out = append(out, Finding{Severity: Info, Subject: watchSubject(w), Message: msg,
+				Fix: Fix{Commands: []string{fmt.Sprintf("mangal watch hold %d --clear", w.ID), fmt.Sprintf("mangal watch check %d --gaps", w.ID)},
+					Note: "clearing the hold resumes it; a check gets what's missing meanwhile", TUI: tuiWatches + ": hold",
+					Action: &Action{Kind: ActionHold, Watch: w.ID}}})
 			continue
 		}
 		out = append(out, Finding{Severity: Info, Subject: watchSubject(w), Message: "paused",
@@ -202,7 +225,8 @@ func checkStale(s *snapshot) []Finding {
 	var out []Finding
 	cutoff := s.now.Add(-s.staleAfter)
 	for _, w := range s.watches {
-		if !w.Enabled || w.NeedsRelink || w.ProviderMissing {
+		if !w.Enabled || w.NeedsRelink || w.ProviderMissing || watch.SuggestedHold(w.Status) != "" {
+			// W14 suggests the hold of those AniList says aren't publishing
 			continue
 		}
 		last, what := w.LastNewAt, "no new chapter since"
@@ -213,20 +237,81 @@ func checkStale(s *snapshot) []Finding {
 			continue
 		}
 		days := int(s.now.Sub(last) / (24 * time.Hour))
+		mark := storage.HoldHiatus
 		f := Finding{Severity: Info, Subject: watchSubject(w),
 			Message: fmt.Sprintf("%s %s (%d days)", what, last.Format(time.DateOnly), days),
 			Fix: Fix{
-				Commands: []string{fmt.Sprintf("mangal watch pause %d", w.ID), fmt.Sprintf("mangal watch move %d", w.ID)},
-				Note:     "finished or on hiatus: pause it; still published elsewhere: move it",
-				TUI:      tuiWatches + ": pause/resume, re-link manga",
+				Commands: []string{fmt.Sprintf("mangal watch hold %d %s", w.ID, mark), fmt.Sprintf("mangal watch move %d", w.ID)},
+				Note:     "on hiatus or ended: put it on hold (it's checked once more, then paused); still published elsewhere: move it",
+				TUI:      tuiWatches + ": hold, re-link manga",
+				Action:   &Action{Kind: ActionHold, Watch: w.ID, Mark: mark},
 			}}
 		if status := library.StatusLabel(w.Status); status != "" {
 			f.Message += ", " + status + " on AniList"
-			if library.StatusDone(w.Status) {
-				f.Fix.Commands, f.Fix.Note = f.Fix.Commands[:1], status+": pause it"
-			}
 		}
 		out = append(out, f)
+	}
+	return out
+}
+
+// W14: watches not on hold whose AniList status says it's on hiatus or ended (W5
+// suggests it from the checks too).
+func checkHoldSuggested(s *snapshot) []Finding {
+	var out []Finding
+	for _, w := range s.watches {
+		mark := watch.SuggestedHold(w.Status)
+		if w.Hold != "" || mark == "" {
+			continue
+		}
+		out = append(out, Finding{Severity: Info, Subject: watchSubject(w),
+			Message: fmt.Sprintf("%s on AniList: put it on hold (%s)?", library.StatusLabel(w.Status), mark),
+			Fix: Fix{
+				Commands: []string{fmt.Sprintf("mangal watch hold %d %s", w.ID, mark)},
+				Note:     "checks it once more for the last chapters, then pauses it; dismiss it if it's still publishing",
+				TUI:      tuiWatches + ": hold",
+				Action:   &Action{Kind: ActionHold, Watch: w.ID, Mark: mark},
+			}})
+	}
+	return out
+}
+
+// W15: watches (not on hold) whose last check found the provider missing the library's chapters, and
+// (network) unwatched mangas whose provider does: they may need another provider.
+func checkCoverage(s *snapshot) []Finding {
+	var out []Finding
+	for _, w := range s.watches {
+		if w.Coverage == "" || w.NeedsRelink || w.Hold != "" {
+			continue
+		}
+		out = append(out, Finding{Severity: Warning, Subject: watchSubject(w),
+			Message: "another provider? " + w.Coverage,
+			Fix: Fix{
+				Commands: []string{fmt.Sprintf("mangal watch move %d <provider>", w.ID), fmt.Sprintf("mangal watch hold %d provider", w.ID)},
+				Note:     "re-link it to a provider with all the chapters, or mark it to do later (not checked until then); new chapters that continue the library's are still downloaded meanwhile",
+				TUI:      tuiWatches + ": re-link manga, hold",
+				Action:   &Action{Kind: ActionHold, Watch: w.ID, Mark: watch.MarkProvider, Reason: w.Coverage},
+			}})
+	}
+	for _, m := range s.mangas {
+		r, ok := s.chapters[m.ID]
+		if !ok || !r.forNew || r.err != nil || m.NewProvider != "" || slices.Contains(s.coverageExempt, s.providerInfo(r.provider).ID) {
+			continue
+		}
+		have := map[float32]bool{}
+		for _, n := range s.numbers[m.ID] {
+			have[n] = true
+		}
+		coverage := watch.Coverage(slices.Concat(r.Listed, r.Unavailable), have, s.coverageMin)
+		if coverage == "" {
+			continue
+		}
+		out = append(out, Finding{Severity: Warning, Subject: mangaSubject(m), Network: true,
+			Message: fmt.Sprintf("another provider? %s is %s", r.provider, strings.TrimPrefix(coverage, "the provider ")),
+			Fix: Fix{
+				Commands: []string{fmt.Sprintf("mangal library move %d <provider>", m.ID), fmt.Sprintf("mangal library hold %d provider", m.ID)},
+				Note:     "move it to a provider with all the chapters, or mark it to do later",
+				TUI:      tuiLibrary + ": move to a provider, hold",
+			}})
 	}
 	return out
 }

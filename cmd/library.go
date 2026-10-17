@@ -210,7 +210,8 @@ var libraryLsCmd = &cobra.Command{
 	Short: "List the mangas in the library",
 	Long: `List the mangas in the library: id, title, chapters, publication status (finished,
 ongoing, hiatus, cancelled, upcoming; from the AniList metadata already cached, --refresh
-asks AniList), folder and sources.`,
+asks AniList), hold mark and the need of a new provider ("mangal library hold"), folder
+and sources.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		c, err := newCore()
@@ -237,6 +238,12 @@ asks AniList), folder and sources.`,
 			line := fmt.Sprintf("%d  %s  %d chapters  ", m.ID, m.Title, m.Chapters)
 			if status := library.StatusLabel(m.Status); status != "" {
 				line += status + "  "
+			}
+			if m.Hold != "" {
+				line += "(" + library.HoldLabel(m.Hold) + ")  "
+			}
+			if m.NewProvider != "" {
+				line += "(needs a new provider: " + firstLine(m.NewProvider, 50) + ")  "
 			}
 			line += m.Path()
 			if sources := library.SourcesSummary(m.Sources); sources != "" {

@@ -360,6 +360,9 @@ type Found struct {
 	Unavailable int      `json:"unavailable,omitempty"`
 	// Skipped are the ones the watch's skip list left out.
 	Skipped []float32 `json:"skipped,omitempty"`
+	// Coverage and HeldBack are Result's.
+	Coverage string    `json:"coverage,omitempty"`
+	HeldBack []float32 `json:"held_back,omitempty"`
 }
 
 func describeFound(f Found) string {
@@ -386,7 +389,19 @@ func describeFound(f Found) string {
 	if len(f.Skipped) > 0 {
 		s += ", skipped " + FormatNumbers(f.Skipped)
 	}
+	if f.Coverage != "" {
+		s += "; " + f.Coverage + heldBack(f.HeldBack)
+	}
 	return s
+}
+
+// heldBack is ", held back 60, 61 (a gap before them)" for the chapters a check left for
+// another provider, "" for none.
+func heldBack(ns []float32) string {
+	if len(ns) == 0 {
+		return ""
+	}
+	return ", held back " + FormatNumbers(ns) + " (a gap before them)"
 }
 
 // runStartMessage says what a run checks.

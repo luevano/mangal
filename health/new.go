@@ -97,10 +97,12 @@ func NewWith(m watch.Manager) (Checker, error) {
 			}
 			return anilist.MetadataByIDsCached(ctx, ids)
 		},
-		Parallel:     config.Watch.ParallelProviders.Get(),
-		Root:         path.Downloads(),
-		ProviderDirs: config.Download.Provider.CreateDir.Get(),
-		Backoff:      config.Watch.Backoff.Get(),
+		Parallel:       config.Watch.ParallelProviders.Get(),
+		Root:           path.Downloads(),
+		ProviderDirs:   config.Download.Provider.CreateDir.Get(),
+		Backoff:        config.Watch.Backoff.Get(),
+		CoverageMin:    float64(config.Watch.CoverageMin.Get()) / 100,
+		CoverageExempt: config.Watch.CoverageExempt.Get(),
 	}, nil
 }
 

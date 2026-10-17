@@ -6,6 +6,7 @@ import { change } from '@/api/changes'
 import { chapterFileURL, coverURL, mangaZipURL } from '@/api/urls'
 import type { LibraryChapter, MetadataResult } from '@/api/schemas'
 import FormModal from '@/components/FormModal.vue'
+import HoldDialog from '@/components/HoldDialog.vue'
 import MetadataPicker from '@/components/MetadataPicker.vue'
 import LoadState from '@/components/LoadState.vue'
 import PagerNav from '@/components/PagerNav.vue'
@@ -130,6 +131,11 @@ function planMerge() {
   })
 }
 
+// hold marks
+const holdOpen = ref(false)
+const watchCoverage = computed(() => detail.data.value?.watches.find((w) => w.coverage && !w.needs_relink)?.coverage)
+const needsProvider = computed(() => !!manga.value?.new_provider || !!detail.data.value?.watches.some((w) => w.needs_relink && w.relink_kind === 'provider'))
+
 // watch a source
 function watchSource(provider: string, mangaID: string) {
   action.run(() => ok(client.POST('/v1/watches', { body: { provider, manga_id: mangaID } })), (w) => `Watching ${w.title}`).then(() => detail.load())
@@ -151,6 +157,8 @@ function watchSource(provider: string, mangaID: string) {
           <span v-if="detail.data.value.missing" class="badge text-bg-danger">folder missing</span>
           <span v-if="!detail.data.value.marker && !detail.data.value.missing" class="badge text-bg-warning">no marker</span>
           <span v-if="manga.watched" class="badge text-bg-primary">watched</span>
+          <span v-if="manga.hold" class="badge text-bg-secondary" data-test="hold-badge">on hold: {{ manga.hold }}</span>
+          <span v-if="needsProvider" class="badge text-bg-warning" :title="manga.new_provider">needs a new provider</span>
           <MetaIDs :ids="manga.metadata_ids" />
         </div>
         <div class="d-flex flex-wrap gap-2">
@@ -158,6 +166,7 @@ function watchSource(provider: string, mangaID: string) {
           <button class="btn btn-sm btn-outline-primary" @click="openLinks">Links</button>
           <a v-if="sorted.length" class="btn btn-sm btn-outline-secondary" :href="mangaZipURL(manga.id)" title="Every downloaded chapter in one zip"><i class="bi bi-file-earmark-zip" /> Zip</a>
           <button class="btn btn-sm btn-outline-primary" @click="moveOpen = true">Move</button>
+          <button class="btn btn-sm btn-outline-secondary" data-test="hold" @click="holdOpen = true">Hold…</button>
           <button class="btn btn-sm btn-outline-primary" data-test="merge" @click="mergeOpen = true">Merge</button>
           <button class="btn btn-sm btn-outline-primary" @click="rename">Rename</button>
           <button v-if="!detail.data.value.marker && !detail.data.value.missing" class="btn btn-sm btn-outline-primary" @click="mark">Mark</button>
@@ -219,7 +228,9 @@ function watchSource(provider: string, mangaID: string) {
         <ul class="list-group mb-3">
           <li v-for="w in detail.data.value.watches" :key="w.id" class="list-group-item">
             <RouterLink :to="{ name: 'watch', params: { id: w.id } }">{{ w.title }}</RouterLink>
-            <span class="small text-secondary"> · {{ w.provider }} · {{ w.enabled ? 'enabled' : 'paused' }}</span>
+            <span class="small text-secondary"> · {{ w.provider }} · {{ w.hold ? `on hold: ${w.hold}` : w.enabled ? 'enabled' : 'paused' }}</span>
+            <span v-if="w.needs_relink" class="badge text-bg-warning ms-1">{{ w.relink_kind === 'provider' ? 'needs a new provider' : 'needs a re-link' }}</span>
+            <div v-if="w.coverage && !w.needs_relink" class="small text-warning">another provider? {{ w.coverage }}</div>
           </li>
           <li v-if="!detail.data.value.watches.length" class="list-group-item text-secondary small">Not watched.</li>
         </ul>
@@ -233,6 +244,18 @@ function watchSource(provider: string, mangaID: string) {
       </div>
     </div>
   </template>
+
+  <HoldDialog
+    :open="holdOpen"
+    :title="manga?.title ?? ''"
+    :manga="id"
+    :hold="manga?.hold"
+    :provider="needsProvider"
+    :status="manga?.status"
+    :coverage="watchCoverage"
+    @close="holdOpen = false"
+    @done="detail.load()"
+  />
 
   <FormModal title="Links" :open="linksOpen" submit-text="Plan" @close="linksOpen = false" @submit="planLinks">
     <div v-for="(_, k) in links" :key="k" class="mb-2">

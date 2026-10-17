@@ -32,8 +32,8 @@ type detailsState struct {
 	size    base.Size
 	now     func() time.Time
 
-	open, edit, pause, refresh, library, history, live, relink key.Binding
-	remove                                                     *runRemover
+	open, edit, pause, refresh, library, history, live, relink, hold key.Binding
+	remove                                                           *runRemover
 }
 
 type detailsMsg struct {
@@ -58,6 +58,7 @@ func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState 
 		history: base.KeyProviderHistory,
 		live:    base.KeyLiveLog,
 		relink:  base.KeyRelink,
+		hold:    base.KeyHold,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "check", "checks", []*runItem{}, func(i *runItem) _list.DefaultItem { return i }), s.keyMap)
 	s.remove = newRunRemover(&s.Screen)
@@ -66,7 +67,7 @@ func newDetailsState(m watch.Manager, w watch.Watch, backoff int) *detailsState 
 
 func (s *detailsState) keyMap() help.KeyMap {
 	short := []key.Binding{s.open, s.live, s.edit, s.pause, s.library, s.history}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, s.relink, s.refresh, s.remove.key)}}
+	return util.KeyMap{Short: short, Full: [][]key.Binding{append(short, s.relink, s.hold, s.refresh, s.remove.key)}}
 }
 
 func (s *detailsState) Key() string       { return fmt.Sprintf("watch/%d", s.w.ID) }
@@ -169,7 +170,15 @@ func (s *detailsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		case key.Matches(msg, s.relink):
 			return func() tea.Msg { return newRelinkState(m, w) }
 		case key.Matches(msg, s.pause):
+			if w.Hold != "" {
+				return base.Notify(fmt.Sprintf("%s is %s: %s clears it", w.Title, markLabel(w.Hold), s.hold.Help().Key))
+			}
 			return pauseCmd(m, w)
+		case key.Matches(msg, s.hold):
+			AskHold(s.Confirm, s.View(), WatchHoldTarget(w), func(opts watch.HoldOptions) tea.Cmd {
+				return holdCmd(m, opts, w.Title)
+			})
+			return nil
 		case key.Matches(msg, s.open):
 			if i, ok := s.List.SelectedItem().(*runItem); ok {
 				return showRun(i.r)

@@ -89,7 +89,15 @@ func (s *listState) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.Cmd
 		s.spinning = false
 		return tea.Batch(checkProviderCmd(ctx, m, w.Provider, s.Key()), s.tick(pollChecking), s.spin()), true
 	case key.Matches(msg, s.keys.pause):
+		if w.Hold != "" {
+			return base.Notify(fmt.Sprintf("%s is %s: %s clears it", w.Title, markLabel(w.Hold), s.keys.hold.Help().Key)), true
+		}
 		return pauseCmd(m, w), true
+	case key.Matches(msg, s.keys.hold):
+		AskHold(s.Confirm, s.View(), WatchHoldTarget(w), func(opts watch.HoldOptions) tea.Cmd {
+			return holdCmd(m, opts, w.Title)
+		})
+		return nil, true
 	case key.Matches(msg, s.keys.pauseProvider):
 		return pauseProviderCmd(m, w), true
 	case key.Matches(msg, s.keys.delete):
@@ -119,6 +127,15 @@ func pauseCmd(m watch.Manager, w watch.Watch) tea.Cmd {
 	}
 }
 
+// holdCmd marks the watch (or its library manga).
+func holdCmd(m watch.Manager, opts watch.HoldOptions, title string) tea.Cmd {
+	return func() tea.Msg {
+		return actionMsg{label: HoldLabel(opts, title), do: func(ctx context.Context) (string, error) {
+			return hold(ctx, m, opts, title)
+		}}
+	}
+}
+
 // pauseProviderCmd pauses every watch of w's provider, or resumes them when w is paused
 // (e.g. while the site is broken).
 func pauseProviderCmd(m watch.Manager, w watch.Watch) tea.Cmd {
@@ -135,7 +152,7 @@ func pauseProviderCmd(m watch.Manager, w watch.Watch) tea.Cmd {
 			}
 			n := 0
 			for _, other := range all {
-				if other.Provider != w.Provider || other.Enabled == resume {
+				if other.Provider != w.Provider || other.Enabled == resume || resume && other.Hold != "" {
 					continue
 				}
 				if _, err := m.SetEnabled(ctx, other.ID, resume); err != nil {

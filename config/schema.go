@@ -186,6 +186,8 @@ type configWatch struct {
 	ParallelProviders *entry[int64, int]
 	Backoff           *entry[int64, int]
 	Notify            *entry[string, string]
+	CoverageMin       *entry[int64, int]
+	CoverageExempt    *entry[string, []string]
 }
 
 type configLog struct {

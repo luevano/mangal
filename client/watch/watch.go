@@ -100,12 +100,15 @@ type Watch struct {
 	// Status is the publication status of its library manga (storage.Manga.Status), empty
 	// when unknown.
 	Status string `json:"status,omitempty"`
+	// Hold is its hold mark (storage.HoldHiatus, HoldEnded): its library manga's, else its
+	// own; empty when it isn't on hold. A watch on hold is paused.
+	Hold string `json:"hold,omitempty"`
 }
 
-// Scheduled is true when the scheduler checks it: enabled, its provider installed, no
-// re-link needed, no library issue.
+// Scheduled is true when the scheduler checks it: enabled, not on hold, its provider
+// installed, no re-link needed, no library issue.
 func (w Watch) Scheduled() bool {
-	return w.Enabled && !w.ProviderMissing && !w.NeedsRelink && w.LibraryIssue == ""
+	return w.Enabled && w.Hold == "" && !w.ProviderMissing && !w.NeedsRelink && w.LibraryIssue == ""
 }
 
 // LibraryProblem is why it has no library manga: its issue, else its note; empty when
@@ -173,6 +176,10 @@ type Options struct {
 	ProviderDirs bool
 	// LockStale is when a check lock without a heartbeat is taken over.
 	LockStale time.Duration
+	// CoverageMin is the share (0-1) of the library's chapters a provider must have not to
+	// be suggested another (Coverage); CoverageExempt are the providers never suggested one.
+	CoverageMin    float64
+	CoverageExempt []string
 }
 
 // DefaultSchedule is watch.schedule's default: every 4 hours on the hour.
@@ -208,6 +215,8 @@ func ConfigOptions() Options {
 		Notify:            config.Watch.Notify.Get(),
 		ProviderDirs:      config.Download.Provider.CreateDir.Get(),
 		LockStale:         10 * time.Minute,
+		CoverageMin:       float64(config.Watch.CoverageMin.Get()) / 100,
+		CoverageExempt:    config.Watch.CoverageExempt.Get(),
 	}
 }
 
@@ -672,9 +681,10 @@ func (s *Service) completeWith(w storage.Watch, since time.Time, view libraryVie
 		}
 	}
 	full.fillBindings(bindings)
+	full.Hold = w.Hold
 	for _, m := range view.mangas {
 		if m.ID == libraryManga {
-			full.Status = m.Status
+			full.Status, full.Hold = m.Status, cmp.Or(m.Hold, w.Hold)
 		}
 	}
 	last, err := s.lastDownloaded(w, libraryManga)
@@ -794,8 +804,18 @@ func (s *Service) RemoveWatches(ctx context.Context, ids []int64) (string, error
 	return s.Operation("unwatch", summary, do)
 }
 
-// SetEnabled pauses (false) or resumes the watch.
+// SetEnabled pauses (false) or resumes the watch. A watch on hold isn't resumed
+// (ErrHeld): clearing its mark does it (Hold).
 func (s *Service) SetEnabled(ctx context.Context, id int64, enabled bool) (Watch, error) {
+	if enabled {
+		w, err := s.Get(ctx, id)
+		if err != nil {
+			return Watch{}, err
+		}
+		if w.Hold != "" {
+			return Watch{}, fmt.Errorf("watch %d is %w (%s): clearing the mark resumes it (mangal watch hold %d --clear)", id, ErrHeld, w.Hold, id)
+		}
+	}
 	return s.update(id, func(w *storage.Watch) {
 		if enabled && !w.Enabled {
 			w.Resumed = s.now()

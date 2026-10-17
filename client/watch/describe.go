@@ -53,6 +53,9 @@ func outcome(r Result, dryRun bool) string {
 	if len(r.Skipped) > 0 {
 		outcome += ", skipped " + FormatNumbers(r.Skipped) + " (skip list)"
 	}
+	if r.Coverage != "" {
+		outcome += "; another provider? " + r.Coverage + heldBack(r.HeldBack)
+	}
 	if r.Error != "" {
 		outcome += ", ERROR " + r.Error
 	}
