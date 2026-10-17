@@ -783,7 +783,11 @@ func plural(n int, what string) string {
 	if n == 1 {
 		return "1 " + what
 	}
-	return fmt.Sprintf("%d %ss", n, what)
+	suffix := "s"
+	if strings.HasSuffix(what, "ch") || strings.HasSuffix(what, "sh") || strings.HasSuffix(what, "s") || strings.HasSuffix(what, "x") {
+		suffix = "es"
+	}
+	return fmt.Sprintf("%d %s%s", n, what, suffix)
 }
 
 // G3: chapters the last check failed to download, retried by the next one.
