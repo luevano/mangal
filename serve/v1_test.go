@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/web/apiv1"
 	"github.com/spf13/afero"
 )
@@ -270,89 +268,6 @@ func TestV1Events(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("no event")
-	}
-}
-
-// TestV1Scopes: the loopback's scopes without a token, a named token's, a wrong token,
-// serve.auth none.
-func TestV1Scopes(t *testing.T) {
-	s := newTestServer(t, "s3cret")
-	s.api.Auth.LoopbackScopes = []string{ScopeRead, ScopeWatch}
-	s.api.Auth.Named = func() ([]cache.ServeTokenEntry, error) {
-		return []cache.ServeTokenEntry{
-			{Name: "claude", Hash: HashToken("r3ad"), Scopes: []string{ScopeRead}},
-			{Name: "phone", Hash: HashToken("pr0g"), Scopes: []string{ScopeRead, ScopeProgress}},
-		}, nil
-	}
-	s.api.Auth.Saved = func() (string, error) { return "sav3d", nil }
-	h := s.handler(t)
-	do := func(method, path, body, remote, token string) (int, ErrorResponse) {
-		req := httptest.NewRequest(method, path, strings.NewReader(body))
-		req.Host, req.RemoteAddr = "127.0.0.1:6977", remote
-		if body != "" {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		if token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		var e ErrorResponse
-		_ = json.Unmarshal(rec.Body.Bytes(), &e)
-		return rec.Code, e
-	}
-	const local, remote = "127.0.0.1:1234", "192.0.2.1:1234"
-	for _, tc := range []struct {
-		method, path, body, from, token string
-		want                            int
-	}{
-		{"GET", "/api/v1/watches", "", local, "", http.StatusOK},
-		{"GET", "/api/v1/watches", "", remote, "", http.StatusUnauthorized},
-		{"GET", "/api/v1/watches", "", remote, "nope", http.StatusUnauthorized},
-		{"GET", "/api/v1/watches", "", remote, "r3ad", http.StatusOK},
-		{"GET", "/api/v1/watches", "", remote, "s3cret", http.StatusOK},
-		{"GET", "/api/v1/watches", "", remote, "sav3d", http.StatusOK},
-		// a plan is a read
-		{"POST", "/api/v1/history/clear", `{}`, remote, "r3ad", http.StatusOK},
-		{"POST", "/api/v1/history/clear?apply=1", `{"expect":"x"}`, remote, "r3ad", http.StatusForbidden},
-		{"POST", "/api/v1/history/clear?apply=1", `{"expect":"x"}`, local, "", http.StatusUnauthorized},
-		{"POST", "/api/v1/history/clear?apply=1", `{"expect":"x"}`, remote, "s3cret", http.StatusConflict},
-		// watch: the loopback has it, the read token not
-		{"POST", "/api/v1/check", `{"dry_run":true}`, local, "", http.StatusOK},
-		{"POST", "/api/check", `{"dry_run":true}`, remote, "r3ad", http.StatusForbidden},
-		{"POST", "/api/health/fix", `{"key":"bogus"}`, local, "", http.StatusUnauthorized},
-		// progress: this loopback hasn't it, the phone token has it (then a bad request) but not watch
-		{"POST", "/api/v1/reads", `{"provider":"fake","chapter":2}`, local, "", http.StatusUnauthorized},
-		{"POST", "/api/v1/reads", `{"provider":"fake","chapter":2}`, remote, "pr0g", http.StatusBadRequest},
-		{"POST", "/api/v1/check", `{"dry_run":true}`, remote, "pr0g", http.StatusForbidden},
-	} {
-		code, e := do(tc.method, tc.path, tc.body, tc.from, tc.token)
-		if code != tc.want {
-			t.Errorf("%s %s from %s token %q: %d %+v, want %d", tc.method, tc.path, tc.from, tc.token, code, e, tc.want)
-		}
-	}
-	// through a proxy (forwarding headers): never the loopback's scopes
-	req := httptest.NewRequest("GET", "/api/v1/watches", nil)
-	req.Host, req.RemoteAddr = "127.0.0.1:6977", local
-	req.Header.Set("X-Forwarded-For", "203.0.113.9")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("proxied: %d", rec.Code)
-	}
-	// a trusted proxy's local client is local
-	proxies, _ := ParseProxies([]string{"127.0.0.1"})
-	s.api.Auth.TrustedProxies = proxies
-	req.Header.Set("X-Forwarded-For", "127.0.0.1")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("trusted proxy, local client: %d", rec.Code)
-	}
-
-	s.api.Auth.Mode = AuthNone
-	if code, e := do("POST", "/api/v1/history/clear?apply=1", `{"expect":"x"}`, remote, ""); code != http.StatusConflict {
-		t.Errorf("auth none: %d %+v", code, e)
 	}
 }
 

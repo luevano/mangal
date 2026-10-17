@@ -16,7 +16,7 @@ func TestWriteListsCommentedDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := readConfig(t)
-	for _, want := range []string{"[serve]\n", "# web = false\n", "# parallelism = 4\n", "[notification.discord]\n"} {
+	for _, want := range []string{"[serve]\n", "# web = true\n", "# parallelism = 4\n", "[notification.discord]\n"} {
 		if !strings.Contains(first, want) {
 			t.Errorf("no %q in:\n%s", want, first)
 		}
@@ -74,7 +74,7 @@ func TestWriteRefreshesCommentedDefaults(t *testing.T) {
 
 func TestWriteKeyCommentedDefaults(t *testing.T) {
 	reset(t)
-	writeConfig(t, "[providers]\n# parallelism = 4\nmangadex.language = 'en'\n\n[serve]\nweb = false # web too\n")
+	writeConfig(t, "[providers]\n# parallelism = 4\nmangadex.language = 'en'\n\n[serve]\nweb = true # web too\n")
 	if err := WriteKey(Providers.Parallelism.Key, "8"); err != nil {
 		t.Fatal(err)
 	}
@@ -85,16 +85,16 @@ func TestWriteKeyCommentedDefaults(t *testing.T) {
 	if err := WriteKey(Providers.Parallelism.Key, "4"); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteKey(Serve.Web.Key, false); err != nil {
+	if err := WriteKey(Serve.Web.Key, true); err != nil {
 		t.Fatal(err)
 	}
 	got := readConfig(t)
-	for _, want := range []string{"[providers]\n# parallelism = 4\n", "# web = false # web too\n"} {
+	for _, want := range []string{"[providers]\n# parallelism = 4\n", "# web = true # web too\n"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("no %q in:\n%s", want, got)
 		}
 	}
-	if Providers.Parallelism.Get() != 4 || Serve.Web.Get() {
+	if Providers.Parallelism.Get() != 4 || !Serve.Web.Get() {
 		t.Error("values not set")
 	}
 }

@@ -15,19 +15,23 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/labstack/echo/v5"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/web"
 )
 
-// The scopes of the API's tokens: read is every GET and the events, watch changes the
-// watches, progress records the reader's reads, write the files, the library, the
-// config, the downloads.
+// The permissions of the users and the scopes of the API tokens: read is every GET and
+// the events, watch changes the watches, progress records the reader's reads, write the
+// files, the library, the config, the downloads.
 const (
 	ScopeRead     = "read"
 	ScopeWatch    = "watch"
 	ScopeProgress = "progress"
 	ScopeWrite    = "write"
+	// ScopePublic is an operation anyone may call (the login).
+	ScopePublic = "public"
 )
 
 // Scopes are every scope.
@@ -35,7 +39,7 @@ var Scopes = []string{ScopeRead, ScopeWatch, ScopeProgress, ScopeWrite}
 
 // The auth modes (serve.auth).
 const (
-	AuthToken = "token"
+	AuthLogin = "login"
 	AuthNone  = "none"
 )
 
@@ -48,7 +52,7 @@ func NormalizeScopes(scopes []string) ([]string, error) {
 			continue
 		}
 		if !slices.Contains(Scopes, s) {
-			return nil, fmt.Errorf("%q isn't a scope (%s)", s, strings.Join(Scopes, ", "))
+			return nil, fmt.Errorf("%q isn't a permission (%s)", s, strings.Join(Scopes, ", "))
 		}
 		out = append(out, s)
 	}
@@ -64,13 +68,13 @@ func NormalizeScopes(scopes []string) ([]string, error) {
 	return sorted, nil
 }
 
-// HashToken is how a named token is kept: the hex sha256.
+// HashToken is how an API token is kept: the hex sha256.
 func HashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }
 
-// NewToken is a random token.
+// NewToken is a random token (API tokens, the local key).
 func NewToken() (string, error) {
 	b := make([]byte, 24)
 	if _, err := rand.Read(b); err != nil {
@@ -79,27 +83,35 @@ func NewToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// identity is who a request is: a token's name and scopes, or the loopback's scopes.
+// The kinds of identity.
+const (
+	KindUser  = "user"
+	KindToken = "token"
+	// KindLocal is mangal on the server's config (the CLI, the TUI): the local key of the
+	// discovery file.
+	KindLocal = "local"
+	KindNone  = "none"
+)
+
+// identity is who a request is: a user, an API token, the server's own CLI, or anyone
+// with serve.auth none.
 type identity struct {
-	// Name is the token's ("config", "default" or its name), "loopback" without a token
-	// from the same machine, "none" with serve.auth = none.
 	Name   string
+	Kind   string
 	Scopes []string
-	// Anonymous is a request without a token.
-	Anonymous bool
 }
 
 func (id identity) has(scope string) bool { return slices.Contains(id.Scopes, scope) }
 
 // String says how the request is authorized, as the status has it.
 func (id identity) String() string {
-	switch {
-	case id.Name == AuthNone:
+	switch id.Kind {
+	case KindNone:
 		return "none (serve.auth)"
-	case id.Anonymous:
-		return "loopback (serve.loopback_scopes)"
+	case KindLocal:
+		return "local (this config's mangal)"
 	}
-	return "token " + id.Name
+	return id.Kind + " " + id.Name
 }
 
 type identityKey struct{}
@@ -113,122 +125,213 @@ func identityOf(ctx context.Context) (identity, bool) {
 	return id, ok
 }
 
+// UserStore is where the users are (storage.Users).
+type UserStore interface {
+	Get(name string) (storage.User, error)
+	LoggedIn(name string, at time.Time) error
+}
+
 // Auth is how the server authenticates requests.
 type Auth struct {
-	// Mode is AuthToken or AuthNone.
+	// Mode is AuthLogin or AuthNone.
 	Mode string
-	// Token has every scope (serve.token), TokenName says where it's from.
-	Token, TokenName string
-	// Saved is the token saved with `mangal serve token` (every scope), re-read with the
-	// named ones so one saved while the server runs works; nil for none.
-	Saved func() (string, error)
-	// LoopbackScopes are the scopes of a request from the same machine without a token.
-	LoopbackScopes []string
-	// Named are the named tokens (`mangal serve token --name`), re-read every few
-	// seconds so a revoked one stops working; nil for none.
-	Named func() ([]cache.ServeTokenEntry, error)
-	// TrustedProxies are the reverse proxies whose X-Forwarded-For is believed.
+	// Users log in with their password (the login page, basic auth), nil for none.
+	Users UserStore
+	// Sessions are the logins' sessions (the cookie), nil without Users.
+	Sessions *scs.SessionManager
+	// Tokens are the API tokens (`mangal serve token`), re-read every few seconds so a
+	// revoked one stops working; nil for none.
+	Tokens func() ([]cache.ServeTokenEntry, error)
+	// LocalKey is the key of the discovery file: mangal on this config (the CLI, the TUI)
+	// sends it, it has every scope.
+	LocalKey string
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For is the client's address
+	// (the logs, the login rate limit).
 	TrustedProxies []*net.IPNet
+	// SecureCookie sets the session cookie's Secure flag for every request, else only for
+	// HTTPS ones (TLS, or X-Forwarded-Proto https).
+	SecureCookie bool
 
 	mu       sync.Mutex
-	saved    string
-	named    []cache.ServeTokenEntry
-	namedAt  time.Time
-	namedErr error
+	tokens   []cache.ServeTokenEntry
+	tokensAt time.Time
+	users    map[string]cachedUser
+	basic    map[string]cachedBasic
+	limits   *limiter
 
 	extractOnce sync.Once
 	extract     echo.IPExtractor
 }
 
-// namedEvery is how long the named tokens are kept before they're read again.
-const namedEvery = 5 * time.Second
+// cachedUser is a user as read at, re-read after usersEvery (another process changed it).
+type cachedUser struct {
+	user storage.User
+	err  error
+	at   time.Time
+}
 
-// tokens are the saved token and the named ones, read again every few seconds.
-func (a *Auth) tokens() (string, []cache.ServeTokenEntry, error) {
+// cachedBasic is a basic auth password that matched the user's generation, so a reader
+// app's every request doesn't hash it again.
+type cachedBasic struct {
+	generation int64
+	until      time.Time
+}
+
+const (
+	// tokensEvery and usersEvery are how long the tokens and users are kept before they're
+	// read again.
+	tokensEvery = 5 * time.Second
+	usersEvery  = 5 * time.Second
+	// basicFor is how long a basic auth password is believed without hashing it again.
+	basicFor = 10 * time.Minute
+)
+
+func (a *Auth) apiTokens() ([]cache.ServeTokenEntry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.namedAt.IsZero() || time.Since(a.namedAt) > namedEvery {
-		a.saved, a.named, a.namedErr = "", nil, nil
-		if a.Saved != nil {
-			a.saved, a.namedErr = a.Saved()
-		}
-		if a.Named != nil && a.namedErr == nil {
-			a.named, a.namedErr = a.Named()
-		}
-		a.namedAt = time.Now()
+	if a.Tokens == nil {
+		return nil, nil
 	}
-	return a.saved, a.named, a.namedErr
-}
-
-// HasTokens is true when some token is accepted.
-func (a *Auth) HasTokens() bool {
-	saved, named, _ := a.tokens()
-	return a.Token != "" || saved != "" || len(named) != 0
-}
-
-// errUnauthorized is a missing or wrong token.
-var errUnauthorized = errors.New("missing or wrong token (serve.token, mangal serve token)")
-
-// identify is who the request is, errUnauthorized when it has no (right) token and isn't
-// let in without one.
-func (a *Auth) identify(r *http.Request) (identity, error) {
-	if a.Mode == AuthNone {
-		return identity{Name: AuthNone, Scopes: Scopes}, nil
-	}
-	token, given := requestToken(r)
-	if given {
-		if a.Token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(a.Token)) == 1 {
-			return identity{Name: a.TokenName, Scopes: Scopes}, nil
-		}
-		saved, named, err := a.tokens()
+	if a.tokensAt.IsZero() || time.Since(a.tokensAt) > tokensEvery {
+		tokens, err := a.Tokens()
 		if err != nil {
-			return identity{}, err
+			return nil, err
 		}
-		if saved != "" && subtle.ConstantTimeCompare([]byte(token), []byte(saved)) == 1 {
-			return identity{Name: "default", Scopes: Scopes}, nil
+		a.tokens, a.tokensAt = tokens, time.Now()
+	}
+	return a.tokens, nil
+}
+
+// user is the user, storage.ErrUserNotFound when there's none.
+func (a *Auth) user(name string) (storage.User, error) {
+	if a.Users == nil {
+		return storage.User{}, storage.ErrUserNotFound
+	}
+	key := strings.ToLower(name)
+	a.mu.Lock()
+	c, ok := a.users[key]
+	a.mu.Unlock()
+	if ok && time.Since(c.at) < usersEvery {
+		return c.user, c.err
+	}
+	u, err := a.Users.Get(name)
+	if err != nil && !errors.Is(err, storage.ErrUserNotFound) {
+		return storage.User{}, err
+	}
+	a.mu.Lock()
+	if a.users == nil {
+		a.users = map[string]cachedUser{}
+	}
+	a.users[key] = cachedUser{user: u, err: err, at: time.Now()}
+	a.mu.Unlock()
+	return u, err
+}
+
+// errUnauthorized is a request that isn't logged in (or a wrong password or token).
+var errUnauthorized = errors.New("not logged in")
+
+// identify is who the request is, errUnauthorized when nobody (or a wrong token or
+// password); the context has the session.
+func (a *Auth) identify(r *http.Request) (identity, context.Context, error) {
+	ctx := r.Context()
+	if a.Mode == AuthNone {
+		return identity{Name: AuthNone, Kind: KindNone, Scopes: Scopes}, ctx, nil
+	}
+	if h := r.Header.Get("Authorization"); h != "" {
+		if token, ok := strings.CutPrefix(h, "Bearer "); ok {
+			id, err := a.bearer(r, token)
+			return id, ctx, err
 		}
-		hash := HashToken(token)
-		for _, t := range named {
-			if subtle.ConstantTimeCompare([]byte(hash), []byte(t.Hash)) == 1 {
-				scopes, _ := NormalizeScopes(t.Scopes)
-				return identity{Name: t.Name, Scopes: scopes}, nil
+		if name, password, ok := r.BasicAuth(); ok {
+			id, err := a.password(r, name, password)
+			return id, ctx, err
+		}
+	}
+	if a.Sessions != nil {
+		if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
+			sctx, err := a.Sessions.Load(ctx, c.Value)
+			if err != nil {
+				return identity{}, ctx, err
+			}
+			if id, ok := a.session(sctx); ok {
+				return id, sctx, nil
 			}
 		}
-		web.LogRefused(r, "wrong token")
-		return identity{}, errUnauthorized
+		// a new session can be started on it (the login)
+		sctx, err := a.Sessions.Load(ctx, "")
+		if err != nil {
+			return identity{}, ctx, err
+		}
+		ctx = sctx
 	}
-	if len(a.LoopbackScopes) != 0 && a.local(r) {
-		return identity{Name: "loopback", Scopes: a.LoopbackScopes, Anonymous: true}, nil
-	}
-	web.LogRefused(r, "missing token")
-	return identity{}, errUnauthorized
+	return identity{}, ctx, errUnauthorized
 }
 
-// requestToken is the token as a bearer token or as the password of basic auth (the web
-// UI), given is false without one.
-func requestToken(r *http.Request) (token string, given bool) {
-	if h := r.Header.Get("Authorization"); h != "" {
-		if t, ok := strings.CutPrefix(h, "Bearer "); ok {
-			return t, true
+// bearer is the local key or an API token.
+func (a *Auth) bearer(r *http.Request, token string) (identity, error) {
+	if a.LocalKey != "" && subtle.ConstantTimeCompare([]byte(token), []byte(a.LocalKey)) == 1 {
+		return identity{Name: KindLocal, Kind: KindLocal, Scopes: Scopes}, nil
+	}
+	tokens, err := a.apiTokens()
+	if err != nil {
+		return identity{}, err
+	}
+	hash := HashToken(token)
+	for _, t := range tokens {
+		if subtle.ConstantTimeCompare([]byte(hash), []byte(t.Hash)) == 1 {
+			scopes, _ := NormalizeScopes(t.Scopes)
+			return identity{Name: t.Name, Kind: KindToken, Scopes: scopes}, nil
 		}
 	}
-	if _, password, ok := r.BasicAuth(); ok {
-		return password, true
-	}
-	return "", false
+	web.LogRefused(r, "wrong API token")
+	return identity{}, fmt.Errorf("%w: wrong API token", errUnauthorized)
 }
 
-// forwardHeaders are the headers of a request through a proxy.
-var forwardHeaders = []string{"X-Forwarded-For", "Forwarded", "X-Real-Ip", "X-Forwarded-Host"}
-
-// local is true for a request from the same machine: from a loopback address for a
-// loopback host (localhost, 127.0.0.1), not through a proxy, or through a trusted proxy
-// for a client on a loopback address.
-func (a *Auth) local(r *http.Request) bool {
-	if !web.IsLoopbackHost(r.Host) {
-		// a reverse proxy passing its public name
-		return false
+// password is the user of a basic auth request (OPDS readers, scripts).
+func (a *Auth) password(r *http.Request, name, password string) (identity, error) {
+	key := HashToken(name + "\x00" + password)
+	u, err := a.user(name)
+	if err == nil {
+		a.mu.Lock()
+		c, ok := a.basic[key]
+		a.mu.Unlock()
+		if ok && c.generation == u.Generation && time.Now().Before(c.until) {
+			return userIdentity(u), nil
+		}
 	}
+	u, err = a.checkPassword(r, name, password)
+	if err != nil {
+		return identity{}, err
+	}
+	a.mu.Lock()
+	if a.basic == nil {
+		a.basic = map[string]cachedBasic{}
+	}
+	a.basic[key] = cachedBasic{generation: u.Generation, until: time.Now().Add(basicFor)}
+	a.mu.Unlock()
+	return userIdentity(u), nil
+}
+
+func userIdentity(u storage.User) identity {
+	scopes, _ := NormalizeScopes(u.Perms)
+	return identity{Name: u.Name, Kind: KindUser, Scopes: scopes}
+}
+
+// session is the user of the session, false when it has none (or an ended one).
+func (a *Auth) session(ctx context.Context) (identity, bool) {
+	name := a.Sessions.GetString(ctx, sessionUser)
+	if name == "" {
+		return identity{}, false
+	}
+	u, err := a.user(name)
+	if err != nil || u.Generation != a.Sessions.GetInt64(ctx, sessionGeneration) {
+		return identity{}, false
+	}
+	return userIdentity(u), true
+}
+
+// clientIP is the request's client: the X-Forwarded-For of a trusted proxy, else the peer.
+func (a *Auth) clientIP(r *http.Request) string {
 	if len(a.TrustedProxies) != 0 && web.FromProxy(r, a.TrustedProxies) {
 		a.extractOnce.Do(func() {
 			opts := []echo.TrustOption{echo.TrustLoopback(false), echo.TrustLinkLocal(false), echo.TrustPrivateNet(false)}
@@ -237,20 +340,13 @@ func (a *Auth) local(r *http.Request) bool {
 			}
 			a.extract = echo.ExtractIPFromXFFHeader(opts...)
 		})
-		ip := net.ParseIP(a.extract(r))
-		return ip != nil && ip.IsLoopback()
-	}
-	for _, h := range forwardHeaders {
-		if r.Header.Get(h) != "" {
-			return false
-		}
+		return a.extract(r)
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return false
+		return r.RemoteAddr
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return host
 }
 
 // ParseProxies are the addresses and CIDRs of serve.trusted_proxies.

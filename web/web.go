@@ -85,6 +85,9 @@ type GuardOptions struct {
 	AllowedOrigins []string
 	// TrustedProxies are the proxies whose X-Forwarded-Host is the host.
 	TrustedProxies []*net.IPNet
+	// AnyHost answers every host: every request needs a login, so DNS rebinding gets
+	// nothing (a rebinding page has no session).
+	AnyHost bool
 }
 
 // Guard refuses the requests the server shouldn't answer: for another host (checkHost)
@@ -96,7 +99,7 @@ func Guard(opts GuardOptions) func(http.Handler) http.Handler {
 	cop := http.NewCrossOriginProtection()
 	for _, origin := range opts.AllowedOrigins {
 		if err := cop.AddTrustedOrigin(origin); err != nil {
-			log.Warn("serve.allowed_origins: %s", err)
+			log.Warn("allowed origin: %s", err)
 		}
 	}
 	cop.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +161,7 @@ func LogRefused(r *http.Request, reason string) {
 func checkHost(opts GuardOptions, next http.Handler) http.Handler {
 	tcp, ok := opts.Addr.(*net.TCPAddr)
 	loopback := ok && tcp.IP.IsLoopback()
-	if !loopback && len(opts.AllowedHosts) == 0 {
+	if opts.AnyHost || (!loopback && len(opts.AllowedHosts) == 0) {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

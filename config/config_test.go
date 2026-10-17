@@ -354,7 +354,7 @@ func TestFileModes(t *testing.T) {
 }
 
 func TestMasked(t *testing.T) {
-	if Masked(Serve.Token.Key, "s3cret") == "s3cret" || Masked(Serve.Token.Key, "") != "" || Masked(Icons.Key, "nerd") != "nerd" {
+	if Masked(Notification.Discord.WebhookURL.Key, "s3cret") == "s3cret" || Masked(Notification.Discord.WebhookURL.Key, "") != "" || Masked(Icons.Key, "nerd") != "nerd" {
 		t.Error("masked wrong")
 	}
 }

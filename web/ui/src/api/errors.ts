@@ -18,8 +18,9 @@ export class ApiError extends Error {
     this.confirm = body?.confirm
   }
 
-  // needsToken is a request refused for its scopes or a missing token: a token may help.
-  get needsToken(): boolean {
+  // needsLogin is a request refused for a missing login or the user's permissions: a
+  // login (as another user) may help.
+  get needsLogin(): boolean {
     return this.status === 401 || (this.status === 403 && this.code === 'forbidden')
   }
 }

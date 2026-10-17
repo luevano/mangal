@@ -24,7 +24,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/web"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 type fakeManga struct {
@@ -163,16 +163,27 @@ type testServer struct {
 	api *API
 	svc *watch.Service
 	src *fakeSource
+	// key is sent by the requests without credentials (as mangal on the same config does)
+	key string
 }
 
+// testLocalKey is the test servers' local key.
+const testLocalKey = "test-local-key"
+
+// newTestServer serves the API; with a token, it's an API token "config" with every
+// scope and the requests go as they are, else they get the local key.
 func newTestServer(t *testing.T, token string) *testServer {
 	t.Helper()
 	svc, src := newTestService(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	auth := &Auth{Mode: AuthToken, Token: token, TokenName: "config", LoopbackScopes: Scopes}
+	auth := &Auth{Mode: AuthLogin, LocalKey: testLocalKey, Users: storage.Users{DB: svc.Watches.DB}}
+	auth.Sessions = NewSessions(storage.Sessions{DB: svc.Watches.DB}, 0)
+	key := testLocalKey
 	if token != "" {
-		// as off loopback: the token is required
-		auth.LoopbackScopes = nil
+		key = ""
+		auth.Tokens = func() ([]cache.ServeTokenEntry, error) {
+			return []cache.ServeTokenEntry{{Name: "config", Hash: HashToken(token), Scopes: Scopes}}, nil
+		}
 	}
 	api := &API{
 		Manager: func() watch.Manager { return svc },
@@ -185,28 +196,41 @@ func newTestServer(t *testing.T, token string) *testServer {
 	}
 	go api.Events.forwardWatches(ctx, svc)
 	srv := httptest.NewUnstartedServer(nil)
-	app, err := api.NewApp(AppOptions{Guard: web.GuardOptions{Addr: srv.Listener.Addr()}})
+	app, err := api.NewApp(AppOptions{Guard: auth.guard(srv.Listener.Addr())})
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv.Config.Handler = app
+	srv.Config.Handler = withKey(key, app)
 	srv.Start()
 	t.Cleanup(func() {
 		cancel()
 		api.Wait()
 		srv.Close()
 	})
-	return &testServer{Server: srv, api: api, svc: svc, src: src}
+	return &testServer{Server: srv, api: api, svc: svc, src: src, key: key}
+}
+
+// withKey sends the key with the requests that have no credentials.
+func withKey(key string, h http.Handler) http.Handler {
+	if key == "" {
+		return h
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := r.Cookie(sessionCookie); r.Header.Get("Authorization") == "" && err != nil {
+			r.Header.Set("Authorization", "Bearer "+key)
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // handler is the server's app as served on 127.0.0.1:6977.
 func (s *testServer) handler(t *testing.T) http.Handler {
 	t.Helper()
-	app, err := s.api.NewApp(AppOptions{Guard: web.GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977}}})
+	app, err := s.api.NewApp(AppOptions{Guard: s.api.Auth.guard(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6977})})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return app
+	return withKey(s.key, app)
 }
 
 // call sends the request and decodes the answer into out (if not nil), returning the status.
@@ -222,6 +246,9 @@ func (s *testServer) call(t *testing.T, method, path string, body string, out an
 	}
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if s.key != "" {
+		req.Header.Set("Authorization", "Bearer "+s.key)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -398,37 +425,6 @@ func TestAPIToken(t *testing.T) {
 	}
 }
 
-// TestAuthWeb: with a token the web UI asks for it (basic auth), the API takes it both ways.
-func TestAuthWeb(t *testing.T) {
-	s := newTestServer(t, "s3cret")
-	mux := s.handler(t)
-	for _, tc := range []struct {
-		path, user, password string
-		want                 int
-	}{
-		{"/", "", "", http.StatusUnauthorized},
-		{"/api/image?url=http://10.0.0.1/", "", "", http.StatusUnauthorized},
-		{"/", "x", "nope", http.StatusUnauthorized},
-		// the web UI is off here
-		{"/", "x", "s3cret", http.StatusNotFound},
-		{"/api/watches", "", "s3cret", http.StatusOK},
-	} {
-		req := httptest.NewRequest("GET", tc.path, nil)
-		req.Host = "127.0.0.1:6977"
-		if tc.password != "" {
-			req.SetBasicAuth(tc.user, tc.password)
-		}
-		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, req)
-		if rec.Code != tc.want {
-			t.Errorf("%s %q: %d, want %d", tc.path, tc.password, rec.Code, tc.want)
-		}
-		if rec.Code == http.StatusUnauthorized && tc.path == "/" && !strings.HasPrefix(rec.Header().Get("WWW-Authenticate"), "Basic") {
-			t.Errorf("%s: challenge %q", tc.path, rec.Header().Get("WWW-Authenticate"))
-		}
-	}
-}
-
 // TestCheckWhileStopping: a check asked once the server waits for the checks is refused.
 func TestCheckWhileStopping(t *testing.T) {
 	s := newTestServer(t, "")
@@ -438,16 +434,24 @@ func TestCheckWhileStopping(t *testing.T) {
 	}
 }
 
+// TestHostCheck: with logins every host name is answered (a reverse proxy's), without
+// them (serve.auth none) only the loopback's on loopback (DNS rebinding).
 func TestHostCheck(t *testing.T) {
 	s := newTestServer(t, "")
-	h := s.handler(t)
-	for host, want := range map[string]int{"127.0.0.1:6977": http.StatusOK, "localhost:6977": http.StatusOK, "evil.example:6977": http.StatusMisdirectedRequest} {
-		req := httptest.NewRequest("GET", "/api/watches", nil)
-		req.Host, req.RemoteAddr = host, "127.0.0.1:1234"
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if rec.Code != want {
-			t.Errorf("%s: %d, want %d", host, rec.Code, want)
+	for _, mode := range []string{AuthLogin, AuthNone} {
+		s.api.Auth.Mode = mode
+		h := s.handler(t)
+		for host, want := range map[string]int{"127.0.0.1:6977": http.StatusOK, "localhost:6977": http.StatusOK, "mangal.example:6977": http.StatusOK} {
+			if mode == AuthNone && host == "mangal.example:6977" {
+				want = http.StatusMisdirectedRequest
+			}
+			req := httptest.NewRequest("GET", "/api/watches", nil)
+			req.Host, req.RemoteAddr = host, "127.0.0.1:1234"
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != want {
+				t.Errorf("%s %s: %d, want %d", mode, host, rec.Code, want)
+			}
 		}
 	}
 }
@@ -809,10 +813,8 @@ func TestRefusedLogged(t *testing.T) {
 		method, path, host, origin, contentType, auth string
 		want                                          string
 	}{
-		{"GET", "/api/watches", "evil.example:6977", "", "", "Bearer s3cret", `refused GET /api/watches from 192.0.2.1:1234: unknown host "evil.example:6977"`},
 		{"POST", "/api/check", "127.0.0.1:6977", "https://evil.example", "application/json", "Bearer s3cret", `refused POST /api/check from 192.0.2.1:1234: cross-origin request (Origin "https://evil.example")`},
-		{"GET", "/api/watches", "127.0.0.1:6977", "", "", "Bearer nope", "refused GET /api/watches from 192.0.2.1:1234: wrong token"},
-		{"GET", "/", "127.0.0.1:6977", "", "", "", "refused GET / from 192.0.2.1:1234: missing token"},
+		{"GET", "/api/watches", "127.0.0.1:6977", "", "", "Bearer nope", "refused GET /api/watches from 192.0.2.1:1234: wrong API token"},
 		{"POST", "/api/check", "127.0.0.1:6977", "", "text/plain", "Bearer s3cret", `refused POST /api/check from 192.0.2.1:1234: content type "text/plain", not JSON`},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`))

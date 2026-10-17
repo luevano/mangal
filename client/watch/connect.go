@@ -22,7 +22,6 @@ import (
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/afs"
-	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/proc"
 	"github.com/luevano/mangal/v5/util/tlsutil"
 )
@@ -36,6 +35,9 @@ type Discovery struct {
 	Version string    `json:"version"`
 	// Data is the data database the server uses.
 	Data string `json:"data"`
+	// Key is what mangal on the same config sends (Authorization: Bearer), every
+	// permission: the file is only readable by its user, as the data db.
+	Key string `json:"key,omitempty"`
 }
 
 // DataDB is the data database of the config in use.
@@ -82,9 +84,10 @@ func ReadDiscovery(file string) (Discovery, bool, error) {
 	return d, true, nil
 }
 
-// Find is the running server of the data database, nil when none answers. A discovery file
-// of a server that doesn't run anymore is removed.
-func Find(ctx context.Context, dataDB, token string) (*Remote, Discovery, error) {
+// Find is the running server of the data database, nil when none answers, authenticated
+// with the discovery file's key. A discovery file of a server that doesn't run anymore is
+// removed.
+func Find(ctx context.Context, dataDB string) (*Remote, Discovery, error) {
 	file := DiscoveryPath(dataDB)
 	d, found, err := ReadDiscovery(file)
 	if err != nil || !found {
@@ -94,7 +97,7 @@ func Find(ctx context.Context, dataDB, token string) (*Remote, Discovery, error)
 		_ = os.Remove(file)
 		return nil, d, nil
 	}
-	remote := NewRemote(d.Address, token)
+	remote := NewRemote(d.Address, d.Key)
 	if remote.Client, err = LocalClient(d.Address, remote.Client.Timeout); err != nil {
 		return nil, d, err
 	}
@@ -122,28 +125,11 @@ func LocalClient(address string, timeout time.Duration) (*http.Client, error) {
 	return tlsutil.PinnedClient(cert, timeout)
 }
 
-// Token is the token of the serve API: the saved one (mangal serve token), else serve.token.
-func Token() (string, error) {
-	token, err := cache.ServeToken()
-	if err != nil {
-		return "", fmt.Errorf("serve token: %w", err)
-	}
-	if token == "" {
-		token = config.Serve.Token.Get()
-	}
-	return token, nil
-}
-
 // Connect is the Manager the CLI and the TUI use: the running `mangal serve` of this
-// config's data database (found with its discovery file and serve.token) when there's
-// one, else the local Service (New) with the notifier (notify.Watches(), which this
-// package can't import).
+// config's data database (found with its discovery file) when there's one, else the local
+// Service (New) with the notifier (notify.Watches(), which this package can't import).
 func Connect(ctx context.Context, notifier Notifier) (Manager, error) {
-	token, err := Token()
-	if err != nil {
-		return nil, err
-	}
-	remote, _, err := Find(ctx, DataDB(), token)
+	remote, _, err := Find(ctx, DataDB())
 	if err != nil {
 		return nil, err
 	}

@@ -12,6 +12,30 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 )
 
+// Defines values for MeKind.
+const (
+	Local MeKind = "local"
+	None  MeKind = "none"
+	Token MeKind = "token"
+	User  MeKind = "user"
+)
+
+// Valid indicates whether the value is a known member of the MeKind enum.
+func (e MeKind) Valid() bool {
+	switch e {
+	case Local:
+		return true
+	case None:
+		return true
+	case Token:
+		return true
+	case User:
+		return true
+	default:
+		return false
+	}
+}
+
 // Account defines model for Account.
 type Account struct {
 	Checked  *time.Time `json:"checked,omitempty"`
@@ -532,6 +556,13 @@ type LogFile struct {
 	Size       int64     `json:"size"`
 }
 
+// LoginRequest defines model for LoginRequest.
+type LoginRequest struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+	Remember *bool  `json:"remember,omitempty"`
+}
+
 // Manga defines model for Manga.
 type Manga struct {
 	Banner *string `json:"banner,omitempty"`
@@ -555,6 +586,19 @@ type MarkRequest struct {
 	// Mangas none for every folder without a marker
 	Mangas *[]int64 `json:"mangas,omitempty"`
 }
+
+// Me defines model for Me.
+type Me struct {
+	// Kind a user, an API token, the server's own CLI and TUI (local), or serve.auth none
+	Kind MeKind `json:"kind"`
+
+	// Name the user's or the API token's name
+	Name   string   `json:"name"`
+	Scopes []string `json:"scopes"`
+}
+
+// MeKind a user, an API token, the server's own CLI and TUI (local), or serve.auth none
+type MeKind string
 
 // MergeRequest defines model for MergeRequest.
 type MergeRequest struct {
@@ -1265,6 +1309,9 @@ type ListStaleWatchesParams struct {
 	// Since a duration (90d by default)
 	Since *string `form:"since,omitempty" json:"since,omitempty"`
 }
+
+// LoginJSONRequestBody defines body for Login for application/json ContentType.
+type LoginJSONRequestBody = LoginRequest
 
 // SetBindingJSONRequestBody defines body for SetBinding for application/json ContentType.
 type SetBindingJSONRequestBody = BindRequest

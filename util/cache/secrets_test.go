@@ -131,7 +131,7 @@ func TestSecretErrorsWrapped(t *testing.T) {
 	if err := SetDiscordWebhook("https://discord.test/hook"); err == nil || !strings.Contains(err.Error(), "save the discord webhook: ") {
 		t.Errorf("save: %v", err)
 	}
-	if err := SetServeToken(""); err == nil || !strings.Contains(err.Error(), "remove the serve token: ") {
+	if err := SetServeTokens(nil); err == nil || !strings.Contains(err.Error(), "save the serve tokens: ") {
 		t.Errorf("remove: %v", err)
 	}
 	if _, err := MangaPlusSecret(); err == nil || !strings.Contains(err.Error(), "read the mangaplus secret: ") {

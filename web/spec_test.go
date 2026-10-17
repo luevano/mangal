@@ -20,11 +20,11 @@ func TestSpecOperations(t *testing.T) {
 		}
 		v1++
 		switch o.Scope {
-		case "read", "watch", "progress", "write":
+		case "read", "watch", "progress", "write", "public":
 		default:
 			t.Errorf("%s: scope %q", o.ID, o.Scope)
 		}
-		if o.Method == "GET" && o.Scope != "read" {
+		if o.Method == "GET" && o.Scope != "read" && o.Scope != "public" {
 			t.Errorf("%s: a GET with scope %s", o.ID, o.Scope)
 		}
 		if o.Plan && o.Method == "GET" {

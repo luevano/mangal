@@ -143,6 +143,9 @@ var Features = []Feature{
 		NotApplicable: map[Mode]string{ModeWeb: cliEnough, ModeAPI: cliEnough, ModeTUI: cliEnough, ModeScript: cliEnough}},
 	{Name: "paths", CLI: []string{"path"}, NotApplicable: map[Mode]string{ModeWeb: cliEnough, ModeAPI: cliEnough, ModeTUI: cliEnough, ModeScript: cliEnough}},
 	{Name: "formats", API: []string{"listFormats"}, CLI: []string{"formats"}, NotApplicable: map[Mode]string{ModeWeb: "downloads use download.format (the config)", ModeTUI: "the chapters' f popup lists them", ModeScript: cliEnough}},
+	{Name: "logins", Web: []string{"login"}, API: []string{"login", "logout", "getMe"},
+		CLI:           []string{"serve user add", "serve user passwd", "serve user perms", "serve user logout", "serve user rm", "serve user ls"},
+		NotApplicable: map[Mode]string{ModeTUI: "the TUI is mangal on the server's config (its key)", ModeScript: "scripts use the server's key or an API token"}},
 }
 
 // ModeCommands are the commands of no feature: the modes themselves and cobra's own.
@@ -151,7 +154,8 @@ var ModeCommands = map[string]string{
 	"script":      "the script mode",
 	"script doc":  "the script mode's docs",
 	"serve":       "the serve mode",
-	"serve token": "the serve mode's token",
+	"serve token": "the serve API's tokens (for programs)",
+	"serve user":  "the serve mode's users (its subcommands are the logins feature)",
 	"api":         "the serve API's client",
 	"web":         "the web mode",
 	"version":     "mangal's version",

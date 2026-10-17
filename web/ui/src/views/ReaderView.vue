@@ -3,7 +3,6 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import client, { ok } from '@/api/client'
 import { ApiError, errorMessage } from '@/api/errors'
-import { authHeaders } from '@/api/auth'
 import { chapterFileURL, libraryPageURL, providerPageURL } from '@/api/urls'
 import type { ChapterPages } from '@/api/schemas'
 import type { components } from '@/api/mangal'
@@ -144,7 +143,7 @@ async function loadLibrary() {
   sizes.value = pg.pages.map((p) => ({ width: p.width, height: p.height }))
   if (pg.pdf) {
     // a blob url: the API's answers are sandboxed (CSP), which a pdf viewer can't run in
-    const res = await fetch(chapterFileURL(id, path, true), { headers: authHeaders() })
+    const res = await fetch(chapterFileURL(id, path, true))
     if (!res.ok) throw new ApiError(res.status, undefined, res.statusText)
     pdf.value = URL.createObjectURL(await res.blob())
     urls.value = []
@@ -220,7 +219,7 @@ async function record() {
     else if (res.synced.length) toasts.push('success', `Read; synced to ${res.synced.join(', ')}`, 3000)
   } catch (e) {
     recorded.value = false
-    const hint = e instanceof ApiError && e.needsToken ? ' (needs a token with the progress scope)' : ''
+    const hint = e instanceof ApiError && e.needsLogin ? ' (your user needs the progress permission)' : ''
     toasts.push('warning', `The read wasn't recorded: ${errorMessage(e)}${hint}`, 6000)
   }
 }

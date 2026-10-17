@@ -19,7 +19,7 @@ const cls = computed(() => {
 })
 const title = computed(() => {
   const s = st.status
-  const parts = [s?.version ? `mangal ${s.version}` : '', s?.auth ? `as ${s.auth}` : '', `scopes: ${st.scopes.join(', ') || 'none'}`, `events: ${ev.state}${ev.error ? ` (${ev.error})` : ''}`]
+  const parts = [s?.version ? `mangal ${s.version}` : '', s?.auth ? `as ${s.auth}` : '', `permissions: ${st.scopes.join(', ') || 'none'}`, `events: ${ev.state}${ev.error ? ` (${ev.error})` : ''}`]
   if (st.error) parts.unshift(st.error)
   return parts.filter(Boolean).join(' · ')
 })
@@ -28,11 +28,10 @@ const title = computed(() => {
 <template>
   <span class="d-inline-flex align-items-center gap-2">
     <span class="badge" :class="cls" :title="title" data-test="status-badge">{{ label }}</span>
-    <span class="small text-secondary d-none d-lg-inline" :title="title">{{ st.scopes.join('·') }}</span>
-    <button v-if="!st.can('write')" class="btn btn-sm btn-outline-secondary py-0" @click="st.askToken('Write actions need a token with the write scope.')">
-      token
-    </button>
-    <button v-else-if="st.hasToken" class="btn btn-sm btn-outline-secondary py-0" title="Forget the token" @click="st.forgetToken()">
+    <span v-if="st.me" class="small text-secondary" :title="`permissions: ${st.scopes.join(', ')}`" data-test="me">
+      <i class="bi bi-person me-1" />{{ st.me.kind === 'none' ? 'no login' : st.me.name }}
+    </span>
+    <button v-if="st.me?.kind === 'user'" class="btn btn-sm btn-outline-secondary py-0" title="Log out" data-test="logout" @click="st.logout()">
       <i class="bi bi-box-arrow-right" />
     </button>
   </span>

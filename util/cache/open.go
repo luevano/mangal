@@ -69,6 +69,9 @@ func Storage() (storage.Storage, error) {
 		if notice := moveConfigClient(dataDB); notice != "" {
 			notices = append(notices, notice)
 		}
+		if notice := moveServeTokens(dataDB); notice != "" {
+			notices = append(notices, notice)
+		}
 	})
 	return st, openErr
 }

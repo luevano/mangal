@@ -95,25 +95,38 @@ func TestOPDS(t *testing.T) {
 	}
 }
 
-// TestOPDSAuth: a reader app is asked for basic auth, the token is the password.
+// TestOPDSAuth: a reader app is asked for basic auth: a user's name and password, not an
+// API token.
 func TestOPDSAuth(t *testing.T) {
 	s := newTestServer(t, "0123456789abcdef")
+	addUser(t, s, "reader", "a long password", ScopeRead)
 	resp, err := http.Get(s.URL + "/opds")
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized || !strings.HasPrefix(resp.Header.Get("WWW-Authenticate"), "Basic") {
-		t.Fatalf("no token: %d %v", resp.StatusCode, resp.Header)
+		t.Fatalf("nobody: %d %v", resp.StatusCode, resp.Header)
 	}
-	req, _ := http.NewRequest("GET", s.URL+"/opds", nil)
-	req.SetBasicAuth("me", "0123456789abcdef")
-	resp, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("basic auth: %d", resp.StatusCode)
+	for _, tc := range []struct {
+		user, password string
+		want           int
+	}{
+		{"me", "0123456789abcdef", http.StatusUnauthorized},
+		{"reader", "wrong password", http.StatusUnauthorized},
+		{"reader", "a long password", http.StatusOK},
+		// the second time from the cache
+		{"reader", "a long password", http.StatusOK},
+	} {
+		req, _ := http.NewRequest("GET", s.URL+"/opds", nil)
+		req.SetBasicAuth(tc.user, tc.password)
+		resp, err = http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s %q: %d, want %d", tc.user, tc.password, resp.StatusCode, tc.want)
+		}
 	}
 }

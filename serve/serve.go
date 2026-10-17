@@ -34,23 +34,16 @@ type Args struct {
 	Port int
 	// Web also serves the web UI.
 	Web bool
-	// Token has every scope (as a bearer token): serve.token. The saved tokens (`mangal
-	// serve token`) are read from the logins while the server runs.
-	Token string
-	// TokenOnLoopback requires a token on loopback too (as LoopbackScopes empty).
-	TokenOnLoopback bool
-	// Auth is AuthToken or AuthNone, LoopbackScopes the scopes of the requests from the
-	// same machine without a token (nil: read and watch, empty: none).
-	Auth           string
-	LoopbackScopes []string
-	// AllowedHosts, AllowedOrigins and TrustedProxies are for reverse proxies (web.GuardOptions).
-	AllowedHosts, AllowedOrigins, TrustedProxies []string
+	// Auth is AuthLogin or AuthNone.
+	Auth string
+	// SessionLifetime is how long a remembered login lasts, DefaultSessionLifetime when 0.
+	SessionLifetime time.Duration
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For and X-Forwarded-Host
+	// are believed (the client's address, the host).
+	TrustedProxies []string
 	// TLSCert and TLSKey are the certificate and key files to serve HTTPS with.
 	TLSCert, TLSKey string
 }
-
-// MinTokenLen is the shortest token used without a warning.
-const MinTokenLen = 16
 
 // lockName is the data db lock of the server, one per data db.
 const lockName = watch.ServeLock
@@ -133,7 +126,6 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	proxies := auth.TrustedProxies
 
 	browser, err := web.NewBrowser(out)
 	if err != nil {
@@ -165,8 +157,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		Events:  events,
 		ctx:     ctx,
 	}
-	app, err := api.NewApp(AppOptions{Web: args.Web, Guard: web.GuardOptions{Addr: listener.Addr(),
-		AllowedHosts: args.AllowedHosts, AllowedOrigins: args.AllowedOrigins, TrustedProxies: proxies}})
+	app, err := api.NewApp(AppOptions{Web: args.Web, Guard: auth.guard(listener.Addr())})
 	if err != nil {
 		return err
 	}
@@ -174,7 +165,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 
 	dataDB := watch.DataDB()
 	discovery := watch.DiscoveryPath(dataDB)
-	if err := watch.WriteDiscovery(discovery, watch.Discovery{PID: os.Getpid(), Address: address, Started: started, Version: meta.Version, Data: dataDB}); err != nil {
+	if err := watch.WriteDiscovery(discovery, watch.Discovery{PID: os.Getpid(), Address: address, Started: started, Version: meta.Version, Data: dataDB, Key: auth.LocalKey}); err != nil {
 		lg.Warnf("%s (the TUI and the CLI won't find this server)", err)
 	}
 	defer removeDiscovery(discovery, lg)
@@ -216,53 +207,67 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	return err
 }
 
-// listenerAuth is the Auth of a server listening on addr, refused without a token where
-// one is needed.
+// listenerAuth is the Auth of a server listening on addr: the users and sessions of the
+// data db, the API tokens, a new local key (the discovery file has it).
 func listenerAuth(args Args, addr net.Addr, lg logger) (*Auth, error) {
-	loopback := isLoopback(addr)
-	auth, err := newAuth(args, loopback, lg)
+	auth, err := newAuth(args)
 	if err != nil {
 		return nil, err
 	}
-	if !loopback && auth.Mode == AuthToken && !auth.HasTokens() {
-		return nil, fmt.Errorf("listening on %s (not loopback) needs a token: `mangal serve token --generate` saves one (or set serve.token, MANGAL_SERVE_TOKEN)", addr)
-	}
-	if auth.Mode == AuthToken && len(auth.LoopbackScopes) == 0 && !auth.HasTokens() {
-		return nil, errors.New("serve.loopback_scopes empty (or serve.token_on_loopback) needs a token: `mangal serve token --generate` saves one (or set serve.token, MANGAL_SERVE_TOKEN)")
-	}
-	if args.Token != "" && len(args.Token) < MinTokenLen {
-		lg.Warnf("the serve token is short (%d characters), use %d or more: `mangal serve token --generate` makes one", len(args.Token), MinTokenLen)
-	}
-	if auth.Mode == AuthNone {
+	switch auth.Mode {
+	case AuthNone:
 		lg.Warnf("serve.auth is none: every request that reaches %s may do everything (only behind something that authenticates)", addr)
+	default:
+		if st, err := cache.Storage(); err == nil {
+			if users, err := st.Users().List(); err == nil && len(users) == 0 {
+				lg.Warnf("no users yet: the web UI and OPDS need one, `mangal serve user add <name>` makes it")
+			}
+		}
+	}
+	return auth, nil
+}
+
+// newAuth is the server's Auth from its args.
+func newAuth(args Args) (*Auth, error) {
+	mode, err := authMode(args.Auth)
+	if err != nil {
+		return nil, err
 	}
 	proxies, err := ParseProxies(args.TrustedProxies)
 	if err != nil {
 		return nil, err
 	}
-	auth.TrustedProxies = proxies
+	key, err := NewToken()
+	if err != nil {
+		return nil, err
+	}
+	auth := &Auth{Mode: mode, Tokens: cache.ServeTokens, LocalKey: key, TrustedProxies: proxies}
+	if mode == AuthLogin {
+		st, err := cache.Storage()
+		if err != nil {
+			return nil, err
+		}
+		auth.Users = st.Users()
+		auth.Sessions = NewSessions(st.Sessions(), args.SessionLifetime)
+	}
 	return auth, nil
 }
 
-// newAuth is the server's Auth from its args.
-func newAuth(args Args, loopback bool, lg logger) (*Auth, error) {
-	mode := cmp.Or(args.Auth, AuthToken)
-	if mode != AuthToken && mode != AuthNone {
-		return nil, fmt.Errorf("serve.auth: %q isn't token or none", mode)
+// authMode is serve.auth's mode; token (before the logins) is login.
+func authMode(mode string) (string, error) {
+	switch strings.ToLower(cmp.Or(mode, AuthLogin)) {
+	case AuthLogin, "token":
+		return AuthLogin, nil
+	case AuthNone:
+		return AuthNone, nil
 	}
-	loopbackScopes := args.LoopbackScopes
-	if loopbackScopes == nil {
-		// serve.loopback_scopes' default
-		loopbackScopes = []string{ScopeRead, ScopeWatch, ScopeProgress}
-	}
-	scopes, err := NormalizeScopes(loopbackScopes)
-	if err != nil {
-		return nil, fmt.Errorf("serve.loopback_scopes: %w", err)
-	}
-	if args.TokenOnLoopback {
-		scopes = nil
-	}
-	return &Auth{Mode: mode, Token: args.Token, TokenName: "config", LoopbackScopes: scopes, Saved: cache.ServeToken, Named: cache.ServeTokens}, nil
+	return "", fmt.Errorf("serve.auth: %q isn't login or none", mode)
+}
+
+// guard is what the requests on addr have to pass first: the origin check, the host check
+// only without logins (DNS rebinding).
+func (a *Auth) guard(addr net.Addr) web.GuardOptions {
+	return web.GuardOptions{Addr: addr, TrustedProxies: a.TrustedProxies, AnyHost: a.Mode != AuthNone}
 }
 
 // describe says how the requests are authenticated, for the start line.
@@ -270,10 +275,7 @@ func (a *Auth) describe() string {
 	if a.Mode == AuthNone {
 		return "no authentication"
 	}
-	if len(a.LoopbackScopes) == 0 {
-		return "token required"
-	}
-	return "token required, same machine without one: " + strings.Join(a.LoopbackScopes, ", ")
+	return "login required"
 }
 
 // listen is net.Listen, swapped in tests.

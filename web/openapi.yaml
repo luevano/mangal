@@ -5,8 +5,10 @@ info:
   description: |
     The HTTP API v1 of `mangal serve` and `mangal web` under /api/v1 (tag v1). Paths are
     relative to /api. Every v1 operation has an x-mangal-scope (read, watch, progress or write):
-    the token scope it needs; the plan/apply ones (x-mangal-plan) need it only with
-    apply=1, a plan needs read.
+    the permission it needs (a user's, or an API token's scope); the plan/apply ones
+    (x-mangal-plan) need it only with apply=1, a plan needs read; public ones (the login)
+    need none. A request is a user's (the session cookie of POST /v1/auth/login, or basic
+    auth with the user's name and password) or an API token's (Authorization: Bearer).
 servers:
   - url: /api
 paths:
@@ -54,6 +56,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Status'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/auth/login:
+    post:
+      summary: Log in, the session cookie is set
+      description: |
+        Starts a session for the user (the mangal_session cookie, HttpOnly, SameSite=Lax);
+        remember keeps it for serve.session_lifetime, else until the browser closes. Failed
+        logins are rate limited (429 with Retry-After).
+      operationId: login
+      tags: [v1, auth]
+      x-mangal-scope: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: who is logged in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/auth/logout:
+    post:
+      summary: Log out, the session ends
+      operationId: logout
+      tags: [v1, auth]
+      x-mangal-scope: public
+      responses:
+        '204':
+          description: logged out
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/auth/me:
+    get:
+      summary: Who the request is (401 when nobody)
+      operationId: getMe
+      tags: [v1, auth]
+      x-mangal-scope: public
+      responses:
+        '200':
+          description: the user, the API token or the server's own CLI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
         default:
           $ref: '#/components/responses/Error'
   /v1/events:
@@ -1817,6 +1870,31 @@ components:
             $ref: '#/components/schemas/ChangeResponse'
 
   schemas:
+    LoginRequest:
+      type: object
+      required: [name, password]
+      properties:
+        name:
+          type: string
+        password:
+          type: string
+        remember:
+          type: boolean
+    Me:
+      type: object
+      required: [name, kind, scopes]
+      properties:
+        name:
+          type: string
+          description: the user's or the API token's name
+        kind:
+          type: string
+          enum: [user, token, local, none]
+          description: a user, an API token, the server's own CLI and TUI (local), or serve.auth none
+        scopes:
+          type: array
+          items:
+            type: string
     Provider:
       type: object
       required:

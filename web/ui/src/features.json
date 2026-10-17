@@ -387,6 +387,17 @@
         "listFormats"
       ],
       "not_applicable": "downloads use download.format (the config)"
+    },
+    {
+      "name": "logins",
+      "web": [
+        "login"
+      ],
+      "api": [
+        "login",
+        "logout",
+        "getMe"
+      ]
     }
   ],
   "routes": {

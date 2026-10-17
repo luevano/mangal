@@ -3,8 +3,8 @@ import { ApiError, errorMessage } from '@/api/errors'
 import { useStatus } from '@/stores/status'
 import { useToasts } from '@/stores/toasts'
 
-// useAction runs a non-destructive action (a download, a pause): a missing token asks for
-// one and runs it again, an error is a toast.
+// useAction runs a non-destructive action (a download, a pause): a missing login or
+// permission asks to log in and runs it again, an error is a toast.
 export function useAction() {
   const busy = ref(false)
 
@@ -16,7 +16,7 @@ export function useAction() {
       try {
         r = await fn()
       } catch (e) {
-        if (e instanceof ApiError && e.needsToken && (await useStatus().askToken(e.message))) {
+        if (e instanceof ApiError && e.needsLogin && (await useStatus().askLogin(e.message))) {
           r = await fn()
         } else {
           throw e

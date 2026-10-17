@@ -231,20 +231,6 @@ func enumEntry[T fmt.Stringer](key string, def T, description string, parse func
 }
 
 // scopesEntry is a list of serve token scopes (read, watch, progress, write).
-func scopesEntry(key string, def []string, description string) *entry[string, []string] {
-	e := listEntry(key, description)
-	e.Default = def
-	e.Validate = func(list []string) error {
-		for _, s := range list {
-			if !slices.Contains(ServeScopes, s) {
-				return fmt.Errorf("%q isn't a scope (%s)", s, strings.Join(ServeScopes, ", "))
-			}
-		}
-		return nil
-	}
-	return e
-}
-
 // ServeScopes are the scopes of the serve API's tokens.
 var ServeScopes = []string{"read", "watch", "progress", "write"}
 
@@ -586,26 +572,31 @@ var Watch = configWatch{
 }
 
 var Serve = configServe{
-	Host: stringEntry("serve.host", "127.0.0.1", "Address `mangal serve` listens on, 127.0.0.1 only accepts local connections."),
-	Port: intEntry("serve.port", 6977, 1, 65535, "Port `mangal serve` listens on, one per instance."),
-	Token: reg(entry[string, string]{
-		Key:         "serve.token",
-		Description: "A token of the `mangal serve` API with every scope (Authorization: Bearer <token>), needed when it listens on an address that isn't loopback (see serve.auth, serve.loopback_scopes). mangal's own commands and TUI send the token saved with `mangal serve token` (kept with the logins) instead when there's one; the server takes both.",
-		Secret:      true,
+	Host: stringEntry("serve.host", "127.0.0.1", "Address `mangal serve` listens on: 127.0.0.1 only accepts local connections (a reverse proxy on the same machine), 0.0.0.0 every interface."),
+	Port: intEntry("serve.port", 6977, 1, 65535, "Port `mangal serve` (and `mangal web`) listens on, one per instance."),
+	Web:  boolEntry("serve.web", true, "Serve the web UI on the `mangal serve` port (`mangal serve --web=false` for only the API); it asks to log in."),
+	Auth: reg(entry[string, string]{
+		Key:         "serve.auth",
+		Default:     "login",
+		Description: "How `mangal serve` authenticates: login (a user of `mangal serve user`: the web UI's login page, or basic auth for OPDS readers; programs send an API token of `mangal serve token`) or none (every request may do everything: only behind something that authenticates). token, of older configs, is login.",
+		Values:      []string{"login", "none"},
+		Unmarshal: func(raw string) (string, error) {
+			if strings.EqualFold(raw, "token") {
+				return "login", nil
+			}
+			return strings.ToLower(raw), nil
+		},
+		Validate: func(s string) error {
+			if s != "login" && s != "none" {
+				return fmt.Errorf("%q isn't login or none", s)
+			}
+			return nil
+		},
 	}),
-	TokenOnLoopback: boolEntry("serve.token_on_loopback", false, "Require a token from the same machine too, as serve.loopback_scopes = \"\" does (kept for older configs)."),
-	Web:             boolEntry("serve.web", false, "Also serve the web UI (as `mangal web`) on the `mangal serve` port (`mangal serve --web`), behind the token when one is required (the browser asks for it: any user name, the token as the password)."),
-	Auth: oneOfEntry("serve.auth", "token",
-		"How `mangal serve` authenticates: token (Authorization: Bearer <token>; serve.token, the token saved with `mangal serve token` and the named ones it makes, each with its scopes; requests from the same machine without one get serve.loopback_scopes) or none (every request may do everything: only behind something that authenticates, e.g. a reverse proxy).",
-		"token", "none"),
-	LoopbackScopes: scopesEntry("serve.loopback_scopes", []string{"read", "watch", "progress"},
-		"Scopes of the requests from the same machine (a loopback address, not through a proxy) without a token: read (GET, events), watch (add, change, check the watches), progress (the web reader records reads: history, AniList/Kitsu/MyAnimeList progress), write (change files, the library, the config, downloads). Empty requires a token there too. Behind a reverse proxy on the same machine, see serve.trusted_proxies."),
-	AllowedHosts: listEntry("serve.allowed_hosts",
-		"Host names `mangal serve` answers besides localhost and its address, comma separated (e.g. the name a reverse proxy passes, mangal.example.com). On loopback only localhost is answered otherwise (DNS rebinding); set, it's checked on any address."),
-	AllowedOrigins: listEntry("serve.allowed_origins",
-		"Origins (https://mangal.example.com) whose pages may change things through `mangal serve` (POST, PUT, PATCH, DELETE): a reverse proxy's public address when the browser's Origin isn't the Host the server sees. Other sites' pages are refused."),
+	SessionLifetime: durationEntry("serve.session_lifetime", "720h",
+		"How long a login with \"remember me\" lasts (720h: 30 days); without it the login ends when the browser closes. Changing a user's password or permissions ends their logins.", false),
 	TrustedProxies: listEntry("serve.trusted_proxies",
-		"Addresses or CIDRs (127.0.0.1, 10.0.0.0/8) of reverse proxies whose X-Forwarded-For and X-Forwarded-Host `mangal serve` believes: the client's address (whether it's on the same machine) and the host. Empty believes none: a request with forwarding headers is never treated as local."),
+		"Addresses or CIDRs (127.0.0.1, 10.0.0.0/8) of reverse proxies whose X-Forwarded-For and X-Forwarded-Host `mangal serve` believes: the client's address in the logs and the login rate limit (else every login through the proxy shares its address). Logins work without it."),
 	TLSCert: stringEntry("serve.tls_cert", "",
 		"Certificate file (PEM, with its chain) for `mangal serve` and `mangal web` to serve HTTPS, with serve.tls_key; read again when it changes (a renewal). Empty serves plain HTTP (a reverse proxy can do TLS instead)."),
 	TLSKey: stringEntry("serve.tls_key", "", "Private key file (PEM) of serve.tls_cert."),
@@ -625,9 +616,4 @@ var Log = configLog{
 		"Most space the log files take, the oldest are deleted beyond it (only the ones no process writes to anymore). 0 for no limit."),
 	Compress: boolEntry("log.compress", false,
 		"Gzip the log files no process writes to anymore (.log.gz; `mangal logs` and the TUI's logs read them)."),
-}
-
-var Web = configWeb{
-	Host: stringEntry("web.host", "127.0.0.1", "Address `mangal web` listens on, 127.0.0.1 only accepts local connections; off loopback a serve token is required (serve.auth)."),
-	Port: intEntry("web.port", 6970, 1, 65535, "Port `mangal web` listens on (not 6969, the logins' callback port)."),
 }

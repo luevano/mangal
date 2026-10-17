@@ -27,7 +27,7 @@ func TestFind(t *testing.T) {
 		t.Fatal("same discovery file for two data dbs")
 	}
 
-	if r, _, err := Find(ctx, dataDB, ""); r != nil || err != nil {
+	if r, _, err := Find(ctx, dataDB); r != nil || err != nil {
 		t.Fatalf("no file: %v, %v", r, err)
 	}
 
@@ -46,18 +46,23 @@ func TestFind(t *testing.T) {
 		_, _ = w.Write([]byte(`{"server":true}`))
 	}))
 	defer srv.Close()
-	live := Discovery{PID: os.Getpid(), Address: srv.URL, Started: time.Now(), Data: dataDB}
+	live := Discovery{PID: os.Getpid(), Address: srv.URL, Started: time.Now(), Data: dataDB, Key: "secret"}
 	if err := WriteDiscovery(file, live); err != nil {
 		t.Fatal(err)
 	}
-	r, d, err := Find(ctx, dataDB, "secret")
+	r, d, err := Find(ctx, dataDB)
 	if err != nil || r == nil || d.Address != srv.URL || auth != "Bearer secret" {
 		t.Fatalf("live server: %v, %+v, %v, auth %q", r, d, err, auth)
 	}
 
-	// a wrong token is an error, not a local fallback
-	if r, _, err := Find(ctx, dataDB, "wrong"); r != nil || err == nil {
-		t.Errorf("wrong token: %v, %v", r, err)
+	// a wrong key is an error, not a local fallback
+	wrong := live
+	wrong.Key = "wrong"
+	if err := WriteDiscovery(file, wrong); err != nil {
+		t.Fatal(err)
+	}
+	if r, _, err := Find(ctx, dataDB); r != nil || err == nil {
+		t.Errorf("wrong key: %v, %v", r, err)
 	}
 
 	// a process that's gone: the file is removed
@@ -70,7 +75,7 @@ func TestFind(t *testing.T) {
 	if err := WriteDiscovery(file, dead); err != nil {
 		t.Fatal(err)
 	}
-	if r, _, err := Find(ctx, dataDB, ""); r != nil || err != nil {
+	if r, _, err := Find(ctx, dataDB); r != nil || err != nil {
 		t.Fatalf("dead server: %v, %v", r, err)
 	}
 	if _, err := os.Stat(file); !os.IsNotExist(err) {
@@ -82,7 +87,7 @@ func TestFind(t *testing.T) {
 	if err := WriteDiscovery(file, live); err != nil {
 		t.Fatal(err)
 	}
-	if r, _, err := Find(ctx, dataDB, ""); r != nil || err != nil {
+	if r, _, err := Find(ctx, dataDB); r != nil || err != nil {
 		t.Fatalf("not answering: %v, %v", r, err)
 	}
 	if _, err := os.Stat(file); err != nil {

@@ -8,6 +8,7 @@ import (
 	"math"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -176,24 +177,33 @@ func (g apiGroup) TRACE(p string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) 
 	return g.add(http.MethodTrace, p, h, m...)
 }
 
-// authenticate identifies the request (Auth): the API answers 401 without the right
-// token, the web UI asks for it (basic auth: any user name, the token as the password).
+// authenticate identifies the request (Auth): a user (session or basic auth), an API
+// token, the local key. The web UI's files and the login are public, the rest answers 401
+// without one (OPDS asks for basic auth, the readers' way).
 func (a *API) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		r := c.Request()
-		id, err := a.Auth.identify(r)
-		if err != nil {
-			if !errors.Is(err, errUnauthorized) {
-				return err
+		id, ctx, err := a.Auth.identify(r)
+		public := isPublic(r.URL.Path)
+		var limited errLoginLimited
+		switch {
+		case err == nil:
+			ctx = withIdentity(ctx, id)
+		case errors.As(err, &limited):
+			if !public {
+				return &apiError{status: http.StatusTooManyRequests, code: CodeRateLimited, err: err}
 			}
-			if strings.HasPrefix(r.URL.Path, "/api/") {
-				c.Response().Header().Set("WWW-Authenticate", "Bearer")
+		case errors.Is(err, errUnauthorized):
+			if !public {
+				if isOPDS(r.URL.Path) {
+					c.Response().Header().Set("WWW-Authenticate", `Basic realm="mangal", charset="UTF-8"`)
+				}
 				return &apiError{status: http.StatusUnauthorized, code: CodeUnauthorized, err: err}
 			}
-			c.Response().Header().Set("WWW-Authenticate", `Basic realm="mangal serve", charset="UTF-8"`)
-			return c.String(http.StatusUnauthorized, err.Error())
+		default:
+			return err
 		}
-		ctx := withIdentity(r.Context(), id)
+		ctx = context.WithValue(ctx, requestKey{}, r)
 		if s := r.Header.Get("Last-Event-ID"); s != "" {
 			if n, err := strconv.ParseUint(s, 10, 64); err == nil {
 				ctx = context.WithValue(ctx, lastEventIDKey{}, n)
@@ -202,6 +212,21 @@ func (a *API) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 		c.SetRequest(r.WithContext(ctx))
 		return next(c)
 	}
+}
+
+// publicPaths are the API's routes without a login.
+var publicPaths = []string{"/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/me"}
+
+// isPublic is true for the web UI's files and the login: the rest is the API and OPDS.
+func isPublic(path string) bool {
+	if strings.HasPrefix(path, "/api/") {
+		return slices.Contains(publicPaths, path)
+	}
+	return !isOPDS(path)
+}
+
+func isOPDS(path string) bool {
+	return path == "/opds" || strings.HasPrefix(path, "/opds/")
 }
 
 // need refuses a request without the scope.
@@ -225,6 +250,9 @@ func (a *API) checkScope(f apiv1.StrictHandlerFunc, operationID string) apiv1.St
 		scope = op.Scope
 	}
 	return func(c *echo.Context, request any) (any, error) {
+		if scope == ScopePublic {
+			return f(c, request)
+		}
 		need := scope
 		if op.Plan {
 			if apply, _ := strconv.ParseBool(c.QueryParam("apply")); !apply {
@@ -241,16 +269,13 @@ func (a *API) checkScope(f apiv1.StrictHandlerFunc, operationID string) apiv1.St
 func scopeError(r *http.Request, scope string) error {
 	id, ok := identityOf(r.Context())
 	if !ok {
-		return newAPIError(http.StatusUnauthorized, CodeUnauthorized, "not authenticated")
+		return newAPIError(http.StatusUnauthorized, CodeUnauthorized, "not logged in")
 	}
 	if id.has(scope) {
 		return nil
 	}
-	web.LogRefused(r, fmt.Sprintf("needs the %s scope (%s)", scope, id))
-	if id.Anonymous {
-		return newAPIError(http.StatusUnauthorized, CodeUnauthorized, "this needs a token with the %s scope (serve.loopback_scopes are %s)", scope, strings.Join(id.Scopes, ", "))
-	}
-	return newAPIError(http.StatusForbidden, CodeForbidden, "this needs the %s scope, token %s has %s", scope, id.Name, strings.Join(id.Scopes, ", "))
+	web.LogRefused(r, fmt.Sprintf("needs the %s permission (%s)", scope, id))
+	return newAPIError(http.StatusForbidden, CodeForbidden, "this needs the %s permission, %s has %s", scope, id, strings.Join(id.Scopes, ", "))
 }
 
 // jsonBodies refuses /api requests with a body that isn't JSON: a page of another site

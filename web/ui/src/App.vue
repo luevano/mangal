@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, watch } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
 import AppCrumbs from '@/components/AppCrumbs.vue'
 import JobBar from '@/components/JobBar.vue'
 import PlanDialog from '@/components/PlanDialog.vue'
-import TokenDialog from '@/components/TokenDialog.vue'
+import LoginDialog from '@/components/LoginDialog.vue'
 import ToastHost from '@/components/ToastHost.vue'
 import { useStatus } from '@/stores/status'
 import { useEvents } from '@/stores/events'
@@ -15,6 +15,7 @@ import { useChanges } from '@/stores/changes'
 import { usePlan } from '@/stores/plan'
 
 const route = useRoute()
+const router = useRouter()
 const st = useStatus()
 const events = useEvents()
 const jobs = useJobs()
@@ -30,17 +31,36 @@ watch(
   }
 )
 
+// the events and the jobs once logged in, again for another login
+let started = false
+async function startSession() {
+  if (!st.me) return
+  if (!started) {
+    const s = await st.refresh()
+    events.start(s?.event_seq)
+    started = true
+  } else {
+    await st.refresh()
+    events.reconnect()
+  }
+  jobs.load()
+}
+
+// the login ended (logged out, a new password): back to the login page
+watch(
+  () => st.loggedIn,
+  (logged) => {
+    if (!logged && st.checked && !route.meta.public) router.push({ name: 'login', query: { next: route.fullPath } })
+  }
+)
+
 onMounted(async () => {
   jobs.listen()
   watches.listen()
   useChanges().listen()
-  st.onTokenChange(() => {
-    events.reconnect()
-    jobs.load()
-  })
-  const s = await st.refresh()
-  events.start(s?.event_seq)
-  jobs.load()
+  st.onLoginChange(startSession)
+  await router.isReady()
+  await startSession()
   timer = setInterval(() => st.refresh(), 30000)
 })
 
@@ -61,6 +81,6 @@ onUnmounted(() => clearInterval(timer))
     <JobBar />
   </template>
   <PlanDialog />
-  <TokenDialog />
+  <LoginDialog />
   <ToastHost />
 </template>

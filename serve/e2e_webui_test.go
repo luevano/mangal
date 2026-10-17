@@ -56,8 +56,20 @@ func TestWebUI(t *testing.T) {
 	// each step gets its time
 	step := func() *rod.Page { return page.Timeout(20 * time.Second) }
 
+	// nobody logged in: the login page, a wrong password, then the right one
+	addUser(t, s, "david", "correct horse", Scopes...)
 	step().MustNavigate(s.URL + "/#/library")
+	step().MustElement("[data-test=login-page]")
+	step().MustElement("[data-test=login-name]").MustInput("david")
+	step().MustElement("[data-test=login-password]").MustInput("wrong password")
+	step().MustElement("[data-test=login-submit]").MustClick()
+	step().MustElementR("[data-test=login-error]", "Wrong name or password")
+	step().MustElement("[data-test=login-password]").MustSelectAllText().MustInput("correct horse")
+	step().MustElement("[data-test=login-submit]").MustClick()
 	step().MustElement("[data-test=library-table]")
+	if who := step().MustElement("[data-test=me]").MustText(); who != "david" {
+		t.Errorf("logged in as %q", who)
+	}
 	if n := len(step().MustElements("[data-test=library-table] tbody tr")); n != 2 {
 		t.Fatalf("%d mangas listed", n)
 	}
@@ -138,6 +150,14 @@ func TestWebUI(t *testing.T) {
 	if list, _ := c.Library.Mangas(context.Background(), core.MangasOptions{}); len(list.Mangas) != 2 {
 		t.Errorf("%d mangas after the undo", len(list.Mangas))
 	}
+
+	// logging out goes back to the login page, the API answers no more
+	step().MustElement("[data-test=plan-dialog] .btn-close").MustClick()
+	step().MustElement("[data-test=logout]").MustClick()
+	step().MustElement("[data-test=login-page]")
+	if got := page.MustEval(`() => fetch('/api/v1/watches').then(r => r.status)`).Int(); got != 401 {
+		t.Errorf("after logout: %d", got)
+	}
 }
 
 // newE2EServer serves the API and the UI over a library of two folders of Berserk (the
@@ -192,7 +212,7 @@ func newE2EServer(t *testing.T) *testServer {
 	}
 	s.api.Browser = browser
 	srv := httptest.NewUnstartedServer(nil)
-	app, err := s.api.NewApp(AppOptions{Web: true, Guard: web.GuardOptions{Addr: srv.Listener.Addr()}})
+	app, err := s.api.NewApp(AppOptions{Web: true, Guard: s.api.Auth.guard(srv.Listener.Addr())})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/provider/install"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/web/apiv1"
 	"github.com/spf13/afero"
 )
@@ -103,12 +104,15 @@ func TestV1ProvidersUpdate(t *testing.T) {
 // TestV1ProviderScopes: mirrors and updates need the write scope.
 func TestV1ProviderScopes(t *testing.T) {
 	s := newTestServer(t, "")
-	s.api.Auth.LoopbackScopes = []string{ScopeRead}
+	s.api.Auth.Tokens = func() ([]cache.ServeTokenEntry, error) {
+		return []cache.ServeTokenEntry{{Name: "reader", Hash: HashToken("r3ad"), Scopes: []string{ScopeRead}}}, nil
+	}
+	s.key = "r3ad"
 	for _, c := range []struct{ method, path, body string }{
 		{"POST", "/api/v1/providers/update", ""},
 		{"PUT", "/api/v1/providers/x/mirror", `{"mirror":""}`},
 	} {
-		if code := s.call(t, c.method, c.path, c.body, nil); code != http.StatusUnauthorized {
+		if code := s.call(t, c.method, c.path, c.body, nil); code != http.StatusForbidden {
 			t.Errorf("%s %s without write: %d", c.method, c.path, code)
 		}
 	}

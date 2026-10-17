@@ -52,7 +52,7 @@ const journalInterfered = `ALTER TABLE journal ADD COLUMN interfered TEXT NOT NU
 // or dismissed health findings made since are worth more than the old ones.
 var keptTables = []string{
 	TableTitleBindings, TableAuthTokens, TableAuthHistory, TableSearchHistory,
-	"locks", "journal", "journal_steps", "health_ignores",
+	"locks", "journal", "journal_steps", "health_ignores", "serve_users", "serve_sessions",
 }
 
 // unfingerprinted are the tables (all columns: nil) and columns that are restored but
@@ -598,7 +598,7 @@ func (db *DB) Snapshot(dir, name string) (string, error) {
 
 // secretTables are emptied in the snapshots: a restore keeps them (keptTables), an old
 // login or secret would only outlive its logout or rotation there.
-var secretTables = []string{TableAuthTokens, TableAuthHistory}
+var secretTables = []string{TableAuthTokens, TableAuthHistory, "serve_users", "serve_sessions"}
 
 // stripSecrets empties the secretTables of the snapshot, overwriting their pages.
 func stripSecrets(path string) error {

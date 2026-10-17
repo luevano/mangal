@@ -109,7 +109,7 @@ For example:
 mangal config set download.path $HOME/downloads_test
 ```
 
-Secrets aren't config: the Anilist, Kitsu and MyAnimeList logins, their API clients (the MyAnimeList one with `mangal myanimelist client`, the Anilist one is kept from the last login), the MangaPlus secret, the Discord webhook (`mangal notify webhook`) and the serve token (`mangal serve token`) are saved in mangal's data (or the OS keyring with `auth.keyring`). The `notification.discord.webhook_url`, `serve.token` and `providers.mangaplus.secret_file` keys are only used when none is saved; a `metadata.myanimelist.client_id` left in an old config is moved to mangal's data once.
+Secrets aren't config: the Anilist, Kitsu and MyAnimeList logins, their API clients (the MyAnimeList one with `mangal myanimelist client`, the Anilist one is kept from the last login), the MangaPlus secret and the Discord webhook (`mangal notify webhook`) are saved in mangal's data (or the OS keyring with `auth.keyring`), as are the `mangal serve` users and API tokens. The `notification.discord.webhook_url` and `providers.mangaplus.secret_file` keys are only used when none is saved; a `metadata.myanimelist.client_id` left in an old config is moved to mangal's data once.
 
 ### Providers
 
@@ -242,17 +242,20 @@ has its own schedule (`watch.gap_schedule`, off by default). Each provider has i
 (`watch.parallel_providers` at once, a provider never twice, also against a `mangal watch check`
 or a download elsewhere); the `watch.*` settings are re-read from the config file
 every minute, and logins or secrets saved meanwhile (e.g. the MangaPlus secret from a TUI on the
-same config) apply from the next run. It serves a JSON API on `127.0.0.1:6977` (`serve.host`, `serve.port`) that the TUI
-and the `mangal watch` commands use while it runs; `--web` (`serve.web`) also serves the web UI
-there. On an address that isn't loopback the API needs a token: `mangal serve token --generate` saves
-one (the TUI and `mangal watch` on the same config use it), send `Authorization: Bearer <token>`.
+same config) apply from the next run. On `127.0.0.1:6977` (`serve.host`, `serve.port`) it serves the
+web UI (`serve.web`), a JSON API (that the TUI and the `mangal watch` commands use while it runs) and
+OPDS (`/opds`). Every request logs in, wherever it comes from: people as users (`mangal serve user add
+<name>`, then the web UI's login page, or basic auth for OPDS readers), programs with an API token
+(`mangal serve token --generate --name <what> --scope read`, sent as `Authorization: Bearer <token>`).
+mangal on the same config (the TUI, `mangal watch`, `mangal api`) uses the server's own key. Behind a
+reverse proxy nothing needs setting (`serve.trusted_proxies` puts the clients' addresses in the logs).
 
 ```sh
-curl 127.0.0.1:6977/api/status
-curl 127.0.0.1:6977/api/watches
-curl -X POST 127.0.0.1:6977/api/check -d '{"ids": [1]}'     # 202 {"run": N}, 409 when its provider is busy
-curl 127.0.0.1:6977/api/runs/N
-curl -N 127.0.0.1:6977/api/events                         # live progress (server-sent events)
+mangal serve user add david
+mangal api status
+curl -u david 127.0.0.1:6977/api/v1/watches
+curl -H "Authorization: Bearer $TOKEN" -X POST 127.0.0.1:6977/api/check -d '{"ids": [1]}'   # 202 {"run": N}
+curl -N -H "Authorization: Bearer $TOKEN" 127.0.0.1:6977/api/events                         # live progress
 ```
 
 As a systemd service: [`mangal.service`](mangal.service) (copy it to `/etc/systemd/system/`, set
@@ -326,11 +329,11 @@ For more, use the `-h` flag.
 
 #### Web
 
-Serves the web UI on `127.0.0.1:6970` by default (`web.host`, `web.port`): the library (with plan/apply and
-undo for its changes), a reader for downloaded and online chapters, downloads, watches, health, logs,
-search. `mangal serve --web` serves the same UI next to the scheduler. Authentication is serve's: on loopback
-the same machine reads without a token, changing files needs a token (`mangal serve token --generate`, the UI
-asks for it); `--host 0.0.0.0` needs a token, which the browser asks for as a basic-auth password.
+The web UI: the library (with plan/apply and undo for its changes), a reader for downloaded and
+online chapters, downloads, watches, health, logs, search. `mangal serve` serves it (`serve.web`);
+`mangal web` opens that one, or without a server running serves it the same way on `serve.host`,
+`serve.port` (`127.0.0.1:6977`), without the scheduler. It asks to log in as a user of `mangal serve
+user add <name>`.
 
 ```sh
 mangal web --open

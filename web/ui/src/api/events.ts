@@ -39,7 +39,8 @@ export function parseSSE(buffer: string): { events: { id?: string; data: string 
 
 // EventStream is the one connection to /api/v1/events: listeners subscribe to topics, the
 // stream asks for the topics someone listens to, reconnects (from the last seq) when it
-// drops or the topics change. fetch, not EventSource: it sends the bearer token.
+// drops or the topics change. fetch, not EventSource: headers (Last-Event-ID) and the refusals
+// can be told apart.
 export class EventStream {
   lastSeq = 0
   state: StreamState = 'idle'
@@ -94,7 +95,7 @@ export class EventStream {
     this.setState('idle')
   }
 
-  // reconnect drops the connection and connects again now (a new token).
+  // reconnect drops the connection and connects again now (a new login).
   reconnect() {
     if (this.stopped) return
     clearTimeout(this.timer)
@@ -148,7 +149,7 @@ export class EventStream {
       const res = await this.opts.fetch(url, { headers, signal: abort.signal })
       if (!res.ok || !res.body) {
         if (res.status >= 400 && res.status < 500) {
-          // not authorized or a bad request: retrying won't help until the token changes
+          // not logged in or a bad request: retrying won't help until the login changes
           this.setState('refused', `HTTP ${res.status}`)
           return
         }

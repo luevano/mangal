@@ -24,7 +24,7 @@ import (
 type Remote struct {
 	// Address is the API's base URL, e.g. http://127.0.0.1:6977.
 	Address string
-	// Token is sent as a bearer token when not empty (serve.token).
+	// Token is sent as a bearer token when not empty (the discovery file's key, an API token).
 	Token string
 	// Client defaults to a client with a timeout.
 	Client *http.Client

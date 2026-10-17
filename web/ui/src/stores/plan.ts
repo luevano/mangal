@@ -20,7 +20,7 @@ export type PlanStep = 'idle' | 'planning' | 'review' | 'applying' | 'confirm' |
 // the plan dialog: every destructive change of the web UI goes through it, like the TUI's
 // confirm. Plan → review (lines, warnings, blocked) → apply with expect; a changed plan
 // (409 plan_changed) comes back for review, a needed confirm (428) asks for it, a missing
-// token asks for one.
+// login or permission asks to log in.
 export const usePlan = defineStore('plan', () => {
   const spec = ref<PlanSpec>()
   const step = ref<PlanStep>('idle')
@@ -42,12 +42,12 @@ export const usePlan = defineStore('plan', () => {
     confirmed.value = false
   }
 
-  async function withToken<T>(fn: () => Promise<T>): Promise<T> {
+  async function withLogin<T>(fn: () => Promise<T>): Promise<T> {
     try {
       return await fn()
     } catch (e) {
-      if (e instanceof ApiError && e.needsToken) {
-        if (await useStatus().askToken(e.message)) return await fn()
+      if (e instanceof ApiError && e.needsLogin) {
+        if (await useStatus().askLogin(e.message)) return await fn()
       }
       throw e
     }
@@ -58,7 +58,7 @@ export const usePlan = defineStore('plan', () => {
     spec.value = s
     step.value = 'planning'
     try {
-      const res = await withToken(() => s.run(false, {}))
+      const res = await withLogin(() => s.run(false, {}))
       plan.value = res.plan
       step.value = 'review'
     } catch (e) {
@@ -77,7 +77,7 @@ export const usePlan = defineStore('plan', () => {
     step.value = 'applying'
     notice.value = ''
     try {
-      const res = await withToken(() => s.run(true, fields))
+      const res = await withLogin(() => s.run(true, fields))
       result.value = res
       step.value = 'done'
       useChanges().bump()

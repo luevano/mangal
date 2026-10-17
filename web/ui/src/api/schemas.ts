@@ -3,6 +3,7 @@ import type { components } from './mangal'
 type S = components['schemas']
 
 export type Status = S['Status']
+export type Me = S['Me']
 export type Event = S['Event']
 export type LiveEvent = S['LiveEvent']
 export type Plan = S['Plan']

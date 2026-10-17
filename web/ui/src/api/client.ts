@@ -1,18 +1,10 @@
-import createClient, { type Middleware } from 'openapi-fetch'
+import createClient from 'openapi-fetch'
 import type { paths } from './mangal'
-import { authHeaders } from './auth'
 import { ApiError } from './errors'
 
-const auth: Middleware = {
-  onRequest({ request }) {
-    for (const [k, v] of Object.entries(authHeaders())) request.headers.set(k, v)
-    return request
-  }
-}
-
-// client is the typed client of the API (web/openapi.yaml), paths relative to /api.
+// client is the typed client of the API (web/openapi.yaml), paths relative to /api; the
+// login is the session cookie, which the browser sends itself.
 const client = createClient<paths>({ baseUrl: '/api' })
-client.use(auth)
 
 export default client
 
@@ -31,11 +23,10 @@ export async function ok<T>(
   return data as T
 }
 
-// fetchJSON is a plain request of the API with the auth, for what the typed client can't
-// say (a status other than 200 that isn't an error).
+// fetchJSON is a plain request of the API, for what the typed client can't say (a status
+// other than 200 that isn't an error).
 export async function fetchJSON<T>(path: string, init: RequestInit = {}): Promise<{ status: number; data: T }> {
   const headers = new Headers(init.headers)
-  for (const [k, v] of Object.entries(authHeaders())) headers.set(k, v)
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   const response = await fetch(path, { ...init, headers })
   const text = await response.text()

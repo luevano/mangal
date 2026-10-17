@@ -199,26 +199,14 @@ type configLog struct {
 	Compress     *entry[bool, bool]
 }
 
-type configWeb struct {
+type configServe struct {
 	Host *entry[string, string]
 	Port *entry[int64, int]
-}
-
-type configServe struct {
-	Host  *entry[string, string]
-	Port  *entry[int64, int]
-	Token *entry[string, string]
-	// TokenOnLoopback requires the token on loopback too.
-	TokenOnLoopback *entry[bool, bool]
-	Web             *entry[bool, bool]
-	// Auth is token or none.
-	Auth *entry[string, string]
-	// LoopbackScopes are the scopes of the requests from the same machine without a
-	// token.
-	LoopbackScopes *entry[string, []string]
-	// AllowedHosts, AllowedOrigins and TrustedProxies are for reverse proxies.
-	AllowedHosts   *entry[string, []string]
-	AllowedOrigins *entry[string, []string]
+	Web  *entry[bool, bool]
+	// Auth is login or none.
+	Auth            *entry[string, string]
+	SessionLifetime *entry[string, string]
+	// TrustedProxies are the reverse proxies whose forwarding headers are believed.
 	TrustedProxies *entry[string, []string]
 	// TLSCert and TLSKey serve HTTPS when set.
 	TLSCert *entry[string, string]

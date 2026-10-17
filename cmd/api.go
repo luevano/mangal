@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,8 +40,9 @@ var apiCmd = &cobra.Command{
 	Use:   "api [METHOD] PATH",
 	Short: "Call the serve API",
 	Long: `Call the API of the running mangal serve of this config (found with its discovery file,
-or --server), with the saved token (MANGAL_API_TOKEN overrides it, e.g. a read-only one
-from "mangal serve token --generate --name ... --scope read"). PATH is relative to
+which has its key: every permission), or of --server with an API token in MANGAL_API_TOKEN
+("mangal serve token --generate --name ... --scope read" on the server makes one; it also
+overrides the key). PATH is relative to
 /api/v1 unless it starts with /api/. The answer is pretty-printed; an error answer exits
 non-zero. Changes plan first: POST without ?apply=1 answers the plan and its hash, then
 the same with ?apply=1 and "expect": "<hash>" applies it.`,
@@ -73,16 +75,11 @@ the same with ?apply=1 and "expect": "<hash>" applies it.`,
 				method = http.MethodPost
 			}
 		}
-		server, err := apiServer(apiArgs.Server)
+		server, key, err := apiServer(apiArgs.Server)
 		if err != nil {
 			return err
 		}
-		token := os.Getenv("MANGAL_API_TOKEN")
-		if token == "" {
-			if token, err = watch.Token(); err != nil {
-				return err
-			}
-		}
+		token := cmp.Or(os.Getenv("MANGAL_API_TOKEN"), key)
 		req, err := http.NewRequestWithContext(cmd.Context(), method, server+apiPath(path), bytes.NewReader(body))
 		if err != nil {
 			return err
@@ -169,19 +166,20 @@ func apiBody(cmd *cobra.Command, data string) ([]byte, error) {
 }
 
 // apiServer is the server's url: given, or the running mangal serve's of this config.
-func apiServer(given string) (string, error) {
+// apiServer is the server's url, and the discovery file's key for this config's own.
+func apiServer(given string) (server, key string, err error) {
 	if given != "" {
-		return strings.TrimSuffix(given, "/"), nil
+		return strings.TrimSuffix(given, "/"), "", nil
 	}
 	data := watch.DataDB()
 	d, found, err := watch.ReadDiscovery(watch.DiscoveryPath(data))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if !found || d.Data != data || d.Address == "" {
-		return "", errors.New("no mangal serve runs for this config (start one, or give --server URL)")
+		return "", "", errors.New("no mangal serve runs for this config (start one, or give --server URL)")
 	}
-	return strings.TrimSuffix(d.Address, "/"), nil
+	return strings.TrimSuffix(d.Address, "/"), d.Key, nil
 }
 
 // printAPI prints JSON indented (as it comes with raw, or when it isn't JSON).

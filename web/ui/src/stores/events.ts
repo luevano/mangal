@@ -1,14 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { EventStream, type Listener, type StreamState, type Topic } from '@/api/events'
-import { authHeaders } from '@/api/auth'
 
 // the one event stream of the page; stores and views subscribe to its topics.
 export const useEvents = defineStore('events', () => {
   const state = ref<StreamState>('idle')
   const error = ref('')
   const stream = new EventStream({
-    headers: authHeaders,
     onState: (s, e) => {
       state.value = s
       error.value = e ?? ''

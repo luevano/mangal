@@ -80,7 +80,7 @@ describe('plan dialog flow', () => {
     expect(p.step).toBe('done')
   })
 
-  it('asks for a token and tries again', async () => {
+  it('asks to log in and tries again', async () => {
     let n = 0
     const run = vi.fn(async (apply: boolean): Promise<ChangeResponse> => {
       if (!apply) return { applied: false, plan: plan('h1') }
@@ -88,11 +88,11 @@ describe('plan dialog flow', () => {
       return { applied: true }
     })
     const st = useStatus()
-    st.askToken = vi.fn(async () => true)
+    st.askLogin = vi.fn(async () => true)
     const p = usePlan()
     await p.open({ title: 'Merge', run })
     await p.apply()
-    expect(st.askToken).toHaveBeenCalled()
+    expect(st.askLogin).toHaveBeenCalled()
     expect(p.step).toBe('done')
   })
 

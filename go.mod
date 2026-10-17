@@ -9,6 +9,8 @@ require (
 	charm.land/lipgloss/v2 v2.0.6
 	code.dny.dev/ssrf v0.3.0
 	github.com/adrg/xdg v0.5.3
+	github.com/alexedwards/argon2id v1.0.0
+	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/atotto/clipboard v0.1.4
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1
 	github.com/charmbracelet/colorprofile v0.4.3
@@ -48,6 +50,7 @@ require (
 	golang.org/x/net v0.61.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/term v0.47.0
+	golang.org/x/time v0.16.0
 	modernc.org/sqlite v1.60.1
 )
 
@@ -142,7 +145,6 @@ require (
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
-	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect

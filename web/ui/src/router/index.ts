@@ -1,14 +1,18 @@
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
+import { useStatus } from '@/stores/status'
 
 declare module 'vue-router' {
   interface RouteMeta {
     // a full-screen view (the reader): no navbar
     bare?: boolean
+    // a page without a login (the login)
+    public?: boolean
   }
 }
 
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: { name: 'library' } },
+  { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { bare: true, public: true } },
   { path: '/library', name: 'library', component: () => import('@/views/LibraryView.vue') },
   { path: '/library/duplicates', name: 'duplicates', component: () => import('@/views/DuplicatesView.vue') },
   { path: '/library/trash', name: 'trash', component: () => import('@/views/TrashView.vue') },
@@ -35,6 +39,15 @@ export const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),
   routes
+})
+
+// nobody logged in: the login page first, then back where they were going
+router.beforeEach(async (to) => {
+  if (to.meta.public) return true
+  const st = useStatus()
+  if (!st.checked) await st.loadMe()
+  if (!st.me && !st.error) return { name: 'login', query: to.fullPath === '/' ? {} : { next: to.fullPath } }
+  return true
 })
 
 export default router

@@ -1,7 +1,11 @@
 package cache
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/luevano/mangal/v5/config"
@@ -132,14 +136,47 @@ func SetDiscordWebhook(url string) error {
 	return setString(authOwnerDiscord, keyDiscordWebhook, url)
 }
 
-// ServeToken is the saved token of the `mangal serve` API, empty if none.
-func ServeToken() (string, error) {
-	return getString(authOwnerServe, keyServeToken)
-}
-
-// SetServeToken saves the token of the `mangal serve` API, empty removes it.
-func SetServeToken(token string) error {
-	return setString(authOwnerServe, keyServeToken, token)
+// moveServeTokens makes API tokens of the tokens with every scope mangal had before the
+// logins: serve.token ("config") and the one `mangal serve token` saved ("default"), so
+// the programs sending them keep working. Once: the saved one is removed, serve.token is a
+// retired key (config clean drops it).
+func moveServeTokens(data *storage.DB) string {
+	kv := storage.Storage{Data: data}.AuthStore(authOwnerServe, keyring)
+	var tokens []ServeTokenEntry
+	if _, err := kv.Get(keyServeTokens, &tokens); err != nil {
+		return fmt.Sprintf("Couldn't read the serve API tokens: %s", err)
+	}
+	var saved string
+	if _, err := kv.Get(keyServeToken, &saved); err != nil {
+		return fmt.Sprintf("Couldn't read the saved serve token: %s", err)
+	}
+	var moved []string
+	add := func(name, token string) {
+		hash := sha256.Sum256([]byte(token))
+		h := hex.EncodeToString(hash[:])
+		if token == "" || slices.ContainsFunc(tokens, func(t ServeTokenEntry) bool { return t.Name == name || t.Hash == h }) {
+			return
+		}
+		tokens = append(tokens, ServeTokenEntry{Name: name, Hash: h, Scopes: config.ServeScopes, Created: time.Now()})
+		moved = append(moved, name)
+	}
+	add("config", config.RetiredValue("serve.token"))
+	add("default", saved)
+	if len(moved) != 0 {
+		if err := kv.Set(keyServeTokens, tokens); err != nil {
+			return fmt.Sprintf("Couldn't move the serve tokens to API tokens: %s", err)
+		}
+	}
+	if saved != "" {
+		if err := kv.Delete(keyServeToken); err != nil {
+			return fmt.Sprintf("Couldn't remove the saved serve token: %s", err)
+		}
+	}
+	if len(moved) == 0 {
+		return ""
+	}
+	log.Info("moved the serve tokens %s to API tokens", strings.Join(moved, ", "))
+	return fmt.Sprintf("Made API tokens (every scope) of the old serve tokens: %s. Programs sending them keep working; people log in as users now (\"mangal serve user add\"), \"mangal serve token --list\" shows the tokens.", strings.Join(moved, ", "))
 }
 
 // keyring is true when the logins are kept in the OS keyring (auth.keyring).

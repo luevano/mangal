@@ -45,14 +45,15 @@ func runServer(t *testing.T, args Args) (address string, done <-chan error) {
 	return "", nil
 }
 
-func TestTokenOnLoopback(t *testing.T) {
-	err := Run(context.Background(), Args{Host: "127.0.0.1", TokenOnLoopback: true}, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "needs a token") {
-		t.Fatalf("no token: %v", err)
+// TestServeLogin: every request logs in, the same machine too; mangal on the same config
+// gets the discovery file's key.
+func TestServeLogin(t *testing.T) {
+	address, _ := runServer(t, Args{Host: "127.0.0.1"})
+	d, found, err := watch.ReadDiscovery(watch.DiscoveryPath(watch.DataDB()))
+	if err != nil || !found || d.Key == "" {
+		t.Fatalf("discovery %+v %v %v", d, found, err)
 	}
-
-	address, _ := runServer(t, Args{Host: "127.0.0.1", Token: "s3cret", TokenOnLoopback: true})
-	for auth, want := range map[string]int{"": http.StatusUnauthorized, "Bearer s3cret": http.StatusOK} {
+	for auth, want := range map[string]int{"": http.StatusUnauthorized, "Bearer nope": http.StatusUnauthorized, "Bearer " + d.Key: http.StatusOK} {
 		req, _ := http.NewRequest("GET", address+"/api/status", nil)
 		if auth != "" {
 			req.Header.Set("Authorization", auth)
@@ -66,8 +67,8 @@ func TestTokenOnLoopback(t *testing.T) {
 			t.Errorf("%q: %d, want %d", auth, resp.StatusCode, want)
 		}
 	}
-	if _, err := watch.NewRemote(address, "s3cret").Status(context.Background()); err != nil {
-		t.Errorf("remote with the token: %v", err)
+	if r, _, err := watch.Find(context.Background(), watch.DataDB()); err != nil || r == nil {
+		t.Errorf("find the server: %v %v", r, err)
 	}
 }
 
@@ -160,20 +161,19 @@ func (b *syncBuffer) String() string {
 	return b.b.String()
 }
 
-func TestShortTokenWarns(t *testing.T) {
-	for token, warns := range map[string]bool{"s3cret": true, "0123456789abcdef": false} {
-		var out syncBuffer
-		ctx, cancel := context.WithCancel(context.Background())
-		done := make(chan error, 1)
-		go func() { done <- Run(ctx, Args{Host: "127.0.0.1", Token: token, TokenOnLoopback: true}, &out) }()
-		runServerAddress(t)
-		cancel()
-		if err := <-done; err != nil {
-			t.Fatal(err)
-		}
-		if got := strings.Contains(out.String(), "token is short"); got != warns {
-			t.Errorf("%q: warns %v, output:\n%s", token, got, out.String())
-		}
+// TestNoUsersWarns: a server nobody can log into says how to add a user.
+func TestNoUsersWarns(t *testing.T) {
+	var out syncBuffer
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, Args{Host: "127.0.0.1"}, &out) }()
+	runServerAddress(t)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "mangal serve user add") {
+		t.Errorf("no warning, output:\n%s", out.String())
 	}
 }
 
@@ -186,7 +186,8 @@ func TestLifecycle(t *testing.T) {
 		done := make(chan error, 1)
 		go func() { done <- Run(ctx, Args{Host: "127.0.0.1"}, io.Discard) }()
 		address := runServerAddress(t)
-		status, err := watch.NewRemote(address, "").Status(context.Background())
+		d, _, _ := watch.ReadDiscovery(file)
+		status, err := watch.NewRemote(address, d.Key).Status(context.Background())
 		if err != nil || !status.Server {
 			t.Fatalf("status %+v, %v", status, err)
 		}

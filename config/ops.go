@@ -254,8 +254,16 @@ var retired = map[string]string{
 	"library.path":             "never implemented, the library is download.path",
 	"download.mode_db_decimal": "the databases are always 0600, they hold logins",
 	// moved by RetiredValue
-	"metadata.myanimelist.client_id":     "saved with the logins now (mangal myanimelist client)",
-	"metadata.myanimelist.client_secret": "saved with the logins now (mangal myanimelist client)",
+	"metadata.myanimelist.client_id":     "saved with the logins now, see mangal myanimelist client",
+	"metadata.myanimelist.client_secret": "saved with the logins now, see mangal myanimelist client",
+	// moved by RetiredValue
+	"serve.token":             "an API token named config now, see mangal serve token --list; people log in as users, see mangal serve user",
+	"serve.token_on_loopback": "every request logs in now, the same machine too",
+	"serve.loopback_scopes":   "every request logs in now, the same machine too; mangal on this config uses the server's key",
+	"serve.allowed_hosts":     "every request logs in now, any host name is answered",
+	"serve.allowed_origins":   "the browsers' Sec-Fetch-Site tells same-origin requests apart, behind a proxy too",
+	"web.host":                "mangal web uses serve.host",
+	"web.port":                "mangal web uses serve.port",
 }
 
 // RetiredValue is the value of a retired key in the loaded config file (or its environment
