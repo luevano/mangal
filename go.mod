@@ -22,11 +22,11 @@ require (
 	github.com/ivanpirog/coloredcobra v1.0.1
 	github.com/labstack/echo/v5 v5.4.0
 	github.com/lithammer/fuzzysearch v1.1.8
-	github.com/luevano/gopher-luadoc v0.3.4
-	github.com/luevano/libmangal v0.31.0
-	github.com/luevano/luaprovider v0.19.0
-	github.com/luevano/mangoplus v0.7.4
-	github.com/luevano/mangoprovider v0.22.0
+	github.com/luevano/gopher-luadoc v0.3.5
+	github.com/luevano/libmangal v0.32.0
+	github.com/luevano/luaprovider v0.19.1
+	github.com/luevano/mangoplus v0.7.5
+	github.com/luevano/mangoprovider v0.23.0
 	github.com/maruel/natural v1.3.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/pelletier/go-toml/v2 v2.4.3
@@ -64,7 +64,7 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bits-and-blooms/bitset v1.26.0 // indirect
 	github.com/catppuccin/go v0.2.0 // indirect
-	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
+	github.com/cenkalti/backoff/v7 v7.0.1 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4 // indirect
 	github.com/charmbracelet/x/exp/ordered v0.1.0 // indirect
@@ -101,7 +101,7 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
-	github.com/luevano/mangodex v0.5.2 // indirect
+	github.com/luevano/mangodex v0.5.3 // indirect
 	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-runewidth v0.0.31 // indirect
