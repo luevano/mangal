@@ -17,9 +17,9 @@ func TestFeaturesMarkdown(t *testing.T) {
 	if rows != len(Features) {
 		t.Errorf("%d rows, %d features", rows, len(Features))
 	}
-	doc := "intro\n" + FeaturesBegin + "\nold\n" + FeaturesEnd + "\nrest\n"
+	doc := "intro\n" + FeaturesBegin + "\nthe previous matrix\n" + FeaturesEnd + "\nrest\n"
 	got, ok := ReplaceFeatures(doc)
-	if !ok || strings.Contains(got, "old") || !strings.HasPrefix(got, "intro\n"+FeaturesBegin+"\n| Feature") || !strings.HasSuffix(got, FeaturesEnd+"\nrest\n") {
+	if !ok || strings.Contains(got, "the previous matrix") || !strings.HasPrefix(got, "intro\n"+FeaturesBegin+"\n| Feature") || !strings.HasSuffix(got, FeaturesEnd+"\nrest\n") {
 		t.Errorf("replaced:\n%s", got)
 	}
 	if _, ok := ReplaceFeatures("no markers"); ok {
