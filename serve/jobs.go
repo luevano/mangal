@@ -220,10 +220,11 @@ func (a *API) StartDownload(ctx context.Context, request apiv1.StartDownloadRequ
 	if err != nil {
 		return nil, err
 	}
-	c, err := client.Acquire(ctx, loader)
+	c, release, err := client.Hold(ctx, loader)
 	if err != nil {
 		return nil, unprocessable(err)
 	}
+	defer release()
 	manga, err := selector.Find(ctx, client.Searcher(c), deref(b.MangaId), deref(b.Query), deref(b.Selector))
 	if err != nil {
 		return nil, unprocessable(err)

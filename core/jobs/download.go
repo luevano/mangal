@@ -20,11 +20,13 @@ import (
 var (
 	downloadChapters = client.Download
 	lockStore        = cache.Watches
+	holdClient       = client.HoldByID
 )
 
-// DownloadSpec is the download of the manga's chapters with the client, as a job of the
-// client's provider (client.Download: the provider's lock, rate-limit retries, the library).
-// title names the job, origin is the screen that starts it.
+// DownloadSpec is the download of the manga's chapters with the client's provider, as a
+// job of it (client.Download: the provider's lock, rate-limit retries, the library). The
+// job holds the provider's current client while it runs (a reload doesn't close it under
+// the download). title names the job, origin is the screen that starts it.
 func DownloadSpec(c *libmangal.Client, manga mangadata.Manga, chapters []mangadata.Chapter, options libmangal.DownloadOptions, title, origin string) Spec {
 	provider := c.Info().ID
 	return Spec{
@@ -35,6 +37,11 @@ func DownloadSpec(c *libmangal.Client, manga mangadata.Manga, chapters []mangada
 		Origin:    origin,
 		Chapters:  chapters,
 		Run: func(ctx context.Context, p *Progress) error {
+			c, _, release, err := holdClient(ctx, provider)
+			if err != nil {
+				return err
+			}
+			defer release()
 			return RunDownload(ctx, p, func(ctx context.Context, chapters []mangadata.Chapter, onEvent func(client.Event)) client.Results {
 				return downloadChapters(ctx, c, chapters, options, onEvent)
 			})
