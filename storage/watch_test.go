@@ -36,7 +36,8 @@ func TestMigrateWatches(t *testing.T) {
 	}
 }
 
-func f32(f float32) *float32 { return &f }
+//go:fix inline
+func f32(f float32) *float32 { return new(f) }
 
 func TestWatches(t *testing.T) {
 	data := openData(t)

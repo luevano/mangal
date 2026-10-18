@@ -276,7 +276,7 @@ func runItemKey(ctx context.Context, msg tea.KeyPressMsg, l *list.Model, m watch
 	case key.Matches(msg, open):
 		return showRun(r), true
 	case key.Matches(msg, library):
-		return libraryCmd(ctx, watch.Watch{Watch: storage.Watch{ID: r.Watch, Provider: r.Provider, MangaID: r.MangaID, Title: r.Title}}), true
+		return libraryCmd(ctx, watch.Watch{ID: r.Watch, Provider: r.Provider, MangaID: r.MangaID, Title: r.Title}), true
 	case key.Matches(msg, history):
 		return func() tea.Msg { return newHistoryState(m, r.Provider) }, true
 	}

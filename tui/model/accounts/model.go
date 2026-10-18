@@ -251,8 +251,8 @@ func (s *state) updateSecret(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 			}
 			// the loaded providers keep the secret they started with
 			return base.NotificationWithDurationMsg{
-				NotificationMsg: base.NotificationMsg{Message: "Saved, used from the next run of mangal"},
-				Duration:        3 * time.Second,
+				Message:  "Saved, used from the next run of mangal",
+				Duration: 3 * time.Second,
 			}
 		}
 	}

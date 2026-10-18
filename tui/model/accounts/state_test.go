@@ -9,7 +9,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -30,10 +29,10 @@ func press(s *state, k string) tea.Cmd {
 func loaded() *state {
 	s := New(false).(*state)
 	s.Update(context.Background(), loadedMsg{
-		{Account: libmangal.Account{Service: "Anilist", User: "nick", Status: "logged in", URL: "https://anilist.co/user/nick"}, Metadata: metadata.IDSourceAnilist, Checked: time.Now()},
-		{Account: libmangal.Account{Service: "MangaPlus", Status: "free device", Details: []string{"no secret"}}, Provider: mangaPlusID, Checked: time.Now().Add(-2 * time.Hour)},
-		{Account: libmangal.Account{Service: "Discord", Status: "not set"}, Discord: true, Checked: time.Now()},
-		{Account: libmangal.Account{Service: "Other"}, Provider: "mango-other", Error: errTest.Error(), Checked: time.Now()},
+		{Service: "Anilist", User: "nick", Status: "logged in", URL: "https://anilist.co/user/nick", Metadata: metadata.IDSourceAnilist, Checked: time.Now()},
+		{Service: "MangaPlus", Status: "free device", Details: []string{"no secret"}, Provider: mangaPlusID, Checked: time.Now().Add(-2 * time.Hour)},
+		{Service: "Discord", Status: "not set", Discord: true, Checked: time.Now()},
+		{Service: "Other", Provider: "mango-other", Error: errTest.Error(), Checked: time.Now()},
 	})
 	return s
 }

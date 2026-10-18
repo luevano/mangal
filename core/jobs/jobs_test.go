@@ -413,7 +413,7 @@ func (f *fakeChecker) Check(ctx context.Context, ids []int64, opts watch.CheckOp
 		opts.OnLive(watch.LiveEvent{Kind: watch.LiveStart, Provider: "p", Message: "checking One Piece"})
 		opts.OnLive(watch.LiveEvent{Kind: watch.LiveProviderDone, Provider: "p"})
 	}
-	return watch.Report{CheckRun: storage.CheckRun{Watches: len(ids)}}, nil
+	return watch.Report{Watches: len(ids)}, nil
 }
 
 // A check waits while another mangal has its provider, and again when the check finds

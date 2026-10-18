@@ -174,8 +174,7 @@ func send(ctx context.Context, url string, e discord.Embed, what string) error {
 // redact drops the webhook URL from the error: its token is the secret, and the errors of
 // the requests (*url.Error) carry it to the logs.
 func redact(err error, webhook string) error {
-	var ue *neturl.Error
-	if errors.As(err, &ue) {
+	if ue, ok := errors.AsType[*neturl.Error](err); ok {
 		err = fmt.Errorf("%s discord webhook: %w", ue.Op, ue.Err)
 	}
 	// disgo builds its own url from the webhook's id and token

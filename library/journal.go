@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"slices"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/storage"
@@ -56,8 +57,8 @@ func mkdirAll(fsys afero.Fs, j Journal, dir string, mode fs.FileMode) error {
 			break
 		}
 	}
-	for i := len(missing) - 1; i >= 0; i-- {
-		if err := logStep(j, storage.Step{Kind: storage.StepMkdir, Path: missing[i]}); err != nil {
+	for _, m := range slices.Backward(missing) {
+		if err := logStep(j, storage.Step{Kind: storage.StepMkdir, Path: m}); err != nil {
 			return err
 		}
 	}

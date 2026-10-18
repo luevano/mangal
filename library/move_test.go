@@ -17,7 +17,7 @@ import (
 func newMover(t *testing.T, root string) Mover {
 	t.Helper()
 	return Mover{
-		Files:        Files{FS: afero.NewOsFs(), Library: newLibrary(t), Root: root, Modes: DefaultModes},
+		FS: afero.NewOsFs(), Library: newLibrary(t), Root: root, Modes: DefaultModes,
 		ProviderDirs: true,
 		ProviderName: func(p libmangal.ProviderInfo) string { return p.Name },
 		MangaName: func(_ libmangal.ProviderInfo, m mangadata.Manga) string {

@@ -203,12 +203,7 @@ func (r BackupsReq) replace(id int64) bool {
 	if r.ReplaceAll {
 		return true
 	}
-	for _, m := range r.Replace {
-		if m == id {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(r.Replace, id)
 }
 
 func (r BackupsReq) plan(ctx context.Context, c *Core) (*prepared, error) {

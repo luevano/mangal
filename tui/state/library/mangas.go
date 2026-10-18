@@ -454,32 +454,34 @@ func checkReport(checks []library.IDCheck, err error) string {
 	case len(checks) == 0:
 		return "The ids of the folders without a .libmangal.json look right."
 	}
-	report := fmt.Sprintf("Check the ids of %d folders without a .libmangal.json:", len(checks))
+	var report strings.Builder
+	fmt.Fprintf(&report, "Check the ids of %d folders without a .libmangal.json:", len(checks))
 	for _, c := range checks {
-		report += "\n  " + c.String()
+		report.WriteString("\n  " + c.String())
 	}
-	return report
+	return report.String()
 }
 
 func scanReport(res library.ScanResult) string {
-	report := fmt.Sprintf("Added %d, moved %d, removed %d chapters.\nFound %d moved manga folders, %d new.",
+	var report strings.Builder
+	fmt.Fprintf(&report, "Added %d, moved %d, removed %d chapters.\nFound %d moved manga folders, %d new.",
 		res.Added, res.Moved, res.Removed, res.Relocated, res.New)
 	if n := res.Sources.FromWatches + res.Sources.FromDownloads; n > 0 {
-		report += fmt.Sprintf("\n%d sources found from watches/downloads.", n)
+		fmt.Fprintf(&report, "\n%d sources found from watches/downloads.", n)
 	}
 	if len(res.Missing) != 0 {
-		report += fmt.Sprintf("\n\n%d mangas weren't found (marked missing in the list, %s removes one):", len(res.Missing), base.KeyDelete.Help().Key)
+		fmt.Fprintf(&report, "\n\n%d mangas weren't found (marked missing in the list, %s removes one):", len(res.Missing), base.KeyDelete.Help().Key)
 		for _, m := range res.Missing {
-			report += "\n  " + m.Title + "  " + m.Path()
+			report.WriteString("\n  " + m.Title + "  " + m.Path())
 		}
 	}
 	if len(res.Unrecognized) != 0 {
-		report += fmt.Sprintf("\n\n%d files without a chapter number:", len(res.Unrecognized))
+		fmt.Fprintf(&report, "\n\n%d files without a chapter number:", len(res.Unrecognized))
 		for _, f := range res.Unrecognized {
-			report += "\n  " + f
+			report.WriteString("\n  " + f)
 		}
 	}
-	return report
+	return report.String()
 }
 
 // merge marks the manga to keep, the next one is merged into it.

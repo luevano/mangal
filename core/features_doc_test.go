@@ -9,7 +9,7 @@ import (
 func TestFeaturesMarkdown(t *testing.T) {
 	md := FeaturesMarkdown()
 	rows := 0
-	for _, line := range strings.Split(md, "\n") {
+	for line := range strings.SplitSeq(md, "\n") {
 		if strings.HasPrefix(line, "| ") && !strings.HasPrefix(line, "| Feature ") {
 			rows++
 		}

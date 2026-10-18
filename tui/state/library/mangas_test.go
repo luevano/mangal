@@ -84,8 +84,8 @@ func TestMangaWatches(t *testing.T) {
 	if n, ok := s.Update(ctx, press("w"))().(base.NotificationMsg); !ok || !strings.Contains(n.Message, "No source") {
 		t.Errorf("w without a source: %#v", n)
 	}
-	w := watch.Watch{Watch: storage.Watch{ID: 3, Title: "Berserk", Provider: "mango-mangapill", Enabled: true}, NextCheck: time.Now().Add(3*time.Hour + time.Minute), NextScheduled: time.Now().Add(3*time.Hour + time.Minute)}
-	paused := watch.Watch{Watch: storage.Watch{ID: 4, Title: "Berserk", Provider: "mango-mangadex"}, ProviderMissing: true}
+	w := watch.Watch{ID: 3, Title: "Berserk", Provider: "mango-mangapill", Enabled: true, NextCheck: time.Now().Add(3*time.Hour + time.Minute), NextScheduled: time.Now().Add(3*time.Hour + time.Minute)}
+	paused := watch.Watch{ID: 4, Title: "Berserk", Provider: "mango-mangadex", ProviderMissing: true}
 	s.Update(ctx, mangaWatchesMsg{paused, w})
 	view := s.View()
 	for _, want := range []string{"watched on mango-mangapill: next check in 3h", "watched on mango-mangadex: paused, provider missing"} {

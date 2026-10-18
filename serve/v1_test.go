@@ -236,7 +236,7 @@ func readEvents(body io.Reader, fn func(Event)) {
 			}
 			block := string(buf[:i])
 			buf = buf[i+2:]
-			for _, line := range strings.Split(block, "\n") {
+			for line := range strings.SplitSeq(block, "\n") {
 				if v, ok := strings.CutPrefix(line, "data: "); ok {
 					var e Event
 					if json.Unmarshal([]byte(v), &e) == nil {

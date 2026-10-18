@@ -21,7 +21,7 @@ func withConfigWindow(t *testing.T) *[]*fakeConfigWindow {
 	t.Helper()
 	var opened []*fakeConfigWindow
 	NewConfigWindow = func(filter string) State {
-		w := &fakeConfigWindow{fakeState: fakeState{title: "config"}, filters: []string{filter}}
+		w := &fakeConfigWindow{title: "config", filters: []string{filter}}
 		opened = append(opened, w)
 		return w
 	}

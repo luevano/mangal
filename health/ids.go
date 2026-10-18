@@ -160,13 +160,14 @@ func describeLinks(links library.Links) string {
 }
 
 func bindCommand(manga int64, links library.Links) string {
-	cmd := fmt.Sprintf("mangal library bind %d", manga)
+	var cmd strings.Builder
+	fmt.Fprintf(&cmd, "mangal library bind %d", manga)
 	for _, code := range backupCodes {
 		if id, ok := links[code]; ok {
-			cmd += " " + linkFlags[code] + " " + id
+			cmd.WriteString(" " + linkFlags[code] + " " + id)
 		}
 	}
-	return cmd
+	return cmd.String()
 }
 
 func backupsMessage(n int) string {

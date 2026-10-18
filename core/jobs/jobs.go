@@ -239,21 +239,19 @@ func (m *Manager) Add(spec Spec) Job {
 	m.ids++
 	m.seq++
 	e := &entry{
-		Job: Job{
-			ID:        m.ids,
-			Kind:      spec.Kind,
-			Title:     spec.Title,
-			Providers: providers,
-			MangaID:   spec.MangaID,
-			Origin:    spec.Origin,
-			Read:      spec.Read,
-			Status:    Queued,
-			Added:     m.now(),
-		},
-		results: client.NewResults(spec.Chapters),
-		run:     spec.Run,
-		finally: spec.Finally,
-		seq:     m.seq,
+		ID:        m.ids,
+		Kind:      spec.Kind,
+		Title:     spec.Title,
+		Providers: providers,
+		MangaID:   spec.MangaID,
+		Origin:    spec.Origin,
+		Read:      spec.Read,
+		Status:    Queued,
+		Added:     m.now(),
+		results:   client.NewResults(spec.Chapters),
+		run:       spec.Run,
+		finally:   spec.Finally,
+		seq:       m.seq,
 	}
 	e.Total = len(e.results)
 	e.indexChapters()

@@ -409,9 +409,7 @@ func TestClientChangeRace(t *testing.T) {
 	defer func() { _ = cache.SetMyAnimeListClient("test-id", "") }()
 	var wg sync.WaitGroup
 	for i := range 4 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for j := range 20 {
 				if i == 0 {
 					_ = cache.SetMyAnimeListClient(fmt.Sprintf("id-%d", j), "")
@@ -420,7 +418,7 @@ func TestClientChangeRace(t *testing.T) {
 					t.Error(err)
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

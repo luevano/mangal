@@ -13,7 +13,6 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/library"
-	"github.com/luevano/mangal/v5/storage"
 )
 
 type fixManager struct {
@@ -23,7 +22,7 @@ type fixManager struct {
 }
 
 func (m *fixManager) Get(_ context.Context, id int64) (watch.Watch, error) {
-	return watch.Watch{Watch: storage.Watch{ID: id, Title: "Vagabond", Provider: "mango-mangadex", Enabled: m.enabled[id]}}, nil
+	return watch.Watch{ID: id, Title: "Vagabond", Provider: "mango-mangadex", Enabled: m.enabled[id]}, nil
 }
 
 func (m *fixManager) SetEnabled(_ context.Context, id int64, enabled bool) (watch.Watch, error) {
@@ -33,7 +32,7 @@ func (m *fixManager) SetEnabled(_ context.Context, id int64, enabled bool) (watc
 
 func (m *fixManager) Add(_ context.Context, opts watch.AddOptions) (watch.Watch, error) {
 	m.added = append(m.added, opts)
-	return watch.Watch{Watch: storage.Watch{ID: 10, Title: "Kagurabachi", Provider: opts.Provider}}, nil
+	return watch.Watch{ID: 10, Title: "Kagurabachi", Provider: opts.Provider}, nil
 }
 
 // fix plans the finding's fix, applies it with apply.

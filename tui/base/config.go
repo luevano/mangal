@@ -47,8 +47,7 @@ func ConfigError(err error, key string) error {
 }
 
 func configKeyOf(err error) string {
-	var e *configKeyError
-	if errors.As(err, &e) {
+	if e, ok := errors.AsType[*configKeyError](err); ok {
 		return e.key
 	}
 	return ""

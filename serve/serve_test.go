@@ -103,8 +103,7 @@ func TestLostLock(t *testing.T) {
 	saved := heartbeatEvery
 	t.Cleanup(func() { heartbeatEvery = saved })
 	heartbeatEvery = 20 * time.Millisecond
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	done := make(chan error, 1)
 	go func() { done <- Run(ctx, Args{Host: "127.0.0.1"}, io.Discard) }()
 	runServerAddress(t)

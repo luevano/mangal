@@ -12,7 +12,7 @@ import (
 // close enough; a broken line goes on indented a bit more.
 func wrap(message string, width int) []string {
 	var lines []string
-	for _, line := range strings.Split(message, "\n") {
+	for line := range strings.SplitSeq(message, "\n") {
 		indent := strings.Repeat(" ", len(line)-len(strings.TrimLeft(line, " "))+2)
 		for ansi.StringWidth(line) > width {
 			runes := []rune(line)

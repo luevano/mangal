@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -616,8 +617,8 @@ func (f Files) ApplyLinksContext(ctx context.Context, plan LinkPlan, opts LinkOp
 	// what was done goes back when a later step fails
 	var undo []func() error
 	rollback := func(err error) error {
-		for i := len(undo) - 1; i >= 0; i-- {
-			if undoErr := undo[i](); undoErr != nil {
+		for _, u := range slices.Backward(undo) {
+			if undoErr := u(); undoErr != nil {
 				return fail(fmt.Errorf("%w (and undoing it: %w)", err, undoErr))
 			}
 		}
@@ -640,9 +641,7 @@ func (f Files) ApplyLinksContext(ctx context.Context, plan LinkPlan, opts LinkOp
 		})
 	}
 	change := storage.LinkChange{Manga: m.ID, Links: map[metadata.IDCode]string{}, Bindings: slices.Clone(plan.Bindings), At: time.Now()}
-	for code, id := range plan.Links {
-		change.Links[code] = id
-	}
+	maps.Copy(change.Links, plan.Links)
 	if opts.Watches {
 		for _, w := range plan.Watches {
 			if k := [2]string{w.Watch.Provider, w.Watch.MangaID}; !slices.Contains(change.Bindings, k) {

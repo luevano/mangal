@@ -295,7 +295,8 @@ func numbers(chs []storage.RunChapter) []float32 {
 	return ns
 }
 
-func f32(f float32) *float32 { return &f }
+//go:fix inline
+func f32(f float32) *float32 { return new(f) }
 
 func TestPick(t *testing.T) {
 	m := &fakeManga{info: mangadata.MangaInfo{ID: "m", Title: "M"}}

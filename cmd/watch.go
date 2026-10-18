@@ -926,8 +926,8 @@ database is snapshotted first: "mangal library undo" brings them back.`,
 			cmd.Println("no checks")
 			return nil
 		}
-		for i := len(runs) - 1; i >= 0; i-- {
-			printRun(cmd, runs[i])
+		for _, run := range slices.Backward(runs) {
+			printRun(cmd, run)
 		}
 		return nil
 	},

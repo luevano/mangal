@@ -56,7 +56,7 @@ func TestDetailsWidth(t *testing.T) {
 	words := func(s string) string { return strings.Join(strings.Fields(ansi.Strip(s)), "") }
 	for _, width := range []int{60, 120} {
 		details := Details(fakeMeta{}, width)
-		for _, line := range strings.Split(details, "\n") {
+		for line := range strings.SplitSeq(details, "\n") {
 			if w := lipgloss.Width(line); w > width {
 				t.Errorf("%d columns: a line of %d: %q", width, w, ansi.Strip(line))
 			}

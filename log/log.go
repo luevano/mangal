@@ -217,9 +217,7 @@ func startMaintenance(at time.Time) {
 	}
 	maintaining = true
 	opts := options
-	maintenance.Add(1)
-	go func() {
-		defer maintenance.Done()
+	maintenance.Go(func() {
 		for {
 			err := maintain(opts.Dir, at, opts)
 			mu.Lock()
@@ -234,7 +232,7 @@ func startMaintenance(at time.Time) {
 			again, at, opts = false, againAt, options
 			mu.Unlock()
 		}
-	}()
+	})
 }
 
 // ringAdd adds a recent entry (also the log's own errors, so they show in the TUI). Called

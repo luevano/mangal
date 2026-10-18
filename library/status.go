@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strconv"
 	"time"
 
@@ -118,9 +119,7 @@ func (f StatusFinder) Update(ctx context.Context, mangas []storage.Manga, bindin
 			if err != nil {
 				return fmt.Errorf("AniList metadata: %w", err)
 			}
-			for id, meta := range fetched {
-				found[id] = meta
-			}
+			maps.Copy(found, fetched)
 		}
 	}
 	statuses := map[int64]string{}

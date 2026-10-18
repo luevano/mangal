@@ -341,7 +341,7 @@ func (s *state) updateUsers(ctx context.Context, msg tea.Msg) (tea.Cmd, bool) {
 	case tokenMadeMsg:
 		notice := util.CopyNotice(msg.secret, fmt.Sprintf("API token %s: %s (copied; it isn't shown again)", msg.token.Name, msg.secret))
 		return tea.Batch(func() tea.Msg {
-			return base.NotificationWithDurationMsg{NotificationMsg: base.NotificationMsg{Message: notice}, Duration: time.Minute}
+			return base.NotificationWithDurationMsg{Message: notice, Duration: time.Minute}
 		}, s.loadUsers(ctx)), true
 	}
 	return nil, false

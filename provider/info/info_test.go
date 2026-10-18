@@ -81,7 +81,7 @@ website = "https://mangasee123.com/"
 
 func TestMarkdown(t *testing.T) {
 	for _, website := range []string{"https://example.com/x", "example.com", "%zz", ""} {
-		i := Info{ProviderInfo: libmangal.ProviderInfo{Name: "x", Version: "0.1.0", Website: website}}
+		i := Info{Name: "x", Version: "0.1.0", Website: website}
 		md, err := i.Markdown()
 		if err != nil {
 			t.Fatalf("%q: %s", website, err)
@@ -134,11 +134,10 @@ func TestNewUnknownKeys(t *testing.T) {
 }
 
 func TestEncode(t *testing.T) {
-	want := Info{ProviderInfo: libmangal.ProviderInfo{
+	want := Info{
 		ID: "x", Name: "X", Version: "0.1.0", Website: "https://x.org/",
 		Mirrors: []string{"https://x.net/"},
-		History: []libmangal.ProviderAlias{{ID: "y"}},
-	}, Type: TypeLua}
+		History: []libmangal.ProviderAlias{{ID: "y"}}, Type: TypeLua}
 	var sb strings.Builder
 	if err := want.Encode(&sb); err != nil {
 		t.Fatal(err)

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/luevano/mangal/v5/client/watch"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -59,7 +58,7 @@ func TestWatchFlags(t *testing.T) {
 func TestSelectWatches(t *testing.T) {
 	now := time.Unix(1_000_000, 0)
 	w := func(id int64, provider string, enabled bool, next time.Duration) watch.Watch {
-		return watch.Watch{Watch: storage.Watch{ID: id, Provider: provider, Enabled: enabled}, NextCheck: now.Add(next)}
+		return watch.Watch{ID: id, Provider: provider, Enabled: enabled, NextCheck: now.Add(next)}
 	}
 	all := []watch.Watch{w(1, "p", true, -time.Hour), w(2, "p", true, time.Hour), w(3, "p", false, -time.Hour), w(4, "q", true, -time.Hour)}
 	for _, tc := range []struct {
@@ -134,8 +133,8 @@ func TestMoveArgs(t *testing.T) {
 func TestPrintWatchesLibraryIssue(t *testing.T) {
 	var out strings.Builder
 	printWatches(&out, []watch.Watch{
-		{Watch: storage.Watch{ID: 1, Provider: "mango-mangadex", Title: "Chastity Reverse World", Enabled: true}, LibraryIssue: "in the library under mango-mangasee (Teisou Gyakuten Sekai): move it there (X in the library)", LibraryElsewhere: true},
-		{Watch: storage.Watch{ID: 2, Provider: "mango-mangadex", Title: "Berserk", Enabled: true}},
+		{ID: 1, Provider: "mango-mangadex", Title: "Chastity Reverse World", Enabled: true, LibraryIssue: "in the library under mango-mangasee (Teisou Gyakuten Sekai): move it there (X in the library)", LibraryElsewhere: true},
+		{ID: 2, Provider: "mango-mangadex", Title: "Berserk", Enabled: true},
 	})
 	got := out.String()
 	for _, want := range []string{"Chastity Reverse World (not in library)", "not in library: move it", "not in the library:\n  1  Chastity Reverse World: in the library under mango-mangasee"} {

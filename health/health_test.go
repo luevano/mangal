@@ -109,24 +109,24 @@ func newChecker(t *testing.T) Checker {
 	}
 	f32 := func(n float32) *float32 { return &n }
 	watches := []watch.Watch{
-		{Watch: storage.Watch{ID: 1, Provider: "mango-mangadex", MangaID: "opm", Title: "One-Punch Man", LibraryManga: 1, Enabled: true,
-			Skip: []float32{6}, Failures: 3, LastError: "boom", Added: now.Add(-24 * time.Hour)}},
-		{Watch: storage.Watch{ID: 2, Provider: "mango-weebcentral", MangaID: "bk", Title: "Berserk", LibraryManga: 3, Enabled: true,
-			Retry: []float32{3}, Added: now}},
-		{Watch: storage.Watch{ID: 3, Provider: "mango-mangadex", MangaID: "berserk", Title: "Berserk", Enabled: true, Added: now}},
-		{Watch: storage.Watch{ID: 4, Provider: "mango-mangadex", MangaID: "doro", Title: "Dorohedoro", NeedsRelink: true,
-			RelinkReason: "moved from mango-mangasee", Added: now}},
-		{Watch: storage.Watch{ID: 5, Provider: "mango-gone", MangaID: "k", Title: "Kingdom", Enabled: true, Added: now}, ProviderMissing: true},
-		{Watch: storage.Watch{ID: 6, Provider: "mango-mangasee", MangaID: "blame", Title: "Blame", Enabled: true, Schedule: "bogus",
-			Added: now.Add(-200 * 24 * time.Hour), From: f32(10)}},
-		{Watch: storage.Watch{ID: 7, Provider: "mango-mangadex", MangaID: "dg", Title: "Dungeon Odyssey", Enabled: true, Added: now},
+		{ID: 1, Provider: "mango-mangadex", MangaID: "opm", Title: "One-Punch Man", LibraryManga: 1, Enabled: true,
+			Skip: []float32{6}, Failures: 3, LastError: "boom", Added: now.Add(-24 * time.Hour)},
+		{ID: 2, Provider: "mango-weebcentral", MangaID: "bk", Title: "Berserk", LibraryManga: 3, Enabled: true,
+			Retry: []float32{3}, Added: now},
+		{ID: 3, Provider: "mango-mangadex", MangaID: "berserk", Title: "Berserk", Enabled: true, Added: now},
+		{ID: 4, Provider: "mango-mangadex", MangaID: "doro", Title: "Dorohedoro", NeedsRelink: true,
+			RelinkReason: "moved from mango-mangasee", Added: now},
+		{ID: 5, Provider: "mango-gone", MangaID: "k", Title: "Kingdom", Enabled: true, Added: now, ProviderMissing: true},
+		{ID: 6, Provider: "mango-mangasee", MangaID: "blame", Title: "Blame", Enabled: true, Schedule: "bogus",
+			Added: now.Add(-200 * 24 * time.Hour), From: f32(10)},
+		{ID: 7, Provider: "mango-mangadex", MangaID: "dg", Title: "Dungeon Odyssey", Enabled: true, Added: now,
 			Bindings:     []storage.Binding{{Source: metadata.IDCodeAnilist, ID: "555"}},
 			LibraryIssue: "in the library under AsuraScans (Dungeon Odyssey): move it there (X in the library)", LibraryElsewhere: true},
-		{Watch: storage.Watch{ID: 8, Provider: "mango-mangadex", MangaID: "title:Yomi no Tsugai", Title: "Yomi no Tsugai", Enabled: true, Added: now,
-			NeedsRelink: true, RelinkReason: "placeholder manga id", LibraryManga: 6},
+		{ID: 8, Provider: "mango-mangadex", MangaID: "title:Yomi no Tsugai", Title: "Yomi no Tsugai", Enabled: true, Added: now,
+			NeedsRelink: true, RelinkReason: "placeholder manga id", LibraryManga: 6,
 			Bindings:     []storage.Binding{{Source: metadata.IDCodeAnilist, ID: "136899"}},
 			LibraryIssue: "in the library under Weeb Central (Yomi no Tsugai): move it there (X in the library)", LibraryElsewhere: true},
-		{Watch: storage.Watch{ID: 9, Provider: "mango-weebcentral", MangaID: "Gachiakuta", Title: "Gachiakuta", LibraryManga: 7, Added: now}},
+		{ID: 9, Provider: "mango-weebcentral", MangaID: "Gachiakuta", Title: "Gachiakuta", LibraryManga: 7, Added: now},
 	}
 	// 9: no chapters
 	if err := lib.RememberMangaDir(md, "Empty", libmangal.MangaDirInfo{}); err != nil {
@@ -685,11 +685,11 @@ func TestHoldChecks(t *testing.T) {
 	c := newChecker(t)
 	now := c.Now()
 	c.Watches = fakeManager{list: []watch.Watch{
-		{Watch: storage.Watch{ID: 10, Provider: "mango-mangadex", MangaID: "a", Title: "Held", Added: now}, Hold: storage.HoldHiatus, Status: string(metadata.StatusFinished)},
-		{Watch: storage.Watch{ID: 11, Provider: "mango-mangadex", MangaID: "b", Title: "Hiatus", Enabled: true, Added: now.Add(-200 * 24 * time.Hour)}, Status: string(metadata.StatusHiatus)},
-		{Watch: storage.Watch{ID: 12, Provider: "mango-mangadex", MangaID: "c", Title: "Lost", Enabled: true, Added: now, Coverage: "the provider has 3 of the library's 20 chapters"}},
-		{Watch: storage.Watch{ID: 13, Provider: "mango-mangadex", MangaID: "d", Title: "Moving", Enabled: true, Added: now,
-			NeedsRelink: true, RelinkKind: storage.RelinkProvider, RelinkReason: "only has 60-63"}},
+		{ID: 10, Provider: "mango-mangadex", MangaID: "a", Title: "Held", Added: now, Hold: storage.HoldHiatus, Status: string(metadata.StatusFinished)},
+		{ID: 11, Provider: "mango-mangadex", MangaID: "b", Title: "Hiatus", Enabled: true, Added: now.Add(-200 * 24 * time.Hour), Status: string(metadata.StatusHiatus)},
+		{ID: 12, Provider: "mango-mangadex", MangaID: "c", Title: "Lost", Enabled: true, Added: now, Coverage: "the provider has 3 of the library's 20 chapters"},
+		{ID: 13, Provider: "mango-mangadex", MangaID: "d", Title: "Moving", Enabled: true, Added: now,
+			NeedsRelink: true, RelinkKind: storage.RelinkProvider, RelinkReason: "only has 60-63"},
 	}}
 	report, err := c.Run(context.Background(), Options{Only: []string{"W1", "W3", "W5", "W14", "W15"}})
 	if err != nil {

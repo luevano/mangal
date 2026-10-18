@@ -17,7 +17,7 @@ type keyedState struct {
 func (s *keyedState) Key() string { return s.key }
 
 func keyed(title, key string) *keyedState {
-	return &keyedState{fakeState: fakeState{title: title}, key: key}
+	return &keyedState{title: title, key: key}
 }
 
 func (m *model) titles() []string {

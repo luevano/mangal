@@ -32,7 +32,7 @@ func testMeta(title, al, mal string) metadata.Metadata {
 func newLinker(t *testing.T, root string, metas map[string]metadata.Metadata) Linker {
 	t.Helper()
 	return Linker{
-		Files: Files{FS: afero.NewOsFs(), Library: newLibrary(t), Root: root, Modes: DefaultModes},
+		FS: afero.NewOsFs(), Library: newLibrary(t), Root: root, Modes: DefaultModes,
 		MangaName: func(_ libmangal.ProviderInfo, m mangadata.Manga) string {
 			if metadata.Validate(m.Metadata()) == nil {
 				return m.Metadata().String()

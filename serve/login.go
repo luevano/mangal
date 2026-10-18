@@ -247,8 +247,7 @@ func (a *API) Login(ctx context.Context, request apiv1.LoginRequestObject) (apiv
 	}
 	u, err := auth.checkPassword(r, strings.TrimSpace(request.Body.Name), request.Body.Password)
 	if err != nil {
-		var limited errLoginLimited
-		if errors.As(err, &limited) {
+		if _, ok := errors.AsType[errLoginLimited](err); ok {
 			return nil, &apiError{status: http.StatusTooManyRequests, code: CodeRateLimited, err: err}
 		}
 		if errors.Is(err, errUnauthorized) {

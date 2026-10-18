@@ -134,7 +134,7 @@ func (f *fakeChecker) Check(ctx context.Context, ids []int64, opts watch.CheckOp
 			}
 		}
 	}
-	return watch.Report{CheckRun: storage.CheckRun{ID: id, Kind: opts.Kind}}, nil
+	return watch.Report{ID: id, Kind: opts.Kind}, nil
 }
 
 func (f *fakeChecker) callList() []checkCall {
@@ -151,7 +151,7 @@ func testWatch(id int64, next time.Time, enabled bool) watch.Watch {
 }
 
 func providerWatch(provider string, id int64, next time.Time, enabled bool) watch.Watch {
-	return watch.Watch{Watch: storage.Watch{ID: id, Title: "m", Provider: provider, Enabled: enabled}, NextCheck: next}
+	return watch.Watch{ID: id, Title: "m", Provider: provider, Enabled: enabled, NextCheck: next}
 }
 
 func newTestScheduler(f *fakeChecker) *Scheduler {
@@ -470,7 +470,7 @@ func (f *tickChecker) Check(ctx context.Context, ids []int64, opts watch.CheckOp
 			f.stored[i].LastChecked = f.now
 		}
 	}
-	return watch.Report{CheckRun: storage.CheckRun{ID: 1, Kind: opts.Kind}}, nil
+	return watch.Report{ID: 1, Kind: opts.Kind}, nil
 }
 
 // TestSchedulerTicks: checks run on the schedule's ticks, whenever the server started; a

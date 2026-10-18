@@ -501,12 +501,12 @@ func TestConcurrentGetSet(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		for i := 0; i < 200; i++ {
+		for range 200 {
 			_ = Download.Metadata.Strict.Get()
 			_, _ = Get(Download.Path.Key)
 		}
 	}()
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		_ = Download.Metadata.Strict.Set(i%2 == 0)
 	}
 	<-done

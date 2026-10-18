@@ -196,8 +196,8 @@ func (c Checker) loadChapters(ctx context.Context, s *snapshot) error {
 			}
 			if src, ok := installedSource(s, m); ok {
 				queued[m.ID] = len(list)
-				list = append(list, todo{manga: m.ID, chapterResult: chapterResult{provider: src.Provider, mangaID: src.MangaID, forNew: true},
-					ProviderManga: ProviderManga{MangaID: src.MangaID, Title: m.Title, Have: s.numbers[m.ID]}})
+				list = append(list, todo{manga: m.ID, provider: src.Provider, mangaID: src.MangaID, forNew: true,
+					MangaID: src.MangaID, Title: m.Title, Have: s.numbers[m.ID]})
 			}
 		}
 	}
@@ -210,7 +210,7 @@ func (c Checker) loadChapters(ctx context.Context, s *snapshot) error {
 				if src, ok := s.gapSource(m, g); ok {
 					queued[m.ID] = len(list)
 					list = append(list, todo{manga: m.ID, chapterResult: src,
-						ProviderManga: ProviderManga{MangaID: src.mangaID, Title: m.Title, Have: s.numbers[m.ID]}})
+						MangaID: src.mangaID, Title: m.Title, Have: s.numbers[m.ID]})
 				}
 			}
 		}

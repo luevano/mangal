@@ -48,7 +48,7 @@ type fixWatches struct {
 }
 
 func (m *fixWatches) Get(_ context.Context, id int64) (watch.Watch, error) {
-	return watch.Watch{Watch: storage.Watch{ID: id, Title: "Vagabond", Provider: "mango-mangadex", Enabled: m.enabled[id]}}, nil
+	return watch.Watch{ID: id, Title: "Vagabond", Provider: "mango-mangadex", Enabled: m.enabled[id]}, nil
 }
 
 func (m *fixWatches) SetEnabled(_ context.Context, id int64, enabled bool) (watch.Watch, error) {

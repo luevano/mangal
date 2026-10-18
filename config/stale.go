@@ -166,7 +166,7 @@ func Clean(s Stale) (backup string, err error) {
 // backupPath is a backup of the config file that doesn't exist yet.
 func backupPath(now time.Time) (string, error) {
 	base := Path + "." + now.Format("2006-01-02T150405")
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		path := base + ".bak"
 		if i > 0 {
 			path = fmt.Sprintf("%s-%d.bak", base, i)

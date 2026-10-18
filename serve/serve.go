@@ -101,8 +101,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 
 	lock, err := svc.Watches.Lock(lockName, lockStale)
 	if err != nil {
-		var held *storage.LockError
-		if errors.As(err, &held) {
+		if held, ok := errors.AsType[*storage.LockError](err); ok {
 			return fmt.Errorf("another mangal serve (pid %d on %s, since %s) uses %s; a second instance needs another config with its own data.path and serve.port",
 				held.Holder.PID, held.Holder.Host, held.Holder.Acquired.Format(time.DateTime), watch.DataDB())
 		}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -105,9 +106,9 @@ func (u Undoer) Plan(id int64) (UndoPlan, error) {
 		return plan, err
 	}
 	sim := &simFS{fs: u.FS}
-	for i := len(steps) - 1; i >= 0; i-- {
-		s := UndoStep{Step: steps[i]}
-		s.Action, s.Reason = check(sim, steps[i])
+	for _, step := range slices.Backward(steps) {
+		s := UndoStep{Step: step}
+		s.Action, s.Reason = check(sim, step)
 		sim.apply(s)
 		plan.Steps = append(plan.Steps, s)
 	}
@@ -302,8 +303,8 @@ func under(dir, path string) (string, bool) {
 // resolve follows path back to where it really is now. gone is a path that won't exist,
 // content a file's simulated content (nil: read the real file).
 func (s *simFS) resolve(path string) (real string, gone bool, content []byte, known bool) {
-	for i := len(s.changes) - 1; i >= 0; i-- {
-		c := s.changes[i]
+	for _, c := range slices.Backward(s.changes) {
+
 		switch c.Action {
 		case UndoMoveBack:
 			if rest, ok := under(c.Step.Path, path); ok {

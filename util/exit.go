@@ -1,5 +1,7 @@
 package util
 
+import "slices"
+
 import "sync"
 
 var (
@@ -20,7 +22,7 @@ func RunExitHooks() {
 	hooks := exitHooks
 	exitHooks = nil
 	exitMu.Unlock()
-	for i := len(hooks) - 1; i >= 0; i-- {
-		hooks[i]()
+	for _, hook := range slices.Backward(hooks) {
+		hook()
 	}
 }

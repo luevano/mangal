@@ -215,8 +215,8 @@ func TestRemove(t *testing.T) {
 func TestNew(t *testing.T) {
 	dir := t.TempDir()
 	i := info.Info{
-		ProviderInfo: libmangal.ProviderInfo{ID: "x", Name: "X", Version: "0.1.0", Website: "https://example.com"},
-		Type:         info.TypeLua,
+		ID: "x", Name: "X", Version: "0.1.0", Website: "https://example.com",
+		Type: info.TypeLua,
 	}
 	if err := New(dir, i); err != nil {
 		t.Fatal(err)

@@ -52,8 +52,7 @@ func TestMangas(t *testing.T) {
 	for _, tt := range tests {
 		got, err := Mangas(tt.sel, tt.query, tt.mangas)
 		if tt.want == nil {
-			var selErr *Error
-			if !errors.As(err, &selErr) {
+			if _, ok := errors.AsType[*Error](err); !ok {
 				t.Errorf("Mangas(%q, %q) = %v, %v; want a selector error", tt.sel, tt.query, got, err)
 			}
 			continue
@@ -102,8 +101,7 @@ func TestChapters(t *testing.T) {
 	for _, tt := range tests {
 		got, err := Chapters(tt.sel, chapters)
 		if tt.want == nil {
-			var selErr *Error
-			if !errors.As(err, &selErr) {
+			if _, ok := errors.AsType[*Error](err); !ok {
 				t.Errorf("Chapters(%q) = %v, %v; want a selector error", tt.sel, got, err)
 			}
 			continue

@@ -52,7 +52,7 @@ func (a *API) GetLibraryCover(ctx context.Context, request apiv1.GetLibraryCover
 			continue
 		}
 		return apiv1.GetLibraryCover200ImageResponse{Body: bytes.NewReader(data), ContentType: mime.TypeByExtension(filepath.Ext(name)),
-			ContentLength: int64(len(data)), Headers: apiv1.GetLibraryCover200ResponseHeaders{CacheControl: ptr(pageCache)}}, nil
+			ContentLength: int64(len(data)), Headers: apiv1.GetLibraryCover200ResponseHeaders{CacheControl: new(pageCache)}}, nil
 	}
 	return nil, newAPIError(http.StatusNotFound, watch.CodeNotFound, "%s has no cover", m.Title)
 }
@@ -86,9 +86,9 @@ func (a *API) libraryChapter(ctx context.Context, id int64, path string) (*pages
 func toAPIPages(format string, list []pages.Page) apiv1.ChapterPages {
 	out := apiv1.ChapterPages{Format: format, Pages: []apiv1.ChapterPage{}}
 	for i, p := range list {
-		page := apiv1.ChapterPage{Index: i, Name: ptr(p.Name), Size: ptr(p.Size), Type: ptr(p.Type())}
+		page := apiv1.ChapterPage{Index: i, Name: new(p.Name), Size: new(p.Size), Type: new(p.Type())}
 		if p.Width > 0 && p.Height > 0 {
-			page.Width, page.Height = ptr(p.Width), ptr(p.Height)
+			page.Width, page.Height = new(p.Width), new(p.Height)
 		}
 		out.Pages = append(out.Pages, page)
 	}
@@ -104,7 +104,7 @@ func (a *API) ListChapterPages(ctx context.Context, request apiv1.ListChapterPag
 	ch.ReadDimensions()
 	out := toAPIPages(ch.Format.String(), ch.Pages)
 	if ch.Format == libmangal.FormatPDF {
-		out.Pdf = ptr(true)
+		out.Pdf = new(true)
 	}
 	return apiv1.ListChapterPages200JSONResponse(out), nil
 }
@@ -131,7 +131,7 @@ func (a *API) GetChapterPage(ctx context.Context, request apiv1.GetChapterPageRe
 		return nil, fmt.Errorf("read page %d of %s: %w", request.Page, filepath.Base(ch.Path), err)
 	}
 	return apiv1.GetChapterPage200ImageResponse{Body: bytes.NewReader(data), ContentType: p.Type(), ContentLength: int64(len(data)),
-		Headers: apiv1.GetChapterPage200ResponseHeaders{CacheControl: ptr(pageCache)}}, nil
+		Headers: apiv1.GetChapterPage200ResponseHeaders{CacheControl: new(pageCache)}}, nil
 }
 
 // GetChapterFile implements apiv1.StrictServerInterface: the file streamed (a folder
@@ -249,7 +249,7 @@ func (a *API) ListProviderPages(ctx context.Context, request apiv1.ListProviderP
 		}
 		out := apiv1.ChapterPages{Format: "ONLINE", Pages: []apiv1.ChapterPage{}}
 		for i, pg := range list {
-			out.Pages = append(out.Pages, apiv1.ChapterPage{Index: i, Name: ptr(fmt.Sprintf("%04d%s", i+1, pg.Extension()))})
+			out.Pages = append(out.Pages, apiv1.ChapterPage{Index: i, Name: new(fmt.Sprintf("%04d%s", i+1, pg.Extension()))})
 		}
 		return apiv1.ListProviderPages200JSONResponse(out), nil
 	})
@@ -283,7 +283,7 @@ func (a *API) GetProviderPage(ctx context.Context, request apiv1.GetProviderPage
 			return nil, err
 		}
 		return apiv1.GetProviderPage200ImageResponse{Body: bytes.NewReader(data), ContentType: contentType, ContentLength: int64(len(data)),
-			Headers: apiv1.GetProviderPage200ResponseHeaders{CacheControl: ptr(pageCache)}}, nil
+			Headers: apiv1.GetProviderPage200ResponseHeaders{CacheControl: new(pageCache)}}, nil
 	})
 }
 
@@ -323,10 +323,10 @@ func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObj
 	out := apiv1.RecordRead200JSONResponse{Synced: []string{}}
 	switch {
 	case !config.Read.History.Local.Get():
-		out.Note = ptr("read.history.local is off")
+		out.Note = new("read.history.local is off")
 	case provider == "" || mangaID == "":
 		// the history is by provider and manga id
-		out.Note = ptr("the chapter has no provider manga (a scanned folder): synced only")
+		out.Note = new("the chapter has no provider manga (a scanned folder): synced only")
 	default:
 		title := deref(b.MangaTitle)
 		if title == "" {
@@ -350,7 +350,7 @@ func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObj
 		synced, err := syncProgress(ctx, bindings, ids, b.Chapter)
 		out.Synced = append(out.Synced, synced...)
 		if err != nil {
-			out.Error = ptr(err.Error())
+			out.Error = new(err.Error())
 		}
 	}
 	a.Log.Infof("read %s %q chapter %g (library manga %d) through the API%s", provider, mangaID, b.Chapter, libraryManga, syncedNote(out.Synced))
@@ -376,9 +376,9 @@ func (a *API) GetReaderPosition(ctx context.Context, request apiv1.GetReaderPosi
 	if err != nil {
 		return nil, err
 	}
-	out := apiv1.GetReaderPosition200JSONResponse{Chapter: request.Params.Chapter, Found: ptr(found)}
+	out := apiv1.GetReaderPosition200JSONResponse{Chapter: request.Params.Chapter, Found: new(found)}
 	if found {
-		out.Page, out.Updated = pos.Page, ptr(pos.Updated)
+		out.Page, out.Updated = pos.Page, new(pos.Updated)
 	}
 	return out, nil
 }
@@ -400,7 +400,7 @@ func (a *API) PutReaderPosition(ctx context.Context, request apiv1.PutReaderPosi
 	if err != nil {
 		return nil, err
 	}
-	return apiv1.PutReaderPosition200JSONResponse{Chapter: pos.Chapter, Page: pos.Page, Updated: ptr(pos.Updated), Found: ptr(true)}, nil
+	return apiv1.PutReaderPosition200JSONResponse{Chapter: pos.Chapter, Page: pos.Page, Updated: new(pos.Updated), Found: new(true)}, nil
 }
 
 // GetLibraryMangaZip implements apiv1.StrictServerInterface: the manga's downloaded

@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"errors"
+	"maps"
 	"net/url"
 	"strconv"
 	"strings"
@@ -37,9 +38,7 @@ func parsePaste(input, state string, implicit bool) (pasted, error) {
 		values = u.Query()
 		// the implicit grant's token comes in the fragment
 		fragment, _ := url.ParseQuery(u.Fragment)
-		for k, v := range fragment {
-			values[k] = v
-		}
+		maps.Copy(values, fragment)
 	case strings.Contains(input, "="):
 		var err error
 		values, err = url.ParseQuery(strings.TrimLeft(input, "?#"))

@@ -169,7 +169,7 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 		byProvider[p] = append(byProvider[p], i)
 	}
 
-	report := Report{CheckRun: storage.CheckRun{Kind: opts.Kind, Started: s.now()}, DryRun: opts.DryRun}
+	report := Report{Kind: opts.Kind, Started: s.now(), DryRun: opts.DryRun}
 	report.Results = make([]Result, len(watches))
 	var locks *providerLocks
 	if !opts.DryRun {
@@ -231,9 +231,7 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 	sem := make(chan struct{}, max(1, s.Options.ParallelProviders))
 	var wg sync.WaitGroup
 	for _, provider := range providers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			// the provider is free for other runs as soon as it's done
 			defer locks.unlock(provider)
 			ctx, done := locks.context(ctx, provider)
@@ -254,7 +252,7 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 			if hub != nil {
 				hub.publish(LiveEvent{Run: report.ID, Kind: LiveProviderDone, Provider: provider, Message: "done"})
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -523,13 +521,13 @@ func (s *Service) checkProvider(ctx context.Context, provider string, watches []
 
 func (s *Service) skipped(w storage.Watch, reason string) Result {
 	now := s.now()
-	return Result{WatchRun: storage.WatchRun{Watch: w.ID, Provider: w.Provider, MangaID: w.MangaID, Title: w.Title,
-		Status: storage.StatusSkipped, Error: reason, Started: now, Finished: now}}
+	return Result{Watch: w.ID, Provider: w.Provider, MangaID: w.MangaID, Title: w.Title,
+		Status: storage.StatusSkipped, Error: reason, Started: now, Finished: now}
 }
 
 func (s *Service) failed(w storage.Watch, started time.Time, err error) Result {
-	return Result{WatchRun: storage.WatchRun{Watch: w.ID, Provider: w.Provider, MangaID: w.MangaID, Title: w.Title,
-		Status: storage.StatusError, Error: err.Error(), Started: started, Finished: s.now()}}
+	return Result{Watch: w.ID, Provider: w.Provider, MangaID: w.MangaID, Title: w.Title,
+		Status: storage.StatusError, Error: err.Error(), Started: started, Finished: s.now()}
 }
 
 // checkOne checks a watch: gets the manga and its chapters, picks the ones to download and
@@ -581,7 +579,7 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 		}
 	}
 
-	r := Result{Gaps: gaps, WatchRun: storage.WatchRun{Watch: w.ID, Provider: w.Provider, MangaID: w.MangaID, Title: w.Title, Started: started}, ids: ids}
+	r := Result{Gaps: gaps, Watch: w.ID, Provider: w.Provider, MangaID: w.MangaID, Title: w.Title, Started: started, ids: ids}
 	r.From, _ = s.lastDownloaded(w, 0)
 	if last := highest(have); last != nil && (r.From == nil || *last > *r.From) {
 		r.From = last

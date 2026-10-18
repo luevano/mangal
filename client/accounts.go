@@ -51,14 +51,14 @@ func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
 	}
 	loaders, err := loader.MangoLoaders()
 	if err != nil {
-		entries = append(entries, AccountEntry{Account: libmangal.Account{Service: "Providers"}, Checked: time.Now(), Err: err})
+		entries = append(entries, AccountEntry{Service: "Providers", Checked: time.Now(), Err: err})
 	}
 	lua, problems, err := loader.LuaLoaders()
 	for _, p := range problems {
 		log.Warn("skipped %s", p)
 	}
 	if err != nil {
-		entries = append(entries, AccountEntry{Account: libmangal.Account{Service: "Lua providers"}, Checked: time.Now(), Err: err})
+		entries = append(entries, AccountEntry{Service: "Lua providers", Checked: time.Now(), Err: err})
 	}
 	for _, l := range append(loaders, lua...) {
 		if a, ok := l.(interface{ HasAccount() bool }); ok && a.HasAccount() {
@@ -100,7 +100,7 @@ func AccountsCached(ctx context.Context) ([]AccountEntry, error) {
 // DiscordAccount is the Discord webhook of the notifications: saved (mangal notify webhook),
 // from the config or not set.
 func DiscordAccount() AccountEntry {
-	entry := AccountEntry{Account: libmangal.Account{Service: "Discord", Status: "not set"}, Discord: true, Checked: time.Now()}
+	entry := AccountEntry{Service: "Discord", Status: "not set", Discord: true, Checked: time.Now()}
 	saved, err := cache.DiscordWebhook()
 	switch {
 	case err != nil:
@@ -143,7 +143,7 @@ func providerAccount(ctx context.Context, accounts storage.KV, pl libmangal.Prov
 		return AccountEntry{Account: cached.Account, Provider: id, Checked: cached.Checked}
 	}
 
-	entry := AccountEntry{Account: libmangal.Account{Service: name}, Provider: id, Checked: time.Now()}
+	entry := AccountEntry{Service: name, Provider: id, Checked: time.Now()}
 	client, err := Acquire(ctx, pl)
 	if err == nil {
 		var found bool
@@ -165,7 +165,7 @@ func providerAccount(ctx context.Context, accounts storage.KV, pl libmangal.Prov
 func anilistAccount(ctx context.Context, refresh bool) AccountEntry {
 	ani, err := anilist.Anilist()
 	if err != nil {
-		return AccountEntry{Account: libmangal.Account{Service: "Anilist"}, Metadata: metadata.IDSourceAnilist, Checked: time.Now(), Err: err}
+		return AccountEntry{Service: "Anilist", Metadata: metadata.IDSourceAnilist, Checked: time.Now(), Err: err}
 	}
 	if refresh {
 		_ = anilist.CheckLogin(ctx)
@@ -215,7 +215,7 @@ type refreshedLogin struct {
 func (r refreshedLogin) account(ctx context.Context, refresh bool) AccountEntry {
 	p, err := r.provider()
 	if err != nil {
-		return AccountEntry{Account: libmangal.Account{Service: r.service}, Metadata: r.source, Checked: time.Now(), Err: err}
+		return AccountEntry{Service: r.service, Metadata: r.source, Checked: time.Now(), Err: err}
 	}
 	switch {
 	case !r.enabled:
@@ -271,12 +271,10 @@ func myAnimeListAccount(ctx context.Context, refresh bool) AccountEntry {
 			details = []string{err.Error()}
 		}
 		return AccountEntry{
-			Account: libmangal.Account{
-				Service: "MyAnimeList",
-				URL:     "https://myanimelist.net/",
-				Status:  "not configured",
-				Details: details,
-			},
+			Service:  "MyAnimeList",
+			URL:      "https://myanimelist.net/",
+			Status:   "not configured",
+			Details:  details,
 			Metadata: metadata.IDSourceMyAnimeList,
 			Checked:  time.Now(),
 		}

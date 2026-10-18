@@ -25,8 +25,8 @@ func setLinks(t *testing.T, c Checker, manga int64, links map[metadata.IDCode]st
 func TestProviderFailing(t *testing.T) {
 	c := newChecker(t)
 	w := func(id int64, provider string, failures int, enabled bool) watch.Watch {
-		return watch.Watch{Watch: storage.Watch{ID: id, Provider: provider, MangaID: fmt.Sprint("m", id), Title: fmt.Sprint("Manga ", id),
-			Enabled: enabled, Failures: failures, LastError: "site down", Added: now}}
+		return watch.Watch{ID: id, Provider: provider, MangaID: fmt.Sprint("m", id), Title: fmt.Sprint("Manga ", id),
+			Enabled: enabled, Failures: failures, LastError: "site down", Added: now}
 	}
 	c.Watches = fakeManager{list: []watch.Watch{
 		// every enabled one failed (the paused one doesn't count), one backing off

@@ -32,7 +32,7 @@ func (a *API) ListMetadataSources(context.Context, apiv1.ListMetadataSourcesRequ
 	for _, src := range client.MetadataSources {
 		s := apiv1.MetadataSource{Code: string(src.Code), Key: src.Key, Name: src.Name, Url: src.URL, Enabled: true}
 		if _, err := metadataProvider(src.Source); err != nil {
-			s.Enabled, s.Reason = false, ptr(err.Error())
+			s.Enabled, s.Reason = false, new(err.Error())
 		}
 		out = append(out, s)
 	}

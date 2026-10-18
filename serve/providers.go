@@ -118,7 +118,7 @@ func (a *API) UpdateProviders(ctx context.Context, _ apiv1.UpdateProvidersReques
 	for _, r := range results {
 		u := apiv1.ProviderUpdate{Dir: r.Dir, Status: r.Status}
 		if r.Err != nil {
-			u.Error = ptr(r.Err.Error())
+			u.Error = new(r.Err.Error())
 			a.Log.Warnf("update provider %s: %s", r.Dir, r.Err)
 		}
 		if r.Status == install.StatusUpdated {

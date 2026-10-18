@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 
@@ -247,9 +248,7 @@ func (b BackupFinder) Summary(backups []Backup) string {
 // Links are the links to set: the fills, and the conflicts' new ids when replace.
 func (b Backup) Links(replace bool) Links {
 	links := Links{}
-	for code, id := range b.Fill {
-		links[code] = id
-	}
+	maps.Copy(links, b.Fill)
 	if replace {
 		for _, c := range b.Conflicts {
 			links[c.Code] = c.New

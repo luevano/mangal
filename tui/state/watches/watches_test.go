@@ -77,7 +77,7 @@ func (f *fakeManager) Update(ctx context.Context, id int64, opts watch.UpdateOpt
 }
 func (f *fakeManager) Hold(ctx context.Context, opts watch.HoldOptions) (watch.HoldResult, error) {
 	f.held = append(f.held, opts)
-	return watch.HoldResult{Check: &watch.Report{CheckRun: storage.CheckRun{NewChapters: 2}}}, nil
+	return watch.HoldResult{Check: &watch.Report{NewChapters: 2}}, nil
 }
 
 func (f *fakeManager) Relink(ctx context.Context, id int64, opts watch.RelinkOptions) (watch.Watch, error) {
@@ -91,7 +91,7 @@ func (f *fakeManager) Check(ctx context.Context, ids []int64, opts watch.CheckOp
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.checked = append(f.checked, ids)
-	return watch.Report{CheckRun: storage.CheckRun{Watches: len(ids), NewChapters: 3}}, f.checkErr
+	return watch.Report{Watches: len(ids), NewChapters: 3}, f.checkErr
 }
 
 // checks are the ids of each Check (they run in the background).
@@ -142,16 +142,17 @@ func press(k string) tea.KeyPressMsg {
 
 var now = time.Date(2026, 10, 11, 12, 0, 0, 0, time.Local)
 
-func ptr(n float32) *float32 { return &n }
+//go:fix inline
+func ptr(n float32) *float32 { return new(n) }
 
 func testManager() *fakeManager {
 	return &fakeManager{
 		watches: []watch.Watch{
-			{Watch: storage.Watch{ID: 1, Title: "Berserk", Provider: "mango-mangapill", Enabled: true, LastChecked: now.Add(-2 * time.Hour)},
+			{ID: 1, Title: "Berserk", Provider: "mango-mangapill", Enabled: true, LastChecked: now.Add(-2 * time.Hour),
 				LastDownloaded: ptr(380), NextCheck: now.Add(2 * time.Hour), NextScheduled: now.Add(2 * time.Hour)},
-			{Watch: storage.Watch{ID: 2, Title: "Dandadan", Provider: "mango-mangaplus", Enabled: false, Failures: 2, LastError: "boom"},
+			{ID: 2, Title: "Dandadan", Provider: "mango-mangaplus", Enabled: false, Failures: 2, LastError: "boom",
 				NextCheck: now.Add(-time.Hour), NextScheduled: now.Add(-time.Hour)},
-			{Watch: storage.Watch{ID: 3, Title: "Frieren", Provider: "mango-mangaplus", Enabled: true},
+			{ID: 3, Title: "Frieren", Provider: "mango-mangaplus", Enabled: true,
 				NextCheck: now.Add(-time.Minute), NextScheduled: now.Add(-time.Minute)},
 		},
 		runs: []watch.CheckRun{
@@ -203,7 +204,7 @@ func TestRows(t *testing.T) {
 }
 
 func TestBackingOff(t *testing.T) {
-	w := watch.Watch{Watch: storage.Watch{Enabled: true, Failures: 3}, NextCheck: now.Add(5 * time.Hour), NextScheduled: now.Add(5 * time.Hour)}
+	w := watch.Watch{Enabled: true, Failures: 3, NextCheck: now.Add(5 * time.Hour), NextScheduled: now.Add(5 * time.Hour)}
 	if got := nextCheck(w, 2, now); got != "in 5h (17:00) (backing off)" {
 		t.Errorf("got %q", got)
 	}
@@ -500,7 +501,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestEditOptions(t *testing.T) {
-	w := watch.Watch{Watch: storage.Watch{ID: 1, Title: "X", Gaps: true, AnilistID: 5}}
+	w := watch.Watch{ID: 1, Title: "X", Gaps: true, AnilistID: 5}
 	s := newEditState(&fakeManager{}, w)
 	if opts := s.options(); opts != (watch.UpdateOptions{}) {
 		t.Errorf("unchanged: got %+v", opts)
@@ -522,7 +523,7 @@ func TestEditOptions(t *testing.T) {
 }
 
 func TestEditSkip(t *testing.T) {
-	w := watch.Watch{Watch: storage.Watch{ID: 1, Title: "X", Skip: []float32{189.5}}}
+	w := watch.Watch{ID: 1, Title: "X", Skip: []float32{189.5}}
 	s := newEditState(&fakeManager{}, w)
 	if s.skip.Value() != "189.5" || s.options().Skip != nil {
 		t.Errorf("unchanged: %q, %+v", s.skip.Value(), s.options())
@@ -542,7 +543,7 @@ func TestEditSkip(t *testing.T) {
 }
 
 func TestSet(t *testing.T) {
-	set := NewSet([]watch.Watch{{Watch: storage.Watch{Provider: "p", MangaID: "1", LibraryManga: 7}}})
+	set := NewSet([]watch.Watch{{Provider: "p", MangaID: "1", LibraryManga: 7}})
 	if !set.Has("p", "1") || set.Has("p", "2") {
 		t.Error("Has")
 	}
@@ -565,8 +566,8 @@ func TestCheckError(t *testing.T) {
 }
 
 func TestSetFind(t *testing.T) {
-	a := watch.Watch{Watch: storage.Watch{ID: 1, Provider: "p", MangaID: "1", LibraryManga: 7}}
-	b := watch.Watch{Watch: storage.Watch{ID: 2, Provider: "q", MangaID: "9"}}
+	a := watch.Watch{ID: 1, Provider: "p", MangaID: "1", LibraryManga: 7}
+	b := watch.Watch{ID: 2, Provider: "q", MangaID: "9"}
 	set := NewSet([]watch.Watch{a, b})
 	if w, ok := set.Find("q", "9"); !ok || w.ID != 2 {
 		t.Errorf("Find: %+v %v", w, ok)
@@ -615,7 +616,7 @@ func TestLibraryLink(t *testing.T) {
 		return newRunsState(nil), nil
 	}
 
-	w := watch.Watch{Watch: storage.Watch{Title: "Dandadan"}}
+	w := watch.Watch{Title: "Dandadan"}
 	msg, err := libraryScreen(t.Context(), screen, w)
 	if n, ok := msg.(base.NotificationMsg); err != nil || !ok || !strings.Contains(n.Message, "Dandadan isn't in the library") {
 		t.Errorf("missing: %#v, %v", msg, err)
@@ -682,7 +683,7 @@ func TestProviderHistory(t *testing.T) {
 
 func TestProviderFilter(t *testing.T) {
 	m := testManager()
-	m.watches = append(m.watches, watch.Watch{Watch: storage.Watch{ID: 4, Title: "Akira", Provider: "mango-mangapill", Enabled: true}})
+	m.watches = append(m.watches, watch.Watch{ID: 4, Title: "Akira", Provider: "mango-mangapill", Enabled: true})
 	s := loaded(t, m)
 	ctx := context.Background()
 	titles := func() []string {
@@ -718,7 +719,7 @@ func TestRelink(t *testing.T) {
 	m := testManager()
 	m.watches[1].MangaID, m.watches[1].NeedsRelink, m.watches[1].RelinkReason = "dandadan", true, "moved from mango-mangasee"
 	m.watches[2].MangaID = "title:Frieren"
-	m.watches = append(m.watches, watch.Watch{Watch: storage.Watch{ID: 4, Title: "Vagabond", Provider: "mango-gone", Enabled: true}, ProviderMissing: true})
+	m.watches = append(m.watches, watch.Watch{ID: 4, Title: "Vagabond", Provider: "mango-gone", Enabled: true, ProviderMissing: true})
 	s := loaded(t, m)
 	ctx := context.Background()
 
@@ -971,7 +972,7 @@ func TestReloadKeepsSelectionAndFilter(t *testing.T) {
 	s.List.SetFilterText("mangaplus")
 	s.List.SelectFunc(func(i _list.Item) bool { return i.(*item).w.ID == 3 })
 
-	m.watches = append([]watch.Watch{{Watch: storage.Watch{ID: 4, Title: "Akira", Provider: "mango-mangaplus", Enabled: true}}}, m.watches...)
+	m.watches = append([]watch.Watch{{ID: 4, Title: "Akira", Provider: "mango-mangaplus", Enabled: true}}, m.watches...)
 	s.Update(ctx, loadedMsg{manager: m, status: m.status, watches: m.watches})
 	if s.List.FilterValue() != "mangaplus" || s.List.Unfiltered() {
 		t.Fatalf("filter lost: %q", s.List.FilterValue())

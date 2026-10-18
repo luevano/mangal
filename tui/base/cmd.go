@@ -31,9 +31,7 @@ func Notify(message string) tea.Cmd {
 func NotifyWithDuration(message string, duration time.Duration) tea.Cmd {
 	return func() tea.Msg {
 		return NotificationWithDurationMsg{
-			NotificationMsg: NotificationMsg{
-				Message: message,
-			},
+			Message:  message,
 			Duration: duration,
 		}
 	}

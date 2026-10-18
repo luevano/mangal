@@ -97,8 +97,7 @@ func New(r io.Reader) (Info, error) {
 
 	var f file
 	if err := decoder.Decode(&f); err != nil {
-		var strict *toml.StrictMissingError
-		if errors.As(err, &strict) {
+		if strict, ok := errors.AsType[*toml.StrictMissingError](err); ok {
 			keys := make([]string, len(strict.Errors))
 			for i, e := range strict.Errors {
 				keys[i] = strings.Join(e.Key(), ".")
@@ -109,16 +108,14 @@ func New(r io.Reader) (Info, error) {
 	}
 
 	info := Info{
-		ProviderInfo: libmangal.ProviderInfo{
-			ID:          f.ID,
-			Name:        f.Name,
-			Version:     f.Version,
-			Description: f.Description,
-			Website:     f.Website,
-			Mirrors:     f.Mirrors,
-		},
-		Type:       f.Type,
-		RateLimits: f.RateLimits,
+		ID:          f.ID,
+		Name:        f.Name,
+		Version:     f.Version,
+		Description: f.Description,
+		Website:     f.Website,
+		Mirrors:     f.Mirrors,
+		Type:        f.Type,
+		RateLimits:  f.RateLimits,
 	}
 	for _, a := range f.History {
 		info.History = append(info.History, libmangal.ProviderAlias(a))
