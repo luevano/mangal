@@ -135,15 +135,14 @@ func (h *Hub) Subscribe(ctx context.Context) <-chan LiveEvent {
 		ch <- e
 	}
 	h.subs[ch] = struct{}{}
-	go func() {
-		<-ctx.Done()
+	context.AfterFunc(ctx, func() {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		if _, ok := h.subs[ch]; ok {
 			delete(h.subs, ch)
 			close(ch)
 		}
-	}()
+	})
 	return ch
 }
 

@@ -105,10 +105,7 @@ func Execute() {
 	// cancelled on ctrl+c, commands get it with cmd.Context()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	// a second ctrl+c kills mangal if something doesn't stop
-	go func() {
-		<-ctx.Done()
-		stop()
-	}()
+	context.AfterFunc(ctx, stop)
 	// close the providers (browsers, flaresolverr sessions) and databases however mangal exits
 	util.OnExit(func() {
 		if err := errors.Join(client.Shutdown(), cache.Close()); err != nil {

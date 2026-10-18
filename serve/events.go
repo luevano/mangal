@@ -122,15 +122,14 @@ func (h *Events) Subscribe(ctx context.Context, topics []string, since uint64) <
 		ch <- e
 	}
 	h.subs[ch] = want
-	go func() {
-		<-ctx.Done()
+	context.AfterFunc(ctx, func() {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		if _, ok := h.subs[ch]; ok {
 			delete(h.subs, ch)
 			close(ch)
 		}
-	}()
+	})
 	return ch
 }
 
