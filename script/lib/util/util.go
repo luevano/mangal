@@ -125,3 +125,9 @@ func mapKey(k any) string {
 		return fmt.Sprint(k)
 	}
 }
+
+// Float32 is n as a Lua number with its shortest decimal (10.1, not 10.100000381469727).
+func Float32(n float32) lua.LNumber {
+	f, _ := strconv.ParseFloat(strconv.FormatFloat(float64(n), 'f', -1, 32), 64)
+	return lua.LNumber(f)
+}

@@ -3,6 +3,7 @@ package util
 import (
 	"errors"
 	"reflect"
+	"strconv"
 	"testing"
 
 	lua "github.com/yuin/gopher-lua"
@@ -58,5 +59,13 @@ func TestToGoValueCyclic(t *testing.T) {
 			t.Errorf("%s: %v", code, err)
 		}
 		state.Close()
+	}
+}
+
+func TestFloat32(t *testing.T) {
+	for _, n := range []float32{10.1, 189.5, 3, 0.3} {
+		if got, want := Float32(n).String(), strconv.FormatFloat(float64(n), 'f', -1, 32); got != want {
+			t.Errorf("Float32(%v) = %s, want %s", n, got, want)
+		}
 	}
 }

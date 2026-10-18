@@ -320,7 +320,7 @@ func volumeInfo(state *lua.LState) int {
 
 	table := state.NewTable()
 
-	table.RawSetString("number", lua.LNumber(info.Number))
+	table.RawSetString("number", util.Float32(info.Number))
 
 	state.Push(table)
 	return 1
@@ -334,7 +334,7 @@ func chapterInfo(state *lua.LState) int {
 
 	table.RawSetString("title", lua.LString(info.Title))
 	table.RawSetString("url", lua.LString(info.URL))
-	table.RawSetString("number", lua.LNumber(info.Number))
+	table.RawSetString("number", util.Float32(info.Number))
 
 	state.Push(table)
 	return 1
@@ -465,7 +465,7 @@ func downloadedChapterInfo(state *lua.LState) int {
 	down := util.Check[*metadata.DownloadedChapter](state, 1)
 
 	table := state.NewTable()
-	table.RawSetString("number", lua.LNumber(down.Number))
+	table.RawSetString("number", util.Float32(down.Number))
 	table.RawSetString("title", lua.LString(down.Title))
 	table.RawSetString("path", lua.LString(down.Path()))
 	table.RawSetString("directory", lua.LString(down.Directory))

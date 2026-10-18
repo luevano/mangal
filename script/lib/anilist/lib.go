@@ -131,7 +131,7 @@ func mangaInfo(state *lua.LState) int {
 	table.RawSetString("url", lua.LString(manga.URL()))
 	table.RawSetString("cover", lua.LString(manga.Cover()))
 	table.RawSetString("banner", lua.LString(manga.Banner()))
-	table.RawSetString("score", lua.LNumber(manga.Score()))
+	table.RawSetString("score", util.Float32(manga.Score()))
 	table.RawSetString("status", lua.LString(manga.Status()))
 	table.RawSetString("year", lua.LNumber(manga.StartDate().Year))
 	table.RawSetString("chapters", lua.LNumber(manga.Chapters()))
