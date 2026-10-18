@@ -131,10 +131,18 @@ func withClient[T any](ctx context.Context, a *API, provider string, fn func(*li
 
 // SearchProvider implements apiv1.StrictServerInterface.
 func (a *API) SearchProvider(ctx context.Context, request apiv1.SearchProviderRequestObject) (apiv1.SearchProviderResponseObject, error) {
+	id, q := deref(request.Params.Id), deref(request.Params.Q)
+	if id == "" && q == "" {
+		return nil, badRequest("q or id is needed")
+	}
+	warnIDQuery(q)
 	return withClient(ctx, a, request.Provider, func(c *libmangal.Client) (apiv1.SearchProviderResponseObject, error) {
-		mangas, err := c.SearchMangasContext(ctx, request.Params.Q)
+		mangas, err := selector.Search(ctx, client.Searcher(c), id, q)
+		if errors.Is(err, libmangal.ErrMangaByIDUnsupported) {
+			return nil, unprocessable(err)
+		}
 		if err != nil {
-			return nil, fmt.Errorf("search %q: %w", request.Params.Q, err)
+			return nil, err
 		}
 		out := apiv1.SearchProvider200JSONResponse{}
 		for _, m := range mangas {
@@ -142,6 +150,13 @@ func (a *API) SearchProvider(ctx context.Context, request apiv1.SearchProviderRe
 		}
 		return out, nil
 	})
+}
+
+// warnIDQuery logs a deprecated "mid:<id>" query.
+func warnIDQuery(q string) {
+	if id, ok := selector.IDQuery(q); ok {
+		log.Warn(`search: "mid:" queries are deprecated, use id=%s`, id)
+	}
 }
 
 // providerManga finds the provider's manga by its id (or a search of q, when the

@@ -1196,8 +1196,12 @@ paths:
         - $ref: '#/components/parameters/ProviderPathParam'
         - name: q
           in: query
-          required: true
-          description: the query (`mid:<id>` gets the manga with the id)
+          description: the title to search (a `mid:<id>` one is the id, deprecated)
+          schema:
+            type: string
+        - name: id
+          in: query
+          description: the manga's id instead of `q`, gets that manga (MangaByID)
           schema:
             type: string
       responses:

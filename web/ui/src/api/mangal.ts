@@ -3829,9 +3829,11 @@ export interface operations {
     };
     searchProvider: {
         parameters: {
-            query: {
-                /** @description the query (`mid:<id>` gets the manga with the id) */
-                q: string;
+            query?: {
+                /** @description the title to search (a `mid:<id>` one is the id, deprecated) */
+                q?: string;
+                /** @description the manga's id instead of `q`, gets that manga (MangaByID) */
+                id?: string;
             };
             header?: never;
             path: {

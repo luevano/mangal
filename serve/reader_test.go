@@ -283,3 +283,21 @@ func TestV1ReaderPosition(t *testing.T) {
 		t.Errorf("no chapter: %d", code)
 	}
 }
+
+// TestV1SearchByID: id gets the manga by its id, a "mid:" query too (deprecated).
+func TestV1SearchByID(t *testing.T) {
+	s, _ := newReaderServer(t)
+	for _, q := range []string{"id=m", "q=mid:m"} {
+		var mangas []apiv1.Manga
+		if code := s.call(t, "GET", "/api/v1/providers/reader/search?"+q, "", &mangas); code != http.StatusOK || len(mangas) != 1 || mangas[0].Id != "m" {
+			t.Errorf("%s: %d %+v", q, code, mangas)
+		}
+	}
+	var mangas []apiv1.Manga
+	if code := s.call(t, "GET", "/api/v1/providers/reader/search?id=x", "", &mangas); code != http.StatusOK || len(mangas) != 0 {
+		t.Errorf("unknown id: %d %+v", code, mangas)
+	}
+	if code := s.call(t, "GET", "/api/v1/providers/reader/search", "", nil); code != http.StatusBadRequest {
+		t.Errorf("no q or id: %d", code)
+	}
+}

@@ -1324,8 +1324,11 @@ type GetProviderPageParams struct {
 
 // SearchProviderParams defines parameters for SearchProvider.
 type SearchProviderParams struct {
-	// Q the query (`mid:<id>` gets the manga with the id)
-	Q string `form:"q" json:"q"`
+	// Q the title to search (a `mid:<id>` one is the id, deprecated)
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Id the manga's id instead of `q`, gets that manga (MangaByID)
+	Id *string `form:"id,omitempty" json:"id,omitempty"`
 }
 
 // GetReaderPositionParams defines parameters for GetReaderPosition.

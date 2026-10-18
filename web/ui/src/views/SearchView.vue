@@ -36,6 +36,7 @@ function open(id: string) {
   <form class="input-group mb-3" style="max-width: 32rem" @submit.prevent="submit">
     <input v-model="input" class="form-control" placeholder="search" data-test="search-input" />
     <button class="btn btn-primary" type="submit">Search</button>
+    <button class="btn btn-outline-secondary" type="button" :disabled="!input.trim()" title="open the manga with this id" data-test="open-id" @click="open(input.trim())">By id</button>
   </form>
   <LoadState :loading="loading" :error="error" :empty="!loading && q !== '' && data && !data.length" empty-text="Nothing found." />
   <div v-if="data?.length" class="row">
