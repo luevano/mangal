@@ -2,12 +2,14 @@ package jobs
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/logger"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/storage"
 )
 
 type fakeLoader struct{}
@@ -62,5 +64,16 @@ func TestDownloadHoldsClient(t *testing.T) {
 	waitFor(t, m, j.ID, "done", status(Done))
 	if released != 1 {
 		t.Errorf("released %d times", released)
+	}
+}
+
+func TestDescribeBusy(t *testing.T) {
+	h := storage.LockHolder{Purpose: "rename", PID: os.Getpid()}
+	if got := DescribeBusy(client.ProviderBusy{Provider: "p", Holder: h, Library: true}); got != "waiting for the library (rename, this mangal)" {
+		t.Errorf("library: %q", got)
+	}
+	h.Purpose = client.LockForWatch
+	if got := DescribeBusy(client.ProviderBusy{Provider: "p", Holder: h, Watch: true}); got != "waiting for p (watch check, this mangal)" {
+		t.Errorf("provider: %q", got)
 	}
 }

@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -122,16 +123,20 @@ func Summary(results client.Results) string {
 }
 
 // DescribeBusy is "waiting for <provider> (<what>, <who>)": who holds the provider's lock,
-// e.g. "waiting for mangapill (watch check, mangal serve pid 123)".
+// e.g. "waiting for mangapill (watch check, mangal serve pid 123)"; for a library
+// operation "waiting for the library (rename, this mangal)".
 func DescribeBusy(b client.ProviderBusy) string {
-	return "waiting for " + b.Provider + " (" + describeHolder(b.Holder) + ")"
-}
-
-func describeHolder(h storage.LockHolder) string {
+	if b.Library {
+		return "waiting for the library (" + describeHolder(cmp.Or(b.Holder.Purpose, "change"), b.Holder) + ")"
+	}
 	what := "download"
-	if h.Purpose == client.LockForWatch {
+	if b.Holder.Purpose == client.LockForWatch {
 		what = "watch check"
 	}
+	return "waiting for " + b.Provider + " (" + describeHolder(what, b.Holder) + ")"
+}
+
+func describeHolder(what string, h storage.LockHolder) string {
 	host, _ := os.Hostname()
 	who := fmt.Sprintf("mangal pid %d", h.PID)
 	switch {
