@@ -45,129 +45,150 @@ func (r HealthFixReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 	if a == nil {
 		return nil, &health.NotFixableError{Commands: f.Fix.Commands}
 	}
-	exists := func(id int64) (storage.Manga, bool, error) {
-		m, err := c.manga(id)
-		if errors.Is(err, ErrNotFound) {
-			return m, false, nil
-		}
-		return m, err == nil, err
-	}
-	var inner Change
-	// done is the message of the fix applied, nothing the plan's when there's nothing to do
-	var done func(res OpResult) string
-	nothing := "nothing to do any more"
 	switch a.Kind {
 	case health.ActionLink, health.ActionPick:
-		id := r.Choice
-		switch {
-		case id == "" && len(a.IDs) == 1:
-			id = a.IDs[0]
-		case id == "":
-			return nil, fmt.Errorf("%w: choose one of %s", health.ErrChoice, strings.Join(a.IDs, ", "))
-		case !slices.Contains(a.IDs, id):
-			return nil, fmt.Errorf("%w: %s isn't one of %s", health.ErrChoice, id, strings.Join(a.IDs, ", "))
-		}
-		m, ok, err := exists(a.Manga)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return gone(f, fmt.Sprintf("library manga %d is gone", a.Manga)), nil
-		}
-		inner, nothing = LinkReq{Manga: m.ID, Links: library.Links{a.Source: id}}, "nothing to change"
-		done = func(OpResult) string {
-			return fmt.Sprintf("linked %s to %s %s", m.Title, client.SourceName(a.Source), id)
-		}
+		return r.planLink(ctx, c)
 	case health.ActionResume, health.ActionWatch, health.ActionHold:
 		return r.planWatch(ctx, c)
 	case health.ActionBackups:
 		return r.planBackups(ctx, c)
 	case health.ActionMark:
-		ids := a.Mangas
-		if a.Manga != 0 {
-			ids = []int64{a.Manga}
-		}
-		var have []int64
-		var title string
-		for _, id := range ids {
-			m, ok, err := exists(id)
-			if err != nil {
-				return nil, err
-			}
-			if ok {
-				have, title = append(have, id), m.Title
-			}
-		}
-		if len(have) == 0 {
-			return gone(f, "nothing to mark any more"), nil
-		}
-		inner, nothing = MarkReq{Mangas: have}, "nothing to mark any more"
-		done = func(res OpResult) string {
-			marked, _ := res.Detail.(library.MarkResult)
-			if len(have) == 1 && len(marked.Marked) == 1 {
-				return "marked " + title
-			}
-			return "marked " + stringutil.Quantify(len(marked.Marked), "folder", "folders")
-		}
+		return r.planMark(ctx, c)
 	case health.ActionForget:
-		m, ok, err := exists(a.Manga)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return gone(f, fmt.Sprintf("library manga %d is gone", a.Manga)), nil
-		}
-		inner = ForgetReq{Mangas: []int64{m.ID}}
-		done = func(OpResult) string { return "forgot " + m.Title }
+		return r.planForget(ctx, c)
 	case health.ActionRename:
-		inner, nothing = RenameReq{Paths: a.Paths, Cached: true}, "nothing to rename any more"
-		done = func(res OpResult) string {
+		return r.wrap(ctx, c, RenameReq{Paths: a.Paths, Cached: true}, "nothing to rename any more", func(res OpResult) string {
 			renamed, _ := res.Detail.(client.RenameResult)
 			msg := "renamed " + stringutil.Quantify(renamed.Folders, "folder", "folders")
 			if renamed.Failed != 0 {
 				msg += fmt.Sprintf(", %d skipped (mangal library rename says why)", renamed.Failed)
 			}
 			return msg
-		}
+		})
 	case health.ActionMerge:
-		var mangas []storage.Manga
-		for _, id := range a.Mangas {
-			m, ok, err := exists(id)
-			if err != nil {
-				return nil, err
-			}
-			if ok {
-				mangas = append(mangas, m)
-			}
-		}
-		if len(mangas) < 2 {
-			return gone(f, "nothing to merge any more"), nil
-		}
-		keep := mangas[0]
-		if r.Choice != "" {
-			i := slices.IndexFunc(mangas, func(m storage.Manga) bool { return strconv.FormatInt(m.ID, 10) == r.Choice })
-			if i < 0 {
-				return nil, fmt.Errorf("%w: keep one of %s", health.ErrChoice, mangaIDs(mangas))
-			}
-			keep = mangas[i]
-		}
-		other := mangas[0]
-		if other.ID == keep.ID {
-			other = mangas[1]
-		}
-		inner = MergeReq{Keep: keep.ID, Other: other.ID}
-		done = func(OpResult) string { return fmt.Sprintf("merged %s into %s", other.Title, keep.Title) }
+		return r.planMerge(ctx, c)
 	case health.ActionEmptyTrash:
-		inner, nothing = EmptyTrashReq{}, "the trash is empty"
-		done = func(OpResult) string { return "trash emptied" }
+		return r.wrap(ctx, c, EmptyTrashReq{}, "the trash is empty", func(OpResult) string { return "trash emptied" })
 	default:
 		return nil, &health.NotFixableError{Kind: a.Kind, Commands: f.Fix.Commands}
 	}
+}
+
+// existing is the library manga, false when it's gone.
+func existing(c *Core, id int64) (storage.Manga, bool, error) {
+	m, err := c.manga(id)
+	if errors.Is(err, ErrNotFound) {
+		return m, false, nil
+	}
+	return m, err == nil, err
+}
+
+func (r HealthFixReq) planLink(ctx context.Context, c *Core) (*prepared, error) {
+	a := r.Finding.Fix.Action
+	id := r.Choice
+	switch {
+	case id == "" && len(a.IDs) == 1:
+		id = a.IDs[0]
+	case id == "":
+		return nil, fmt.Errorf("%w: choose one of %s", health.ErrChoice, strings.Join(a.IDs, ", "))
+	case !slices.Contains(a.IDs, id):
+		return nil, fmt.Errorf("%w: %s isn't one of %s", health.ErrChoice, id, strings.Join(a.IDs, ", "))
+	}
+	m, ok, err := existing(c, a.Manga)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return gone(r.Finding, fmt.Sprintf("library manga %d is gone", a.Manga)), nil
+	}
+	return r.wrap(ctx, c, LinkReq{Manga: m.ID, Links: library.Links{a.Source: id}}, "nothing to change", func(OpResult) string {
+		return fmt.Sprintf("linked %s to %s %s", m.Title, client.SourceName(a.Source), id)
+	})
+}
+
+func (r HealthFixReq) planMark(ctx context.Context, c *Core) (*prepared, error) {
+	a := r.Finding.Fix.Action
+	ids := a.Mangas
+	if a.Manga != 0 {
+		ids = []int64{a.Manga}
+	}
+	var have []int64
+	var title string
+	for _, id := range ids {
+		m, ok, err := existing(c, id)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			have, title = append(have, id), m.Title
+		}
+	}
+	if len(have) == 0 {
+		return gone(r.Finding, "nothing to mark any more"), nil
+	}
+	return r.wrap(ctx, c, MarkReq{Mangas: have}, "nothing to mark any more", func(res OpResult) string {
+		marked, _ := res.Detail.(library.MarkResult)
+		if len(have) == 1 && len(marked.Marked) == 1 {
+			return "marked " + title
+		}
+		return "marked " + stringutil.Quantify(len(marked.Marked), "folder", "folders")
+	})
+}
+
+func (r HealthFixReq) planForget(ctx context.Context, c *Core) (*prepared, error) {
+	a := r.Finding.Fix.Action
+	m, ok, err := existing(c, a.Manga)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return gone(r.Finding, fmt.Sprintf("library manga %d is gone", a.Manga)), nil
+	}
+	return r.wrap(ctx, c, ForgetReq{Mangas: []int64{m.ID}}, nothingToDo, func(OpResult) string { return "forgot " + m.Title })
+}
+
+func (r HealthFixReq) planMerge(ctx context.Context, c *Core) (*prepared, error) {
+	var mangas []storage.Manga
+	for _, id := range r.Finding.Fix.Action.Mangas {
+		m, ok, err := existing(c, id)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			mangas = append(mangas, m)
+		}
+	}
+	if len(mangas) < 2 {
+		return gone(r.Finding, "nothing to merge any more"), nil
+	}
+	keep := mangas[0]
+	if r.Choice != "" {
+		i := slices.IndexFunc(mangas, func(m storage.Manga) bool { return strconv.FormatInt(m.ID, 10) == r.Choice })
+		if i < 0 {
+			return nil, fmt.Errorf("%w: keep one of %s", health.ErrChoice, mangaIDs(mangas))
+		}
+		keep = mangas[i]
+	}
+	other := mangas[0]
+	if other.ID == keep.ID {
+		other = mangas[1]
+	}
+	return r.wrap(ctx, c, MergeReq{Keep: keep.ID, Other: other.ID}, nothingToDo, func(OpResult) string {
+		return fmt.Sprintf("merged %s into %s", other.Title, keep.Title)
+	})
+}
+
+const nothingToDo = "nothing to do any more"
+
+// wrap plans inner as the finding's fix: nothing is the plan's message when there's
+// nothing to do, done the message of the fix applied.
+func (r HealthFixReq) wrap(ctx context.Context, c *Core, inner Change, nothing string, done func(res OpResult) string) (*prepared, error) {
+	f := r.Finding
 	p, err := inner.plan(ctx, c)
 	if err != nil {
 		return nil, err
 	}
-	fix := health.FixResult{Key: f.Key, Kind: a.Kind, Plan: p.plan.Lines, Nothing: p.plan.Nothing}
+	fix := health.FixResult{Key: f.Key, Kind: f.Fix.Action.Kind, Plan: p.plan.Lines, Nothing: p.plan.Nothing}
 	if fix.Plan == nil {
 		fix.Plan = []string{}
 	}
