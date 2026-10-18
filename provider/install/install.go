@@ -67,7 +67,7 @@ func Add(ctx context.Context, dir, url string, progress io.Writer) (_ info.Info,
 	}
 
 	_, exists := lo.Find(loaders, func(loader libmangal.ProviderLoader) bool {
-		return loader.Info().ID == id
+		return loader.Info().Matches(id)
 	})
 	if exists {
 		return info.Info{}, fmt.Errorf("provider with id %q already exists", id)
