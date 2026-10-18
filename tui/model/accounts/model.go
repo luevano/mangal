@@ -1,5 +1,6 @@
 // Package accounts shows the accounts mangal can use: the Anilist, Kitsu and MyAnimeList
-// logins, the providers' accounts (e.g. the MangaPlus subscription) and the Discord webhook.
+// logins, the providers' accounts (e.g. the MangaPlus subscription) and the Discord webhook;
+// then the users who log into mangal serve and its API tokens (users.go).
 package accounts
 
 import (
@@ -45,6 +46,18 @@ type state struct {
 	inputting bool
 	// discord is true when the input is the Discord webhook, else the MangaPlus secret
 	discord bool
+
+	// the users of mangal serve and its API tokens (users.go)
+	users       []core.User
+	tokens      []core.Token
+	usersLoaded bool
+	usersErr    string
+	// usersSvc is core.NewUsers() when nil (tests set it)
+	usersSvc core.Users
+	form     *huhform.Form
+	formKind userForm
+	// target is the user the form changes, confirm the row a delete waits a second press for
+	target, confirm string
 }
 
 type loadedMsg []core.Account
@@ -87,6 +100,14 @@ func (s *state) Status() string                { return "" }
 func (s *state) Resize(size base.Size) tea.Cmd { return nil }
 
 func (s *state) Subtitle() string {
+	switch s.formKind {
+	case formAddUser:
+		return "a user who logs into mangal serve (the web UI, OPDS)"
+	case formAddToken:
+		return "an API token for a program, shown once"
+	case formPassword, formPerms:
+		return s.target + ": its logins end"
+	}
 	if s.inputting && s.discord {
 		return "the webhook url of the notifications (empty removes it)"
 	}
@@ -100,11 +121,14 @@ func (s *state) KeyMap() help.KeyMap {
 	if s.inputting {
 		return util.KeyMap{Short: []key.Binding{s.keys.save, s.keys.cancel}}
 	}
+	if keys := s.usersKeys(); keys != nil {
+		return util.KeyMap{Short: append([]key.Binding{s.keys.refresh}, keys...)}
+	}
 	return util.KeyMap{Short: []key.Binding{s.keys.refresh, s.keys.login, s.keys.copy}}
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	return s.load(ctx, s.refresh)
+	return tea.Batch(s.load(ctx, s.refresh), s.loadUsers(ctx))
 }
 
 func (s *state) load(ctx context.Context, refresh bool) tea.Cmd {
@@ -118,19 +142,27 @@ func (s *state) load(ctx context.Context, refresh bool) tea.Cmd {
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
+	if cmd, ok := s.updateUsers(ctx, msg); ok {
+		return cmd
+	}
+	if s.formKind != formNone {
+		return s.updateForm(ctx, msg)
+	}
 	switch msg := msg.(type) {
 	case loadedMsg:
 		s.loaded = true
 		s.entries = msg
-		s.table.SetRows(rows(msg))
-		s.table.SetHeight(len(msg) + 1)
+		s.setRows()
 		return nil
 	case base.RestoredMsg:
 		// e.g. after a login
-		return s.load(ctx, false)
+		return tea.Batch(s.load(ctx, false), s.loadUsers(ctx))
 	case tea.KeyPressMsg:
 		if s.inputting {
 			return s.updateSecret(ctx, msg)
+		}
+		if cmd, ok := s.updateUsersKeys(ctx, msg); ok {
+			return cmd
 		}
 		switch {
 		case key.Matches(msg, s.keys.refresh):
@@ -251,26 +283,25 @@ func (s *state) View() string {
 	if !s.loaded {
 		return ""
 	}
+	if s.formKind != formNone {
+		return lipgloss.JoinVertical(lipgloss.Left, s.table.View(), " ", s.form.View())
+	}
 	if s.inputting {
 		return lipgloss.JoinVertical(lipgloss.Left, s.table.View(), " ", s.secret.View())
 	}
 	return s.table.View()
 }
 
-func rows(entries []core.Account) []table.Row {
-	rows := make([]table.Row, len(entries))
-	for i, e := range entries {
-		expires := ""
-		if !e.Expires.IsZero() {
-			expires = e.Expires.Format(time.DateOnly)
-		}
-		notes := strings.Join(e.Details, ", ")
-		if e.Error != "" {
-			notes = e.Error
-		}
-		rows[i] = table.Row{e.Service, e.User, e.Status, expires, notes, ago(e.Checked)}
+func accountRow(e core.Account) table.Row {
+	expires := ""
+	if !e.Expires.IsZero() {
+		expires = e.Expires.Format(time.DateOnly)
 	}
-	return rows
+	notes := strings.Join(e.Details, ", ")
+	if e.Error != "" {
+		notes = e.Error
+	}
+	return table.Row{e.Service, e.User, e.Status, expires, notes, ago(e.Checked)}
 }
 
 // ago is how long ago, roughly.
@@ -290,6 +321,10 @@ type keyMap struct {
 	refresh,
 	login,
 	copy,
+	add,
+	edit,
+	logout,
+	remove,
 	save,
 	cancel key.Binding
 }
@@ -299,6 +334,10 @@ func newKeyMap() keyMap {
 		refresh: base.KeyRefresh,
 		login:   base.KeyAccountLogIn,
 		copy:    base.KeyCopyURL,
+		add:     base.KeyAdd,
+		edit:    base.KeyEdit,
+		logout:  base.KeyLogOut,
+		remove:  base.KeyDelete,
 		save:    util.Bind("save", "enter"),
 		cancel:  util.Bind("cancel", "esc"),
 	}

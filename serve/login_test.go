@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/web/apiv1"
@@ -250,5 +252,70 @@ func TestAuthMode(t *testing.T) {
 	}
 	if _, err := authMode("magic"); err == nil {
 		t.Error("magic: no error")
+	}
+}
+
+// TestUsersAPI: only an admin manages the users and tokens; the last admin stays; a token
+// made there works at once.
+func TestUsersAPI(t *testing.T) {
+	s := newTestServer(t, "s3cret")
+	s.api.Users = core.NewUsersOf(storage.Users{DB: s.svc.Watches.DB})
+	s.api.Auth.Tokens = cache.ServeTokens
+	addUser(t, s, "david", "correct horse", Scopes...)
+	addUser(t, s, "guest", "battery staple", ScopeRead, ScopeWrite)
+	h := s.handler(t)
+	const remote = "192.0.2.1:1234"
+	admin := "Basic " + base64.StdEncoding.EncodeToString([]byte("david:correct horse"))
+	guest := "Basic " + base64.StdEncoding.EncodeToString([]byte("guest:battery staple"))
+
+	if rec := do(h, "GET", "/api/v1/users", "", remote, guest, nil); rec.Code != http.StatusForbidden {
+		t.Errorf("guest lists: %d", rec.Code)
+	}
+	if rec := do(h, "POST", "/api/v1/users", `{"name":"x","password":"long enough"}`, remote, guest, nil); rec.Code != http.StatusForbidden {
+		t.Errorf("guest adds: %d", rec.Code)
+	}
+	var users []apiv1.User
+	rec := do(h, "GET", "/api/v1/users", "", remote, admin, nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &users); err != nil || len(users) != 2 || !users[0].Admin || users[1].Admin {
+		t.Fatalf("list: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "POST", "/api/v1/users", `{"name":"kid","password":"long enough"}`, remote, admin, nil); rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"perms":["read","progress"]`) {
+		t.Errorf("add: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "POST", "/api/v1/users", `{"name":"kid","password":"long enough"}`, remote, admin, nil); rec.Code != http.StatusConflict {
+		t.Errorf("add twice: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "PATCH", "/api/v1/users/david", `{"perms":["read"]}`, remote, admin, nil); rec.Code != http.StatusConflict {
+		t.Errorf("demote the last admin: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "PATCH", "/api/v1/users/kid", `{"password":"another one!"}`, remote, admin, nil); rec.Code != http.StatusNoContent {
+		t.Errorf("password: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "PATCH", "/api/v1/users/nobody", `{"perms":["read"]}`, remote, admin, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown user: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "POST", "/api/v1/users/kid/logout", "", remote, admin, nil); rec.Code != http.StatusNoContent {
+		t.Errorf("logout: %d", rec.Code)
+	}
+	if rec := do(h, "DELETE", "/api/v1/users/kid", "", remote, admin, nil); rec.Code != http.StatusNoContent {
+		t.Errorf("remove: %d", rec.Code)
+	}
+
+	var made apiv1.NewTokenResponse
+	rec = do(h, "POST", "/api/v1/tokens", `{"name":"script","scopes":["read"]}`, remote, admin, nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &made); err != nil || rec.Code != http.StatusCreated || made.Secret == "" {
+		t.Fatalf("token: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "GET", "/api/v1/watches", "", remote, "Bearer "+made.Secret, nil); rec.Code != http.StatusOK {
+		t.Errorf("the new token: %d", rec.Code)
+	}
+	if rec := do(h, "GET", "/api/v1/tokens", "", remote, "Bearer "+made.Secret, nil); rec.Code != http.StatusForbidden {
+		t.Errorf("a read token lists tokens: %d", rec.Code)
+	}
+	if rec := do(h, "DELETE", "/api/v1/tokens/script", "", remote, admin, nil); rec.Code != http.StatusNoContent {
+		t.Errorf("remove the token: %d", rec.Code)
+	}
+	if rec := do(h, "GET", "/api/v1/watches", "", remote, "Bearer "+made.Secret, nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("the removed token: %d", rec.Code)
 	}
 }

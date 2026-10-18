@@ -114,6 +114,120 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The users who log in
+         * @description Needs every permission (an admin), whatever its x-mangal-scope says.
+         */
+        get: operations["listUsers"];
+        put?: never;
+        /**
+         * Add a user
+         * @description No perms gives the first user every one, the others read and progress. Needs every permission (an admin), whatever its x-mangal-scope says.
+         */
+        post: operations["addUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a user
+         * @description The last user with every permission stays (409). Needs every permission (an admin), whatever its x-mangal-scope says.
+         */
+        delete: operations["removeUser"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a user's password or permissions (their logins end)
+         * @description The last user with every permission keeps them (409). Needs every permission (an admin), whatever its x-mangal-scope says.
+         */
+        patch: operations["updateUser"];
+        trace?: never;
+    };
+    "/v1/users/{name}/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End a user's logins (every browser and app)
+         * @description Needs every permission (an admin), whatever its x-mangal-scope says.
+         */
+        post: operations["endUserLogins"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The API tokens (without their secrets)
+         * @description Needs every permission (an admin), whatever its x-mangal-scope says.
+         */
+        get: operations["listTokens"];
+        put?: never;
+        /**
+         * Make an API token, its secret is only in this answer
+         * @description No scopes is read. Needs every permission (an admin), whatever its x-mangal-scope says.
+         */
+        post: operations["addToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tokens/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an API token
+         * @description Needs every permission (an admin), whatever its x-mangal-scope says.
+         */
+        delete: operations["removeToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/events": {
         parameters: {
             query?: never;
@@ -1379,6 +1493,40 @@ export interface components {
             password: string;
             remember?: boolean;
         };
+        User: {
+            name: string;
+            perms: string[];
+            /** @description every permission (manages the users) */
+            admin: boolean;
+            /** Format: date-time */
+            created: string;
+            /** Format: date-time */
+            last_login?: string;
+        };
+        NewUser: {
+            name: string;
+            password: string;
+            perms?: string[];
+        };
+        UserChange: {
+            password?: string;
+            perms?: string[];
+        };
+        Token: {
+            name: string;
+            scopes: string[];
+            /** Format: date-time */
+            created: string;
+        };
+        NewToken: {
+            name: string;
+            scopes?: string[];
+        };
+        NewTokenResponse: {
+            token: components["schemas"]["Token"];
+            /** @description Authorization Bearer, shown only here */
+            secret: string;
+        };
         Me: {
             /** @description the user's or the API token's name */
             name: string;
@@ -2468,6 +2616,186 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Me"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the users */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    addUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewUser"];
+            };
+        };
+        responses: {
+            /** @description the user */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserChange"];
+            };
+        };
+        responses: {
+            /** @description changed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    endUserLogins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ended */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the tokens */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Token"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    addToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewToken"];
+            };
+        };
+        responses: {
+            /** @description the token and its secret */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewTokenResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

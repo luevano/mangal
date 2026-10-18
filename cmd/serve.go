@@ -2,14 +2,12 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/serve"
-	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 )
 
@@ -120,50 +118,18 @@ library, the config, downloads).`,
 	},
 }
 
-// reservedTokenNames can't be API tokens' names (the identities that aren't tokens).
-var reservedTokenNames = []string{serve.KindLocal, serve.KindNone}
-
 func generateNamedToken(cmd *cobra.Command, name string, scopes []string) error {
-	if slices.Contains(reservedTokenNames, name) || strings.TrimSpace(name) != name || name == "" {
-		return fmt.Errorf("%q can't be a token's name", name)
-	}
-	if len(scopes) == 0 {
-		scopes = []string{serve.ScopeRead}
-	}
-	scopes, err := serve.NormalizeScopes(scopes)
+	t, secret, err := core.NewUsers().AddToken(ctxOf(cmd), name, scopes)
 	if err != nil {
 		return err
 	}
-	tokens, err := cache.ServeTokens()
-	if err != nil {
-		return err
-	}
-	if slices.ContainsFunc(tokens, func(t cache.ServeTokenEntry) bool { return t.Name == name }) {
-		return fmt.Errorf("there's a token %q already (--revoke %s first)", name, name)
-	}
-	token, err := serve.NewToken()
-	if err != nil {
-		return err
-	}
-	tokens = append(tokens, cache.ServeTokenEntry{Name: name, Hash: serve.HashToken(token), Scopes: scopes, Created: time.Now()})
-	if err := cache.SetServeTokens(tokens); err != nil {
-		return err
-	}
-	cmd.Println(token)
-	successf(cmd, "saved the API token %q (%s); it isn't shown again", name, strings.Join(scopes, ", "))
+	cmd.Println(secret)
+	successf(cmd, "saved the API token %q (%s); it isn't shown again", t.Name, strings.Join(t.Scopes, ", "))
 	return nil
 }
 
 func revokeServeToken(cmd *cobra.Command, name string) error {
-	tokens, err := cache.ServeTokens()
-	if err != nil {
-		return err
-	}
-	i := slices.IndexFunc(tokens, func(t cache.ServeTokenEntry) bool { return t.Name == name })
-	if i < 0 {
-		return fmt.Errorf("no token %q (--list shows them)", name)
-	}
-	if err := cache.SetServeTokens(slices.Delete(tokens, i, i+1)); err != nil {
+	if err := core.NewUsers().RemoveToken(ctxOf(cmd), name); err != nil {
 		return err
 	}
 	successf(cmd, "revoked the API token %q", name)
@@ -171,7 +137,7 @@ func revokeServeToken(cmd *cobra.Command, name string) error {
 }
 
 func listServeTokens(cmd *cobra.Command) error {
-	tokens, err := cache.ServeTokens()
+	tokens, err := core.NewUsers().Tokens(ctxOf(cmd))
 	if err != nil {
 		return err
 	}

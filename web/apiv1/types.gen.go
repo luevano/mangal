@@ -14,22 +14,22 @@ import (
 
 // Defines values for MeKind.
 const (
-	Local MeKind = "local"
-	None  MeKind = "none"
-	Token MeKind = "token"
-	User  MeKind = "user"
+	MeKindLocal MeKind = "local"
+	MeKindNone  MeKind = "none"
+	MeKindToken MeKind = "token"
+	MeKindUser  MeKind = "user"
 )
 
 // Valid indicates whether the value is a known member of the MeKind enum.
 func (e MeKind) Valid() bool {
 	switch e {
-	case Local:
+	case MeKindLocal:
 		return true
-	case None:
+	case MeKindNone:
 		return true
-	case Token:
+	case MeKindToken:
 		return true
-	case User:
+	case MeKindUser:
 		return true
 	default:
 		return false
@@ -692,6 +692,26 @@ type MoveRequest struct {
 	Selector *string `json:"selector,omitempty"`
 }
 
+// NewToken defines model for NewToken.
+type NewToken struct {
+	Name   string    `json:"name"`
+	Scopes *[]string `json:"scopes,omitempty"`
+}
+
+// NewTokenResponse defines model for NewTokenResponse.
+type NewTokenResponse struct {
+	// Secret Authorization Bearer, shown only here
+	Secret string `json:"secret"`
+	Token  Token  `json:"token"`
+}
+
+// NewUser defines model for NewUser.
+type NewUser struct {
+	Name     string    `json:"name"`
+	Password string    `json:"password"`
+	Perms    *[]string `json:"perms,omitempty"`
+}
+
 // Op defines model for Op.
 type Op struct {
 	Error      *string    `json:"error,omitempty"`
@@ -909,6 +929,13 @@ type Status struct {
 	Version *string    `json:"version,omitempty"`
 }
 
+// Token defines model for Token.
+type Token struct {
+	Created time.Time `json:"created"`
+	Name    string    `json:"name"`
+	Scopes  []string  `json:"scopes"`
+}
+
 // Trash defines model for Trash.
 type Trash struct {
 	Batches []TrashBatch `json:"batches"`
@@ -922,6 +949,22 @@ type TrashBatch struct {
 	Name  string `json:"name"`
 	Path  string `json:"path"`
 	Size  int64  `json:"size"`
+}
+
+// User defines model for User.
+type User struct {
+	// Admin every permission (manages the users)
+	Admin     bool       `json:"admin"`
+	Created   time.Time  `json:"created"`
+	LastLogin *time.Time `json:"last_login,omitempty"`
+	Name      string     `json:"name"`
+	Perms     []string   `json:"perms"`
+}
+
+// UserChange defines model for UserChange.
+type UserChange struct {
+	Password *string   `json:"password,omitempty"`
+	Perms    *[]string `json:"perms,omitempty"`
 }
 
 // Watch a watch (client/watch.Watch)
@@ -1384,6 +1427,15 @@ type PutReaderPositionJSONRequestBody = ReaderPosition
 
 // RecordReadJSONRequestBody defines body for RecordRead for application/json ContentType.
 type RecordReadJSONRequestBody = ReadRequest
+
+// AddTokenJSONRequestBody defines body for AddToken for application/json ContentType.
+type AddTokenJSONRequestBody = NewToken
+
+// AddUserJSONRequestBody defines body for AddUser for application/json ContentType.
+type AddUserJSONRequestBody = NewUser
+
+// UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
+type UpdateUserJSONRequestBody = UserChange
 
 // AddWatchJSONRequestBody defines body for AddWatch for application/json ContentType.
 type AddWatchJSONRequestBody = AddWatchRequest

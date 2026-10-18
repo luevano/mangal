@@ -30,6 +30,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/providers/:provider/search', name: 'search', component: () => import('@/views/SearchView.vue') },
   { path: '/providers/:provider/manga/:manga', name: 'provider-manga', component: () => import('@/views/ProviderMangaView.vue') },
   { path: '/accounts', name: 'accounts', component: () => import('@/views/AccountsView.vue') },
+  { path: '/users', name: 'users', component: () => import('@/views/UsersView.vue') },
   { path: '/config', name: 'config', component: () => import('@/views/ConfigView.vue') },
   { path: '/read/library/:id(\\d+)', name: 'read-library', component: () => import('@/views/ReaderView.vue'), meta: { bare: true } },
   { path: '/read/:provider/:manga', name: 'read-online', component: () => import('@/views/ReaderView.vue'), meta: { bare: true } },

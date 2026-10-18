@@ -391,12 +391,21 @@
     {
       "name": "logins",
       "web": [
-        "login"
+        "login",
+        "users"
       ],
       "api": [
         "login",
         "logout",
-        "getMe"
+        "getMe",
+        "listUsers",
+        "addUser",
+        "updateUser",
+        "removeUser",
+        "endUserLogins",
+        "listTokens",
+        "addToken",
+        "removeToken"
       ]
     }
   ],

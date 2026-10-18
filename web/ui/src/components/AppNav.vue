@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import StatusBadge from './StatusBadge.vue'
+import { useStatus } from '@/stores/status'
 
 const open = ref(false)
+const st = useStatus()
 
 // the TUI's windows
 const links = [
@@ -17,6 +19,8 @@ const links = [
   { name: 'accounts', title: 'Accounts', icon: 'bi-person-badge' },
   { name: 'config', title: 'Config', icon: 'bi-gear' }
 ]
+// the users page is an admin's (every permission)
+const shown = computed(() => (st.scopes.length >= 4 ? [...links, { name: 'users', title: 'Users', icon: 'bi-people' }] : links))
 </script>
 
 <template>
@@ -28,7 +32,7 @@ const links = [
       </button>
       <div class="collapse navbar-collapse" :class="{ show: open }">
         <ul class="navbar-nav me-auto">
-          <li v-for="l in links" :key="l.name" class="nav-item">
+          <li v-for="l in shown" :key="l.name" class="nav-item">
             <RouterLink class="nav-link" active-class="active" :to="{ name: l.name }" :data-test="`nav-${l.name}`" @click="open = false">
               <i class="bi me-1" :class="l.icon" />{{ l.title }}
             </RouterLink>

@@ -11,7 +11,7 @@ const { data, loading, error } = useLoad(() => ok(client.GET('/v1/accounts')))
 
 <template>
   <h4>Accounts</h4>
-  <p class="small text-secondary">As last checked (no request here). Logins happen in the TUI or the CLI (<code>mangal accounts</code>).</p>
+  <p class="small text-secondary">As last checked (no request here). Logins happen in the TUI or the CLI (<code>mangal accounts</code>). Who logs into mangal: <RouterLink :to="{ name: 'users' }">Users</RouterLink>.</p>
   <LoadState :loading="loading && !data" :error="error" :empty="data && !data.length" empty-text="No accounts." />
   <table v-if="data?.length" class="table table-sm">
     <thead><tr><th>Service</th><th>Provider</th><th>User</th><th>Status</th><th class="d-none d-md-table-cell">Expires</th><th class="d-none d-md-table-cell">Checked</th></tr></thead>

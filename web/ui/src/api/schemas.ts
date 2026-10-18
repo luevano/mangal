@@ -4,6 +4,8 @@ type S = components['schemas']
 
 export type Status = S['Status']
 export type Me = S['Me']
+export type User = S['User']
+export type Token = S['Token']
 export type Event = S['Event']
 export type LiveEvent = S['LiveEvent']
 export type Plan = S['Plan']

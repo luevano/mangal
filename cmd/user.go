@@ -7,9 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/luevano/mangal/v5/serve"
-	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/util/cache"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/spf13/cobra"
 )
 
@@ -51,41 +49,18 @@ The first user gets every permission, the others read and progress unless --perm
   mangal user add kid --perms read,progress`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
-		if err := checkUserName(name); err != nil {
+		if err := core.CheckUserName(args[0]); err != nil {
 			return err
 		}
-		users, err := users()
+		password, err := askPassword(cmd)
 		if err != nil {
 			return err
 		}
-		if _, err := users.Get(name); err == nil {
-			return fmt.Errorf("there's a user %q already (passwd changes the password)", name)
-		} else if !errors.Is(err, storage.ErrUserNotFound) {
-			return err
-		}
-		perms := userArgs.Perms
-		if len(perms) == 0 {
-			list, err := users.List()
-			if err != nil {
-				return err
-			}
-			perms = []string{serve.ScopeRead, serve.ScopeProgress}
-			if len(list) == 0 {
-				perms = serve.Scopes
-			}
-		}
-		if perms, err = serve.NormalizeScopes(perms); err != nil {
-			return err
-		}
-		hash, err := askPassword(cmd)
+		u, err := core.NewUsers().Add(ctxOf(cmd), args[0], password, userArgs.Perms)
 		if err != nil {
 			return err
 		}
-		if err := users.Add(storage.User{Name: name, Hash: hash, Perms: perms}); err != nil {
-			return err
-		}
-		successf(cmd, "added the user %q (%s)", name, strings.Join(perms, ", "))
+		successf(cmd, "added the user %q (%s)", u.Name, strings.Join(u.Perms, ", "))
 		return nil
 	},
 }
@@ -99,18 +74,11 @@ var userPasswdCmd = &cobra.Command{
 	Short: "Change a user's password (their logins end)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		users, err := users()
+		password, err := askPassword(cmd)
 		if err != nil {
 			return err
 		}
-		if _, err := users.Get(args[0]); err != nil {
-			return err
-		}
-		hash, err := askPassword(cmd)
-		if err != nil {
-			return err
-		}
-		if err := users.SetHash(args[0], hash); err != nil {
+		if err := core.NewUsers().SetPassword(ctxOf(cmd), args[0], password); err != nil {
 			return err
 		}
 		successf(cmd, "changed the password of %q, its logins ended", args[0])
@@ -128,21 +96,10 @@ var userPermsCmd = &cobra.Command{
 	Example: `  mangal user perms guest read,progress`,
 	Args:    cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		perms, err := serve.NormalizeScopes(strings.Split(args[1], ","))
-		if err != nil {
+		if err := core.NewUsers().SetPerms(ctxOf(cmd), args[0], strings.Split(args[1], ",")); err != nil {
 			return err
 		}
-		if len(perms) == 0 {
-			return errors.New("no permissions given (read, progress, watch, write)")
-		}
-		users, err := users()
-		if err != nil {
-			return err
-		}
-		if err := users.SetPerms(args[0], perms); err != nil {
-			return err
-		}
-		successf(cmd, "%q can %s now, its logins ended", args[0], strings.Join(perms, ", "))
+		successf(cmd, "changed the permissions of %q, its logins ended", args[0])
 		return nil
 	},
 }
@@ -156,11 +113,7 @@ var userLogoutCmd = &cobra.Command{
 	Short: "End a user's logins (every browser and app)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		users, err := users()
-		if err != nil {
-			return err
-		}
-		if err := users.EndSessions(args[0]); err != nil {
+		if err := core.NewUsers().EndLogins(ctxOf(cmd), args[0]); err != nil {
 			return err
 		}
 		successf(cmd, "ended the logins of %q", args[0])
@@ -178,11 +131,7 @@ var userRmCmd = &cobra.Command{
 	Short:   "Remove a user (their logins end)",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		users, err := users()
-		if err != nil {
-			return err
-		}
-		if err := users.Remove(args[0]); err != nil {
+		if err := core.NewUsers().Remove(ctxOf(cmd), args[0]); err != nil {
 			return err
 		}
 		successf(cmd, "removed the user %q", args[0])
@@ -200,11 +149,7 @@ var userLsCmd = &cobra.Command{
 	Short:   "List the users",
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		users, err := users()
-		if err != nil {
-			return err
-		}
-		list, err := users.List()
+		list, err := core.NewUsers().List(ctxOf(cmd))
 		if err != nil {
 			return err
 		}
@@ -223,27 +168,15 @@ var userLsCmd = &cobra.Command{
 	},
 }
 
-func users() (storage.Users, error) {
-	st, err := cache.Storage()
-	if err != nil {
-		return storage.Users{}, err
-	}
-	return st.Users(), nil
-}
-
-func checkUserName(name string) error {
-	if name == "" || strings.TrimSpace(name) != name || strings.ContainsAny(name, ":\x00") {
-		return fmt.Errorf("%q can't be a user's name (no spaces around it, no ':')", name)
-	}
-	return nil
-}
-
-// askPassword reads a new password (twice on a terminal) and hashes it.
+// askPassword reads a new password (twice on a terminal).
 func askPassword(cmd *cobra.Command) (string, error) {
 	in := bufio.NewReader(cmd.InOrStdin())
 	password, err := readSecret(cmd, in, "Password: ")
 	if err != nil {
 		return "", err
+	}
+	if len(password) < core.MinPasswordLen {
+		return "", fmt.Errorf("the password needs %d characters or more", core.MinPasswordLen)
 	}
 	if _, ok := terminal(cmd.InOrStdin()); ok {
 		again, err := readSecret(cmd, in, "Again: ")
@@ -254,5 +187,5 @@ func askPassword(cmd *cobra.Command) (string, error) {
 			return "", errors.New("the passwords differ")
 		}
 	}
-	return serve.HashPassword(password)
+	return password, nil
 }

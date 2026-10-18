@@ -88,6 +88,8 @@ type API struct {
 	Info watch.Status
 	// Auth authenticates the requests.
 	Auth *Auth
+	// Users are the users and API tokens of the admin page, core.NewUsers() when nil.
+	Users core.Users
 	// Changed is told when watches are added or changed (to wake the scheduler), may be nil.
 	Changed func()
 	Log     logger

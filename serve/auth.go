@@ -2,10 +2,7 @@ package serve
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -17,25 +14,24 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/labstack/echo/v5"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/web"
 )
 
-// The permissions of the users and the scopes of the API tokens: read is every GET and
-// the events, watch changes the watches, progress records the reader's reads, write the
-// files, the library, the config, the downloads.
+// The permissions of the users and the scopes of the API tokens (core's).
 const (
-	ScopeRead     = "read"
-	ScopeWatch    = "watch"
-	ScopeProgress = "progress"
-	ScopeWrite    = "write"
+	ScopeRead     = core.ScopeRead
+	ScopeWatch    = core.ScopeWatch
+	ScopeProgress = core.ScopeProgress
+	ScopeWrite    = core.ScopeWrite
 	// ScopePublic is an operation anyone may call (the login).
 	ScopePublic = "public"
 )
 
 // Scopes are every scope.
-var Scopes = []string{ScopeRead, ScopeWatch, ScopeProgress, ScopeWrite}
+var Scopes = core.Scopes
 
 // The auth modes (serve.auth).
 const (
@@ -44,44 +40,13 @@ const (
 )
 
 // NormalizeScopes are the scopes checked, sorted as Scopes, with read when there's any.
-func NormalizeScopes(scopes []string) ([]string, error) {
-	var out []string
-	for _, s := range scopes {
-		s = strings.TrimSpace(strings.ToLower(s))
-		if s == "" {
-			continue
-		}
-		if !slices.Contains(Scopes, s) {
-			return nil, fmt.Errorf("%q isn't a permission (%s)", s, strings.Join(Scopes, ", "))
-		}
-		out = append(out, s)
-	}
-	if len(out) != 0 {
-		out = append(out, ScopeRead)
-	}
-	var sorted []string
-	for _, s := range Scopes {
-		if slices.Contains(out, s) {
-			sorted = append(sorted, s)
-		}
-	}
-	return sorted, nil
-}
+func NormalizeScopes(scopes []string) ([]string, error) { return core.NormalizeScopes(scopes) }
 
 // HashToken is how an API token is kept: the hex sha256.
-func HashToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
-}
+func HashToken(token string) string { return core.HashToken(token) }
 
 // NewToken is a random token (API tokens, the local key).
-func NewToken() (string, error) {
-	b := make([]byte, 24)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
+func NewToken() (string, error) { return core.NewToken() }
 
 // The kinds of identity.
 const (
@@ -225,6 +190,20 @@ func (a *Auth) user(name string) (storage.User, error) {
 	a.users[key] = cachedUser{user: u, err: err, at: time.Now()}
 	a.mu.Unlock()
 	return u, err
+}
+
+// forget drops the cached user (changed here: it applies at once).
+func (a *Auth) forget(name string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.users, strings.ToLower(name))
+}
+
+// forgetTokens drops the cached API tokens.
+func (a *Auth) forgetTokens() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.tokensAt = time.Time{}
 }
 
 // errUnauthorized is a request that isn't logged in (or a wrong password or token).

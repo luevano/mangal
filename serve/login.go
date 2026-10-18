@@ -14,6 +14,7 @@ import (
 	"github.com/alexedwards/argon2id"
 	"github.com/alexedwards/scs/v2"
 	"github.com/luevano/libmangal/netutil"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web"
@@ -21,16 +22,8 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// MinPasswordLen is the shortest password a user can get.
-const MinPasswordLen = 8
-
-// HashPassword is how a user's password is kept: argon2id (PHC string).
-func HashPassword(password string) (string, error) {
-	if len(password) < MinPasswordLen {
-		return "", fmt.Errorf("the password needs %d characters or more", MinPasswordLen)
-	}
-	return argon2id.CreateHash(password, argon2id.DefaultParams)
-}
+// HashPassword is how a user's password is kept (core.HashPassword).
+func HashPassword(password string) (string, error) { return core.HashPassword(password) }
 
 // dummyHash is compared for unknown users, so the time doesn't tell which names exist.
 var dummyHash = sync.OnceValue(func() string {

@@ -109,6 +109,157 @@ paths:
                 $ref: '#/components/schemas/Me'
         default:
           $ref: '#/components/responses/Error'
+  /v1/users:
+    get:
+      summary: The users who log in
+      description: Needs every permission (an admin), whatever its x-mangal-scope says.
+      operationId: listUsers
+      tags: [v1, auth]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      summary: Add a user
+      description: |
+        No perms gives the first user every one, the others read and progress. Needs every permission (an admin), whatever its x-mangal-scope says.
+      operationId: addUser
+      tags: [v1, auth]
+      x-mangal-scope: write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewUser'
+      responses:
+        '201':
+          description: the user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/users/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      summary: Change a user's password or permissions (their logins end)
+      description: |
+        The last user with every permission keeps them (409). Needs every permission (an admin), whatever its x-mangal-scope says.
+      operationId: updateUser
+      tags: [v1, auth]
+      x-mangal-scope: write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserChange'
+      responses:
+        '204':
+          description: changed
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      summary: Remove a user
+      description: The last user with every permission stays (409). Needs every permission (an admin), whatever its x-mangal-scope says.
+      operationId: removeUser
+      tags: [v1, auth]
+      x-mangal-scope: write
+      responses:
+        '204':
+          description: removed
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/users/{name}/logout:
+    post:
+      summary: End a user's logins (every browser and app)
+      description: Needs every permission (an admin), whatever its x-mangal-scope says.
+      operationId: endUserLogins
+      tags: [v1, auth]
+      x-mangal-scope: write
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: ended
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/tokens:
+    get:
+      summary: The API tokens (without their secrets)
+      description: Needs every permission (an admin), whatever its x-mangal-scope says.
+      operationId: listTokens
+      tags: [v1, auth]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the tokens
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Token'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      summary: Make an API token, its secret is only in this answer
+      description: No scopes is read. Needs every permission (an admin), whatever its x-mangal-scope says.
+      operationId: addToken
+      tags: [v1, auth]
+      x-mangal-scope: write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewToken'
+      responses:
+        '201':
+          description: the token and its secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewTokenResponse'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/tokens/{name}:
+    delete:
+      summary: Remove an API token
+      description: Needs every permission (an admin), whatever its x-mangal-scope says.
+      operationId: removeToken
+      tags: [v1, auth]
+      x-mangal-scope: write
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: removed
+        default:
+          $ref: '#/components/responses/Error'
   /v1/events:
     get:
       summary: Server-sent events of the topics
@@ -1880,6 +2031,78 @@ components:
           type: string
         remember:
           type: boolean
+    User:
+      type: object
+      required: [name, perms, admin, created]
+      properties:
+        name:
+          type: string
+        perms:
+          type: array
+          items:
+            type: string
+        admin:
+          type: boolean
+          description: every permission (manages the users)
+        created:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
+    NewUser:
+      type: object
+      required: [name, password]
+      properties:
+        name:
+          type: string
+        password:
+          type: string
+        perms:
+          type: array
+          items:
+            type: string
+    UserChange:
+      type: object
+      properties:
+        password:
+          type: string
+        perms:
+          type: array
+          items:
+            type: string
+    Token:
+      type: object
+      required: [name, scopes, created]
+      properties:
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        created:
+          type: string
+          format: date-time
+    NewToken:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+    NewTokenResponse:
+      type: object
+      required: [token, secret]
+      properties:
+        token:
+          $ref: '#/components/schemas/Token'
+        secret:
+          type: string
+          description: Authorization Bearer, shown only here
     Me:
       type: object
       required: [name, kind, scopes]

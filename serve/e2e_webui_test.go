@@ -58,6 +58,7 @@ func TestWebUI(t *testing.T) {
 
 	// nobody logged in: the login page, a wrong password, then the right one
 	addUser(t, s, "david", "correct horse", Scopes...)
+	s.api.Users = core.NewUsersOf(storage.Users{DB: s.svc.Watches.DB})
 	step().MustNavigate(s.URL + "/#/library")
 	step().MustElement("[data-test=login-page]")
 	step().MustElement("[data-test=login-name]").MustInput("david")
@@ -150,9 +151,26 @@ func TestWebUI(t *testing.T) {
 	if list, _ := c.Library.Mangas(context.Background(), core.MangasOptions{}); len(list.Mangas) != 2 {
 		t.Errorf("%d mangas after the undo", len(list.Mangas))
 	}
+	step().MustElement("[data-test=plan-dialog] .btn-close").MustClick()
+
+	// the users page (david has every permission): add a user, make a token
+	step().MustElement("[data-test=nav-users]").MustClick()
+	step().MustElement("[data-test=users-table]")
+	step().MustElement("[data-test=user-add]").MustClick()
+	step().MustElement("[data-test=u-name]").MustInput("guest")
+	step().MustElement("[data-test=u-password]").MustInput("battery staple")
+	step().MustElement("[data-test=form-submit]").MustClick()
+	step().MustElementR("[data-test=users-table] td", "^guest$")
+	step().MustElement("[data-test=token-add]").MustClick()
+	step().MustElement("[data-test=u-name]").MustInput("script")
+	step().MustElement("[data-test=form-submit]").MustClick()
+	if secret := step().MustElement("[data-test=token-secret]").MustProperty("value").String(); len(secret) != 48 {
+		t.Errorf("token secret %q", secret)
+	}
+	step().MustElementR(".modal-footer button", "Done").MustClick()
+	step().MustElementR("[data-test=tokens-table] td", "^script$")
 
 	// logging out goes back to the login page, the API answers no more
-	step().MustElement("[data-test=plan-dialog] .btn-close").MustClick()
 	step().MustElement("[data-test=logout]").MustClick()
 	step().MustElement("[data-test=login-page]")
 	if got := page.MustEval(`() => fetch('/api/v1/watches').then(r => r.status)`).Int(); got != 401 {

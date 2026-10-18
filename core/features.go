@@ -143,9 +143,10 @@ var Features = []Feature{
 		NotApplicable: map[Mode]string{ModeWeb: cliEnough, ModeAPI: cliEnough, ModeTUI: cliEnough, ModeScript: cliEnough}},
 	{Name: "paths", CLI: []string{"path"}, NotApplicable: map[Mode]string{ModeWeb: cliEnough, ModeAPI: cliEnough, ModeTUI: cliEnough, ModeScript: cliEnough}},
 	{Name: "formats", API: []string{"listFormats"}, CLI: []string{"formats"}, NotApplicable: map[Mode]string{ModeWeb: "downloads use download.format (the config)", ModeTUI: "the chapters' f popup lists them", ModeScript: cliEnough}},
-	{Name: "logins", Web: []string{"login"}, API: []string{"login", "logout", "getMe"},
+	{Name: "logins", Web: []string{"login", "users"}, API: []string{"login", "logout", "getMe", "listUsers", "addUser", "updateUser", "removeUser", "endUserLogins", "listTokens", "addToken", "removeToken"},
+		TUI: "K (home): users and API tokens after the accounts", TUIKey: "K",
 		CLI:           []string{"user add", "user passwd", "user perms", "user logout", "user rm", "user ls", "token add", "token ls", "token rm"},
-		NotApplicable: map[Mode]string{ModeTUI: "the TUI is mangal on the server's config (its key)", ModeScript: "scripts use the server's key or an API token"}},
+		NotApplicable: map[Mode]string{ModeScript: "scripts use the server's key or an API token"}},
 }
 
 // ModeCommands are the commands of no feature: the modes themselves and cobra's own.
