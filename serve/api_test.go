@@ -454,6 +454,19 @@ func TestHostCheck(t *testing.T) {
 			}
 		}
 	}
+	// serve.auth none behind a trusted proxy (nginx's server_name), no one else's
+	_, proxy, _ := net.ParseCIDR("127.0.0.1/32")
+	s.api.Auth.TrustedProxies = []*net.IPNet{proxy}
+	h := s.handler(t)
+	for remote, want := range map[string]int{"127.0.0.1:1234": http.StatusOK, "127.0.0.2:1234": http.StatusMisdirectedRequest} {
+		req := httptest.NewRequest("GET", "/api/watches", nil)
+		req.Host, req.RemoteAddr = "manga.example.com", remote
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("proxied from %s: %d, want %d", remote, rec.Code, want)
+		}
+	}
 }
 
 // TestCrossSite: a page of another site can't use the API (no-cors POSTs need no preflight).

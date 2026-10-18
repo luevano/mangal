@@ -6,7 +6,8 @@
 # 127.0.0.1 so nothing reaches mangal without going through nginx. Optional:
 #   mangal config set serve.trusted_proxies 127.0.0.1
 # puts the clients' addresses (X-Forwarded-For) in mangal's logs and its login rate limit;
-# without it every login through nginx shares nginx's address.
+# without it every login through nginx shares nginx's address. With nginx doing the auth
+# instead (serve.auth none) it's needed: mangal then only answers nginx's server_name from it.
 server {
     server_name mangal.example.com;
 

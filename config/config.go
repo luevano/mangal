@@ -577,7 +577,7 @@ var Serve = configServe{
 	Auth: reg(entry[string, string]{
 		Key:         "serve.auth",
 		Default:     "login",
-		Description: "How `mangal serve` authenticates: login (a user of `mangal user`: the web UI's login page, or basic auth for OPDS readers; programs send an API token of `mangal token`) or none (every request may do everything: only behind something that authenticates). token, of older configs, is login.",
+		Description: "How `mangal serve` authenticates: login (a user of `mangal user`: the web UI's login page, or basic auth for OPDS readers; programs send an API token of `mangal token`) or none (every request may do everything: only behind something that authenticates, a reverse proxy then needs serve.trusted_proxies). token, of older configs, is login.",
 		Values:      []string{"login", "none"},
 		Unmarshal: func(raw string) (string, error) {
 			if strings.EqualFold(raw, "token") {

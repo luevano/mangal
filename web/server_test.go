@@ -211,6 +211,18 @@ func TestCheckHost(t *testing.T) {
 			}
 		}
 	}
+	// a trusted proxy's host on loopback (serve.auth none behind nginx), no one else's
+	_, proxy, _ := net.ParseCIDR("10.0.0.2/32")
+	proxied := checkHost(GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}, TrustedProxies: []*net.IPNet{proxy}}, ok)
+	for remote, want := range map[string]int{"10.0.0.2:1": http.StatusOK, "10.0.0.9:1": http.StatusMisdirectedRequest} {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.RemoteAddr, r.Host = remote, "manga.example.com"
+		w := httptest.NewRecorder()
+		proxied.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Errorf("proxied from %s: %d", remote, w.Code)
+		}
+	}
 	// no list off loopback: any host
 	any := checkHost(GuardOptions{Addr: &net.TCPAddr{IP: net.IPv4zero, Port: 1}}, ok)
 	r := httptest.NewRequest(http.MethodGet, "/", nil)

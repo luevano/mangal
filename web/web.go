@@ -83,7 +83,8 @@ type GuardOptions struct {
 	AllowedHosts []string
 	// AllowedOrigins are origins (scheme://host[:port]) whose pages may send unsafe requests.
 	AllowedOrigins []string
-	// TrustedProxies are the proxies whose X-Forwarded-Host is the host.
+	// TrustedProxies are the proxies whose X-Forwarded-Host is the host; without
+	// AllowedHosts any host they send is answered.
 	TrustedProxies []*net.IPNet
 	// AnyHost answers every host: every request needs a login, so DNS rebinding gets
 	// nothing (a rebinding page has no session).
@@ -157,7 +158,8 @@ func LogRefused(r *http.Request, reason string) {
 
 // checkHost refuses requests for another host when serving on a loopback address, so a
 // site can't reach the server through DNS rebinding, and on any address for a host not
-// in AllowedHosts when it's set.
+// in AllowedHosts when it's set. Without AllowedHosts a trusted proxy's requests pass
+// whatever their host: the proxy answers for its names.
 func checkHost(opts GuardOptions, next http.Handler) http.Handler {
 	tcp, ok := opts.Addr.(*net.TCPAddr)
 	loopback := ok && tcp.IP.IsLoopback()
@@ -165,7 +167,8 @@ func checkHost(opts GuardOptions, next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !IsLoopbackHost(r.Host) && !allowedHost(r.Host, opts) {
+		proxied := len(opts.AllowedHosts) == 0 && FromProxy(r, opts.TrustedProxies)
+		if !proxied && !IsLoopbackHost(r.Host) && !allowedHost(r.Host, opts) {
 			LogRefused(r, fmt.Sprintf("unknown host %q", r.Host))
 			http.Error(w, "unknown host", http.StatusMisdirectedRequest)
 			return
