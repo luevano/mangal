@@ -15,6 +15,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
@@ -280,23 +281,9 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 	fmt.Fprintln(tw, "ID\tPROVIDER\tTITLE\tLAST\tCHECKED\tNEXT\tERRORS")
 	now := time.Now()
 	for _, w := range watches {
-		next := watch.FormatNext(w.NextScheduled, now)
-		switch {
-		case w.NeedsRelink:
-			next = w.RelinkLabel() + ": " + firstLine(w.RelinkReason, 50)
-			if w.Hold != "" {
-				next = library.HoldLabel(w.Hold) + ", " + next
-			}
-		case w.Hold != "":
-			next = library.HoldLabel(w.Hold)
-		case !w.Enabled && w.ProviderMissing:
-			next = "paused, provider missing"
-		case !w.Enabled:
-			next = "paused"
-		case w.ProviderMissing:
-			next = "provider missing"
-		case w.LibraryHold() != "":
-			next = w.LibraryHold()
+		next := watch.NextLabel(w, now, config.Watch.Backoff.Get())
+		if w.NeedsRelink {
+			next += ": " + firstLine(w.RelinkReason, 50)
 		}
 		errs := "-"
 		if w.Failures > 0 {

@@ -53,15 +53,10 @@ func MangaHoldTarget(m storage.Manga) HoldTarget {
 
 // markLabel is the mark for people.
 func markLabel(mark string) string {
-	switch mark {
-	case storage.HoldHiatus:
-		return "on hold: hiatus"
-	case storage.HoldEnded:
-		return "on hold: ended (no longer releasing)"
-	case watch.MarkProvider:
-		return "needs a new provider"
+	if mark == "" {
+		return "clear the marks"
 	}
-	return "clear the marks"
+	return watch.HoldLabel(mark)
 }
 
 // AskHold asks which mark to set (enter: the suggested one), pick makes the change of

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -130,7 +131,8 @@ func Mark() string {
 // Describe is the watch's state in a line: its provider and when it's checked next.
 func Describe(w watch.Watch) string {
 	next := nextCheck(w, config.Watch.Backoff.Get(), time.Now())
-	if w.Enabled && !w.ProviderMissing {
+	// a time, not a state (on hold, paused, ...)
+	if next == "due" || strings.HasPrefix(next, "in ") {
 		next = "next check " + next
 	}
 	return "watched on " + w.Provider + ": " + next

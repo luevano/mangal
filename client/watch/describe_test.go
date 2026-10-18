@@ -65,3 +65,23 @@ func TestDescribeSkipped(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestNextLabel(t *testing.T) {
+	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+	later := now.Add(5 * time.Hour)
+	for _, tc := range []struct {
+		w    Watch
+		want string
+	}{
+		{Watch{Watch: storage.Watch{Enabled: true}, NextScheduled: later}, "in 5h (17:00)"},
+		{Watch{Watch: storage.Watch{Enabled: true, Failures: 3}, NextScheduled: later}, "in 5h (17:00) (backing off)"},
+		{Watch{Watch: storage.Watch{Enabled: true}, NextScheduled: now}, "due"},
+		{Watch{Watch: storage.Watch{}, NextScheduled: later}, "paused"},
+		{Watch{Watch: storage.Watch{Enabled: true}, Hold: storage.HoldHiatus}, "on hold: hiatus"},
+		{Watch{Watch: storage.Watch{Enabled: true, NeedsRelink: true}, Hold: storage.HoldEnded}, "on hold: ended (no longer releasing), " + (Watch{Watch: storage.Watch{NeedsRelink: true}}).RelinkLabel()},
+	} {
+		if got := NextLabel(tc.w, now, 3); got != tc.want {
+			t.Errorf("%+v: %q, want %q", tc.w.Watch, got, tc.want)
+		}
+	}
+}

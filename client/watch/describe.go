@@ -69,6 +69,53 @@ func formatNumber(n *float32) string {
 	return stringutil.FormatFloat32(*n)
 }
 
+// HoldLabel is a hold mark for people.
+func HoldLabel(hold string) string {
+	switch hold {
+	case "":
+		return ""
+	case storage.HoldHiatus:
+		return "on hold: hiatus"
+	case storage.HoldEnded:
+		return "on hold: ended (no longer releasing)"
+	case MarkProvider:
+		return "needs a new provider"
+	}
+	return "on hold: " + hold
+}
+
+// NextLabel is when the watch is checked next, for people: its hold and re-link (both
+// when both apply), paused, provider missing, its library hold, due, or in how long
+// (backing off after backoff failures in a row, 0 for never).
+func NextLabel(w Watch, now time.Time, backoff int) string {
+	var marks []string
+	if w.Hold != "" {
+		marks = append(marks, HoldLabel(w.Hold))
+	}
+	if w.NeedsRelink {
+		marks = append(marks, w.RelinkLabel())
+	}
+	switch {
+	case len(marks) != 0:
+		return strings.Join(marks, ", ")
+	case !w.Enabled && w.ProviderMissing:
+		return "paused, provider missing"
+	case !w.Enabled:
+		return "paused"
+	case w.ProviderMissing:
+		return "provider missing"
+	case w.LibraryHold() != "":
+		return w.LibraryHold()
+	case !w.NextScheduled.After(now):
+		return "due"
+	}
+	next := FormatNext(w.NextScheduled, now)
+	if backoff > 0 && w.Failures >= backoff {
+		next += " (backing off)"
+	}
+	return next
+}
+
 // FormatNext is when a check is due, for people: "due" once it's past, else how long
 // until then and the wall-clock time (in now's location): "in 2h (16:00)", "in 9h
 // (tomorrow 04:00)", "in 3d (Wed 04:00)", "in 12d (Oct 23 04:00)".

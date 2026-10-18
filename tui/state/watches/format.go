@@ -54,30 +54,9 @@ func formatNumber(n *float32) string {
 	return stringutil.FormatFloat32(*n)
 }
 
-// nextCheck is when the watch is checked next: paused, backing off (too many failures in
-// a row), due or in how long.
+// nextCheck is when the watch is checked next (watch.NextLabel).
 func nextCheck(w watch.Watch, backoff int, now time.Time) string {
-	switch {
-	case w.NeedsRelink:
-		return w.RelinkLabel()
-	case w.Hold != "":
-		return markLabel(w.Hold)
-	case !w.Enabled && w.ProviderMissing:
-		return "paused, provider missing"
-	case !w.Enabled:
-		return "paused"
-	case w.ProviderMissing:
-		return "provider missing"
-	case w.LibraryHold() != "":
-		return w.LibraryHold()
-	case !w.NextScheduled.After(now):
-		return "due"
-	}
-	next := watch.FormatNext(w.NextScheduled, now)
-	if backoff > 0 && w.Failures >= backoff {
-		next += " (backing off)"
-	}
-	return next
+	return watch.NextLabel(w, now, backoff)
 }
 
 // result is what a check found: new N, nothing, error.
