@@ -669,6 +669,11 @@ func (v *viewer) key(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 // setEntries replaces the entries, or adds them: only the added ones are matched, and
 // shown and measured unless the first ones were dropped.
 func (v *viewer) setEntries(entries []log.Entry, replace bool) {
+	keep := v.keptEntry()
+	var kept log.Entry
+	if keep >= 0 {
+		kept = v.entries[keep]
+	}
 	from := len(v.entries)
 	if replace {
 		v.entries, v.hits, v.dropped, from = nil, nil, 0, 0
@@ -682,6 +687,13 @@ func (v *viewer) setEntries(entries []log.Entry, replace bool) {
 		v.hits = append(v.hits[:0], v.hits[n:]...)
 		v.dropped += n
 		whole = true
+		if !replace {
+			keep -= n
+		}
+	}
+	if replace && keep >= 0 {
+		// the same entry in the new ones (the session's are read again each tick)
+		keep = slices.IndexFunc(v.entries, func(e log.Entry) bool { return e.Time.Equal(kept.Time) && e.Message == kept.Message })
 	}
 	if len(v.entries) > 0 {
 		first, last := v.entries[0].Time, v.entries[len(v.entries)-1].Time
@@ -691,7 +703,7 @@ func (v *viewer) setEntries(entries []log.Entry, replace bool) {
 		v.dated = dated
 	}
 	if whole {
-		v.filter()
+		v.filterKeep(max(keep, -1))
 		return
 	}
 	n := len(v.shown)
@@ -727,15 +739,26 @@ func (v *viewer) pick(from int) {
 	}
 }
 
+// keptEntry is the entry filter keeps in view: the current match's, else the top one's;
+// -1 for none.
+func (v *viewer) keptEntry() int {
+	if v.current >= 0 {
+		return v.shown[v.matches[v.current]]
+	}
+	if i := v.entryAt(v.top); i >= 0 {
+		return v.shown[i]
+	}
+	return -1
+}
+
 // filter picks the shown entries and their matches, keeping the current match (or the
 // top entry) in view.
 func (v *viewer) filter() {
-	var keep = -1
-	if v.current >= 0 {
-		keep = v.shown[v.matches[v.current]]
-	} else if i := v.entryAt(v.top); i >= 0 {
-		keep = v.shown[i]
-	}
+	v.filterKeep(v.keptEntry())
+}
+
+// filterKeep is filter keeping the entry with the index (-1 for none) in view.
+func (v *viewer) filterKeep(keep int) {
 	v.shown, v.matches = v.shown[:0], v.matches[:0]
 	v.pick(0)
 	v.current = -1

@@ -357,3 +357,29 @@ func BenchmarkFind(b *testing.B) {
 		}
 	})
 }
+
+// TestKeepTopEntry: a scrolled view keeps its top entry when the first entries are
+// dropped, and when the session's entries are replaced by a later window of them.
+func TestKeepTopEntry(t *testing.T) {
+	marked(t)
+	all := lines(maxEntries + maxEntries/10 + 20)
+	v := newViewer(kindSession)
+	v.Resize(base.Size{Width: 100, Height: 30})
+	v.loaded = true
+	v.setEntries(all[:maxEntries], true)
+	v.follow = false
+	v.top = v.starts[slices.Index(v.shown, 40000)]
+	top := func() log.Entry { return v.entries[v.shown[v.entryAt(v.top)]] }
+	want := all[40000]
+	if top() != want {
+		t.Fatalf("top %q", top().Message)
+	}
+	v.setEntries(all[maxEntries:], false)
+	if v.dropped == 0 || top() != want {
+		t.Errorf("dropped %d: top %q, want %q", v.dropped, top().Message, want.Message)
+	}
+	v.setEntries(all[7:maxEntries+7], true)
+	if top() != want {
+		t.Errorf("replaced: top %q, want %q", top().Message, want.Message)
+	}
+}
