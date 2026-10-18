@@ -164,20 +164,39 @@ func migrateLibrary(tx *sql.Tx) error {
 
 // FindMangaDir implements libmangal.MangaDirIndex.
 func (l Library) FindMangaDir(parent string, provider libmangal.ProviderInfo, info libmangal.MangaDirInfo) (string, bool, error) {
-	mangas, err := l.mangas(`WHERE m.parent = ? AND m.dir != ''`, parent)
+	type row struct {
+		id       int64
+		dir, ids string
+		src      Source
+	}
+	// a folder found by a scan has no source until it's downloaded into (LEFT JOIN)
+	rows, err := queryAll(l.DB, func(rows *sql.Rows) (row, error) {
+		var r row
+		return r, rows.Scan(&r.id, &r.dir, &r.ids, &r.src.Provider, &r.src.MangaID)
+	}, `SELECT m.id, m.dir, m.metadata_ids, coalesce(s.provider, ''), coalesce(s.manga_id, '')
+FROM library_mangas m LEFT JOIN library_sources s ON s.manga = m.id
+WHERE m.parent = ? AND m.dir != '' ORDER BY m.dir, m.id`, parent)
 	if err != nil {
 		return "", false, fmt.Errorf("find manga dir in %s: %w", parent, err)
 	}
 	best, name := libmangal.MangaDirNoMatch, ""
-	for _, m := range mangas {
-		// a folder found by a scan has no source until it's downloaded into
-		haves := []libmangal.MangaDirInfo{{MetadataIDs: m.MetadataIDs}}
-		for _, src := range m.Sources {
-			haves = append(haves, libmangal.MangaDirInfo{Provider: src.Provider, Manga: mangadata.MangaInfo{ID: src.MangaID}, MetadataIDs: m.MetadataIDs})
+	var last int64
+	var ids []metadata.ID
+	for _, r := range rows {
+		var haves []libmangal.MangaDirInfo
+		if r.id != last {
+			last, ids = r.id, nil
+			if err := json.Unmarshal([]byte(r.ids), &ids); err != nil {
+				return "", false, fmt.Errorf("find manga dir in %s: %w", parent, err)
+			}
+			haves = append(haves, libmangal.MangaDirInfo{MetadataIDs: ids})
+		}
+		if r.src.Provider != "" {
+			haves = append(haves, libmangal.MangaDirInfo{Provider: r.src.Provider, Manga: mangadata.MangaInfo{ID: r.src.MangaID}, MetadataIDs: ids})
 		}
 		for _, have := range haves {
 			if match := libmangal.MatchMangaDir(provider, info, have); match > best {
-				best, name = match, m.Dir
+				best, name = match, r.dir
 			}
 		}
 	}

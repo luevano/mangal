@@ -464,3 +464,60 @@ func TestChapterNumbers(t *testing.T) {
 		t.Errorf("got %v", numbers)
 	}
 }
+
+// FindMangaDir's own query finds what matching every manga of the parent finds.
+func TestFindMangaDirLikeMangas(t *testing.T) {
+	_, data := openBoth(t)
+	library := Library{DB: data}
+	anilist := func(raw string) []metadata.ID {
+		return []metadata.ID{{Raw: raw, Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}}
+	}
+	for _, d := range []struct {
+		dir  string
+		info libmangal.MangaDirInfo
+	}{
+		{"Berserk", libmangal.MangaDirInfo{Provider: "mango-mangasee", Manga: mangadata.MangaInfo{ID: "berserk"}, MetadataIDs: anilist("1")}},
+		{"Berserk", libmangal.MangaDirInfo{Provider: "q", Manga: mangadata.MangaInfo{ID: "b"}}},
+		{"Scanned", libmangal.MangaDirInfo{MetadataIDs: anilist("2")}},
+		{"Twin", libmangal.MangaDirInfo{Provider: "q", Manga: mangadata.MangaInfo{ID: "t"}, MetadataIDs: anilist("2")}},
+		{"Elsewhere", libmangal.MangaDirInfo{Provider: "q", Manga: mangadata.MangaInfo{ID: "e"}}},
+	} {
+		if err := library.RememberMangaDir("/lib", d.dir, d.info); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := library.RememberMangaDir("/other", "X", libmangal.MangaDirInfo{Provider: "q", Manga: mangadata.MangaInfo{ID: "x"}}); err != nil {
+		t.Fatal(err)
+	}
+	mangas, err := library.mangas(`WHERE m.parent = ? AND m.dir != ''`, "/lib")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []struct {
+		provider libmangal.ProviderInfo
+		info     libmangal.MangaDirInfo
+	}{
+		{weebCentral, libmangal.MangaDirInfo{Provider: "mango-weebcentral", Manga: mangadata.MangaInfo{ID: "berserk"}}},
+		{libmangal.ProviderInfo{ID: "q"}, libmangal.MangaDirInfo{Provider: "q", Manga: mangadata.MangaInfo{ID: "b"}}},
+		{libmangal.ProviderInfo{ID: "r"}, libmangal.MangaDirInfo{Provider: "r", Manga: mangadata.MangaInfo{ID: "z"}, MetadataIDs: anilist("2")}},
+		{libmangal.ProviderInfo{ID: "r"}, libmangal.MangaDirInfo{Provider: "r", Manga: mangadata.MangaInfo{ID: "z"}, MetadataIDs: anilist("1")}},
+		{libmangal.ProviderInfo{ID: "q"}, libmangal.MangaDirInfo{Provider: "q", Manga: mangadata.MangaInfo{ID: "x"}}},
+	} {
+		best, want := libmangal.MangaDirNoMatch, ""
+		for _, m := range mangas {
+			haves := []libmangal.MangaDirInfo{{MetadataIDs: m.MetadataIDs}}
+			for _, src := range m.Sources {
+				haves = append(haves, libmangal.MangaDirInfo{Provider: src.Provider, Manga: mangadata.MangaInfo{ID: src.MangaID}, MetadataIDs: m.MetadataIDs})
+			}
+			for _, have := range haves {
+				if match := libmangal.MatchMangaDir(q.provider, q.info, have); match > best {
+					best, want = match, m.Dir
+				}
+			}
+		}
+		got, found, err := library.FindMangaDir("/lib", q.provider, q.info)
+		if err != nil || got != want || found != (best != libmangal.MangaDirNoMatch) {
+			t.Errorf("%+v: got %q %t %v, want %q", q.info, got, found, err, want)
+		}
+	}
+}
