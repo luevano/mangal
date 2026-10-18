@@ -122,4 +122,11 @@ func TestChaptersEmpty(t *testing.T) {
 	if _, err := Chapters("first", nil); !errors.Is(err, ErrNoChapters) {
 		t.Errorf("error = %v, want ErrNoChapters", err)
 	}
+	// in range, but no chapter has the numbers
+	chapters := []mangadata.Chapter{chapter{number: 1}, chapter{number: 3}}
+	for _, sel := range []string{"2", "1.5-2.5"} {
+		if got, err := Chapters(sel, chapters); !errors.Is(err, ErrNoChapters) {
+			t.Errorf("Chapters(%q) = %v, %v; want ErrNoChapters", sel, got, err)
+		}
+	}
 }

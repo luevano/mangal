@@ -30,7 +30,7 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("%s (%s)", msg, e.Reason)
 }
 
-// ErrNoChapters is selecting from no chapters.
+// ErrNoChapters is selecting from no chapters, or a number or range that matches none.
 var ErrNoChapters = errors.New("no chapters")
 
 var (
@@ -128,14 +128,17 @@ func Chapters(sel string, chapters []mangadata.Chapter) ([]mangadata.Chapter, er
 	}
 
 	first, last := chapters[0].Info().Number, chapters[len(chapters)-1].Info().Number
-	between := func(from, to float32) []mangadata.Chapter {
+	between := func(from, to float32) ([]mangadata.Chapter, error) {
 		var selected []mangadata.Chapter
 		for _, ch := range chapters {
 			if n := ch.Info().Number; n >= from && n <= to {
 				selected = append(selected, ch)
 			}
 		}
-		return selected
+		if len(selected) == 0 {
+			return nil, fmt.Errorf("%w match %q", ErrNoChapters, sel)
+		}
+		return selected, nil
 	}
 
 	switch sel {
@@ -156,7 +159,7 @@ func Chapters(sel string, chapters []mangadata.Chapter) ([]mangadata.Chapter, er
 			return fail("chapter number %s out of range (%s, %s)", fmtFloat(number), fmtFloat(first), fmtFloat(last))
 		}
 		// more than one chapter can have the number
-		return between(number, number), nil
+		return between(number, number)
 	}
 
 	m := chapterRegex.FindStringSubmatch(sel)
@@ -182,7 +185,7 @@ func Chapters(sel string, chapters []mangadata.Chapter) ([]mangadata.Chapter, er
 	case from > to:
 		return fail("'from' (%s) greater than 'to' (%s)", fmtFloat(from), fmtFloat(to))
 	}
-	return between(from, to), nil
+	return between(from, to)
 }
 
 func parseNumber(s string) (float32, error) {
