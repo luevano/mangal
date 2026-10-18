@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"path/filepath"
 
 	"github.com/luevano/libmangal"
@@ -99,19 +100,46 @@ var providersLsCmd = &cobra.Command{
 	},
 }
 
+var providersRmArgs = struct {
+	Force, Yes bool
+}{}
+
 func init() {
 	providersCmd.AddCommand(providersRmCmd)
+	f := providersRmCmd.Flags()
+	f.BoolVar(&providersRmArgs.Force, "force", false, "Remove it even with local work (not a git repository, no remote, uncommitted or unpushed changes)")
+	f.BoolVarP(&providersRmArgs.Yes, "yes", "y", false, "Don't ask")
 }
 
 var providersRmCmd = &cobra.Command{
 	Use:   "rm <dir>...",
 	Short: "Remove installed providers by their directory name",
-	Args:  cobra.MinimumNArgs(1),
+	Long: `Remove installed providers by their directory name, for good. One with local work (not
+a git repository, no remote, uncommitted changes or commits on no remote branch) is refused
+unless --force. It asks first (--yes doesn't; without a terminal it's needed).`,
+	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		dir := path.Providers()
 		for _, tag := range args {
-			if err := install.Remove(path.Providers(), tag); err != nil {
+			work, err := install.LocalWork(dir, tag)
+			if err != nil {
 				return err
 			}
+			question := fmt.Sprintf("Remove provider %q?", tag)
+			if work != "" {
+				if !providersRmArgs.Force {
+					return fmt.Errorf("provider %q has local work (%s): --force removes it anyway", tag, work)
+				}
+				question = fmt.Sprintf("Remove provider %q and its local work (%s)?", tag, work)
+			}
+			if !providersRmArgs.Yes && !confirm(cmd, question) {
+				cmd.Printf("%s not removed (--yes removes without asking)\n", tag)
+				continue
+			}
+			if err := install.Remove(dir, tag); err != nil {
+				return err
+			}
+			successf(cmd, "removed %s", tag)
 		}
 		return nil
 	},

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/luaprovider"
 	"github.com/luevano/mangal/v5/provider/info"
@@ -257,19 +258,97 @@ func pull(ctx context.Context, dir string, progress io.Writer) (string, error) {
 	return StatusUpdated, nil
 }
 
-// Remove removes the provider dir named tag from dir.
-func Remove(dir, tag string) error {
+// providerDir is the provider dir named tag in dir, an error if there's none.
+func providerDir(dir, tag string) (string, error) {
 	if err := checkName(tag); err != nil {
-		return fmt.Errorf("remove provider: %w", err)
+		return "", fmt.Errorf("remove provider: %w", err)
 	}
 	target := filepath.Join(dir, tag)
 	if stat, err := os.Lstat(target); err != nil || !stat.IsDir() {
-		return fmt.Errorf("provider %q not found in %s", tag, dir)
+		return "", fmt.Errorf("provider %q not found in %s", tag, dir)
+	}
+	return target, nil
+}
+
+// Remove removes the provider dir named tag from dir (see LocalWork first).
+func Remove(dir, tag string) error {
+	target, err := providerDir(dir, tag)
+	if err != nil {
+		return err
 	}
 	if err := os.RemoveAll(target); err != nil {
 		return fmt.Errorf("remove provider %q: %w", tag, err)
 	}
 	return nil
+}
+
+// LocalWork says why removing the provider dir named tag from dir could lose work: it
+// isn't a git repository, has no remote, uncommitted changes, or commits on no remote
+// branch. Empty when everything is on a remote.
+func LocalWork(dir, tag string) (string, error) {
+	target, err := providerDir(dir, tag)
+	if err != nil {
+		return "", err
+	}
+	repo, err := git.PlainOpen(target)
+	if errors.Is(err, git.ErrRepositoryNotExists) {
+		return "not a git repository", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if remotes, err := repo.Remotes(); err != nil {
+		return "", err
+	} else if len(remotes) == 0 {
+		return "no git remote", nil
+	}
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return "", err
+	}
+	status, err := worktree.Status()
+	if err != nil {
+		return "", err
+	}
+	if !status.IsClean() {
+		return "uncommitted changes", nil
+	}
+	head, err := repo.Head()
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		// no commits
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	headCommit, err := repo.CommitObject(head.Hash())
+	if err != nil {
+		return "", err
+	}
+	refs, err := repo.References()
+	if err != nil {
+		return "", err
+	}
+	defer refs.Close()
+	pushed := false
+	err = refs.ForEach(func(ref *plumbing.Reference) error {
+		if pushed || !ref.Name().IsRemote() || ref.Type() != plumbing.HashReference {
+			return nil
+		}
+		remote, err := repo.CommitObject(ref.Hash())
+		if err != nil {
+			return nil
+		}
+		pushed, err = headCommit.IsAncestor(remote)
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	if !pushed {
+		return "commits not on a remote branch", nil
+	}
+	return "", nil
 }
 
 // New scaffolds a new provider repository in dir, in a dir named after its id.

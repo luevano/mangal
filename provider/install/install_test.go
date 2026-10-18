@@ -333,3 +333,55 @@ func TestUpdateNonFastForward(t *testing.T) {
 		t.Errorf("provider replaced: %v", err)
 	}
 }
+
+func TestLocalWork(t *testing.T) {
+	root := t.TempDir()
+	origin := originRepo(t, root, "x")
+	providers := filepath.Join(root, "providers")
+	clone := func(name string) (*git.Repository, string) {
+		dir := filepath.Join(providers, name)
+		repo, err := git.PlainClone(dir, false, &git.CloneOptions{URL: origin})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return repo, dir
+	}
+	clone("clean")
+	_, dirty := clone("dirty")
+	if err := os.WriteFile(filepath.Join(dirty, "new.lua"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ahead, aheadDir := clone("ahead")
+	if err := os.WriteFile(filepath.Join(aheadDir, "local.lua"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tree, _ := ahead.Worktree()
+	if _, err := tree.Add("local.lua"); err != nil {
+		t.Fatal(err)
+	}
+	sig := &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
+	if _, err := tree.Commit("local", &git.CommitOptions{Author: sig}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.PlainInit(filepath.Join(providers, "no-remote"), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(providers, "plain"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	for tag, want := range map[string]string{
+		"clean":     "",
+		"dirty":     "uncommitted changes",
+		"ahead":     "commits not on a remote branch",
+		"no-remote": "no git remote",
+		"plain":     "not a git repository",
+	} {
+		if got, err := LocalWork(providers, tag); err != nil || got != want {
+			t.Errorf("%s: %q, %v; want %q", tag, got, err, want)
+		}
+	}
+	if _, err := LocalWork(providers, "missing"); err == nil {
+		t.Error("missing: no error")
+	}
+}
