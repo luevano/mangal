@@ -109,3 +109,42 @@ func TestTokensConcurrent(t *testing.T) {
 		}
 	}
 }
+
+// TestLastAdminConcurrent: admins removed at once leave one.
+func TestLastAdminConcurrent(t *testing.T) {
+	ctx := context.Background()
+	u := NewUsers()
+	for _, name := range []string{"admin1", "admin2", "admin3"} {
+		if _, err := u.Add(ctx, name, "correct horse", Scopes); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, err := u.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for _, user := range list {
+		if user.Admin {
+			wg.Go(func() {
+				if err := u.Remove(ctx, user.Name); err != nil && !errors.Is(err, ErrRefused) {
+					t.Error(err)
+				}
+			})
+		}
+	}
+	wg.Wait()
+	list, err = u.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admins := 0
+	for _, user := range list {
+		if user.Admin {
+			admins++
+		}
+	}
+	if admins != 1 {
+		t.Errorf("%d admins left: %+v", admins, list)
+	}
+}

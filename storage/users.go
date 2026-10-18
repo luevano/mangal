@@ -75,7 +75,11 @@ const userColumns = `name, hash, perms, generation, created, last_login`
 
 // List is every user, by name.
 func (u Users) List() ([]User, error) {
-	rows, err := u.DB.Query(`SELECT ` + userColumns + ` FROM serve_users ORDER BY name`)
+	return listUsers(u.DB)
+}
+
+func listUsers(q querier) ([]User, error) {
+	rows, err := q.Query(`SELECT ` + userColumns + ` FROM serve_users ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list the users: %w", err)
 	}
@@ -121,9 +125,33 @@ func (u Users) Add(user User) error {
 	return nil
 }
 
+// execer is a *DB or a *sql.Tx.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+// checked runs f after check of every user passes, in one transaction: no other change
+// comes between them.
+func (u Users) checked(check func([]User) error, f func(execer) error) error {
+	return u.DB.InTx(func(tx *sql.Tx) error {
+		users, err := listUsers(tx)
+		if err != nil {
+			return err
+		}
+		if err := check(users); err != nil {
+			return err
+		}
+		return f(tx)
+	})
+}
+
 // update changes a column of the user and ends its sessions (a new generation).
 func (u Users) update(name, set string, args ...any) error {
-	res, err := u.DB.Exec(`UPDATE serve_users SET `+set+`, generation = generation + 1 WHERE name = ?`, append(args, name)...)
+	return updateUser(u.DB, name, set, args...)
+}
+
+func updateUser(ex execer, name, set string, args ...any) error {
+	res, err := ex.Exec(`UPDATE serve_users SET `+set+`, generation = generation + 1 WHERE name = ?`, append(args, name)...)
 	if err != nil {
 		return fmt.Errorf("change user %q: %w", name, err)
 	}
@@ -143,6 +171,14 @@ func (u Users) SetPerms(name string, perms []string) error {
 	return u.update(name, `perms = ?`, strings.Join(perms, ","))
 }
 
+// SetPermsChecked is SetPerms once check of every user passes (its error otherwise), in
+// one transaction.
+func (u Users) SetPermsChecked(name string, perms []string, check func([]User) error) error {
+	return u.checked(check, func(ex execer) error {
+		return updateUser(ex, name, `perms = ?`, strings.Join(perms, ","))
+	})
+}
+
 // EndSessions ends the user's sessions.
 func (u Users) EndSessions(name string) error {
 	return u.update(name, `perms = perms`)
@@ -158,7 +194,17 @@ func (u Users) LoggedIn(name string, at time.Time) error {
 
 // Remove removes the user (its sessions end with it).
 func (u Users) Remove(name string) error {
-	res, err := u.DB.Exec(`DELETE FROM serve_users WHERE name = ?`, name)
+	return removeUser(u.DB, name)
+}
+
+// RemoveChecked is Remove once check of every user passes (its error otherwise), in one
+// transaction.
+func (u Users) RemoveChecked(name string, check func([]User) error) error {
+	return u.checked(check, func(ex execer) error { return removeUser(ex, name) })
+}
+
+func removeUser(ex execer, name string) error {
+	res, err := ex.Exec(`DELETE FROM serve_users WHERE name = ?`, name)
 	if err != nil {
 		return fmt.Errorf("remove user %q: %w", name, err)
 	}

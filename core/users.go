@@ -233,26 +233,24 @@ func (l localUsers) SetPassword(_ context.Context, name, password string) error 
 
 // keepsAdmin refuses a change of name's permissions (or its removal, perms nil) that
 // leaves no user with every permission.
-func keepsAdmin(st storage.Users, name string, perms []string, removing bool) error {
-	list, err := st.List()
-	if err != nil {
-		return err
-	}
-	admins := 0
-	isAdmin := false
-	for _, u := range list {
-		if userOf(u).Admin {
-			admins++
-			if strings.EqualFold(u.Name, name) {
-				isAdmin = true
+func keepsAdmin(name string, perms []string, removing bool) func([]storage.User) error {
+	return func(list []storage.User) error {
+		admins := 0
+		isAdmin := false
+		for _, u := range list {
+			if userOf(u).Admin {
+				admins++
+				if strings.EqualFold(u.Name, name) {
+					isAdmin = true
+				}
 			}
 		}
+		stays := !removing && len(perms) == len(Scopes)
+		if isAdmin && admins == 1 && !stays {
+			return &RefusedError{Reasons: []string{fmt.Sprintf("%s: %s", name, ErrLastAdmin)}}
+		}
+		return nil
 	}
-	stays := !removing && len(perms) == len(Scopes)
-	if isAdmin && admins == 1 && !stays {
-		return &RefusedError{Reasons: []string{fmt.Sprintf("%s: %s", name, ErrLastAdmin)}}
-	}
-	return nil
 }
 
 func (l localUsers) SetPerms(_ context.Context, name string, perms []string) error {
@@ -267,10 +265,7 @@ func (l localUsers) SetPerms(_ context.Context, name string, perms []string) err
 	if err != nil {
 		return err
 	}
-	if err := keepsAdmin(st, name, perms, false); err != nil {
-		return err
-	}
-	return notFound(st.SetPerms(name, perms))
+	return notFound(st.SetPermsChecked(name, perms, keepsAdmin(name, perms, false)))
 }
 
 func (l localUsers) EndLogins(_ context.Context, name string) error {
@@ -286,10 +281,7 @@ func (l localUsers) Remove(_ context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := keepsAdmin(st, name, nil, true); err != nil {
-		return err
-	}
-	return notFound(st.Remove(name))
+	return notFound(st.RemoveChecked(name, keepsAdmin(name, nil, true)))
 }
 
 func (l localUsers) Tokens(context.Context) ([]Token, error) {
