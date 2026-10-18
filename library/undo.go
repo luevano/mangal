@@ -381,6 +381,12 @@ func (u Undoer) Apply(plan UndoPlan, force bool) (UndoResult, error) {
 // database not restored).
 func (u Undoer) ApplyContext(ctx context.Context, plan UndoPlan, force bool) (UndoResult, error) {
 	var res UndoResult
+	// the library may have changed since the plan (a scheduled check): refuse now, not
+	// after the files are moved back and the restore refuses
+	plan.Changed, plan.ChangedErr = u.Journal.Changed(plan.Op)
+	if plan.ChangedErr != nil && !errors.Is(plan.ChangedErr, storage.ErrNotFinished) {
+		return res, plan.ChangedErr
+	}
 	if err := plan.Refusal(force); err != nil {
 		return res, err
 	}

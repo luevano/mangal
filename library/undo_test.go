@@ -126,6 +126,29 @@ func TestUndoNeverOverwrites(t *testing.T) {
 	}
 }
 
+// a change between the plan and the apply refuses before any file is moved back, not
+// after (half undone, the database restore refused).
+func TestUndoChangedSincePlan(t *testing.T) {
+	root := t.TempDir()
+	fsys := afero.NewOsFs()
+	from, to := filepath.Join(root, "A"), filepath.Join(root, "B")
+	touch(t, filepath.Join(from, "1.cbz"))
+	u := journaled(t, func(j Journal) error { return moveFile(context.Background(), fsys, j, from, to, DefaultModes) })
+	plan, err := u.Plan(0)
+	if err != nil || plan.Refusal(false) != nil {
+		t.Fatalf("plan: %v, %v", err, plan.Refusal(false))
+	}
+	if _, err := u.Journal.DB.Exec(`INSERT INTO library_mangas (title, parent, dir) VALUES ('T', ?, 'T')`, root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := u.Apply(plan, false); err == nil || !strings.Contains(err.Error(), "changed since") {
+		t.Fatalf("applied: %v", err)
+	}
+	if !exists(filepath.Join(to, "1.cbz")) {
+		t.Fatal("moved back before refusing")
+	}
+}
+
 // a rename whose source is gone fails without a step left behind: its undo, and the
 // undo of the operation before it, aren't blocked.
 func TestUndoFailedRename(t *testing.T) {
