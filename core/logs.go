@@ -32,9 +32,12 @@ type LogQuery struct {
 	// letter or CaseSensitive.
 	Grep          string `json:"grep,omitempty"`
 	CaseSensitive bool   `json:"case_sensitive,omitempty"`
-	// Limit is the last entries kept, 0 for all.
+	// Limit is the last entries kept, 0 for all, MaxLogLimit at most.
 	Limit int `json:"limit,omitempty"`
 }
+
+// MaxLogLimit is the most entries a LogQuery's Limit keeps (they are all held in memory).
+const MaxLogLimit = 10000
 
 func (q LogQuery) filter() (log.Filter, error) {
 	f := log.Filter{Since: q.Since, Until: q.Until, Pattern: log.Pattern(q.Grep, q.CaseSensitive)}
@@ -85,6 +88,9 @@ func (l *localLogs) Entries(ctx context.Context, q LogQuery, fn func(log.Entry) 
 			picked = append(picked, files[i])
 		}
 		files = picked
+	}
+	if q.Limit > MaxLogLimit {
+		return invalid("limit: %d is over %d", q.Limit, MaxLogLimit)
 	}
 	if q.Limit <= 0 {
 		return log.Scan(ctx, files, filter, fn)

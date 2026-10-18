@@ -1082,7 +1082,7 @@ paths:
           description: only this file (a name of /v1/logs/files)
           schema:
             type: string
-        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/LogLimitParam'
       responses:
         '200':
           description: the entries
@@ -1938,6 +1938,14 @@ components:
       schema:
         type: integer
         minimum: 0
+    LogLimitParam:
+      name: limit
+      in: query
+      description: the last this many (0 for all)
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 10000
     OffsetParam:
       name: offset
       in: query

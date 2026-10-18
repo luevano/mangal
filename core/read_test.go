@@ -174,6 +174,9 @@ func TestLogs(t *testing.T) {
 	if _, err := got(LogQuery{Level: "loud"}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("bad level: %v", err)
 	}
+	if _, err := got(LogQuery{Limit: 10_000_000_000}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("huge limit: %v", err)
+	}
 }
 
 func TestConfigEntries(t *testing.T) {

@@ -2467,6 +2467,8 @@ export interface components {
         ApplyParam: boolean;
         /** @description at most this many (0 for all) */
         LimitParam: number;
+        /** @description the last this many (0 for all) */
+        LogLimitParam: number;
         /** @description skip this many first */
         OffsetParam: number;
         /** @description a provider id */
@@ -3689,8 +3691,8 @@ export interface operations {
                 grep?: string;
                 /** @description only this file (a name of /v1/logs/files) */
                 file?: string;
-                /** @description at most this many (0 for all) */
-                limit?: components["parameters"]["LimitParam"];
+                /** @description the last this many (0 for all) */
+                limit?: components["parameters"]["LogLimitParam"];
             };
             header?: never;
             path?: never;

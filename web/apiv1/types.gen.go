@@ -1007,6 +1007,9 @@ type IDParam = int64
 // LimitParam defines model for LimitParam.
 type LimitParam = int
 
+// LogLimitParam defines model for LogLimitParam.
+type LogLimitParam = int
+
 // MangaIDParam defines model for MangaIDParam.
 type MangaIDParam = string
 
@@ -1256,8 +1259,8 @@ type ListLogsParams struct {
 	// File only this file (a name of /v1/logs/files)
 	File *string `form:"file,omitempty" json:"file,omitempty"`
 
-	// Limit at most this many (0 for all)
-	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+	// Limit the last this many (0 for all)
+	Limit *LogLimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // SearchMetadataParams defines parameters for SearchMetadata.
