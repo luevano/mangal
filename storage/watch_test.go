@@ -420,3 +420,25 @@ func TestSaveCheck(t *testing.T) {
 		t.Errorf("cleared provider re-link back: %+v", got)
 	}
 }
+
+func TestWatchUpdate(t *testing.T) {
+	data, err := OpenData(filepath.Join(t.TempDir(), FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	s := Watches{DB: data}
+	w, err := s.Add(Watch{Provider: "p", MangaID: "a", Title: "A", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Update(w.ID, func(w *Watch) { w.Enabled = false }); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(w.ID); got.Enabled {
+		t.Errorf("not updated: %+v", got)
+	}
+	if _, err := s.Update(w.ID+1, func(*Watch) {}); !errors.Is(err, ErrWatchNotFound) {
+		t.Errorf("missing watch: %v", err)
+	}
+}

@@ -957,12 +957,8 @@ func (s *Service) Relink(ctx context.Context, id int64, opts RelinkOptions) (Wat
 }
 
 func (s *Service) update(id int64, change func(*storage.Watch)) (Watch, error) {
-	w, err := s.Watches.Get(id)
+	w, err := s.Watches.Update(id, change)
 	if err != nil {
-		return Watch{}, err
-	}
-	change(&w)
-	if err := s.Watches.Save(w); err != nil {
 		return Watch{}, err
 	}
 	return s.complete(w)

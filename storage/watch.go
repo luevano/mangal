@@ -285,7 +285,11 @@ func (s Watches) List() ([]Watch, error) {
 
 // Get is the watch with the id, ErrWatchNotFound if none.
 func (s Watches) Get(id int64) (Watch, error) {
-	watches, err := queryAll(s.DB, scanWatch, `SELECT `+watchColumns+` FROM watches WHERE id = ?`, id)
+	return getWatch(s.DB, id)
+}
+
+func getWatch(q querier, id int64) (Watch, error) {
+	watches, err := queryAll(q, scanWatch, `SELECT `+watchColumns+` FROM watches WHERE id = ?`, id)
 	if err != nil {
 		return Watch{}, fmt.Errorf("get watch %d: %w", id, err)
 	}
@@ -330,7 +334,29 @@ func (s Watches) SetLibraryManga(id, manga int64) error {
 // Save writes every field of the watch but its provider, manga id and added time.
 func (s Watches) Save(w Watch) error {
 	s.DB.touch()
-	res, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = ?, enabled = ?, schedule = ?, gaps = ?,
+	return saveWatch(s.DB, w)
+}
+
+// Update is Get, change and Save in one transaction, so writes made in between (a
+// check's SaveCheck) aren't overwritten.
+func (s Watches) Update(id int64, change func(*Watch)) (Watch, error) {
+	s.DB.touch()
+	var w Watch
+	err := s.DB.InTx(func(tx *sql.Tx) error {
+		var err error
+		if w, err = getWatch(tx, id); err != nil {
+			return err
+		}
+		change(&w)
+		return saveWatch(tx, w)
+	})
+	return w, err
+}
+
+func saveWatch(e interface {
+	Exec(string, ...any) (sql.Result, error)
+}, w Watch) error {
+	res, err := e.Exec(`UPDATE watches SET title = ?, library_manga = ?, enabled = ?, schedule = ?, gaps = ?,
 	from_number = ?, last_checked = ?, last_gap_check = ?, last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?, retry = ?, resumed = ?, skip = ?,
 	relink_kind = ?, hold = ?, coverage = ?
 WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, w.Schedule, w.Gaps,
