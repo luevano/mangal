@@ -18,7 +18,7 @@ func TestPrintHealth(t *testing.T) {
 			{Check: "W10", Category: health.Watches, Severity: health.Info, Subject: health.Subject{Kind: "library", Name: "library"},
 				Message: "2 mangas aren't watched: 1 ongoing/unknown, 1 finished", Fix: health.Fix{Commands: []string{"mangal health --only W10"}},
 				Items: []health.Finding{
-					{Check: "W10", Subject: health.Subject{Kind: "manga", ID: 3, Name: "Kingdom"}, Message: "ongoing, not watched", Fix: health.Fix{Commands: []string{"mangal watch add mango-mangadex mid:k"}}},
+					{Check: "W10", Subject: health.Subject{Kind: "manga", ID: 3, Name: "Kingdom"}, Message: "ongoing, not watched", Fix: health.Fix{Commands: []string{"mangal watch add mango-mangadex --id k"}}},
 					{Check: "W10", Subject: health.Subject{Kind: "manga", ID: 5, Name: "Death Note"}, Message: "finished, not watched (fine)"},
 				}},
 		},
@@ -51,7 +51,7 @@ metadata: 1 (1 warning)
   [info] W10/library: 2 mangas aren't watched: 1 ongoing/unknown, 1 finished
       fix: mangal health --only W10
       W10/manga/3 Kingdom: ongoing, not watched
-          fix: mangal watch add mango-mangadex mid:k
+          fix: mangal watch add mango-mangadex --id k
       W10/manga/5 Death Note: finished, not watched (fine)
 
 1 finding: 1 info

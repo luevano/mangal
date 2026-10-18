@@ -341,7 +341,7 @@ func (r HealthFixReq) planWatch(ctx context.Context, c *Core) (*prepared, error)
 			return msg, nil
 		}
 	default:
-		fix.Plan = []string{fmt.Sprintf("watch %s on %s (mid:%s): its first check downloads the chapters after the library's last", f.Subject.Name, a.Provider, a.MangaID)}
+		fix.Plan = []string{fmt.Sprintf("watch %s on %s (id %s): its first check downloads the chapters after the library's last", f.Subject.Name, a.Provider, a.MangaID)}
 		apply = func(ctx context.Context) (string, error) {
 			w, err := m.Add(ctx, watch.AddOptions{Provider: a.Provider, MangaID: a.MangaID})
 			if err != nil {

@@ -260,9 +260,9 @@ func TestRun(t *testing.T) {
 	}
 	wants := []want{
 		{"W1", Error, "watch", 4, "mangal watch move 4", "moved from mango-mangasee"},
-		{"W2", Error, "watch", 7, "mangal library move 5 mango-mangadex mid:dg", "not in library"},
-		{"W1", Error, "watch", 8, "mangal watch move 8 mango-weebcentral mid:01J", "placeholder"},
-		{"W2", Info, "watch", 8, "mangal watch move 8 mango-weebcentral mid:01J", "re-link first"},
+		{"W2", Error, "watch", 7, "mangal library move 5 mango-mangadex --id dg", "not in library"},
+		{"W1", Error, "watch", 8, "mangal watch move 8 mango-weebcentral --id 01J", "placeholder"},
+		{"W2", Info, "watch", 8, "mangal watch move 8 mango-weebcentral --id 01J", "re-link first"},
 		{"W13", Info, "watch", 9, "mangal watch move 9", "Gachiakuta is MangaSee's"},
 		{"L10", Info, "manga", 8, "mangal library move 8 mango-weebcentral", "Kagurabachi is MangaSee's"},
 		{"W3", Info, "watch", 4, "mangal watch resume 4", "paused"},

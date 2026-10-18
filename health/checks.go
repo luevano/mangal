@@ -88,7 +88,7 @@ func checkRelink(s *snapshot) []Finding {
 			Message: "needs re-link, not checked: " + reason,
 			Fix: Fix{
 				Commands: []string{fmt.Sprintf("mangal watch move %d", w.ID)},
-				Note:     fmt.Sprintf("searches its title on %s; add a provider and a query or mid:<id> to pick another manga", w.Provider),
+				Note:     fmt.Sprintf("searches its title on %s; add a provider and a title or --id <id> to pick another manga", w.Provider),
 				TUI:      tuiWatches + ": re-link manga",
 			}}
 		if m, src, ok := s.libraryElsewhere(w); ok {
@@ -116,7 +116,7 @@ func (s *snapshot) libraryElsewhere(w watch.Watch) (storage.Manga, storage.Sourc
 }
 
 func relinkCommand(w watch.Watch, src storage.Source) string {
-	return fmt.Sprintf("mangal watch move %d %s mid:%s", w.ID, src.Provider, quote(src.MangaID))
+	return fmt.Sprintf("mangal watch move %d %s --id %s", w.ID, src.Provider, quote(src.MangaID))
 }
 
 // W2: watches without their library manga: elsewhere (move it), downloads not in the
@@ -141,7 +141,7 @@ func checkLibraryIssue(s *snapshot) []Finding {
 			match := storage.MatchLibrary(s.mangas, s.providerInfo(w.Provider), w.MangaID, storage.BindingIDs(w.Bindings), s.providerDirs)
 			if match.Elsewhere && !strings.HasPrefix(w.MangaID, storage.PlaceholderPrefix) {
 				f.Details = []string{fmt.Sprintf("library manga %d %s: %s", match.Manga.ID, match.Manga.Title, s.rel(match.Manga.Path()))}
-				f.Fix.Commands = []string{fmt.Sprintf("mangal library move %d %s mid:%s", match.Manga.ID, w.Provider, quote(w.MangaID))}
+				f.Fix.Commands = []string{fmt.Sprintf("mangal library move %d %s --id %s", match.Manga.ID, w.Provider, quote(w.MangaID))}
 				f.Fix.Note = "moves the library manga to the watch's manga (its folder into the provider's directory), the watch is linked then"
 			}
 			f.Fix.TUI = tuiLibrary + ": move to a provider"
@@ -522,7 +522,7 @@ func checkNotWatched(s *snapshot) []Finding {
 			f.Message = status + ", not watched"
 		}
 		if src, ok := installedSource(s, m); ok {
-			f.Fix.Commands = []string{fmt.Sprintf("mangal watch add %s mid:%s", src.Provider, quote(src.MangaID))}
+			f.Fix.Commands = []string{fmt.Sprintf("mangal watch add %s --id %s", src.Provider, quote(src.MangaID))}
 			f.Fix.Action = &Action{Kind: ActionWatch, Manga: m.ID, Provider: src.Provider, MangaID: src.MangaID}
 		} else {
 			f.Fix.Commands = []string{fmt.Sprintf("mangal watch add <provider> %s", quote(m.Title))}
@@ -699,7 +699,7 @@ func checkGaps(s *snapshot) []Finding {
 		if len(ws) == 0 {
 			f.Fix.Note = "not watched: download them, or watch it with gap filling"
 			if src, ok := installedSource(s, m); ok {
-				f.Fix.Commands = []string{fmt.Sprintf("mangal watch add %s mid:%s --gaps", src.Provider, quote(src.MangaID))}
+				f.Fix.Commands = []string{fmt.Sprintf("mangal watch add %s --id %s --gaps", src.Provider, quote(src.MangaID))}
 			}
 			f.Fix.TUI = tuiLibrary + ": open the manga"
 		} else {

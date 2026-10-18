@@ -333,7 +333,7 @@ func checkNewChapters(s *snapshot) []Finding {
 			out = append(out, Finding{Severity: Warning, Subject: mangaSubject(m), Network: true,
 				Message: fmt.Sprintf("%s on %s (up to %s): watch it?", plural(len(r.New), "new chapter"), r.provider, stringutil.FormatFloat32(newest)),
 				Fix: Fix{
-					Commands: []string{fmt.Sprintf("mangal watch add %s mid:%s", r.provider, quote(r.mangaID))},
+					Commands: []string{fmt.Sprintf("mangal watch add %s --id %s", r.provider, quote(r.mangaID))},
 					Note:     "its first check downloads them",
 					TUI:      "health: add a watch",
 					Action:   &Action{Kind: ActionWatch, Manga: m.ID, Provider: r.provider, MangaID: r.mangaID},
@@ -402,7 +402,7 @@ func checkGapsConfirmed(s *snapshot) []Finding {
 				f.Fix.Note = "the skip list stops gap checks looking for the ones it doesn't have"
 			}
 		case len(there) != 0:
-			f.Fix.Commands = []string{fmt.Sprintf("mangal watch add %s mid:%s --gaps", r.provider, quote(r.mangaID))}
+			f.Fix.Commands = []string{fmt.Sprintf("mangal watch add %s --id %s --gaps", r.provider, quote(r.mangaID))}
 			f.Fix.Note = "not watched: a watch with gap filling downloads them"
 			f.Fix.TUI = tuiLibrary + ": open the manga"
 		default:
