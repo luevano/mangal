@@ -20,6 +20,7 @@ import (
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/luevano/mangoprovider"
 	"github.com/luevano/mangoprovider/fetch"
+	"golang.org/x/sync/errgroup"
 )
 
 // ProviderManga is a provider's manga the network checks ask about.
@@ -156,20 +157,17 @@ func (c Checker) loadProbes(ctx context.Context, s *snapshot) error {
 
 // parallel runs do for each item, Parallel at once.
 func (c Checker) parallel(ctx context.Context, items []string, do func(string)) {
-	sem := make(chan struct{}, max(1, c.Parallel))
-	var wg sync.WaitGroup
+	var g errgroup.Group
+	g.SetLimit(max(1, c.Parallel))
 	for _, item := range items {
-		wg.Go(func() {
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				return
+		g.Go(func() error {
+			if ctx.Err() == nil {
+				do(item)
 			}
-			defer func() { <-sem }()
-			do(item)
+			return nil
 		})
 	}
-	wg.Wait()
+	_ = g.Wait()
 }
 
 // loadChapters lists the chapters of the mangas the network checks ask about on their
