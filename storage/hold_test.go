@@ -55,7 +55,7 @@ func TestHold(t *testing.T) {
 	if got.Hold != HoldHiatus || got.RelinkKind != RelinkProvider || got.RelinkLabel() != "needs a new provider" {
 		t.Errorf("added %+v", got)
 	}
-	// a check keeps the hold, and writes the coverage and the re-link kind
+	// a check keeps the hold and the re-link kind, and writes the coverage
 	got.Coverage, got.Hold = "has 1 of 20", ""
 	if err := watches.SaveCheck(got); err != nil {
 		t.Fatal(err)

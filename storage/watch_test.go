@@ -379,4 +379,44 @@ func TestSaveCheck(t *testing.T) {
 	if got, _ := s.Get(w.ID); got.Title != "B" {
 		t.Errorf("re-linked watch overwritten: %+v", got)
 	}
+
+	// the check sets and clears an id re-link
+	w, _ = s.Get(w.ID)
+	checked = w
+	checked.NeedsRelink, checked.RelinkReason = true, "gone"
+	if err := s.SaveCheck(checked); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(w.ID); got.RelinkLabel() != "needs re-link" || got.RelinkReason != "gone" {
+		t.Errorf("id re-link not set: %+v", got)
+	}
+	checked.NeedsRelink, checked.RelinkReason = false, ""
+	if err := s.SaveCheck(checked); err != nil {
+		t.Fatal(err)
+	}
+	// a new provider asked for while it was checked stays
+	w, _ = s.Get(w.ID)
+	w.NeedsRelink, w.RelinkKind, w.RelinkReason = true, RelinkProvider, "has 1-5"
+	if err := s.Save(w); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveCheck(checked); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.Get(w.ID)
+	if got.RelinkLabel() != "needs a new provider" || got.RelinkReason != "has 1-5" {
+		t.Errorf("provider re-link wiped: %+v", got)
+	}
+	// and one cleared while it was checked stays cleared
+	checked = got
+	got.NeedsRelink, got.RelinkKind, got.RelinkReason = false, "", ""
+	if err := s.Save(got); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveCheck(checked); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(w.ID); got.NeedsRelink {
+		t.Errorf("cleared provider re-link back: %+v", got)
+	}
 }

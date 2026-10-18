@@ -348,14 +348,16 @@ WHERE id = ?`, w.Title, nullID(w.LibraryManga), w.Enabled, w.Schedule, w.Gaps,
 // SaveCheck writes what a check of the watch changes (title, library manga when it had
 // none, last checked/gap check/new, error, failures, re-link flag, retry, coverage), so edits made
 // while it ran (paused, skip list, schedule) stay. A watch re-linked to another manga
-// meanwhile is left as it is.
+// meanwhile is left as it is. The need of a new provider is the hold's (set or cleared
+// while it ran, or when it started): the check leaves it.
 func (s Watches) SaveCheck(w Watch) error {
 	s.DB.touch()
 	_, err := s.DB.Exec(`UPDATE watches SET title = ?, library_manga = coalesce(library_manga, ?), last_checked = ?, last_gap_check = ?,
-	last_new = ?, last_new_at = ?, last_error = ?, failures = ?, relink = ?, retry = ?, relink_kind = ?, coverage = ?
+	last_new = ?, last_new_at = ?, last_error = ?, failures = ?,
+	relink = CASE WHEN relink_kind = 'provider' OR ? = 'provider' THEN relink ELSE ? END, retry = ?, coverage = ?
 WHERE id = ? AND provider = ? AND manga_id = ?`, w.Title, nullID(w.LibraryManga), unix(w.LastChecked), unix(w.LastGapCheck),
-		nullFloat(w.LastNew), unix(w.LastNewAt), w.LastError, w.Failures, w.relinkColumn(), formatNumbers(w.Retry),
-		w.relinkKindColumn(), w.Coverage, w.ID, w.Provider, w.MangaID)
+		nullFloat(w.LastNew), unix(w.LastNewAt), w.LastError, w.Failures, w.relinkKindColumn(), w.relinkColumn(), formatNumbers(w.Retry),
+		w.Coverage, w.ID, w.Provider, w.MangaID)
 	if err != nil {
 		return fmt.Errorf("save the check of watch %d: %w", w.ID, err)
 	}
