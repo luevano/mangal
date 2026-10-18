@@ -4,7 +4,6 @@ package pick
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -25,30 +24,16 @@ import (
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
-// SearchProvider searches the provider's mangas (a "mid:<id>" query gets that manga),
-// current is its current id. Swapped in tests.
-var SearchProvider = func(ctx context.Context, provider, query string) (mangas []mangadata.Manga, current string, err error) {
+// SearchProvider searches the provider's mangas, or gets the one with the id
+// (selector.Search), current is its current id. Swapped in tests.
+var SearchProvider = func(ctx context.Context, provider, id, query string) (mangas []mangadata.Manga, current string, err error) {
 	c, _, release, err := client.HoldByID(ctx, provider)
 	if err != nil {
 		return nil, "", err
 	}
 	defer release()
-	current = c.Info().ID
-	if id, ok := selector.IDQuery(query); ok {
-		manga, found, err := c.MangaByIDContext(ctx, id)
-		switch {
-		case errors.Is(err, libmangal.ErrMangaByIDUnsupported):
-			// mangoprovider's searches take "mid:" queries too
-		case err != nil:
-			return nil, current, err
-		case !found:
-			return nil, current, nil
-		default:
-			return []mangadata.Manga{manga}, current, nil
-		}
-	}
-	mangas, err = c.SearchMangasContext(ctx, query)
-	return mangas, current, err
+	mangas, err = selector.Search(ctx, client.Searcher(c), id, query)
+	return mangas, c.Info().ID, err
 }
 
 // InstalledProviders are the installed providers. Swapped in tests.
@@ -108,8 +93,8 @@ type Manga struct {
 	// provider is the one searched, its current id once searched
 	provider string
 
-	Assign             key.Binding
-	searchKey, pickKey key.Binding
+	Assign                   key.Binding
+	searchKey, pickKey, byID key.Binding
 }
 
 // ResultsMsg are the results of a search.
@@ -127,7 +112,7 @@ type ProviderPickedMsg struct{ Provider string }
 func NewManga(opts MangaOptions) *Manga {
 	l := list.New(2, 1, "manga", "mangas", []*MangaItem{}, func(i *MangaItem) _list.DefaultItem { return i })
 	s := &Manga{
-		Screen: searchlist.New(search.New("Search the manga, or mid:<id>...", opts.Query, 64, 5), l, searchlist.History{
+		Screen: searchlist.New(search.New("Search the manga...", opts.Query, 64, 5), l, searchlist.History{
 			Get: cache.GetMangasSearchHistory,
 			Set: cache.SetMangasSearchHistory,
 		}),
@@ -136,6 +121,7 @@ func NewManga(opts MangaOptions) *Manga {
 		Assign:    util.Bind(opts.Action, "enter"),
 		searchKey: base.KeySearch,
 		pickKey:   base.KeyPickProvider,
+		byID:      base.KeyByID,
 	}
 	s.updateKeys()
 	return s
@@ -146,7 +132,7 @@ func (s *Manga) Provider() string { return s.provider }
 
 // Keys are the search's own keys, without the list's.
 func (s *Manga) Keys() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.Assign, s.searchKey, s.pickKey}}
+	return util.KeyMap{Short: []key.Binding{s.Assign, s.searchKey, s.pickKey, s.byID}}
 }
 
 func (s *Manga) KeyMap() help.KeyMap {
@@ -193,6 +179,10 @@ func (s *Manga) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case search.SearchMsg:
 		return tea.Batch(s.Screen.Update(msg), s.searchCmd(ctx, string(msg)))
 	case tea.KeyPressMsg:
+		// while typing too
+		if key.Matches(msg, s.byID) && !s.List.Filtering() {
+			return s.ToggleByID()
+		}
 		if s.Inputting() {
 			break
 		}
@@ -216,19 +206,24 @@ func (s *Manga) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 func (s *Manga) searchCmd(ctx context.Context, query string) tea.Cmd {
 	provider, n := s.provider, s.NewSearch()
-	return base.LoadWithStatus(ctx, fmt.Sprintf("Searching %q on %s", query, provider), func(ctx context.Context, _ func(string)) (ResultsMsg, error) {
-		return s.Results(ctx, provider, query)
+	id, title, note := s.MangaQuery(query)
+	label := fmt.Sprintf("Searching %q on %s", title, provider)
+	if id != "" {
+		label = fmt.Sprintf("Getting manga %q from %s", id, provider)
+	}
+	return tea.Batch(note, base.LoadWithStatus(ctx, label, func(ctx context.Context, _ func(string)) (ResultsMsg, error) {
+		return s.Results(ctx, provider, id, title)
 	}, func(msg ResultsMsg) tea.Msg {
 		msg.Search = n
 		return msg
-	})
+	}))
 }
 
-// Results searches the provider, marking the current manga.
-func (s *Manga) Results(ctx context.Context, provider, query string) (ResultsMsg, error) {
-	mangas, current, err := SearchProvider(ctx, provider, query)
+// Results searches the provider (or gets the manga with the id), marking the current manga.
+func (s *Manga) Results(ctx context.Context, provider, id, query string) (ResultsMsg, error) {
+	mangas, current, err := SearchProvider(ctx, provider, id, query)
 	if err != nil {
-		return ResultsMsg{}, fmt.Errorf("search %q on %s: %w", query, provider, err)
+		return ResultsMsg{}, fmt.Errorf("%s: %w", provider, err)
 	}
 	items := make([]_list.Item, len(mangas))
 	for i, m := range mangas {

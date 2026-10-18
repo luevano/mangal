@@ -31,7 +31,7 @@ func fakes(t *testing.T) *[]string {
 	var searched []string
 	search, installed := SearchProvider, InstalledProviders
 	t.Cleanup(func() { SearchProvider, InstalledProviders = search, installed })
-	SearchProvider = func(_ context.Context, provider, query string) ([]mangadata.Manga, string, error) {
+	SearchProvider = func(_ context.Context, provider, _, query string) ([]mangadata.Manga, string, error) {
 		searched = append(searched, provider+": "+query)
 		return []mangadata.Manga{manga(provider + "-1"), manga(provider + "-2")}, provider + "-new", nil
 	}
@@ -118,9 +118,9 @@ func TestMangaLateResults(t *testing.T) {
 	fakes(t)
 	s := NewManga(MangaOptions{Provider: "a", Pick: func(context.Context, string, mangadata.Manga) tea.Cmd { return nil }})
 	s.Resize(base.Size{Width: 80, Height: 20})
-	old, _ := s.Results(context.Background(), "old", "q")
+	old, _ := s.Results(context.Background(), "old", "", "q")
 	old.Search = s.NewSearch()
-	latest, _ := s.Results(context.Background(), "new", "q")
+	latest, _ := s.Results(context.Background(), "new", "", "q")
 	latest.Search = s.NewSearch()
 	s.Update(context.Background(), latest)
 	s.Update(context.Background(), old)

@@ -14,6 +14,7 @@ import (
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
 	clientanilist "github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
@@ -55,6 +56,7 @@ type keyMap struct {
 	info,
 	watch,
 	jump,
+	byID,
 	toggleFullMeta key.Binding
 }
 
@@ -62,6 +64,8 @@ type keyMap struct {
 type resultsMsg struct {
 	search int
 	items  []_list.Item
+	// byID: a search by id, its manga opens right away
+	byID bool
 }
 
 // openedMsg is a manga ready to be shown: its metadata (nil if none was searched or
@@ -78,6 +82,13 @@ type openedMsg struct {
 	volume mangadata.Volume
 }
 
+// NewByID is New searching by manga id.
+func NewByID(client *libmangal.Client, release func()) base.State {
+	s := New(client, release).(*state)
+	s.SetByID(true)
+	return s
+}
+
 // New is the search of the client's provider, release (may be nil) lets go of the client
 // when the screen is left.
 func New(client *libmangal.Client, release func()) base.State {
@@ -92,6 +103,7 @@ func New(client *libmangal.Client, release func()) base.State {
 			info:           base.KeyInfo,
 			watch:          base.KeyWatch,
 			jump:           base.KeyItsWatch,
+			byID:           base.KeyByID,
 			toggleFullMeta: base.KeyFullMetadata,
 		},
 	}
@@ -110,7 +122,7 @@ func (s *state) KeyMap() help.KeyMap {
 	k := s.keys
 	return base.CombinedKeyMap(util.KeyMap{
 		Short: []key.Binding{k.confirm, k.search, k.anilist, k.metadata, k.watch},
-		Full:  [][]key.Binding{{k.confirm, k.search, k.info, k.watch, k.jump}, {k.anilist, k.metadata, k.toggleFullMeta}},
+		Full:  [][]key.Binding{{k.confirm, k.search, k.byID, k.info, k.watch, k.jump}, {k.anilist, k.metadata, k.toggleFullMeta}},
 	}, s.ListKeyMap())
 }
 
@@ -179,6 +191,9 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		cmd := s.SetResults(msg.items)
 		s.markWatched()
 		s.updateKeys()
+		if i, ok := s.List.SelectedItem().(*item); ok && msg.byID && len(msg.items) == 1 && !base.Busy(ctx) {
+			return tea.Batch(cmd, s.openCmd(ctx, i))
+		}
 		return cmd
 	case watchedMsg:
 		s.watched = watches.Set(msg)
@@ -201,6 +216,10 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		// e.g. watched with w
 		return watchedCmd(ctx)
 	case tea.KeyPressMsg:
+		// while typing too
+		if key.Matches(msg, s.keys.byID) && !s.List.Filtering() {
+			return s.ToggleByID()
+		}
 		if s.Inputting() {
 			break
 		}
@@ -253,17 +272,22 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.Cmd, bo
 
 func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 	n := s.NewSearch()
-	return base.LoadWithStatus(ctx, fmt.Sprintf("Searching for %q", query), func(ctx context.Context, _ func(string)) ([]_list.Item, error) {
-		mangas, err := s.client.SearchMangasContext(ctx, query)
+	id, title, note := s.MangaQuery(query)
+	label := fmt.Sprintf("Searching for %q", title)
+	if id != "" {
+		label = fmt.Sprintf("Getting manga %q", id)
+	}
+	return tea.Batch(note, base.LoadWithStatus(ctx, label, func(ctx context.Context, _ func(string)) ([]_list.Item, error) {
+		mangas, err := selector.Search(ctx, client.Searcher(s.client), id, title)
 		if err != nil {
-			return nil, fmt.Errorf("search %q: %w", query, err)
+			return nil, err
 		}
 		items := make([]_list.Item, len(mangas))
 		for i, m := range mangas {
 			items[i] = newItem(s.client.Info().ID, m, &s.extraInfo, &s.fullExtraInfo)
 		}
 		return items, nil
-	}, func(items []_list.Item) tea.Msg { return resultsMsg{search: n, items: items} })
+	}, func(items []_list.Item) tea.Msg { return resultsMsg{search: n, items: items, byID: id != ""} }))
 }
 
 // openCmd searches the manga's metadata (download.metadata.search) and its volumes, or

@@ -53,7 +53,7 @@ func TestMove(t *testing.T) {
 	acquireInfo = func(_ context.Context, provider string) (libmangal.ProviderInfo, error) {
 		return libmangal.ProviderInfo{ID: provider, Name: "Weeb Central"}, nil
 	}
-	pick.SearchProvider = func(_ context.Context, provider, query string) ([]mangadata.Manga, string, error) {
+	pick.SearchProvider = func(_ context.Context, provider, _, query string) ([]mangadata.Manga, string, error) {
 		return []mangadata.Manga{&testManga{mangadata.MangaInfo{ID: "01J", Title: query}}, &testManga{mangadata.MangaInfo{ID: "berserk", Title: "old"}}}, provider, nil
 	}
 
@@ -68,10 +68,10 @@ func TestMove(t *testing.T) {
 	if ms.Search.Query() != "Berserk" || ms.Provider() != "mango-weebcentral" {
 		t.Errorf("search %q on %s", ms.Search.Query(), ms.Provider())
 	}
-	if res, _ := ms.Results(ctx, "mango-asurascans", "Berserk"); !res.Items[1].(*pick.MangaItem).Current {
+	if res, _ := ms.Results(ctx, "mango-asurascans", "", "Berserk"); !res.Items[1].(*pick.MangaItem).Current {
 		t.Error("the library manga's source isn't marked")
 	}
-	res, _ := ms.Results(ctx, "mango-weebcentral", "Berserk")
+	res, _ := ms.Results(ctx, "mango-weebcentral", "", "Berserk")
 	res.Search = ms.NewSearch()
 	ms.Update(ctx, res)
 

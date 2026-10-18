@@ -4,11 +4,13 @@ package searchlist
 
 import (
 	"context"
+	"fmt"
 
 	"charm.land/bubbles/v2/help"
 	_list "charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/model/search"
@@ -49,6 +51,10 @@ type Screen struct {
 	Search *search.Model
 	List   *list.Model
 
+	// ByID is true when the query is a manga id (SetByID), not a title
+	ByID             bool
+	titlePlaceholder string
+
 	history  History
 	records  cache.Records
 	searched bool
@@ -64,6 +70,40 @@ func New(search *search.Model, list *list.Model, history History) Screen {
 type historyMsg struct {
 	screen  *Screen
 	records cache.Records
+}
+
+// SetByID makes the query a manga id, or a title again.
+func (s *Screen) SetByID(on bool) {
+	if !s.ByID {
+		s.titlePlaceholder = s.Search.Placeholder()
+	}
+	s.ByID = on
+	if on {
+		s.Search.SetPlaceholder("Manga id...")
+	} else {
+		s.Search.SetPlaceholder(s.titlePlaceholder)
+	}
+}
+
+// ToggleByID switches the query between a title and a manga id.
+func (s *Screen) ToggleByID() tea.Cmd {
+	s.SetByID(!s.ByID)
+	if s.ByID {
+		return base.Notify("Searching by id")
+	}
+	return base.Notify("Searching by title")
+}
+
+// MangaQuery is the manga id or the title a query is: an id when searching by id, or
+// for a deprecated "mid:<id>" query (note says so).
+func (s *Screen) MangaQuery(query string) (id, title string, note tea.Cmd) {
+	if s.ByID {
+		return query, "", nil
+	}
+	if id, ok := selector.IDQuery(query); ok {
+		return id, "", base.Notify(fmt.Sprintf(`"mid:" is deprecated, %s searches by id`, base.KeyByID.Help().Key))
+	}
+	return "", query, nil
 }
 
 // NewSearch numbers a search started now, its results carry the number to Latest.

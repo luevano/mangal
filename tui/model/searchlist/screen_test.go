@@ -53,3 +53,22 @@ func TestHistory(t *testing.T) {
 		t.Errorf("results: searched %v, subtitle %q", s.Searched(), s.Subtitle())
 	}
 }
+
+func TestMangaQuery(t *testing.T) {
+	s := New(search.New("Search manga...", "", 30, 5), list.New(1, 0, "item", "items", []string{}, func(s string) _list.DefaultItem { return item(s) }), History{})
+	if id, title, note := s.MangaQuery("Berserk"); id != "" || title != "Berserk" || note != nil {
+		t.Errorf("title: %q %q %v", id, title, note)
+	}
+	// deprecated, with a note
+	if id, title, note := s.MangaQuery("mid:12"); id != "12" || title != "" || note == nil {
+		t.Errorf("mid: %q %q %v", id, title, note)
+	}
+	s.ToggleByID()
+	if id, title, _ := s.MangaQuery("Berserk"); id != "Berserk" || title != "" || s.Search.Placeholder() != "Manga id..." {
+		t.Errorf("by id: %q %q %q", id, title, s.Search.Placeholder())
+	}
+	s.ToggleByID()
+	if s.ByID || s.Search.Placeholder() != "Search manga..." {
+		t.Errorf("by title again: %v %q", s.ByID, s.Search.Placeholder())
+	}
+}

@@ -125,6 +125,10 @@ var (
 	KeyRename       = util.Bind("rename", "alt+r")
 	KeyChapterFiles = util.Bind("chapter files", "alt+f")
 	KeyFallback     = util.Bind("fallback names", "alt+b")
+
+	// a manga by its id instead of a title (mangas, re-link/move search: a toggle;
+	// providers: open the search by id); alt: it works while typing, i is info (old)
+	KeyByID = util.Bind("search by id", "alt+i")
 )
 
 // The global keys of the screens base opens from anywhere (GlobalKeys, not Key* keys: no
@@ -182,7 +186,7 @@ func Keys() (old, newer []key.Binding) {
 		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,
 		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel, KeyNarrow,
 		KeyLogFiles, KeyPrevPeriod, KeyNextPeriod, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
-		KeyRename, KeyChapterFiles, KeyFallback, KeyReadHistory, KeyClearAll,
+		KeyRename, KeyChapterFiles, KeyFallback, KeyReadHistory, KeyClearAll, KeyByID,
 	}
 }
 

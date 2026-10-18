@@ -29,6 +29,7 @@ type state struct {
 	confirm,
 	info,
 	closeAll,
+	byID,
 	mirrors key.Binding
 }
 
@@ -38,6 +39,8 @@ type loadedMsg struct {
 	client  *libmangal.Client
 	release func()
 	isNew   bool
+	// byID opens the search by manga id
+	byID bool
 }
 
 type closedMsg struct{}
@@ -53,6 +56,7 @@ func New(loaders []libmangal.ProviderLoader) base.State {
 		info:     base.KeyInfo,
 		closeAll: base.KeyCloseAll,
 		mirrors:  base.KeyMirrors,
+		byID:     base.KeyByID,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "provider", "providers", loaders, s.newItem), s.keyMap)
 	return s
@@ -65,7 +69,7 @@ func (s *state) newItem(loader libmangal.ProviderLoader) _list.DefaultItem {
 func (s *state) keyMap() help.KeyMap {
 	return util.KeyMap{
 		Short: []key.Binding{s.confirm, s.info},
-		Full:  [][]key.Binding{{s.confirm, s.info, s.mirrors, s.closeAll}},
+		Full:  [][]key.Binding{{s.confirm, s.byID, s.info, s.mirrors, s.closeAll}},
 	}
 }
 
@@ -105,6 +109,9 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if msg.isNew {
 			msg.item.loadTime = time.Now()
 		}
+		if msg.byID {
+			return func() tea.Msg { return mangas.NewByID(msg.client, msg.release) }
+		}
 		return func() tea.Msg { return mangas.New(msg.client, msg.release) }
 	case closedMsg:
 		return base.Notify("Closed all clients")
@@ -130,11 +137,11 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			break
 		}
 		switch {
-		case key.Matches(msg, s.confirm):
+		case key.Matches(msg, s.confirm), key.Matches(msg, s.byID):
 			if base.Busy(ctx) {
 				return nil
 			}
-			return s.loadCmd(ctx, i)
+			return s.loadCmd(ctx, i, key.Matches(msg, s.byID))
 		case key.Matches(msg, s.info):
 			s.extraInfo = !s.extraInfo
 			if s.extraInfo {
@@ -160,7 +167,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 // loadCmd opens the provider: its client is held while its screens are shown (the mangas
 // screen releases it), a close all then leaves it to them.
-func (s *state) loadCmd(ctx context.Context, i *item) tea.Cmd {
+func (s *state) loadCmd(ctx context.Context, i *item, byID bool) tea.Cmd {
 	return base.Load(ctx, fmt.Sprintf("Loading provider %q", i.loader), func(ctx context.Context) (loadedMsg, error) {
 		isNew := client.Get(i.loader) == nil
 		c, release, err := client.Hold(ctx, i.loader)
@@ -168,7 +175,7 @@ func (s *state) loadCmd(ctx context.Context, i *item) tea.Cmd {
 			return loadedMsg{}, err
 		}
 		log.Debug("using the client of provider %q (new: %t)", i.loader, isNew)
-		return loadedMsg{item: i, client: c, release: release, isNew: isNew}, nil
+		return loadedMsg{item: i, client: c, release: release, isNew: isNew, byID: byID}, nil
 	}, func(msg loadedMsg) tea.Msg {
 		// left meanwhile: nobody gets it
 		if ctx.Err() != nil {

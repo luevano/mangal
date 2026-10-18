@@ -35,6 +35,12 @@ func (m *Model) Query() string {
 	return m.query
 }
 
+// Placeholder is the input's placeholder.
+func (m *Model) Placeholder() string { return m.input.Placeholder }
+
+// SetPlaceholder changes the input's placeholder.
+func (m *Model) SetPlaceholder(p string) { m.input.Placeholder = p }
+
 // SetSuggestions sets the suggestions for the internal input.
 func (m *Model) SetSuggestions(suggestions []string) {
 	m.input.SetSuggestions(suggestions)
