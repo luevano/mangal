@@ -418,7 +418,7 @@ func (u Undoer) ApplyContext(ctx context.Context, plan UndoPlan, force bool) (Un
 		case UndoRemove:
 			err = u.FS.Remove(s.Path)
 		case UndoRestore:
-			err = afero.WriteFile(u.FS, s.Path, s.Old, u.Modes.File)
+			err = replaceFile(u.FS, s.Path, s.Old, u.Modes.File)
 		}
 		if err != nil {
 			return res, fmt.Errorf("undo %s %s: %w (partly undone, \"mangal library scan\" fixes the library)", s.Kind, s.Path, err)
@@ -436,4 +436,30 @@ func (u Undoer) ApplyContext(ctx context.Context, plan UndoPlan, force bool) (Un
 	}
 	res.Restored = true
 	return res, nil
+}
+
+// replaceFile writes path through a temp file renamed over it, so a crash never leaves
+// it truncated (like libmangal.WriteMangaDirInfo).
+func replaceFile(fsys afero.Fs, path string, data []byte, mode os.FileMode) error {
+	tmp, err := afero.TempFile(fsys, filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	_, err = tmp.Write(data)
+	if err == nil {
+		err = tmp.Sync()
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = fsys.Chmod(tmp.Name(), mode)
+	}
+	if err == nil {
+		err = fsys.Rename(tmp.Name(), path)
+	}
+	if err != nil {
+		_ = fsys.Remove(tmp.Name())
+	}
+	return err
 }
