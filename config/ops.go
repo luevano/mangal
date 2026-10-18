@@ -257,7 +257,7 @@ var retired = map[string]string{
 	"metadata.myanimelist.client_id":     "saved with the logins now, see mangal myanimelist client",
 	"metadata.myanimelist.client_secret": "saved with the logins now, see mangal myanimelist client",
 	// moved by RetiredValue
-	"serve.token":             "an API token named config now, see mangal serve token --list; people log in as users, see mangal serve user",
+	"serve.token":             "an API token named config now, see mangal token ls; people log in as users, see mangal user",
 	"serve.token_on_loopback": "every request logs in now, the same machine too",
 	"serve.loopback_scopes":   "every request logs in now, the same machine too; mangal on this config uses the server's key",
 	"serve.allowed_hosts":     "every request logs in now, any host name is answered",

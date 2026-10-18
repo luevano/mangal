@@ -244,14 +244,14 @@ or a download elsewhere); the `watch.*` settings are re-read from the config fil
 every minute, and logins or secrets saved meanwhile (e.g. the MangaPlus secret from a TUI on the
 same config) apply from the next run. On `127.0.0.1:6977` (`serve.host`, `serve.port`) it serves the
 web UI (`serve.web`), a JSON API (that the TUI and the `mangal watch` commands use while it runs) and
-OPDS (`/opds`). Every request logs in, wherever it comes from: people as users (`mangal serve user add
+OPDS (`/opds`). Every request logs in, wherever it comes from: people as users (`mangal user add
 <name>`, then the web UI's login page, or basic auth for OPDS readers), programs with an API token
-(`mangal serve token --generate --name <what> --scope read`, sent as `Authorization: Bearer <token>`).
+(`mangal token add <what> --scope read`, sent as `Authorization: Bearer <token>`).
 mangal on the same config (the TUI, `mangal watch`, `mangal api`) uses the server's own key. Behind a
 reverse proxy nothing needs setting (`serve.trusted_proxies` puts the clients' addresses in the logs).
 
 ```sh
-mangal serve user add david
+mangal user add david
 mangal api status
 curl -u david 127.0.0.1:6977/api/v1/watches
 curl -H "Authorization: Bearer $TOKEN" -X POST 127.0.0.1:6977/api/check -d '{"ids": [1]}'   # 202 {"run": N}

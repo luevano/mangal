@@ -172,7 +172,7 @@ func TestNoUsersWarns(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "mangal serve user add") {
+	if !strings.Contains(out.String(), "mangal user add") {
 		t.Errorf("no warning, output:\n%s", out.String())
 	}
 }

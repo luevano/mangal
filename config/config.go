@@ -230,8 +230,7 @@ func enumEntry[T fmt.Stringer](key string, def T, description string, parse func
 	})
 }
 
-// scopesEntry is a list of serve token scopes (read, watch, progress, write).
-// ServeScopes are the scopes of the serve API's tokens.
+// ServeScopes are the scopes of the API tokens and the users' permissions.
 var ServeScopes = []string{"read", "watch", "progress", "write"}
 
 // listEntry is a comma separated list, its entries trimmed (empty ones dropped).
@@ -517,7 +516,7 @@ var Providers = configProviders{
 
 var Auth = configAuth{
 	Keyring: boolEntry("auth.keyring", false,
-		"Keep the logins and secrets (Anilist/Kitsu/MyAnimeList tokens and API clients, MangaPlus secrets, Discord webhook, serve token) in the OS keyring (Secret Service on Linux, Keychain on macOS, Credential Manager on Windows) instead of mangal's database. They move on the next run after changing it."),
+		"Keep the logins and secrets (Anilist/Kitsu/MyAnimeList tokens and API clients, MangaPlus secrets, Discord webhook, serve API tokens) in the OS keyring (Secret Service on Linux, Keychain on macOS, Credential Manager on Windows) instead of mangal's database. They move on the next run after changing it."),
 }
 
 var Notification = configNotification{
@@ -578,7 +577,7 @@ var Serve = configServe{
 	Auth: reg(entry[string, string]{
 		Key:         "serve.auth",
 		Default:     "login",
-		Description: "How `mangal serve` authenticates: login (a user of `mangal serve user`: the web UI's login page, or basic auth for OPDS readers; programs send an API token of `mangal serve token`) or none (every request may do everything: only behind something that authenticates). token, of older configs, is login.",
+		Description: "How `mangal serve` authenticates: login (a user of `mangal user`: the web UI's login page, or basic auth for OPDS readers; programs send an API token of `mangal token`) or none (every request may do everything: only behind something that authenticates). token, of older configs, is login.",
 		Values:      []string{"login", "none"},
 		Unmarshal: func(raw string) (string, error) {
 			if strings.EqualFold(raw, "token") {

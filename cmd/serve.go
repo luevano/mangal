@@ -39,14 +39,14 @@ the config file every minute. Logs go to stderr and the log file.
 
 On serve.host:serve.port (127.0.0.1:6977 by default): the web UI (serve.web), the HTTP
 API (/api/v1/, its spec at /api/v1/openapi.yaml, "mangal api" calls it) and OPDS (/opds).
-Every request logs in, wherever it comes from: people as users ("mangal serve user add";
-the web UI's login page, basic auth for OPDS readers), programs with an API token
-("mangal serve token"; Authorization: Bearer). mangal on this config (the TUI, "mangal
+Every request logs in, wherever it comes from: people as users ("mangal user add"; the
+web UI's login page, basic auth for OPDS readers), programs with an API token ("mangal
+token add"; Authorization: Bearer). mangal on this config (the TUI, "mangal
 watch", "mangal api") uses the server's key, kept in its discovery file next to the data
 db. Behind a reverse proxy nothing needs setting; serve.trusted_proxies gives the logs and
 the login rate limit the clients' addresses. One server per data db: a second instance
 needs another config (--config) with its own data.path and serve.port.`,
-	Example: `  mangal serve user add david
+	Example: `  mangal user add david
   mangal serve
   mangal --config ~/.config/mangal-b/mangal.toml serve --port 6978`,
 	GroupID: groupMode,
@@ -88,12 +88,14 @@ func init() {
 	serveTokenCmd.MarkFlagsMutuallyExclusive("generate", "list", "revoke")
 }
 
+// serveTokenCmd is the token command before "mangal token" (5.24), kept for scripts.
 var serveTokenCmd = &cobra.Command{
-	Use:   "token",
-	Short: "Manage the API tokens",
+	Use:        "token",
+	Short:      "Manage the API tokens",
+	Hidden:     true,
+	Deprecated: `use "mangal token add|ls|rm"`,
 	Long: `API tokens are for programs calling the API (scripts, "mangal api --server", other
-apps): Authorization: Bearer <token>. They aren't logins: people log in as users ("mangal
-serve user"). --generate --name NAME --scope read,watch makes one: only its hash is kept,
+apps): Authorization: Bearer <token>. They aren't logins: people log in as users ("mangal user"). --generate --name NAME --scope read,watch makes one: only its hash is kept,
 it's printed once. --list shows them, --revoke NAME removes one (a running server stops
 taking it within seconds). Scopes: read (GET, events), watch (the watches: add, change,
 check), progress (the reader's reads: history, tracker progress), write (the files, the

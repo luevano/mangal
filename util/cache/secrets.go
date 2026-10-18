@@ -176,7 +176,7 @@ func moveServeTokens(data *storage.DB) string {
 		return ""
 	}
 	log.Info("moved the serve tokens %s to API tokens", strings.Join(moved, ", "))
-	return fmt.Sprintf("Made API tokens (every scope) of the old serve tokens: %s. Programs sending them keep working; people log in as users now (\"mangal serve user add\"), \"mangal serve token --list\" shows the tokens.", strings.Join(moved, ", "))
+	return fmt.Sprintf("Made API tokens (every scope) of the old serve tokens: %s. Programs sending them keep working; people log in as users now (\"mangal user add\"), \"mangal token ls\" shows the tokens.", strings.Join(moved, ", "))
 }
 
 // keyring is true when the logins are kept in the OS keyring (auth.keyring).

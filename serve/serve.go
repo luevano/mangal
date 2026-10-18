@@ -220,7 +220,7 @@ func listenerAuth(args Args, addr net.Addr, lg logger) (*Auth, error) {
 	default:
 		if st, err := cache.Storage(); err == nil {
 			if users, err := st.Users().List(); err == nil && len(users) == 0 {
-				lg.Warnf("no users yet: the web UI and OPDS need one, `mangal serve user add <name>` makes it")
+				lg.Warnf("no users yet: the web UI and OPDS need one, `mangal user add <name>` makes it")
 			}
 		}
 	}

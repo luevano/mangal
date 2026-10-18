@@ -28,7 +28,7 @@ onMounted(async () => {
         <div v-if="st.error" class="alert alert-danger py-2">The server doesn't answer: {{ st.error }}</div>
         <LoginForm @done="next" />
         <p class="small text-secondary mt-3 mb-0">
-          Users are made on the server: <code>mangal serve user add &lt;name&gt;</code>.
+          Users are made on the server: <code>mangal user add &lt;name&gt;</code>.
         </p>
       </div>
     </div>

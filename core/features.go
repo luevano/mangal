@@ -144,7 +144,7 @@ var Features = []Feature{
 	{Name: "paths", CLI: []string{"path"}, NotApplicable: map[Mode]string{ModeWeb: cliEnough, ModeAPI: cliEnough, ModeTUI: cliEnough, ModeScript: cliEnough}},
 	{Name: "formats", API: []string{"listFormats"}, CLI: []string{"formats"}, NotApplicable: map[Mode]string{ModeWeb: "downloads use download.format (the config)", ModeTUI: "the chapters' f popup lists them", ModeScript: cliEnough}},
 	{Name: "logins", Web: []string{"login"}, API: []string{"login", "logout", "getMe"},
-		CLI:           []string{"serve user add", "serve user passwd", "serve user perms", "serve user logout", "serve user rm", "serve user ls"},
+		CLI:           []string{"user add", "user passwd", "user perms", "user logout", "user rm", "user ls", "token add", "token ls", "token rm"},
 		NotApplicable: map[Mode]string{ModeTUI: "the TUI is mangal on the server's config (its key)", ModeScript: "scripts use the server's key or an API token"}},
 }
 
@@ -154,8 +154,9 @@ var ModeCommands = map[string]string{
 	"script":      "the script mode",
 	"script doc":  "the script mode's docs",
 	"serve":       "the serve mode",
-	"serve token": "the serve API's tokens (for programs)",
-	"serve user":  "the serve mode's users (its subcommands are the logins feature)",
+	"serve token": "mangal token before 5.25 (deprecated)",
+	"user":        "the users (its subcommands are the logins feature)",
+	"token":       "the API tokens (its subcommands are the logins feature)",
 	"api":         "the serve API's client",
 	"web":         "the web mode",
 	"version":     "mangal's version",

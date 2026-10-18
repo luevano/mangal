@@ -139,7 +139,7 @@ type Auth struct {
 	Users UserStore
 	// Sessions are the logins' sessions (the cookie), nil without Users.
 	Sessions *scs.SessionManager
-	// Tokens are the API tokens (`mangal serve token`), re-read every few seconds so a
+	// Tokens are the API tokens (`mangal token`), re-read every few seconds so a
 	// revoked one stops working; nil for none.
 	Tokens func() ([]cache.ServeTokenEntry, error)
 	// LocalKey is the key of the discovery file: mangal on this config (the CLI, the TUI)

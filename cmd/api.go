@@ -41,7 +41,7 @@ var apiCmd = &cobra.Command{
 	Short: "Call the serve API",
 	Long: `Call the API of the running mangal serve of this config (found with its discovery file,
 which has its key: every permission), or of --server with an API token in MANGAL_API_TOKEN
-("mangal serve token --generate --name ... --scope read" on the server makes one; it also
+("mangal token add <name> --scope read" on the server makes one; it also
 overrides the key). PATH is relative to
 /api/v1 unless it starts with /api/. The answer is pretty-printed; an error answer exits
 non-zero. Changes plan first: POST without ?apply=1 answers the plan and its hash, then
