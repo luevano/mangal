@@ -201,19 +201,12 @@ func New(_ context.Context, env Env) (*Core, error) {
 	return c, nil
 }
 
-var (
-	defaultOnce sync.Once
-	defaultCore *Core
-	defaultErr  error
-)
+var defaultCore = sync.OnceValues(func() (*Core, error) { return New(context.Background(), Env{}) })
 
 // Default is the services over mangal's own databases, files and config, made once per
 // process.
 func Default() (*Core, error) {
-	defaultOnce.Do(func() {
-		defaultCore, defaultErr = New(context.Background(), Env{})
-	})
-	return defaultCore, defaultErr
+	return defaultCore()
 }
 
 // Watches are the watches: the running mangal serve's, else the local service.

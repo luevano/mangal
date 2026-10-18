@@ -21,9 +21,7 @@ import (
 const expiringSoon = 7 * 24 * time.Hour
 
 var (
-	anilist_    *metadata.ProviderWithCache
-	anilistErr  error
-	anilistOnce sync.Once
+	anilistOnce = sync.OnceValues(newAnilist)
 
 	account *logins.Account
 
@@ -52,10 +50,7 @@ func init() {
 // Anilist is the AniList metadata provider shared by every client. It makes no request:
 // EnsureLogin logs in with the saved user.
 func Anilist() (*metadata.ProviderWithCache, error) {
-	anilistOnce.Do(func() {
-		anilist_, anilistErr = newAnilist()
-	})
-	return anilist_, anilistErr
+	return anilistOnce()
 }
 
 // anilistOptions are the AniList options from the config.

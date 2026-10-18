@@ -21,9 +21,7 @@ const refreshBefore = 24 * time.Hour
 
 var (
 	kitsu_    *kitsu.Kitsu
-	provider  *metadata.ProviderWithCache
-	kitsuErr  error
-	kitsuOnce sync.Once
+	kitsuOnce = sync.OnceValues(newKitsu)
 
 	account *logins.Account
 
@@ -52,10 +50,7 @@ func init() {
 // Kitsu is the Kitsu metadata provider shared by every client. It makes no request:
 // EnsureLogin logs in with the saved user.
 func Kitsu() (*metadata.ProviderWithCache, error) {
-	kitsuOnce.Do(func() {
-		provider, kitsuErr = newKitsu()
-	})
-	return provider, kitsuErr
+	return kitsuOnce()
 }
 
 func newKitsu() (*metadata.ProviderWithCache, error) {
