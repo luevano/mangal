@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/labstack/echo/v5"
 	"github.com/luevano/libmangal"
@@ -41,9 +42,7 @@ func APIError(c *echo.Context, err error) {
 		status = http.StatusNotFound
 	case limited:
 		status = http.StatusTooManyRequests
-		if wait > 0 {
-			c.Response().Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
-		}
+		SetRetryAfter(c, wait)
 	case errors.Is(err, ErrBadRequest):
 		status = http.StatusBadRequest
 	case errors.Is(err, ErrUpstream):
@@ -74,4 +73,11 @@ func APIError(c *echo.Context, err error) {
 type errorBody struct {
 	Code    int32  `json:"code"`
 	Message string `json:"message"`
+}
+
+// SetRetryAfter sets the Retry-After header to wait, rounded up to seconds; nothing for no wait.
+func SetRetryAfter(c *echo.Context, wait time.Duration) {
+	if wait > 0 {
+		c.Response().Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+	}
 }

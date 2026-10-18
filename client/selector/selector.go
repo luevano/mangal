@@ -12,6 +12,7 @@ import (
 
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/luevano/libmangal/mangadata"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 // Error is a selector that's invalid or selects nothing.
@@ -156,7 +157,7 @@ func Chapters(sel string, chapters []mangadata.Chapter) ([]mangadata.Chapter, er
 			return fail("not a selector or a chapter number")
 		}
 		if number < first || number > last {
-			return fail("chapter number %s out of range (%s, %s)", fmtFloat(number), fmtFloat(first), fmtFloat(last))
+			return fail("chapter number %s out of range (%s, %s)", stringutil.FormatFloat32(number), stringutil.FormatFloat32(first), stringutil.FormatFloat32(last))
 		}
 		// more than one chapter can have the number
 		return between(number, number)
@@ -179,11 +180,11 @@ func Chapters(sel string, chapters []mangadata.Chapter) ([]mangadata.Chapter, er
 	}
 	switch {
 	case from > last:
-		return fail("'from' (%s) greater than the last chapter number (%s)", fmtFloat(from), fmtFloat(last))
+		return fail("'from' (%s) greater than the last chapter number (%s)", stringutil.FormatFloat32(from), stringutil.FormatFloat32(last))
 	case to > last:
-		return fail("'to' (%s) greater than the last chapter number (%s)", fmtFloat(to), fmtFloat(last))
+		return fail("'to' (%s) greater than the last chapter number (%s)", stringutil.FormatFloat32(to), stringutil.FormatFloat32(last))
 	case from > to:
-		return fail("'from' (%s) greater than 'to' (%s)", fmtFloat(from), fmtFloat(to))
+		return fail("'from' (%s) greater than 'to' (%s)", stringutil.FormatFloat32(from), stringutil.FormatFloat32(to))
 	}
 	return between(from, to)
 }
@@ -191,8 +192,4 @@ func Chapters(sel string, chapters []mangadata.Chapter) ([]mangadata.Chapter, er
 func parseNumber(s string) (float32, error) {
 	n, err := strconv.ParseFloat(s, 32)
 	return float32(n), err
-}
-
-func fmtFloat(n float32) string {
-	return strconv.FormatFloat(float64(n), 'f', -1, 32)
 }

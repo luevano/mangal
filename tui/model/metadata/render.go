@@ -10,6 +10,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/theme/icon"
 	_style "github.com/luevano/mangal/v5/theme/style"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 // Details renders every field of meta in width columns (0 for no limit): the values
@@ -81,7 +82,7 @@ func (m renderer) render(f field) string {
 	case float64:
 		str = strconv.FormatFloat(value, 'f', -1, 32)
 	case float32:
-		str = strconv.FormatFloat(float64(value), 'f', -1, 32)
+		str = stringutil.FormatFloat32(value)
 	case metadata.Status:
 		str = string(value)
 	case metadata.Date:

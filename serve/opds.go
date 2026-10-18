@@ -17,6 +17,7 @@ import (
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library/pages"
 	"github.com/luevano/mangal/v5/storage"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
@@ -210,9 +211,9 @@ func (a *API) opdsLibrary(c *echo.Context) error {
 func chapterEntry(svcFS pagesOpener, m storage.Manga, d storage.Download) opdsEntry {
 	base := fmt.Sprintf("/opds/mangas/%d", m.ID)
 	path := url.Values{"path": {d.Path}}.Encode()
-	title := "Chapter " + strconv.FormatFloat(float64(d.Chapter), 'f', -1, 32)
+	title := "Chapter " + stringutil.FormatFloat32(d.Chapter)
 	if d.Volume != 0 {
-		title = "Vol. " + strconv.FormatFloat(float64(d.Volume), 'f', -1, 32) + " " + title
+		title = "Vol. " + stringutil.FormatFloat32(d.Volume) + " " + title
 	}
 	if d.ChapterTitle != "" && !strings.EqualFold(d.ChapterTitle, title) {
 		title += ": " + d.ChapterTitle

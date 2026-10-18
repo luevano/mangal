@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"mime"
 	"net/http"
 	"slices"
@@ -346,8 +345,8 @@ func writeAPIError(c *echo.Context, err error) {
 	case status >= http.StatusInternalServerError && status != http.StatusServiceUnavailable:
 		log.Error("serve: %s %s: %s", r.Method, r.URL.Path, err)
 	}
-	if wait, limited := netutil.RetryAfterOf(err); limited && wait > 0 {
-		c.Response().Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+	if wait, limited := netutil.RetryAfterOf(err); limited {
+		web.SetRetryAfter(c, wait)
 	}
 	if err := c.JSON(status, body); err != nil {
 		log.Debug("serve: write the error: %s", err)
