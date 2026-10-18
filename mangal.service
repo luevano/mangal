@@ -33,13 +33,14 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 # No MemoryDenyWriteExecute or RestrictNamespaces: Chrome's JIT and sandbox need them.
 
 ProtectProc=invisible
+RemoveIPC=yes
 CapabilityBoundingSet=
 SystemCallArchitectures=native
 
 # Read-only system, other homes hidden: writable only the user's home (config, data, state,
 # cache; rod downloads its browser to ~/.cache/rod) and the download path (download.path;
 # set yours, one ReadWritePaths per dir mangal writes outside the home). A home outside
-# /home (e.g. /opt/mangal): drop ProtectHome/BindPaths and add it to ReadWritePaths.
+# /home (e.g. /opt/mangal): ProtectHome=yes, no BindPaths, the home in ReadWritePaths.
 ProtectSystem=strict
 ProtectHome=tmpfs
 BindPaths=/home/mangal
