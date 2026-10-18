@@ -343,8 +343,13 @@ func (a *API) ListConfig(ctx context.Context, _ apiv1.ListConfigRequestObject) (
 	return out, nil
 }
 
+// adminConfigKeys are set over HTTP only by an admin: where mangal keeps its data and
+// runs providers from, which addresses the providers may reach.
+var adminConfigKeys = []string{"providers.allow_private_addresses", "providers.private_allowlist", "data.path", "providers.path", "cache.path"}
+
 // SetConfig implements apiv1.StrictServerInterface: writes the key to the config file.
-// Secrets and the serve.* keys (its own security) aren't set over HTTP.
+// Secrets and the serve.* keys (its own security) aren't set over HTTP, adminConfigKeys
+// only by an admin.
 func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObject) (apiv1.SetConfigResponseObject, error) {
 	key := request.Key
 	if !config.Exists(key) {
@@ -352,6 +357,11 @@ func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObjec
 	}
 	if config.IsSecret(key) || strings.HasPrefix(key, "serve.") {
 		return nil, newAPIError(http.StatusForbidden, CodeForbidden, "%s isn't set over HTTP (mangal config set, or the config file)", key)
+	}
+	if slices.Contains(adminConfigKeys, key) {
+		if err := needAdmin(ctx); err != nil {
+			return nil, err
+		}
 	}
 	body := deref(request.Body)
 	if body.Value == nil {

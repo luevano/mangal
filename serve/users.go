@@ -24,7 +24,7 @@ func needAdmin(ctx context.Context) error {
 	}
 	for _, s := range Scopes {
 		if !id.has(s) {
-			return newAPIError(http.StatusForbidden, CodeForbidden, "managing the users needs every permission, %s hasn't", id)
+			return newAPIError(http.StatusForbidden, CodeForbidden, "this needs every permission (an admin), %s hasn't", id)
 		}
 	}
 	return nil
