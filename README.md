@@ -165,7 +165,7 @@ mangal library scan --mark [--apply]       # also list (--apply: write) a .libma
 mangal library mark <id>... [--apply]      # (re)write the .libmangal.json of these mangas: also replaces a broken one or one of another provider manga
 mangal library downloads [provider]        # the downloaded chapters
 mangal library merge <keep> <other> --apply  # one manga in two directories, duplicates go to the trash
-mangal library move <id> <provider> [query|mid:id] --apply  # switch a manga to another provider (folder, watch and bindings follow; names stay)
+mangal library move <id> <provider> [title|--id <id>] --apply  # switch a manga to another provider (folder, watch and bindings follow; names stay)
 mangal library move <id> <provider> --full --apply          # also adopt the new provider's title and the folder name it gives
 mangal library bind <id> [--anilist N] [--kitsu N] [--mal N] [--rename] [--watches] --apply  # link a library manga (also without a provider source)
 mangal library bind <id>                   # its links, where each comes from, and a Kitsu id to pick
@@ -211,7 +211,7 @@ A provider's manga can be bound to its Anilist, Kitsu and MyAnimeList ids (`A` o
 
 ```sh
 mangal bind mango-mangapill "One-Punch Man" --anilist 74347 --kitsu 24147
-mangal bind mango-mangaplus mid:100171 --remove kitsu
+mangal bind mango-mangaplus --id 100171 --remove kitsu
 mangal bind ls
 ```
 
@@ -222,7 +222,7 @@ the library has up (and, with gap filling, the missing ones below it).
 
 ```sh
 mangal watch add mango-mangapill "One-Punch Man" --from 240   # chapters up to 240 count as read
-mangal watch add mango-mangaplus mid:100171 --anilist-id 132029
+mangal watch add mango-mangaplus --id 100171 --anilist-id 132029
 mangal watch ls                  # last check, next check, errors
 mangal watch check [--dry-run]   # check now (--provider <id>, --due)
 mangal watch log --since 7d      # what each check got
