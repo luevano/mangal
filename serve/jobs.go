@@ -237,6 +237,9 @@ func (a *API) StartDownload(ctx context.Context, request apiv1.StartDownloadRequ
 	if err != nil {
 		return nil, badRequest("chapters: %w", err)
 	}
+	if len(chapters) == 0 {
+		return nil, badRequest("chapters: %q matches none", b.Chapters)
+	}
 	// a bound manga gets its metadata now, a search would replace it
 	if bound, err := client.ApplyBinding(ctx, c, manga); err != nil {
 		a.Log.Warnf("binding of %q: %s", manga, err)
