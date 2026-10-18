@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -137,10 +138,7 @@ func (c Checker) loadProbes(ctx context.Context, s *snapshot) error {
 			add(src.Provider, src.MangaID, m.Title)
 		}
 	}
-	for provider := range mangas {
-		s.probeOrder = append(s.probeOrder, provider)
-	}
-	slices.Sort(s.probeOrder)
+	s.probeOrder = slices.Sorted(maps.Keys(mangas))
 	var mu sync.Mutex
 	done := 0
 	c.progress(fmt.Sprintf("asking the providers: 0/%d", len(mangas)))

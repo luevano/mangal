@@ -2,6 +2,7 @@ package watch
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 
@@ -18,7 +19,7 @@ func Coverage(listed []float32, have map[float32]bool, min float64) string {
 	if len(have) == 0 {
 		return ""
 	}
-	lib := sortedKeys(have)
+	lib := slices.Sorted(maps.Keys(have))
 	last := lib[len(lib)-1]
 	listed = slices.Clone(listed)
 	slices.Sort(listed)
@@ -49,15 +50,6 @@ func span(ns []float32) string {
 		return first
 	}
 	return fmt.Sprintf("%s-%s (%d)", first, last, len(ns))
-}
-
-func sortedKeys(set map[float32]bool) []float32 {
-	ns := make([]float32, 0, len(set))
-	for n := range set {
-		ns = append(ns, n)
-	}
-	slices.Sort(ns)
-	return ns
 }
 
 // Continuation splits the picked chapters of a watch whose provider lacks the library's

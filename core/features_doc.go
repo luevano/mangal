@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 )
@@ -50,12 +51,7 @@ func FeaturesMarkdown() string {
 		}
 		b.WriteString("| " + strings.Join(cells, " | ") + " |\n")
 	}
-	var own []string
-	for c := range ModeCommands {
-		own = append(own, c)
-	}
-	slices.Sort(own)
-	fmt.Fprintf(&b, "\nCommands of no feature (the modes' own): %s.\n", code(own))
+	fmt.Fprintf(&b, "\nCommands of no feature (the modes' own): %s.\n", code(slices.Sorted(maps.Keys(ModeCommands))))
 	return b.String()
 }
 

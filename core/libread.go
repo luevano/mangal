@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/luevano/libmangal"
@@ -189,10 +190,7 @@ func (l *localLibrary) ChapterFiles(ctx context.Context, req ChapterFilesReq) (C
 	if err != nil {
 		out.Errors = append(out.Errors, fmt.Sprintf("read history: %s", err))
 	}
-	for n := range read {
-		out.Read = append(out.Read, n)
-	}
-	slices.Sort(out.Read)
+	out.Read = slices.Sorted(maps.Keys(read))
 	return out, nil
 }
 

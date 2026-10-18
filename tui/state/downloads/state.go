@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -143,12 +144,7 @@ func (s *state) Subtitle() string {
 		}
 	}
 	parts := []string{fmt.Sprintf("%d running", running)}
-	groups := make([]string, 0, len(queued))
-	for g := range queued {
-		groups = append(groups, g)
-	}
-	slices.Sort(groups)
-	for _, g := range groups {
+	for _, g := range slices.Sorted(maps.Keys(queued)) {
 		parts = append(parts, fmt.Sprintf("%s %d queued", g, queued[g]))
 	}
 	return strings.Join(parts, " · ")
