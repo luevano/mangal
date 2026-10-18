@@ -2,7 +2,6 @@ package inline
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -29,16 +28,25 @@ func search(ctx context.Context, args Args) (*libmangal.Client, []MangaResult, e
 		return nil, nil, err
 	}
 
-	args.status("searching %q on %s", args.Query, args.Provider)
-	mangas, err := searchMangas(ctx, c, args.Query)
-	if err != nil {
-		return nil, nil, fmt.Errorf("search %q: %w", args.Query, err)
+	sel := args.MangaSelector
+	if args.ID != "" {
+		args.status("getting manga %q from %s", args.ID, args.Provider)
+		sel = "id"
+	} else {
+		args.status("searching %q on %s", args.Query, args.Provider)
 	}
-	if len(mangas) == 0 {
+	mangas, err := selector.Search(ctx, client.Searcher(c), args.ID, args.Query)
+	if err != nil {
+		return nil, nil, err
+	}
+	switch {
+	case len(mangas) == 0 && args.ID != "":
+		return nil, nil, fmt.Errorf("no manga with id %q in %s", args.ID, args.Provider)
+	case len(mangas) == 0:
 		return nil, nil, fmt.Errorf("no mangas found with provider %q and query %q", args.Provider, args.Query)
 	}
 
-	indexes, err := selector.Mangas(args.MangaSelector, args.Query, mangas)
+	indexes, err := selector.Mangas(sel, args.Query, mangas)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -47,25 +55,6 @@ func search(ctx context.Context, args Args) (*libmangal.Client, []MangaResult, e
 		results[i] = MangaResult{Index: index, Manga: mangas[index]}
 	}
 	return c, results, nil
-}
-
-// searchMangas searches the query; a "mid:<id>" one gets the manga by its id when the provider
-// can (Lua providers' MangaByID), else it's searched like any query (mangoprovider takes it).
-func searchMangas(ctx context.Context, c *libmangal.Client, query string) ([]mangadata.Manga, error) {
-	id, ok := selector.IDQuery(query)
-	if !ok {
-		return c.SearchMangasContext(ctx, query)
-	}
-	manga, found, err := c.MangaByIDContext(ctx, id)
-	switch {
-	case errors.Is(err, libmangal.ErrMangaByIDUnsupported):
-		return c.SearchMangasContext(ctx, query)
-	case err != nil:
-		return nil, err
-	case !found:
-		return nil, nil
-	}
-	return []mangadata.Manga{manga}, nil
 }
 
 // chapters are the manga's chapters the chapter selector picks.

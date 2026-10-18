@@ -34,7 +34,9 @@ type BadMatch struct {
 }
 
 type Args struct {
-	Query                  string `json:"query"`
+	Query string `json:"query"`
+	// ID is the manga's id, instead of a Query.
+	ID                     string `json:"id,omitempty"`
 	Provider               string `json:"provider"`
 	MangaSelector          string `json:"manga_selector"`
 	ChapterSelector        string `json:"chapter_selector"`

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/luevano/libmangal"
+	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -78,4 +80,18 @@ func completionConfigKeys(_ *cobra.Command, args []string, toComplete string) ([
 	})
 
 	return filtered, cobra.ShellCompDirectiveNoFileComp
+}
+
+// mangaQuery is a command's manga: its id (the flag, e.g. --id) or a title query. A
+// "mid:<id>" query is the id, deprecated: it warns.
+func mangaQuery(cmd *cobra.Command, flag, id, query string) (string, string, error) {
+	id, query = strings.TrimSpace(id), strings.TrimSpace(query)
+	if qid, ok := selector.IDQuery(query); ok {
+		cmd.PrintErrf("warning: \"mid:\" is deprecated, use --%s %s\n", flag, qid)
+		id, query = cmp.Or(id, qid), ""
+	}
+	if id != "" && query != "" {
+		return "", "", fmt.Errorf("--%s or a title, not both", flag)
+	}
+	return id, query, nil
 }

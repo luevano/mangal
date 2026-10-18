@@ -36,7 +36,8 @@ func init() {
 	// To shorten the statements a bit
 	f := inlineCmd.PersistentFlags()
 
-	f.StringVarP(&inlineArgs.Query, "query", "q", "", "Query to search")
+	f.StringVarP(&inlineArgs.Query, "query", "q", "", "Title to search")
+	f.StringVar(&inlineArgs.ID, "id", "", "The manga's id, instead of a --query")
 	f.StringVarP(&inlineArgs.Provider, "provider", "p", "", "Provider id to use")
 	f.StringVarP(&inlineArgs.MangaSelector, "manga-selector", "m", "all", "Manga selector (all|first|last|id|exact|closest|<index>)")
 	f.StringVarP(&inlineArgs.ChapterSelector, "chapter-selector", "c", "all", "Chapter selector (all|first|last|<num>|[from]-[to])")
@@ -50,7 +51,8 @@ func init() {
 	addLoaderFlags(f)
 
 	inlineCmd.MarkPersistentFlagRequired("provider")
-	inlineCmd.MarkPersistentFlagRequired("query")
+	inlineCmd.MarkFlagsOneRequired("query", "id")
+	inlineCmd.MarkFlagsMutuallyExclusive("query", "id")
 	inlineCmd.RegisterFlagCompletionFunc("provider", completionProviderIDs)
 
 	// when anilist-id is provided, then use that exclusively
@@ -87,7 +89,10 @@ var inlineJSONCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
 		defer st.Done()
-		args := inlineArgs
+		args, err := inlineRunArgs(cmd)
+		if err != nil {
+			return err
+		}
 		args.Status = st
 		return inline.RunJSON(st.Context(cmd.Context()), args)
 	},
@@ -118,8 +123,19 @@ single manga: the default "all" only works when the search finds one, use e.g. -
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
 		defer st.Done()
-		args := inlineArgs
+		args, err := inlineRunArgs(cmd)
+		if err != nil {
+			return err
+		}
 		args.Status = st
 		return inline.RunDownload(st.Context(cmd.Context()), args)
 	},
+}
+
+// inlineRunArgs are the flags' args, a deprecated "mid:<id>" query as the id.
+func inlineRunArgs(cmd *cobra.Command) (inline.Args, error) {
+	args := inlineArgs
+	var err error
+	args.ID, args.Query, err = mangaQuery(cmd, "id", args.ID, args.Query)
+	return args, err
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
@@ -185,5 +186,21 @@ func TestSkipFlags(t *testing.T) {
 	}
 	if !slices.Equal(list, []float32{10, 189.5}) {
 		t.Errorf("list changed: %v", list)
+	}
+}
+
+func TestMangaQuery(t *testing.T) {
+	var stderr strings.Builder
+	cmd := &cobra.Command{}
+	cmd.SetErr(&stderr)
+	id, query, err := mangaQuery(cmd, "id", "", "mid:01J76")
+	if err != nil || id != "01J76" || query != "" || !strings.Contains(stderr.String(), `"mid:" is deprecated, use --id 01J76`) {
+		t.Errorf("mid: query: %q, %q, %v, stderr %q", id, query, err, stderr.String())
+	}
+	if id, query, _ := mangaQuery(cmd, "id", "", "Berserk"); id != "" || query != "Berserk" {
+		t.Errorf("title: %q, %q", id, query)
+	}
+	if _, _, err := mangaQuery(cmd, "id", "1", "Berserk"); err == nil {
+		t.Error("--id and a title: no error")
 	}
 }

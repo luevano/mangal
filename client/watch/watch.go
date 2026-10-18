@@ -425,7 +425,7 @@ func (s *Service) addOffline(opts AddOptions) (Watch, error) {
 		id, _ = selector.IDQuery(opts.Query)
 	}
 	if opts.Provider == "" || id == "" {
-		return Watch{}, errors.New("an offline watch needs the provider and the manga id (mid:<id>)")
+		return Watch{}, errors.New("an offline watch needs the provider and the manga id")
 	}
 	title := opts.Title
 	if title == "" {

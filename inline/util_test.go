@@ -2,7 +2,7 @@ package inline
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"testing"
 
 	"github.com/luevano/libmangal"
@@ -38,18 +38,24 @@ func (l byIDLoader) Load(context.Context) (libmangal.Provider, error) {
 
 func TestSearchByID(t *testing.T) {
 	useClient(t, byIDLoader{t: t})
-	_, results, err := search(context.Background(), Args{Query: "mid:frieren", Provider: "fake", MangaSelector: "all"})
-	if err != nil || len(results) != 1 || results[0].Manga.Info().ID != "frieren" {
-		t.Fatalf("got %v, %v", results, err)
+	for _, args := range []Args{
+		{ID: "frieren", Provider: "fake", MangaSelector: "all"},
+		{ID: "frieren", Provider: "fake", MangaSelector: "exact"},
+		// deprecated
+		{Query: "mid:frieren", Provider: "fake", MangaSelector: "all"},
+	} {
+		_, results, err := search(context.Background(), args)
+		if err != nil || len(results) != 1 || results[0].Manga.Info().ID != "frieren" {
+			t.Fatalf("%+v: got %v, %v", args, results, err)
+		}
 	}
-	if _, _, err := search(context.Background(), Args{Query: "mid:other", Provider: "fake", MangaSelector: "all"}); err == nil {
+	if _, _, err := search(context.Background(), Args{ID: "other", Provider: "fake", MangaSelector: "all"}); err == nil {
 		t.Error("unknown id: no error")
 	}
 
-	// without MangaByID the query is searched (mangoprovider takes "mid:" queries)
+	// without MangaByID it's an error, not a search of the query
 	useClient(t, fakeLoader{})
-	// the fake's search finds 2
-	if _, _, err := search(context.Background(), Args{Query: "mid:frieren", Provider: "fake", MangaSelector: "all"}); err == nil || !strings.Contains(err.Error(), "2 mangas found") {
-		t.Errorf("not searched: %v", err)
+	if _, _, err := search(context.Background(), Args{ID: "frieren", Provider: "fake", MangaSelector: "all"}); !errors.Is(err, libmangal.ErrMangaByIDUnsupported) {
+		t.Errorf("got %v, want ErrMangaByIDUnsupported", err)
 	}
 }

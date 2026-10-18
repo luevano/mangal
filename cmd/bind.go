@@ -17,6 +17,7 @@ import (
 func init() {
 	rootCmd.AddCommand(bindCmd)
 	f := bindCmd.Flags()
+	f.StringVar(&bindArgs.ID, "id", "", `The manga's id (as "mangal inline json" shows it), instead of a title query`)
 	f.StringVarP(&bindArgs.Selector, "manga-selector", "m", "exact", "Manga selector of the search (first|last|exact|closest|<index>)")
 	f.StringVar(&bindArgs.Anilist, "anilist", "", "Bind the AniList manga with this id")
 	f.StringVar(&bindArgs.Kitsu, "kitsu", "", "Bind the Kitsu manga with this id")
@@ -31,6 +32,7 @@ func init() {
 }
 
 var bindArgs = struct {
+	ID                          string
 	Selector                    string
 	Anilist, Kitsu, MyAnimeList string
 	Default                     string
@@ -39,22 +41,29 @@ var bindArgs = struct {
 }{}
 
 var bindCmd = &cobra.Command{
-	Use:   "bind <provider> <query|mid:id>",
+	Use:   "bind <provider> [title]",
 	Short: "Bind a manga to its AniList, Kitsu or MyAnimeList manga",
-	Long: `Bind a provider's manga (the one the selector picks from a search of the query, or the
-manga with the id, "mid:<id>") to metadata sources: the default binding's metadata is what
+	Long: `Bind a provider's manga (the one the selector picks from a search of the title, or the
+manga with the --id) to metadata sources: the default binding's metadata is what
 its downloads use (ComicInfo.xml, folder names), every bound id is used to sync the reading
 progress. The default is the first bound source in the order AniList, Kitsu, MyAnimeList;
 the others are its backups, used in that order when the default's metadata can't be fetched.
 Without flags it prints the manga's bindings. Watches, the library and the TUI (A on a
 manga) share the bindings.`,
 	Example: `  mangal bind mango-mangapill "One Piece" --anilist 30013 --kitsu 38
-  mangal bind mango-mangaplus mid:100171 --remove kitsu
+  mangal bind mango-mangaplus --id 100171 --remove kitsu
   mangal bind ls mango-mangapill`,
-	Args:              cobra.MinimumNArgs(2),
+	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
+		mangaID, query, err := mangaQuery(cmd, "id", bindArgs.ID, strings.Join(args[1:], " "))
+		if err != nil {
+			return err
+		}
+		if mangaID == "" && query == "" {
+			return errors.New("a title or --id")
+		}
 		type set struct {
 			src client.MetadataSource
 			id  string
@@ -89,12 +98,9 @@ manga) share the bindings.`,
 			cmd.PrintErrf("warning: %s\n", w)
 		}
 		provider := c.Info().ID
-		query := strings.Join(args[1:], " ")
-		mangaID, title := "", ""
-		if id, ok := selector.IDQuery(query); ok {
-			// the id is all a binding needs, no request
-			mangaID = id
-		} else {
+		title := ""
+		// the id is all a binding needs, no request
+		if mangaID == "" {
 			mangas, err := c.SearchMangasContext(ctx, query)
 			if err != nil {
 				return fmt.Errorf("search %q: %w", query, err)

@@ -117,6 +117,7 @@ func formatLast(n *float32) string {
 
 var watchAddArgs = struct {
 	Offline   bool
+	ID        string
 	Title     string
 	Enabled   bool
 	Selector  string
@@ -130,7 +131,8 @@ var watchAddArgs = struct {
 func init() {
 	watchCmd.AddCommand(watchAddCmd)
 	f := watchAddCmd.Flags()
-	f.BoolVar(&watchAddArgs.Offline, "offline", false, "Add it as given (mid:<id>, --title) without asking the provider, which needn't be installed; paused unless --enabled")
+	f.StringVar(&watchAddArgs.ID, "id", "", `The manga's id (as "mangal inline json" shows it), instead of a title query`)
+	f.BoolVar(&watchAddArgs.Offline, "offline", false, "Add it as given (--id, --title) without asking the provider, which needn't be installed; paused unless --enabled")
 	f.StringVar(&watchAddArgs.Title, "title", "", "Title of an --offline watch (default: the id)")
 	f.BoolVar(&watchAddArgs.Enabled, "enabled", false, "An --offline watch starts enabled (checked once its provider is installed)")
 	f.StringVarP(&watchAddArgs.Selector, "manga-selector", "m", "exact", "Manga selector of the search (first|last|exact|closest|<index>)")
@@ -166,20 +168,27 @@ func scheduleFlag(f *pflag.FlagSet, schedule string, interval time.Duration) (st
 }
 
 var watchAddCmd = &cobra.Command{
-	Use:   "add <provider> <query|mid:id>",
+	Use:   "add <provider> [title]",
 	Short: "Watch a manga",
 	Long: `Watch a manga of the provider: the one the manga selector picks from a search of the
-query (exact title by default), or the manga with the id ("mid:<id>", as "mangal inline
-json" shows it). Its first check downloads every chapter the library doesn't have, or the
-ones after --from.`,
+title (an exact match by default), or the manga with the --id (as "mangal inline json"
+shows it). Its first check downloads every chapter the library doesn't have, or the ones
+after --from.`,
 	Example: `  mangal watch add mango-mangapill "One-Punch Man" --from 200
-  mangal watch add mango-mangaplus mid:100171 --anilist-id 132029`,
-	Args:              cobra.MinimumNArgs(2),
+  mangal watch add mango-mangaplus --id 100171 --anilist-id 132029`,
+	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		schedule, _, err := scheduleFlag(cmd.Flags(), watchAddArgs.Schedule, watchAddArgs.Interval)
 		if err != nil {
 			return err
+		}
+		mangaID, query, err := mangaQuery(cmd, "id", watchAddArgs.ID, strings.Join(args[1:], " "))
+		if err != nil {
+			return err
+		}
+		if mangaID == "" && query == "" {
+			return errors.New("a title or --id")
 		}
 		svc, err := newWatchManager(cmd)
 		if err != nil {
@@ -187,7 +196,8 @@ ones after --from.`,
 		}
 		opts := watch.AddOptions{
 			Provider:  args[0],
-			Query:     strings.Join(args[1:], " "),
+			MangaID:   mangaID,
+			Query:     query,
 			Selector:  watchAddArgs.Selector,
 			AnilistID: watchAddArgs.AnilistID,
 			Schedule:  schedule,
@@ -476,6 +486,7 @@ func pauseCmd(resume bool) *cobra.Command {
 
 var watchSetArgs = struct {
 	Manga     string
+	MangaID   string
 	Schedule  string
 	Interval  time.Duration
 	Gaps      bool
@@ -493,7 +504,8 @@ func init() {
 	f.BoolVar(&watchSetArgs.Gaps, "gaps", false, "Gap filling (--gaps=false turns it off)")
 	f.IntVarP(&watchSetArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind as the default, 0 unbinds it (see mangal bind)")
 	f.Float32Var(&watchSetArgs.From, "from", 0, "Treat the chapters up to this number as downloaded")
-	f.StringVar(&watchSetArgs.Manga, "manga", "", `Re-link it to this manga of its provider ("mid:<id>" or an exact title), see mangal watch move`)
+	f.StringVar(&watchSetArgs.Manga, "manga", "", `Re-link it to the manga of its provider with this exact title, see mangal watch move`)
+	f.StringVar(&watchSetArgs.MangaID, "manga-id", "", `Re-link it to the manga of its provider with this id, see mangal watch move`)
 	f.StringVar(&watchSetArgs.Skip, "skip", "", `Never download these chapter numbers (e.g. a fake "189.5,190"), added to its skip list`)
 	f.StringVar(&watchSetArgs.Unskip, "unskip", "", `Remove these chapter numbers from its skip list, "all" clears it`)
 }
@@ -529,8 +541,11 @@ var watchSetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		relink := strings.TrimSpace(watchSetArgs.Manga)
-		if opts == (watch.UpdateOptions{}) && relink == "" && changeSkip == nil {
+		relinkID, relink, err := mangaQuery(cmd, "manga-id", watchSetArgs.MangaID, watchSetArgs.Manga)
+		if err != nil {
+			return err
+		}
+		if opts == (watch.UpdateOptions{}) && relink == "" && relinkID == "" && changeSkip == nil {
 			return errors.New("nothing to change, see --help")
 		}
 		svc, err := newWatchManager(cmd)
@@ -549,8 +564,8 @@ var watchSetCmd = &cobra.Command{
 			opts.Skip = &list
 		}
 		var w watch.Watch
-		if relink != "" {
-			if w, err = svc.Relink(cmd.Context(), id, watch.RelinkOptions{Query: relink}); err != nil {
+		if relink != "" || relinkID != "" {
+			if w, err = svc.Relink(cmd.Context(), id, watch.RelinkOptions{MangaID: relinkID, Query: relink}); err != nil {
 				return err
 			}
 			successf(cmd, "re-linked watch %d to %q from %s (manga id %s)", w.ID, w.Title, w.Provider, w.MangaID)
@@ -610,6 +625,7 @@ func skipFlags(f *pflag.FlagSet, skip, unskip string) (func([]float32) []float32
 }
 
 var watchMoveArgs = struct {
+	ID        string
 	Selector  string
 	AnilistID int
 }{}
@@ -617,25 +633,26 @@ var watchMoveArgs = struct {
 func init() {
 	watchCmd.AddCommand(watchMoveCmd)
 	f := watchMoveCmd.Flags()
+	f.StringVar(&watchMoveArgs.ID, "id", "", "The manga's id, instead of a title query")
 	f.StringVarP(&watchMoveArgs.Selector, "manga-selector", "m", "exact", "Manga selector of the search (first|last|exact|closest|<index>)")
 	f.IntVarP(&watchMoveArgs.AnilistID, "anilist-id", "a", 0, "AniList manga to bind as the default too (the bindings move with the watch anyway)")
 }
 
 var watchMoveCmd = &cobra.Command{
-	Use:     "move <id> [provider] [query|mid:id]",
+	Use:     "move <id> [provider] [title]",
 	Aliases: []string{"relink"},
 	Short:   "Point a watch to another manga, keeping the watch",
 	Long: `Point the watch to another manga: of another provider, or of the same one when the
 site changed its manga ids. The watch keeps its id, the history of its checks, its schedule
 and settings, its metadata bindings and its library manga, and no longer needs a re-link.
 
-The manga is picked like "mangal watch add" does: the one with the id ("mid:<id>"), or
-the one the manga selector picks from a search of the query. Without a provider it's the
-watch's; without a query, the watch's title (an exact match).`,
+The manga is picked like "mangal watch add" does: the one with the --id, or the one the
+manga selector picks from a search of the title. Without a provider it's the watch's;
+without a title or --id, the watch's title (an exact match).`,
 	Example: `  mangal watch move 12
   mangal watch move 12 mango-weebcentral
   mangal watch move 12 mango-weebcentral "Berserk"
-  mangal watch move 12 mid:01J76XYCERW3TT8A0PSB0QUPZT`,
+  mangal watch move 12 --id 01J76XYCERW3TT8A0PSB0QUPZT`,
 	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: completionMoveArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -644,6 +661,10 @@ watch's; without a query, the watch's title (an exact match).`,
 			return err
 		}
 		provider, query := moveArgs(args[1:], isProvider())
+		mangaID, query, err := mangaQuery(cmd, "id", watchMoveArgs.ID, query)
+		if err != nil {
+			return err
+		}
 		svc, err := newWatchManager(cmd)
 		if err != nil {
 			return err
@@ -652,10 +673,10 @@ watch's; without a query, the watch's title (an exact match).`,
 		if err != nil {
 			return err
 		}
-		if query == "" {
+		if query == "" && mangaID == "" {
 			query = before.Title
 		}
-		w, err := svc.Relink(cmd.Context(), id, watch.RelinkOptions{Provider: provider, Query: query,
+		w, err := svc.Relink(cmd.Context(), id, watch.RelinkOptions{Provider: provider, MangaID: mangaID, Query: query,
 			Selector: watchMoveArgs.Selector, AnilistID: watchMoveArgs.AnilistID})
 		if err != nil {
 			return err

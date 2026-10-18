@@ -191,6 +191,7 @@ func init() {
 	libraryCmd.AddCommand(libraryMoveCmd)
 	libraryMoveCmd.Flags().BoolVar(&libraryMoveArgs.Apply, "apply", false, "Move, instead of only listing what would happen")
 	libraryMoveCmd.Flags().BoolVar(&libraryMoveArgs.Full, "full", false, "Fully migrate: adopt the new provider's title and the folder name it gives")
+	libraryMoveCmd.Flags().StringVar(&libraryMoveArgs.ID, "id", "", "The manga's id, instead of a title query")
 	libraryMoveCmd.Flags().StringVarP(&libraryMoveArgs.Selector, "manga-selector", "m", "exact", "Manga selector of the search (first|last|exact|closest|<index>)")
 	libraryCmd.AddCommand(libraryTrashCmd)
 	libraryTrashCmd.AddCommand(libraryTrashEmptyCmd)
@@ -575,17 +576,18 @@ Only lists what would happen unless --apply is set.`,
 }
 
 var libraryMoveArgs = struct {
+	ID       string
 	Apply    bool
 	Full     bool
 	Selector string
 }{}
 
 var libraryMoveCmd = &cobra.Command{
-	Use:   "move <id> <provider> [query|mid:id]",
+	Use:   "move <id> <provider> [title]",
 	Short: "Move a library manga to another provider",
 	Long: `Move the library manga (id from "mangal library ls") to a manga of another provider: the
-one with the id ("mid:<id>"), or the one the manga selector picks from a search of the
-query (without a query, the library manga's title, an exact match).
+one with the --id, or the one the manga selector picks from a search of the title
+(without a title or --id, the library manga's title, an exact match).
 
 The library manga gets that manga as a source (its other sources stay), its folder moves
 into that provider's directory (with download.provider.create_dir) under the same name
@@ -599,7 +601,7 @@ Only lists what would happen unless --apply is set.`,
 	Example: `  mangal library move 12 mango-mangapill
   mangal library move 12 mango-weebcentral "Dungeon Odyssey" --apply
   mangal library move 12 mango-weebcentral --full
-  mangal library move 12 mango-mangadex mid:7c145eb7-2ee0-4a82-8d5c-bbb7ba0a4d42`,
+  mangal library move 12 mango-mangadex --id 7c145eb7-2ee0-4a82-8d5c-bbb7ba0a4d42`,
 	Args:              cobra.MinimumNArgs(2),
 	ValidArgsFunction: completionMoveArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -629,14 +631,18 @@ Only lists what would happen unless --apply is set.`,
 		for _, w := range warnings {
 			st.Print(func() { cmd.PrintErrf("warning: %s\n", w) })
 		}
-		query := strings.Join(args[2:], " ")
-		if query == "" {
+		var mangaID, query string
+		st.Print(func() { mangaID, query, err = mangaQuery(cmd, "id", libraryMoveArgs.ID, strings.Join(args[2:], " ")) })
+		if err != nil {
+			return err
+		}
+		if mangaID == "" && query == "" {
 			query = manga.Title
 		}
-		if !strings.HasPrefix(query, "mid:") {
+		if query != "" {
 			st.Set(fmt.Sprintf("searching %q on %s", query, cl.Info().Name))
 		}
-		to, err := selector.Find(ctx, client.Searcher(cl), "", query, libraryMoveArgs.Selector)
+		to, err := selector.Find(ctx, client.Searcher(cl), mangaID, query, libraryMoveArgs.Selector)
 		if err != nil {
 			return err
 		}
