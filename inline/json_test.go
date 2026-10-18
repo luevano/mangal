@@ -3,10 +3,12 @@ package inline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/luevano/libmangal"
@@ -73,19 +75,25 @@ func (*fakeProvider) VolumeChapters(_ context.Context, v mangadata.Volume) ([]ma
 // stdout is what f prints.
 func stdout(t *testing.T, f func()) []byte {
 	t.Helper()
+	return capture(t, &os.Stdout, f)
+}
+
+// capture is what f writes to file (os.Stdout, os.Stderr).
+func capture(t *testing.T, file **os.File, f func()) []byte {
+	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := os.Stdout
-	os.Stdout = w
+	old := *file
+	*file = w
 	done := make(chan []byte)
 	go func() {
 		b, _ := io.ReadAll(r)
 		done <- b
 	}()
 	f()
-	os.Stdout = old
+	*file = old
 	w.Close()
 	return <-done
 }
@@ -147,4 +155,93 @@ func mapKeys(m map[string]any) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// shortProvider: the side stories have only chapter 1.
+type shortProvider struct{ fakeProvider }
+
+func (p *shortProvider) VolumeChapters(ctx context.Context, v mangadata.Volume) ([]mangadata.Chapter, error) {
+	chapters, err := p.fakeProvider.VolumeChapters(ctx, v)
+	if v.Manga().Info().ID == "side" {
+		chapters = chapters[:1]
+	}
+	return chapters, err
+}
+
+type shortLoader struct{ fakeLoader }
+
+func (shortLoader) Load(context.Context) (libmangal.Provider, error) { return &shortProvider{}, nil }
+
+// TestJSONChapterPopulateMiss: a manga the chapter selector picks nothing of gets no
+// chapters when there are others, it fails the run when it's the only one.
+func TestJSONChapterPopulateMiss(t *testing.T) {
+	useClient(t, shortLoader{})
+	args := Args{Query: "frieren", Provider: "fake", MangaSelector: "all", ChapterSelector: "2-3", ChapterPopulate: true, AnilistDisable: true}
+	var runErr error
+	out := stdout(t, func() { runErr = RunJSON(context.Background(), args) })
+	if runErr != nil {
+		t.Fatal(runErr)
+	}
+	var got struct {
+		Results []struct {
+			Chapters []any `json:"chapters"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("%v:\n%s", err, out)
+	}
+	if len(got.Results) != 2 || len(got.Results[0].Chapters) != 2 || got.Results[1].Chapters == nil || len(got.Results[1].Chapters) != 0 {
+		t.Errorf("results %+v", got.Results)
+	}
+
+	args.MangaSelector = "1"
+	if err := RunJSON(context.Background(), args); err == nil {
+		t.Error("the only manga: no error")
+	}
+}
+
+// brokenProvider: the side stories' volumes fail.
+type brokenProvider struct{ fakeProvider }
+
+func (p *brokenProvider) MangaVolumes(ctx context.Context, m mangadata.Manga) ([]mangadata.Volume, error) {
+	if m.Info().ID == "side" {
+		return nil, errors.New("site down")
+	}
+	return p.fakeProvider.MangaVolumes(ctx, m)
+}
+
+type brokenLoader struct{ fakeLoader }
+
+func (brokenLoader) Load(context.Context) (libmangal.Provider, error) { return &brokenProvider{}, nil }
+
+// TestJSONChapterPopulateError: a manga whose chapters fail gets a warning and no chapters
+// when there are others, it fails the run when it's the only one.
+func TestJSONChapterPopulateError(t *testing.T) {
+	useClient(t, brokenLoader{})
+	args := Args{Query: "frieren", Provider: "fake", MangaSelector: "all", ChapterSelector: "all", ChapterPopulate: true, AnilistDisable: true}
+	var runErr error
+	var out []byte
+	warning := capture(t, &os.Stderr, func() { out = stdout(t, func() { runErr = RunJSON(context.Background(), args) }) })
+	if runErr != nil {
+		t.Fatal(runErr)
+	}
+	if !strings.Contains(string(warning), "Frieren: Side Stories") || !strings.Contains(string(warning), "site down") {
+		t.Errorf("warning %q", warning)
+	}
+	var got struct {
+		Results []struct {
+			Chapters []any `json:"chapters"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("%v:\n%s", err, out)
+	}
+	if len(got.Results) != 2 || len(got.Results[0].Chapters) != 3 || got.Results[1].Chapters == nil || len(got.Results[1].Chapters) != 0 {
+		t.Errorf("results %+v", got.Results)
+	}
+
+	args.MangaSelector = "1"
+	if err := RunJSON(context.Background(), args); err == nil || !strings.Contains(err.Error(), "site down") {
+		t.Errorf("the only manga: error %v", err)
+	}
 }

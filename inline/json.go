@@ -3,9 +3,12 @@ package inline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
+	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/client/selector"
 )
 
 func RunJSON(ctx context.Context, args Args) error {
@@ -17,6 +20,14 @@ func RunJSON(ctx context.Context, args Args) error {
 	if args.ChapterPopulate {
 		for i, mangaResult := range mangaResults {
 			chapters, err := chapters(ctx, client, args, mangaResult.Manga)
+			var selErr *selector.Error
+			// one manga without the chapters doesn't fail the others
+			if err != nil && len(mangaResults) > 1 && ctx.Err() == nil {
+				if !errors.Is(err, selector.ErrNoChapters) && !errors.As(err, &selErr) {
+					args.warn("manga %q: %s", mangaResult.Manga, err)
+				}
+				chapters, err = []mangadata.Chapter{}, nil
+			}
 			if err != nil {
 				return err
 			}
