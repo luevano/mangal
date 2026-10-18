@@ -129,4 +129,11 @@ func TestOPDSAuth(t *testing.T) {
 			t.Errorf("%s %q: %d, want %d", tc.user, tc.password, resp.StatusCode, tc.want)
 		}
 	}
+	// unknown names aren't remembered (any can be sent)
+	a := s.api.Auth
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if _, ok := a.users["me"]; ok || len(a.users) != 1 {
+		t.Errorf("cached users %v", a.users)
+	}
 }

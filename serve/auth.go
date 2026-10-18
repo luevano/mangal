@@ -131,7 +131,6 @@ type Auth struct {
 // cachedUser is a user as read at, re-read after usersEvery (another process changed it).
 type cachedUser struct {
 	user storage.User
-	err  error
 	at   time.Time
 }
 
@@ -177,19 +176,20 @@ func (a *Auth) user(name string) (storage.User, error) {
 	c, ok := a.users[key]
 	a.mu.Unlock()
 	if ok && time.Since(c.at) < usersEvery {
-		return c.user, c.err
+		return c.user, nil
 	}
 	u, err := a.Users.Get(name)
-	if err != nil && !errors.Is(err, storage.ErrUserNotFound) {
+	if err != nil {
+		// not cached: any name may be sent, the map would grow without bound
 		return storage.User{}, err
 	}
 	a.mu.Lock()
 	if a.users == nil {
 		a.users = map[string]cachedUser{}
 	}
-	a.users[key] = cachedUser{user: u, err: err, at: time.Now()}
+	a.users[key] = cachedUser{user: u, at: time.Now()}
 	a.mu.Unlock()
-	return u, err
+	return u, nil
 }
 
 // forget drops the cached user (changed here: it applies at once).
