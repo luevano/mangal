@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
@@ -47,9 +48,59 @@ func (o Ops) keep() int {
 	return config.Data.Backups.Get()
 }
 
-// Lock takes the library's lock for the operation kind, waiting for it (LockLibrary).
+// Lock takes the library's lock for the operation kind, waiting for it (LockLibrary),
+// then waits for the chapters being downloaded (ChapterLockPrefix) to be written: one
+// written during the operation would go where it no longer belongs. The downloads pause
+// before their next chapter while it holds the lock. With wait false, a chapter being
+// written is a *LibraryBusyError with its download as the holder.
+//
+// Lock order: the library's lock, then the chapter markers. A download never holds a
+// marker while it waits for the library (LockChapter lets it go), so neither waits on the
+// other forever, and the operation doesn't starve: new chapters wait for it.
 func (o Ops) Lock(ctx context.Context, kind string, wait bool, onWait func(LibraryBusy)) (context.Context, func(), error) {
-	return LockLibrary(ctx, o.Storage.Watches(), kind, wait, onWait)
+	if HoldingLibrary(ctx) {
+		return ctx, func() {}, nil
+	}
+	store := o.Storage.Watches()
+	waited := false
+	once := func(b LibraryBusy) {
+		if !waited {
+			waited = true
+			if onWait != nil {
+				onWait(b)
+			}
+		}
+	}
+	held, unlock, err := LockLibrary(ctx, store, kind, wait, once)
+	if err != nil {
+		return ctx, nil, err
+	}
+	for {
+		writing, err := store.Holders(ChapterLockPrefix, ProviderLockStale)
+		if err != nil {
+			unlock()
+			return ctx, nil, err
+		}
+		if len(writing) == 0 {
+			return held, unlock, nil
+		}
+		if !wait {
+			unlock()
+			return ctx, nil, &LibraryBusyError{Holder: writing[0]}
+		}
+		if !waited {
+			log.Info("waiting for a chapter download (%s, pid %d on %s)", writing[0].Name, writing[0].PID, writing[0].Host)
+		}
+		once(LibraryBusy{Holder: writing[0]})
+		timer := time.NewTimer(libraryLockPoll)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			unlock()
+			return ctx, nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 // Snapshot copies the data database into the backups directory before the change named

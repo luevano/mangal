@@ -85,7 +85,7 @@ func TestDownloadRetry(t *testing.T) {
 			case EventDone:
 				done++
 			}
-		}, noLock, get)
+		}, noLock, nil, get)
 	})
 
 	if !results[0].Succeed() {
@@ -123,7 +123,7 @@ func TestDownloadCancelledWait(t *testing.T) {
 		if e.Kind == EventWait {
 			cancel()
 		}
-	}, noLock, get)
+	}, noLock, nil, get)
 	if time.Since(start) > 5*time.Second {
 		t.Error("the wait ignored the cancel")
 	}
@@ -160,7 +160,7 @@ func TestDownloadNoDelay(t *testing.T) {
 			if e.Kind == EventWait {
 				waits++
 			}
-		}, noLock, get)
+		}, noLock, nil, get)
 	})
 	if waits != 0 || tries[2] != 1 {
 		t.Errorf("retried: %d waits, %d tries", waits, tries[2])

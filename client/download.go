@@ -85,7 +85,8 @@ func (e Event) String() string {
 // delay (that chapter fails), stops it: the rest of the chapters stay to download.
 //
 // The provider's lock (ProviderLockName) is held for the whole download, waiting
-// (EventBusy) while a watch check or another download has it.
+// (EventBusy) while a watch check or another download has it; each chapter waits
+// (EventBusy) while a library operation runs (see Ops.Lock).
 func Download(ctx context.Context, client *libmangal.Client, chapters []mangadata.Chapter, options libmangal.DownloadOptions, onEvent func(Event)) Results {
 	if onEvent == nil {
 		onEvent = func(Event) {}
@@ -101,7 +102,7 @@ func Download(ctx context.Context, client *libmangal.Client, chapters []mangadat
 	options.OnProgress = func(p libmangal.DownloadProgress) {
 		onEvent(Event{Kind: EventProgress, Index: started.Index, Result: started.Result, Progress: &p})
 	}
-	return download(ctx, client.Info().ID, chapters, track, lockStored, func(ctx context.Context, ch mangadata.Chapter) (*metadata.DownloadedChapter, error) {
+	return download(ctx, client.Info().ID, chapters, track, lockStored, chapterStored, func(ctx context.Context, ch mangadata.Chapter) (*metadata.DownloadedChapter, error) {
 		return downloadChapter(ctx, client, ch, options)
 	})
 }
@@ -116,7 +117,18 @@ func lockStored(ctx context.Context, provider string, onWait func(ProviderBusy))
 	return LockProvider(ctx, store, provider, LockForDownload, onWait)
 }
 
-func download(ctx context.Context, provider string, chapters []mangadata.Chapter, onEvent func(Event), lock lockFunc, get getFunc) Results {
+// chapterFunc marks a chapter of the provider as being written (LockChapter), done unmarks it.
+type chapterFunc func(ctx context.Context, provider string, onWait func(LibraryBusy)) (done func(), err error)
+
+func chapterStored(ctx context.Context, provider string, onWait func(LibraryBusy)) (func(), error) {
+	store, err := providerLockStore()
+	if err != nil {
+		return nil, err
+	}
+	return LockChapter(ctx, store, provider, onWait)
+}
+
+func download(ctx context.Context, provider string, chapters []mangadata.Chapter, onEvent func(Event), lock lockFunc, mark chapterFunc, get getFunc) Results {
 	if onEvent == nil {
 		onEvent = func(Event) {}
 	}
@@ -151,10 +163,19 @@ func download(ctx context.Context, provider string, chapters []mangadata.Chapter
 			defer unlock()
 			lockedCtx, locked = c, true
 		}
+		done, err := markChapter(lockedCtx, provider, r, i, onEvent, mark)
+		if err != nil {
+			if ctx.Err() == nil {
+				r.Err = err
+				onEvent(Event{Kind: EventDone, Index: i, Result: r})
+			}
+			break
+		}
 		onEvent(Event{Kind: EventStart, Index: i, Result: r})
 		r.Down, r.Err = retry(lockedCtx, r.Chapter, get, func(attempt int, wait time.Duration) {
 			onEvent(Event{Kind: EventWait, Index: i, Result: r, Attempt: attempt, Wait: wait})
 		})
+		done()
 		if r.Err != nil && ctx.Err() != nil {
 			// cancelled, not failed
 			r.Err = nil
@@ -175,12 +196,30 @@ func download(ctx context.Context, provider string, chapters []mangadata.Chapter
 	return results
 }
 
+// markChapter marks the chapter as being written, after waiting (EventBusy) while a library
+// operation runs: the chapter would go where it no longer belongs.
+func markChapter(lockedCtx context.Context, provider string, r *Result, i int, onEvent func(Event), mark chapterFunc) (func(), error) {
+	if mark == nil {
+		return func() {}, nil
+	}
+	done, err := mark(lockedCtx, provider, func(b LibraryBusy) {
+		onEvent(Event{Kind: EventBusy, Index: i, Result: r, Busy: &ProviderBusy{Provider: provider, Holder: b.Holder, Library: true}})
+	})
+	if err != nil && lockedCtx.Err() != nil {
+		err = context.Cause(lockedCtx)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("wait for the library: %w", err)
+	}
+	return done, nil
+}
+
 // DownloadChapter downloads the chapter and records it in the library, unless it went to
 // the temp dir (read without download_on_read). The manga's default metadata binding (if
 // any, see WithoutBinding) is its metadata. A chapter that's already there (maybe
 // from another provider, see DownloadedChapter.Skipped) isn't downloaded again. A rate
 // limit is waited out up to 10 times (EventWait), not one without a delay; the
-// provider's lock too (EventBusy, see Download). onEvent may be nil.
+// provider's lock and a library operation too (EventBusy, see Download). onEvent may be nil.
 func DownloadChapter(ctx context.Context, client *libmangal.Client, chapter mangadata.Chapter, options libmangal.DownloadOptions, onEvent func(Event)) (*metadata.DownloadedChapter, error) {
 	if onEvent == nil {
 		onEvent = func(Event) {}
@@ -196,6 +235,14 @@ func DownloadChapter(ctx context.Context, client *libmangal.Client, chapter mang
 		return nil, fmt.Errorf("lock provider: %w", err)
 	}
 	defer unlock()
+	done, err := markChapter(lockedCtx, client.Info().ID, r, 0, onEvent, chapterStored)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, err
+	}
+	defer done()
 	options.OnProgress = func(p libmangal.DownloadProgress) {
 		onEvent(Event{Kind: EventProgress, Result: r, Progress: &p})
 	}

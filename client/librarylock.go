@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/luevano/mangal/v5/log"
@@ -113,6 +115,93 @@ func LockLibrary(ctx context.Context, store storage.Watches, purpose string, wai
 		case <-ctx.Done():
 			timer.Stop()
 			return ctx, nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+// ChapterLockPrefix starts the data db lock a download holds while it writes one chapter
+// (chapter:<provider>:<pid>:<n>): a library operation waits for them (Ops.Lock).
+const ChapterLockPrefix = "chapter:"
+
+var chapterSeq atomic.Int64
+
+// LockChapter marks a chapter of the provider as being written, after waiting while a
+// library operation runs (onWait, which may be nil, is told once). done unmarks it. With
+// ctx holding the library's lock nothing is marked. A cancelled ctx stops the wait.
+func LockChapter(ctx context.Context, store storage.Watches, provider string, onWait func(LibraryBusy)) (done func(), _ error) {
+	if HoldingLibrary(ctx) {
+		return func() {}, nil
+	}
+	waited := false
+	once := func(b LibraryBusy) {
+		if !waited {
+			waited = true
+			if onWait != nil {
+				onWait(b)
+			}
+		}
+	}
+	for {
+		if err := WaitLibraryFree(ctx, store, once); err != nil {
+			return nil, err
+		}
+		name := fmt.Sprintf("%s%s:%d:%d", ChapterLockPrefix, provider, os.Getpid(), chapterSeq.Add(1))
+		lock, err := store.LockAs(name, LockForDownload, ProviderLockStale)
+		if err != nil {
+			return nil, err
+		}
+		done := keepAlive(lock, func(error) {})
+		// the library's lock taken since the wait: the operation waits for this marker,
+		// so let it go first
+		if _, held, err := libraryHolder(store); err != nil || held {
+			done()
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+		return done, nil
+	}
+}
+
+// libraryHolder is who holds the library's lock, false when nobody does.
+func libraryHolder(store storage.Watches) (storage.LockHolder, bool, error) {
+	holders, err := store.Holders(LibraryLockName, LibraryLockStale)
+	if err != nil {
+		return storage.LockHolder{}, false, err
+	}
+	i := slices.IndexFunc(holders, func(h storage.LockHolder) bool { return h.Name == LibraryLockName })
+	if i < 0 {
+		return storage.LockHolder{}, false, nil
+	}
+	return holders[i], true, nil
+}
+
+// WaitLibraryFree waits while someone else holds the library's lock (polling like
+// LockLibrary; onWait, which may be nil, is told once), without taking it. With ctx
+// holding it, it doesn't wait. A cancelled ctx stops the wait.
+func WaitLibraryFree(ctx context.Context, store storage.Watches, onWait func(LibraryBusy)) error {
+	if HoldingLibrary(ctx) {
+		return nil
+	}
+	waited := false
+	for {
+		holder, held, err := libraryHolder(store)
+		if err != nil || !held {
+			return err
+		}
+		if !waited {
+			waited = true
+			if onWait != nil {
+				onWait(LibraryBusy{Holder: holder})
+			}
+		}
+		timer := time.NewTimer(libraryLockPoll)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
 		case <-timer.C:
 		}
 	}

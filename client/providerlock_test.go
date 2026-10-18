@@ -78,7 +78,7 @@ func started(provider string, chapters []mangadata.Chapter, get getFunc) (<-chan
 			if e.Kind == EventStart {
 				once.Do(func() { close(start) })
 			}
-		}, lockStored, get)
+		}, lockStored, chapterStored, get)
 	}()
 	return start, done
 }
@@ -98,7 +98,7 @@ func TestDownloadSameProviderWaits(t *testing.T) {
 			if e.Kind == EventBusy {
 				busy <- *e.Busy
 			}
-		}, lockStored, lib.get(nil))
+		}, lockStored, chapterStored, lib.get(nil))
 	}()
 	select {
 	case b := <-busy:
@@ -136,7 +136,7 @@ func TestDownloadOtherProviderDoesntWait(t *testing.T) {
 			if e.Kind == EventBusy {
 				t.Error("waited for another provider")
 			}
-		}, lockStored, lib.get(nil))
+		}, lockStored, chapterStored, lib.get(nil))
 	}()
 	select {
 	case r := <-done:
@@ -162,7 +162,7 @@ func TestDownloadCancelledWhileWaiting(t *testing.T) {
 		if e.Kind == EventBusy {
 			cancel()
 		}
-	}, lockStored, lib.get(nil))
+	}, lockStored, chapterStored, lib.get(nil))
 	if len(results.ToDownload()) != 1 || len(lib.gets) != 0 {
 		t.Errorf("results %+v, downloaded %v", results, lib.gets)
 	}
@@ -186,7 +186,7 @@ func TestWatchCheckAndDownload(t *testing.T) {
 			if e.Kind == EventBusy {
 				t.Error("the check waited for its own lock")
 			}
-		}, lockStored, lib.get(nil))
+		}, lockStored, chapterStored, lib.get(nil))
 	}()
 	select {
 	case r := <-own:
@@ -204,7 +204,7 @@ func TestWatchCheckAndDownload(t *testing.T) {
 			if e.Kind == EventBusy {
 				busy <- *e.Busy
 			}
-		}, lockStored, lib.get(nil))
+		}, lockStored, chapterStored, lib.get(nil))
 	}()
 	b := <-busy
 	if !b.Watch || !strings.HasPrefix(b.Message(), "p is being checked by a watch (pid ") {

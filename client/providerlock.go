@@ -44,12 +44,17 @@ type ProviderBusy struct {
 	Holder   storage.LockHolder
 	// Watch is true when the holder is a watch check.
 	Watch bool
+	// Library is true when the download waits for the library's lock instead (Holder is
+	// the library operation's).
+	Library bool
 }
 
 // Message is "<provider> is busy downloading in another mangal (pid N), waiting…" (or
 // being checked by a watch).
 func (b ProviderBusy) Message() string {
 	switch {
+	case b.Library:
+		return LibraryBusy{Holder: b.Holder}.Message()
 	case b.Watch:
 		return fmt.Sprintf("%s is being checked by a watch (pid %d), waiting…", b.Provider, b.Holder.PID)
 	case b.Holder.PID == os.Getpid():
