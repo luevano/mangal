@@ -3,7 +3,9 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
+	"sync"
 	"testing"
 )
 
@@ -70,5 +72,40 @@ func TestUsers(t *testing.T) {
 	}
 	if err := u.RemoveToken(ctx, "claude"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("removed twice: %v", err)
+	}
+}
+
+// TestTokensConcurrent: tokens added and removed at once all count (none lost, none back).
+func TestTokensConcurrent(t *testing.T) {
+	ctx := context.Background()
+	u := NewUsers()
+	if _, _, err := u.AddToken(ctx, "revoked", nil); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		if err := u.RemoveToken(ctx, "revoked"); err != nil {
+			t.Error(err)
+		}
+	})
+	for i := range 10 {
+		wg.Go(func() {
+			if _, _, err := u.AddToken(ctx, fmt.Sprint("t", i), nil); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	tokens, err := u.Tokens(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tokens) != 10 || slices.ContainsFunc(tokens, func(t Token) bool { return t.Name == "revoked" }) {
+		t.Errorf("tokens %v", tokens)
+	}
+	for _, tok := range tokens {
+		if err := u.RemoveToken(ctx, tok.Name); err != nil {
+			t.Error(err)
+		}
 	}
 }

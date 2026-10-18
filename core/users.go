@@ -316,32 +316,29 @@ func (l localUsers) AddToken(_ context.Context, name string, scopes []string) (T
 	if err != nil {
 		return Token{}, "", err
 	}
-	entries, err := cache.ServeTokens()
-	if err != nil {
-		return Token{}, "", err
-	}
-	if slices.ContainsFunc(entries, func(t cache.ServeTokenEntry) bool { return t.Name == name }) {
-		return Token{}, "", &RefusedError{Reasons: []string{fmt.Sprintf("there's a token %q already", name)}}
-	}
 	secret, err := NewToken()
 	if err != nil {
 		return Token{}, "", err
 	}
 	e := cache.ServeTokenEntry{Name: name, Hash: HashToken(secret), Scopes: scopes, Created: time.Now()}
-	if err := cache.SetServeTokens(append(entries, e)); err != nil {
+	err = cache.UpdateServeTokens(func(entries []cache.ServeTokenEntry) ([]cache.ServeTokenEntry, error) {
+		if slices.ContainsFunc(entries, func(t cache.ServeTokenEntry) bool { return t.Name == name }) {
+			return nil, &RefusedError{Reasons: []string{fmt.Sprintf("there's a token %q already", name)}}
+		}
+		return append(entries, e), nil
+	})
+	if err != nil {
 		return Token{}, "", err
 	}
 	return Token{Name: name, Scopes: scopes, Created: e.Created}, secret, nil
 }
 
 func (l localUsers) RemoveToken(_ context.Context, name string) error {
-	entries, err := cache.ServeTokens()
-	if err != nil {
-		return err
-	}
-	i := slices.IndexFunc(entries, func(t cache.ServeTokenEntry) bool { return t.Name == name })
-	if i < 0 {
-		return &NotFoundError{What: fmt.Sprintf("no token %q", name)}
-	}
-	return cache.SetServeTokens(slices.Delete(entries, i, i+1))
+	return cache.UpdateServeTokens(func(entries []cache.ServeTokenEntry) ([]cache.ServeTokenEntry, error) {
+		i := slices.IndexFunc(entries, func(t cache.ServeTokenEntry) bool { return t.Name == name })
+		if i < 0 {
+			return nil, &NotFoundError{What: fmt.Sprintf("no token %q", name)}
+		}
+		return slices.Delete(entries, i, i+1), nil
+	})
 }

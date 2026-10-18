@@ -3,9 +3,11 @@ package cache
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/luevano/mangal/v5/config"
@@ -292,4 +294,43 @@ func SetServeTokens(tokens []ServeTokenEntry) error {
 		return fmt.Errorf("save the serve tokens: %w", err)
 	}
 	return nil
+}
+
+// serveTokensMu and the serveTokensLock make UpdateServeTokens one at a time, in this
+// process and across them.
+var serveTokensMu sync.Mutex
+
+const serveTokensLock = "serve-tokens"
+
+// UpdateServeTokens saves the tokens change makes of the saved ones, one change at a time
+// (two at once could undo each other: a revoked token come back).
+func UpdateServeTokens(change func([]ServeTokenEntry) ([]ServeTokenEntry, error)) error {
+	serveTokensMu.Lock()
+	defer serveTokensMu.Unlock()
+	st, err := Storage()
+	if err != nil {
+		return err
+	}
+	lock, err := st.Watches().Lock(serveTokensLock, 10*time.Second)
+	// another process changes them: it takes milliseconds
+	for tries := 0; errors.Is(err, storage.ErrLocked) && tries < 100; tries++ {
+		time.Sleep(50 * time.Millisecond)
+		lock, err = st.Watches().Lock(serveTokensLock, 10*time.Second)
+	}
+	if err != nil {
+		return fmt.Errorf("save the serve tokens: %w", err)
+	}
+	defer func() {
+		if err := lock.Unlock(); err != nil {
+			log.Warn("%s", err)
+		}
+	}()
+	tokens, err := ServeTokens()
+	if err != nil {
+		return err
+	}
+	if tokens, err = change(tokens); err != nil {
+		return err
+	}
+	return SetServeTokens(tokens)
 }
