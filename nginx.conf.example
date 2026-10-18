@@ -1,0 +1,33 @@
+# mangal serve behind nginx on the same machine (the web UI, the API, OPDS). Copy it to
+# /etc/nginx/sites-available/, set the server_name and the certificate, link it into
+# sites-enabled, then `nginx -t && systemctl reload nginx`.
+#
+# mangal needs nothing for it: every request logs in (a user, an API token). serve.host stays
+# 127.0.0.1 so nothing reaches mangal without going through nginx. Optional:
+#   mangal config set serve.trusted_proxies 127.0.0.1
+# puts the clients' addresses (X-Forwarded-For) in mangal's logs and its login rate limit;
+# without it every login through nginx shares nginx's address.
+server {
+    server_name mangal.example.com;
+
+    location / {
+        # 127.0.0.1, not localhost: localhost may be ::1 first, which serve doesn't listen on
+        proxy_pass http://127.0.0.1:6977;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # https here makes the login cookie Secure
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # the live events (/api/v1/events) are a stream: no buffering, and a ping every 30 s
+        # keeps them under the read timeout
+        proxy_buffering off;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+
+    # your certificate (Let's Encrypt, ...); mangal can also serve HTTPS itself with
+    # serve.tls_cert and serve.tls_key
+    include /etc/nginx/ssl_cert.conf;
+}

@@ -248,7 +248,8 @@ OPDS (`/opds`). Every request logs in, wherever it comes from: people as users (
 <name>`, then the web UI's login page, or basic auth for OPDS readers), programs with an API token
 (`mangal token add <what> --scope read`, sent as `Authorization: Bearer <token>`).
 mangal on the same config (the TUI, `mangal watch`, `mangal api`) uses the server's own key. Behind a
-reverse proxy nothing needs setting (`serve.trusted_proxies` puts the clients' addresses in the logs).
+reverse proxy nothing needs setting (`serve.trusted_proxies` puts the clients' addresses in the logs);
+[`nginx.conf.example`](nginx.conf.example) is an nginx site for it.
 
 ```sh
 mangal user add david
