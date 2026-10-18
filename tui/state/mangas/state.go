@@ -66,6 +66,8 @@ type resultsMsg struct {
 	items  []_list.Item
 	// byID: a search by id, its manga opens right away
 	byID bool
+	// note about the query, shown again with the opened manga's notice that replaces it
+	note string
 }
 
 // openedMsg is a manga ready to be shown: its metadata (nil if none was searched or
@@ -192,7 +194,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		s.markWatched()
 		s.updateKeys()
 		if i, ok := s.List.SelectedItem().(*item); ok && msg.byID && len(msg.items) == 1 && !base.Busy(ctx) {
-			return tea.Batch(cmd, s.openCmd(ctx, i))
+			return tea.Batch(cmd, s.openCmd(ctx, i, msg.note))
 		}
 		return cmd
 	case watchedMsg:
@@ -253,7 +255,7 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyPressMsg) (tea.Cmd, bo
 		if base.Busy(ctx) {
 			return nil, true
 		}
-		return s.openCmd(ctx, i), true
+		return s.openCmd(ctx, i, ""), true
 	case key.Matches(msg, s.keys.anilist):
 		return anilist.Open(s.client, i.manga), true
 	case key.Matches(msg, s.keys.metadata):
@@ -277,7 +279,11 @@ func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 	if id != "" {
 		label = fmt.Sprintf("Getting manga %q", id)
 	}
-	return tea.Batch(note, base.LoadWithStatus(ctx, label, func(ctx context.Context, _ func(string)) ([]_list.Item, error) {
+	var noteCmd tea.Cmd
+	if note != "" {
+		noteCmd = base.Notify(note)
+	}
+	return tea.Batch(noteCmd, base.LoadWithStatus(ctx, label, func(ctx context.Context, _ func(string)) ([]_list.Item, error) {
 		mangas, err := selector.Search(ctx, client.Searcher(s.client), id, title)
 		if err != nil {
 			return nil, err
@@ -287,12 +293,14 @@ func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 			items[i] = newItem(s.client.Info().ID, m, &s.extraInfo, &s.fullExtraInfo)
 		}
 		return items, nil
-	}, func(items []_list.Item) tea.Msg { return resultsMsg{search: n, items: items, byID: id != ""} }))
+	}, func(items []_list.Item) tea.Msg {
+		return resultsMsg{search: n, items: items, byID: id != "", note: note}
+	}))
 }
 
 // openCmd searches the manga's metadata (download.metadata.search) and its volumes, or
 // right away the chapters (tui.expand_*).
-func (s *state) openCmd(ctx context.Context, i *item) tea.Cmd {
+func (s *state) openCmd(ctx context.Context, i *item, note string) tea.Cmd {
 	manga := i.manga
 	// the metadata is read here, it's only changed in Update
 	searchMeta := config.Download.Metadata.Search.Get() && !hasMetadata(manga.Metadata())
@@ -303,9 +311,11 @@ func (s *state) openCmd(ctx context.Context, i *item) tea.Cmd {
 		label = fmt.Sprintf("Searching metadata and volumes for %q", manga)
 	}
 	return base.LoadWithStatus(ctx, label, func(ctx context.Context, status func(string)) (openedMsg, error) {
-		msg := openedMsg{item: i}
+		msg := openedMsg{item: i, notice: note}
 		if searchMeta {
-			msg.meta, msg.notice = s.searchMetadata(ctx, manga)
+			var notice string
+			msg.meta, notice = s.searchMetadata(ctx, manga)
+			msg.notice = joinNotice(msg.notice, notice)
 			status(fmt.Sprintf("Searching volumes for %q", manga))
 		}
 
@@ -383,8 +393,8 @@ func (s *state) onOpened(msg openedMsg) tea.Cmd {
 }
 
 func joinNotice(a, b string) string {
-	if a == "" {
-		return b
+	if a == "" || b == "" {
+		return a + b
 	}
 	return a + " · " + b
 }

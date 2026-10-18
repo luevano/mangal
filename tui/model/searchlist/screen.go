@@ -96,14 +96,14 @@ func (s *Screen) ToggleByID() tea.Cmd {
 
 // MangaQuery is the manga id or the title a query is: an id when searching by id, or
 // for a deprecated "mid:<id>" query (note says so).
-func (s *Screen) MangaQuery(query string) (id, title string, note tea.Cmd) {
+func (s *Screen) MangaQuery(query string) (id, title, note string) {
 	if s.ByID {
-		return query, "", nil
+		return query, "", ""
 	}
 	if id, ok := selector.IDQuery(query); ok {
-		return id, "", base.Notify(fmt.Sprintf(`"mid:" is deprecated, %s searches by id`, base.KeyByID.Help().Key))
+		return id, "", fmt.Sprintf(`"mid:" is deprecated, %s searches by id`, base.KeyByID.Help().Key)
 	}
-	return "", query, nil
+	return "", query, ""
 }
 
 // NewSearch numbers a search started now, its results carry the number to Latest.

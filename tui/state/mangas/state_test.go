@@ -17,3 +17,11 @@ func TestKeys(t *testing.T) {
 		t.Error(keys)
 	}
 }
+
+func TestJoinNotice(t *testing.T) {
+	for _, tt := range [][3]string{{"", "", ""}, {"a", "", "a"}, {"", "b", "b"}, {"a", "b", "a · b"}} {
+		if got := joinNotice(tt[0], tt[1]); got != tt[2] {
+			t.Errorf("joinNotice(%q, %q) = %q", tt[0], tt[1], got)
+		}
+	}
+}

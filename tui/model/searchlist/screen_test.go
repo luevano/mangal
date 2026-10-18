@@ -56,12 +56,12 @@ func TestHistory(t *testing.T) {
 
 func TestMangaQuery(t *testing.T) {
 	s := New(search.New("Search manga...", "", 30, 5), list.New(1, 0, "item", "items", []string{}, func(s string) _list.DefaultItem { return item(s) }), History{})
-	if id, title, note := s.MangaQuery("Berserk"); id != "" || title != "Berserk" || note != nil {
-		t.Errorf("title: %q %q %v", id, title, note)
+	if id, title, note := s.MangaQuery("Berserk"); id != "" || title != "Berserk" || note != "" {
+		t.Errorf("title: %q %q %q", id, title, note)
 	}
 	// deprecated, with a note
-	if id, title, note := s.MangaQuery("mid:12"); id != "12" || title != "" || note == nil {
-		t.Errorf("mid: %q %q %v", id, title, note)
+	if id, title, note := s.MangaQuery("mid:12"); id != "12" || title != "" || note == "" {
+		t.Errorf("mid: %q %q %q", id, title, note)
 	}
 	s.ToggleByID()
 	if id, title, _ := s.MangaQuery("Berserk"); id != "Berserk" || title != "" || s.Search.Placeholder() != "Manga id..." {

@@ -211,7 +211,11 @@ func (s *Manga) searchCmd(ctx context.Context, query string) tea.Cmd {
 	if id != "" {
 		label = fmt.Sprintf("Getting manga %q from %s", id, provider)
 	}
-	return tea.Batch(note, base.LoadWithStatus(ctx, label, func(ctx context.Context, _ func(string)) (ResultsMsg, error) {
+	var noteCmd tea.Cmd
+	if note != "" {
+		noteCmd = base.Notify(note)
+	}
+	return tea.Batch(noteCmd, base.LoadWithStatus(ctx, label, func(ctx context.Context, _ func(string)) (ResultsMsg, error) {
 		return s.Results(ctx, provider, id, title)
 	}, func(msg ResultsMsg) tea.Msg {
 		msg.Search = n
