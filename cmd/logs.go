@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
@@ -166,7 +167,7 @@ func listLogFiles(cmd *cobra.Command, files []log.File) error {
 		if f.Closed {
 			state = "closed"
 		}
-		cmd.Printf("%-*s  %8s  %s  %s\n", width, f.Name, humanize.Bytes(uint64(f.Size)), formatTime(f.ModTime), state)
+		cmd.Printf("%-*s  %8s  %s  %s\n", width, f.Name, humanize.Bytes(uint64(f.Size)), watch.FormatTime(f.ModTime), state)
 	}
 	return nil
 }

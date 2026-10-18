@@ -649,7 +649,7 @@ func TestProviderHistory(t *testing.T) {
 		titles = append(titles, i.(*runItem).Title())
 	}
 	// latest first, only the provider's
-	want := []string{formatTime(time.Time{}) + " · Frieren · skipped", formatTime(time.Time{}) + " · Frieren · error"}
+	want := []string{watch.FormatTime(time.Time{}) + " · Frieren · skipped", watch.FormatTime(time.Time{}) + " · Frieren · error"}
 	if !slices.Equal(titles, want) {
 		t.Errorf("history %q, want %q", titles, want)
 	}

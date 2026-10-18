@@ -36,16 +36,12 @@ func outcome(r Result, dryRun bool) string {
 	case n == 0:
 		outcome = "no new chapters"
 	case dryRun:
-		numbers := make([]string, n)
-		for i, ch := range r.Chapters {
-			numbers[i] = stringutil.FormatFloat32(ch.Number)
-		}
-		outcome = fmt.Sprintf("would download %d (%s)", n, strings.Join(numbers, ", "))
+		outcome = fmt.Sprintf("would download %d (%s)", n, ChapterNumbers(r.Chapters))
 	case r.From != nil && *r.Newest() < *r.From:
 		// only gaps below the last one
-		outcome = fmt.Sprintf("downloaded %d (%s → %s)", n, formatNumber(r.Lowest()), formatNumber(r.Newest()))
+		outcome = fmt.Sprintf("downloaded %d (%s → %s)", n, FormatNumber(r.Lowest()), FormatNumber(r.Newest()))
 	default:
-		outcome = fmt.Sprintf("downloaded %d (%s → %s)", n, formatNumber(r.From), formatNumber(r.Newest()))
+		outcome = fmt.Sprintf("downloaded %d (%s → %s)", n, FormatNumber(r.From), FormatNumber(r.Newest()))
 	}
 	if r.Unavailable > 0 {
 		outcome += fmt.Sprintf(", %d unavailable", r.Unavailable)
@@ -62,11 +58,29 @@ func outcome(r Result, dryRun bool) string {
 	return outcome
 }
 
-func formatNumber(n *float32) string {
+// FormatNumber is a chapter number, "-" for none.
+func FormatNumber(n *float32) string {
 	if n == nil {
 		return "-"
 	}
 	return stringutil.FormatFloat32(*n)
+}
+
+// ChapterNumbers are the chapters' numbers as 65, 66, 67.5.
+func ChapterNumbers(chapters []storage.RunChapter) string {
+	ns := make([]float32, len(chapters))
+	for i, ch := range chapters {
+		ns[i] = ch.Number
+	}
+	return FormatNumbers(ns)
+}
+
+// FormatTime is t in local time, "never" for none.
+func FormatTime(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	return t.Local().Format("2006-01-02 15:04")
 }
 
 // HoldLabel is a hold mark for people.

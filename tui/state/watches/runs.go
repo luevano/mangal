@@ -37,17 +37,17 @@ type runItem struct {
 func (i *runItem) ItemKey() string { return strconv.FormatInt(i.r.ID, 10) }
 
 func (i *runItem) FilterValue() string {
-	return strings.Join([]string{i.r.Title, i.r.Provider, result(i.r), i.kind, formatTime(i.r.Started), chapterNumbers(i.r)}, " ")
+	return strings.Join([]string{i.r.Title, i.r.Provider, result(i.r), i.kind, watch.FormatTime(i.r.Started), watch.ChapterNumbers(i.r.Chapters)}, " ")
 }
 
 func (i *runItem) Title() string {
 	res := result(i.r)
 	if len(i.r.Chapters) != 0 {
-		res += " (" + chapterNumbers(i.r) + ")"
+		res += " (" + watch.ChapterNumbers(i.r.Chapters) + ")"
 	}
 	var parts []string
 	if i.started {
-		parts = append(parts, formatTime(i.r.Started))
+		parts = append(parts, watch.FormatTime(i.r.Started))
 	}
 	if i.watchTitle {
 		parts = append(parts, i.r.Title)
@@ -63,7 +63,7 @@ func (i *runItem) Description() string {
 	if i.kind != "" {
 		parts = append(parts, i.kind)
 	}
-	parts = append(parts, "from "+formatNumber(i.r.From))
+	parts = append(parts, "from "+watch.FormatNumber(i.r.From))
 	if i.r.Error != "" {
 		parts = append(parts, i.r.Error)
 	}
@@ -84,10 +84,12 @@ type checkRunItem struct{ run watch.CheckRun }
 
 func (i *checkRunItem) ItemKey() string { return strconv.FormatInt(i.run.ID, 10) }
 
-func (i *checkRunItem) FilterValue() string { return i.run.Kind + " " + formatTime(i.run.Started) }
+func (i *checkRunItem) FilterValue() string {
+	return i.run.Kind + " " + watch.FormatTime(i.run.Started)
+}
 
 func (i *checkRunItem) Title() string {
-	return formatTime(i.run.Started) + " · " + i.run.Kind
+	return watch.FormatTime(i.run.Started) + " · " + i.run.Kind
 }
 
 func (i *checkRunItem) Description() string {

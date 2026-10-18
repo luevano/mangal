@@ -80,17 +80,17 @@ func (i *item) Description() string {
 		if !lw.since.IsZero() {
 			state += " (" + short(max(0, i.now.Sub(lw.since))) + ")"
 		}
-		return w.Provider + " · last " + formatNumber(w.LastDownloaded) + " · " + state
+		return w.Provider + " · last " + watch.FormatNumber(w.LastDownloaded) + " · " + state
 	}
 	if w.NeedsRelink {
-		return w.Provider + " · " + w.MangaID + " · last " + formatNumber(w.LastDownloaded) + " · " + w.RelinkLabel() + ": " + w.RelinkReason
+		return w.Provider + " · " + w.MangaID + " · last " + watch.FormatNumber(w.LastDownloaded) + " · " + w.RelinkLabel() + ": " + w.RelinkReason
 	}
 	parts := []string{w.Provider}
 	if status := library.StatusLabel(w.Status); status != "" {
 		parts = append(parts, status)
 	}
 	parts = append(parts,
-		"last "+formatNumber(w.LastDownloaded),
+		"last "+watch.FormatNumber(w.LastDownloaded),
 		"checked "+ago(w.LastChecked, i.now),
 		"next "+nextCheck(w, i.backoff, i.now),
 	)

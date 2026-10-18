@@ -100,22 +100,6 @@ func printJSON(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
-const timeLayout = "2006-01-02 15:04"
-
-func formatTime(t time.Time) string {
-	if t.IsZero() {
-		return "never"
-	}
-	return t.Local().Format(timeLayout)
-}
-
-func formatLast(n *float32) string {
-	if n == nil {
-		return "-"
-	}
-	return stringutil.FormatFloat32(*n)
-}
-
 var watchAddArgs = struct {
 	Offline   bool
 	ID        string
@@ -227,7 +211,7 @@ after --from.`,
 		case w.ProviderMissing:
 			state = ", provider missing"
 		}
-		successf(cmd, "watching %q from %s (id %d), last downloaded %s%s", w.Title, w.Provider, w.ID, formatLast(w.LastDownloaded), state)
+		successf(cmd, "watching %q from %s (id %d), last downloaded %s%s", w.Title, w.Provider, w.ID, watch.FormatNumber(w.LastDownloaded), state)
 		if w.LibraryProblem() != "" {
 			cmd.Printf("library: %s\n", w.LibraryProblem())
 		}
@@ -302,7 +286,7 @@ func printWatches(out io.Writer, watches []watch.Watch) {
 		if status := library.StatusLabel(w.Status); status != "" && status != "ongoing" {
 			title += " (" + status + ")"
 		}
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", w.ID, w.Provider, title, formatLast(w.LastDownloaded), formatTime(w.LastChecked), next, errs)
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", w.ID, w.Provider, title, watch.FormatNumber(w.LastDownloaded), watch.FormatTime(w.LastChecked), next, errs)
 	}
 	_ = tw.Flush()
 	first := true
@@ -669,7 +653,7 @@ without a title or --id, the watch's title (an exact match).`,
 			return err
 		}
 		successf(cmd, "watch %d: %q from %s (manga id %s), was %s %s, last downloaded %s", w.ID, w.Title, w.Provider, w.MangaID,
-			before.Provider, before.MangaID, formatLast(w.LastDownloaded))
+			before.Provider, before.MangaID, watch.FormatNumber(w.LastDownloaded))
 		if len(w.Bindings) != 0 {
 			cmd.Printf("metadata: %s\n", formatBindings(w.Bindings))
 		}
@@ -960,7 +944,7 @@ func removeRuns(cmd *cobra.Command, ids []int64) error {
 	}
 	for _, removed := range all {
 		r := removed.Run
-		successf(cmd, "deleted run %d (%s from %s, %s check %d, %s) from the history", r.ID, r.Title, r.Provider, r.Status, r.CheckRun, formatTime(r.Started))
+		successf(cmd, "deleted run %d (%s from %s, %s check %d, %s) from the history", r.ID, r.Title, r.Provider, r.Status, r.CheckRun, watch.FormatTime(r.Started))
 		if removed.CheckRunRemoved {
 			cmd.Printf("check %d had no other run, deleted too\n", r.CheckRun)
 		}
@@ -973,7 +957,7 @@ func printRun(cmd *cobra.Command, run watch.CheckRun) {
 	if !run.Finished.IsZero() {
 		took = run.Finished.Sub(run.Started).Round(time.Second).String()
 	}
-	cmd.Printf("# %s check %d, %s (%s): %s, %s, %s\n", run.Kind, run.ID, formatTime(run.Started), took,
+	cmd.Printf("# %s check %d, %s (%s): %s, %s, %s\n", run.Kind, run.ID, watch.FormatTime(run.Started), took,
 		stringutil.Quantify(run.Watches, "watch", "watches"), stringutil.Quantify(run.NewChapters, "new chapter", "new chapters"),
 		stringutil.Quantify(run.Errors, "error", "errors"))
 	for _, r := range run.Results {
@@ -1042,10 +1026,10 @@ var watchStaleCmd = &cobra.Command{
 			return nil
 		}
 		for _, w := range stale {
-			last := "no new chapter since added " + formatTime(w.Added)
+			last := "no new chapter since added " + watch.FormatTime(w.Added)
 			if !w.LastNewAt.IsZero() {
 				days := int(time.Since(w.LastNewAt).Hours() / 24)
-				last = fmt.Sprintf("last new chapter %s on %s (%s ago)", formatLast(w.LastNew), formatTime(w.LastNewAt), stringutil.Quantify(days, "day", "days"))
+				last = fmt.Sprintf("last new chapter %s on %s (%s ago)", watch.FormatNumber(w.LastNew), watch.FormatTime(w.LastNewAt), stringutil.Quantify(days, "day", "days"))
 			}
 			cmd.Printf("%d  %s (%s): %s\n", w.ID, w.Title, w.Provider, last)
 		}

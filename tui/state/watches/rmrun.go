@@ -54,7 +54,7 @@ func (rr *runRemover) update(ctx context.Context, msg tea.Msg, l *list.Model, m 
 		}
 		r := i.r
 		message := fmt.Sprintf("Delete the check of %q from %s (%s, %s) from the history? Its downloads stay. A database snapshot is taken first: %s in the library undoes it.",
-			r.Title, r.Provider, formatTime(r.Started), result(r), base.KeyUndo.Help().Key)
+			r.Title, r.Provider, watch.FormatTime(r.Started), result(r), base.KeyUndo.Help().Key)
 		rr.confirm.AskDelete("Delete check", message, behind(), func() tea.Msg { return removeRunMsg{r: r} })
 		return nil, true
 	case removeRunMsg:
