@@ -588,7 +588,7 @@ func TestLogEvents(t *testing.T) {
 	onEvent(watch.Event{Kind: watch.EventFound, Watch: w, Found: &watch.Found{Chapters: 1124, Picked: []float32{1123, 1124}, From: &from}})
 	onEvent(watch.Event{Kind: watch.EventStatus, Watch: w, Status: &progress.Status{Message: "MangaDex: rate limited, retrying in 5s"}})
 	onEvent(watch.Event{Kind: watch.EventStatus, Watch: w, Status: &progress.Status{Message: "MangaDex: getting page 2", Minor: true}})
-	want := "One Piece (mangadex): found 1124 chapters, 2 to download (1123, 1124)\n" +
+	want := "One Piece (mangadex): found 1,124 chapters, 2 to download (1123, 1124)\n" +
 		"One Piece: MangaDex: rate limited, retrying in 5s\n"
 	if out.String() != want {
 		t.Errorf("got\n%s\nwant\n%s", out.String(), want)

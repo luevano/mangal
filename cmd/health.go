@@ -8,6 +8,7 @@ import (
 
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/spf13/cobra"
 )
 
@@ -125,7 +126,7 @@ error (a watch that isn't checked any more).`,
 			printHealth(cmd.OutOrStdout(), report, healthArgs.Only)
 		}
 		if n := report.Counts.Error; n > 0 {
-			return fmt.Errorf("%s found", countNoun(n, "error", "errors"))
+			return fmt.Errorf("%s found", stringutil.Quantify(n, "error", "errors"))
 		}
 		return nil
 	},
@@ -220,7 +221,7 @@ func printHealth(w io.Writer, report health.Report, only []string) {
 		fmt.Fprintln(w, "no problems found"+dismissed)
 		return
 	}
-	fmt.Fprintf(w, "%s: %s%s\n", countNoun(report.Counts.Total(), "finding", "findings"), severityCounts(report.Counts), dismissed)
+	fmt.Fprintf(w, "%s: %s%s\n", stringutil.Quantify(report.Counts.Total(), "finding", "findings"), severityCounts(report.Counts), dismissed)
 	if slices.ContainsFunc(report.Findings, func(f health.Finding) bool { return slices.ContainsFunc(f.Fix.Commands, dryRunCommand) }) {
 		fmt.Fprintln(w, `"mangal library bind/merge/move/mark/rename", "library scan --mark" and "mangal migrate" only list what they'd do, --apply does it`)
 	}
@@ -255,20 +256,13 @@ func dryRunCommand(c string) bool {
 func severityCounts(c health.Counts) string {
 	var parts []string
 	if c.Error > 0 {
-		parts = append(parts, countNoun(c.Error, "error", "errors"))
+		parts = append(parts, stringutil.Quantify(c.Error, "error", "errors"))
 	}
 	if c.Warning > 0 {
-		parts = append(parts, countNoun(c.Warning, "warning", "warnings"))
+		parts = append(parts, stringutil.Quantify(c.Warning, "warning", "warnings"))
 	}
 	if c.Info > 0 {
 		parts = append(parts, fmt.Sprintf("%d info", c.Info))
 	}
 	return strings.Join(parts, ", ")
-}
-
-func countNoun(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	return fmt.Sprintf("%d %s", n, many)
 }

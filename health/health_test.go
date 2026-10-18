@@ -751,15 +751,3 @@ func TestCoverageNetwork(t *testing.T) {
 		t.Errorf("offline: %v, asked %q", err, *asked)
 	}
 }
-
-func TestPlural(t *testing.T) {
-	for _, tt := range []struct {
-		n    int
-		what string
-		want string
-	}{{1, "batch", "1 batch"}, {10, "batch", "10 batches"}, {2, "file", "2 files"}, {3, "manga", "3 mangas"}, {0, "new chapter", "0 new chapters"}} {
-		if got := plural(tt.n, tt.what); got != tt.want {
-			t.Errorf("plural(%d, %q) = %q, want %q", tt.n, tt.what, got, tt.want)
-		}
-	}
-}

@@ -293,7 +293,7 @@ func (c Checker) loadSearch(ctx context.Context, s *snapshot) error {
 	if len(queries) == 0 {
 		return errors.Join(errs...)
 	}
-	c.progress(fmt.Sprintf("searching AniList for %s", plural(len(queries), "manga")))
+	c.progress(fmt.Sprintf("searching AniList for %s", stringutil.Quantify(len(queries), "manga", "mangas")))
 	matches, found, err := c.SearchAnilist(ctx, queries)
 	if err != nil {
 		return errors.Join(append(errs, err)...)
@@ -329,7 +329,7 @@ func checkNewChapters(s *snapshot) []Finding {
 		case len(r.New) != 0:
 			newest := slices.MaxFunc(r.New, cmp.Compare[float32])
 			out = append(out, Finding{Severity: Warning, Subject: mangaSubject(m), Network: true,
-				Message: fmt.Sprintf("%s on %s (up to %s): watch it?", plural(len(r.New), "new chapter"), r.provider, stringutil.FormatFloat32(newest)),
+				Message: fmt.Sprintf("%s on %s (up to %s): watch it?", stringutil.Quantify(len(r.New), "new chapter", "new chapters"), r.provider, stringutil.FormatFloat32(newest)),
 				Fix: Fix{
 					Commands: []string{fmt.Sprintf("mangal watch add %s --id %s", r.provider, quote(r.mangaID))},
 					Note:     "its first check downloads them",
@@ -373,10 +373,10 @@ func checkGapsConfirmed(s *snapshot) []Finding {
 		}
 		f := Finding{Severity: Warning, Subject: mangaSubject(m), Network: true}
 		if len(there) != 0 {
-			f.Message = fmt.Sprintf("%d of %s on %s, downloadable: %s", len(there), plural(len(g.missing), "missing chapter"), r.provider, formatRanges(there))
+			f.Message = fmt.Sprintf("%d of %s on %s, downloadable: %s", len(there), stringutil.Quantify(len(g.missing), "missing chapter", "missing chapters"), r.provider, formatRanges(there))
 		} else {
 			f.Severity = Info
-			f.Message = fmt.Sprintf("%s not on %s", plural(len(g.missing), "missing chapter"), r.provider)
+			f.Message = fmt.Sprintf("%s not on %s", stringutil.Quantify(len(g.missing), "missing chapter", "missing chapters"), r.provider)
 			if len(g.missing) > 1 {
 				f.Message = fmt.Sprintf("none of the %d missing chapters on %s", len(g.missing), r.provider)
 			}
@@ -469,7 +469,7 @@ func checkProviders(s *snapshot) []Finding {
 		summary.Items = append(summary.Items, item)
 	}
 	if len(summary.Items) != 0 {
-		summary.Message = fmt.Sprintf("%d of %s answered", answered, plural(len(s.probeOrder), "provider"))
+		summary.Message = fmt.Sprintf("%d of %s answered", answered, stringutil.Quantify(len(s.probeOrder), "provider", "providers"))
 		summary.Fix.Note = "each was asked for one of its mangas; --only A2 lists them"
 		out = append(out, summary)
 	}

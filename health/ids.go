@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 // removeNames are library bind --remove's names of the sources.
@@ -86,7 +87,7 @@ func (c Checker) loadFromMAL(ctx context.Context, s *snapshot) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	c.progress(fmt.Sprintf("looking up the AniList ids of %s", plural(len(ids), "MyAnimeList id")))
+	c.progress(fmt.Sprintf("looking up the AniList ids of %s", stringutil.Quantify(len(ids), "MyAnimeList id", "MyAnimeList ids")))
 	found, err := c.AnilistFromMAL(ctx, ids)
 	if err != nil {
 		return err
@@ -126,7 +127,7 @@ func (c Checker) loadBackups(ctx context.Context, s *snapshot) error {
 	if len(todo) == 0 {
 		return nil
 	}
-	c.progress(fmt.Sprintf("looking up the backup ids of %s", plural(len(todo), "manga")))
+	c.progress(fmt.Sprintf("looking up the backup ids of %s", stringutil.Quantify(len(todo), "manga", "mangas")))
 	backups, err := c.Backups(ctx, todo)
 	if err != nil {
 		return err
@@ -171,7 +172,7 @@ func bindCommand(manga int64, links library.Links) string {
 }
 
 func backupsMessage(n int) string {
-	return fmt.Sprintf("%s linked to AniList can get backup ids", plural(n, "manga"))
+	return fmt.Sprintf("%s linked to AniList can get backup ids", stringutil.Quantify(n, "manga", "mangas"))
 }
 
 // M2 (network): library mangas linked to AniList without a Kitsu (or MyAnimeList) id,
@@ -215,7 +216,7 @@ func checkBackups(s *snapshot) []Finding {
 	summary.Message = backupsMessage(len(ids))
 	summary.Details = []string{"from AniList's MyAnimeList ids, their MangaDex sources' links and Kitsu's mappings"}
 	if noKitsu != 0 {
-		summary.Details = append(summary.Details, fmt.Sprintf("no Kitsu id found for %s", plural(noKitsu, "manga")))
+		summary.Details = append(summary.Details, fmt.Sprintf("no Kitsu id found for %s", stringutil.Quantify(noKitsu, "manga", "mangas")))
 	}
 	summary.Fix = Fix{Note: "--only M2 lists them, each with its command", TUI: "health: set the backup ids",
 		Action: &Action{Kind: ActionBackups, Mangas: ids}}

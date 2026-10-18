@@ -13,6 +13,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 // checks are every check, in the order they run.
@@ -369,7 +370,7 @@ func checkProviderFailing(s *snapshot) []Finding {
 			f.Message += " (backing off)"
 		}
 		for _, w := range ws {
-			line := fmt.Sprintf("watch %d %s: %s", w.ID, w.Title, plural(w.Failures, "failed check"))
+			line := fmt.Sprintf("watch %d %s: %s", w.ID, w.Title, stringutil.Quantify(w.Failures, "failed check", "failed checks"))
 			if w.LastError != "" {
 				line += ": " + w.LastError
 			}
@@ -505,7 +506,7 @@ func checkNotWatched(s *snapshot) []Finding {
 	for _, m := range s.unwatched() {
 		status := library.StatusLabel(m.Status)
 		f := Finding{Check: "W10", Category: Watches, Severity: Info, Subject: mangaSubject(m),
-			Message: fmt.Sprintf("not watched, %s", plural(m.Chapters, "chapter")),
+			Message: fmt.Sprintf("not watched, %s", stringutil.Quantify(m.Chapters, "chapter", "chapters")),
 			Fix:     Fix{TUI: "mangas (a provider's search): watch"}}
 		switch {
 		case library.StatusDone(m.Status):
@@ -695,7 +696,7 @@ func checkGaps(s *snapshot) []Finding {
 			continue
 		}
 		f := Finding{Severity: Warning, Subject: mangaSubject(m),
-			Message: fmt.Sprintf("%s missing: %s", plural(len(missing), "chapter"), formatRanges(missing))}
+			Message: fmt.Sprintf("%s missing: %s", stringutil.Quantify(len(missing), "chapter", "chapters"), formatRanges(missing))}
 		if len(ws) == 0 {
 			f.Fix.Note = "not watched: download them, or watch it with gap filling"
 			if src, ok := installedSource(s, m); ok {
@@ -780,17 +781,6 @@ func joinInts(ns []int, sep string) string {
 	return strings.Join(parts, sep)
 }
 
-func plural(n int, what string) string {
-	if n == 1 {
-		return "1 " + what
-	}
-	suffix := "s"
-	if strings.HasSuffix(what, "ch") || strings.HasSuffix(what, "sh") || strings.HasSuffix(what, "s") || strings.HasSuffix(what, "x") {
-		suffix = "es"
-	}
-	return fmt.Sprintf("%d %s%s", n, what, suffix)
-}
-
 // G3: chapters the last check failed to download, retried by the next one.
 func checkRetry(s *snapshot) []Finding {
 	var out []Finding
@@ -799,7 +789,7 @@ func checkRetry(s *snapshot) []Finding {
 			continue
 		}
 		out = append(out, Finding{Severity: Warning, Subject: watchSubject(w),
-			Message: fmt.Sprintf("%s failed to download, retried by the next check: %s", plural(len(w.Retry), "chapter"), watch.FormatNumbers(w.Retry)),
+			Message: fmt.Sprintf("%s failed to download, retried by the next check: %s", stringutil.Quantify(len(w.Retry), "chapter", "chapters"), watch.FormatNumbers(w.Retry)),
 			Fix:     Fix{Commands: []string{fmt.Sprintf("mangal watch check %d", w.ID)}, TUI: tuiWatches + ": check now"}})
 	}
 	return out

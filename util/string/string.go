@@ -1,23 +1,16 @@
 package string
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/dustin/go-humanize"
+	"github.com/dustin/go-humanize/english"
 )
 
 // Quantify returns a string with the quantity and the correct form of the
 // word, depending on the quantity.
 func Quantify(n int, singular, plural string) string {
-	var form string
-	if n == 1 {
-		form = singular
-	} else {
-		form = plural
-	}
-
-	return fmt.Sprint(n, " ", form)
+	return english.Plural(n, singular, plural)
 }
 
 // FormatFloat32 returns the string representation with

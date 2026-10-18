@@ -182,7 +182,7 @@ func checkUnmarked(s *snapshot) []Finding {
 		return nil
 	}
 	f := Finding{Severity: Warning, Subject: Subject{Kind: "library", Name: "library"},
-		Message: fmt.Sprintf("%s without a .libmangal.json: %d can be marked, %d with nothing to go by", plural(len(items), "folder"), len(mark), none),
+		Message: fmt.Sprintf("%s without a .libmangal.json: %d can be marked, %d with nothing to go by", stringutil.Quantify(len(items), "folder", "folders"), len(mark), none),
 		Details: []string{
 			"library rename skips them, downloads and scans may not recognize them",
 			fmt.Sprintf("would mark %d from the library source, %d provider from its directory, %d metadata ids only",
@@ -221,7 +221,7 @@ func checkUntracked(s *snapshot) []Finding {
 		return nil
 	}
 	f := Finding{Severity: Warning, Subject: Subject{Kind: "library", Name: "library"},
-		Message: fmt.Sprintf("%s aren't in the library", plural(len(items), "manga folder")), Items: items,
+		Message: fmt.Sprintf("%s aren't in the library", stringutil.Quantify(len(items), "manga folder", "manga folders")), Items: items,
 		Fix: Fix{Commands: []string{"mangal library scan"}, Note: "adds them (and finds moved folders)", TUI: tuiLibrary + ": scan",
 			Action: &Action{Kind: ActionScan}}}
 	if len(items) == 1 {
@@ -300,7 +300,7 @@ func checkProviderDirs(s *snapshot) []Finding {
 		if to != "" {
 			f.Message += ": rename it to " + to
 		} else {
-			f.Message += fmt.Sprintf(": its %s move into the current one", plural(len(renames)-1, "manga folder"))
+			f.Message += fmt.Sprintf(": its %s move into the current one", stringutil.Quantify(len(renames)-1, "manga folder", "manga folders"))
 		}
 		for i, r := range renames {
 			if i == 8 {
@@ -366,9 +366,9 @@ func checkFolderNames(s *snapshot) []Finding {
 	}
 	var notChecked string
 	if n := s.renames.noMetadata; n != 0 {
-		notChecked = fmt.Sprintf("%s without cached AniList metadata weren't checked (mangal health --network looks them up)", plural(n, "folder"))
+		notChecked = fmt.Sprintf("%s without cached AniList metadata weren't checked (mangal health --network looks them up)", stringutil.Quantify(n, "folder", "folders"))
 		if s.network {
-			notChecked = fmt.Sprintf("%s without AniList metadata (no AniList id, or not found) weren't checked", plural(n, "folder"))
+			notChecked = fmt.Sprintf("%s without AniList metadata (no AniList id, or not found) weren't checked", stringutil.Quantify(n, "folder", "folders"))
 		}
 	}
 	if len(items) == 0 {
@@ -384,7 +384,7 @@ func checkFolderNames(s *snapshot) []Finding {
 		return []Finding{f}
 	}
 	f := Finding{Severity: Warning, Subject: Subject{Kind: "library", Name: "library"},
-		Message: fmt.Sprintf("%s aren't named by the manga template", plural(len(items), "folder")), Items: items,
+		Message: fmt.Sprintf("%s aren't named by the manga template", stringutil.Quantify(len(items), "folder", "folders")), Items: items,
 		Fix: Fix{
 			Commands: []string{"mangal library rename"},
 			Note:     "lists every rename, --apply renames (undo: mangal library undo); mangal health --only L5 lists them",
@@ -413,7 +413,7 @@ func checkTrash(s *snapshot) []Finding {
 		return nil
 	}
 	return []Finding{{Severity: Info, Subject: Subject{Kind: "library", Name: "trash"},
-		Message: fmt.Sprintf("%s (%s) in the trash, from %s", plural(files, "file"), stringutil.HumanSize(size), plural(len(s.fs.trash), "batch")),
+		Message: fmt.Sprintf("%s (%s) in the trash, from %s", stringutil.Quantify(files, "file", "files"), stringutil.HumanSize(size), stringutil.Quantify(len(s.fs.trash), "batch", "batches")),
 		Fix: Fix{
 			Commands: []string{"mangal library trash", "mangal library trash empty"},
 			Note:     "lists the batches; emptying deletes them for good (no undo)",
