@@ -39,6 +39,9 @@ type CheckOptions struct {
 	// OnBusy is told the providers skipped because another run has them (before OnRun),
 	// may be nil.
 	OnBusy func(providers []string)
+
+	// picked: the watches are the scheduled ones, not ids given
+	picked bool
 }
 
 // EventKind is what an Event is about.
@@ -151,6 +154,7 @@ func (s *Service) Check(ctx context.Context, ids []int64, opts CheckOptions) (Re
 	if err != nil {
 		return Report{}, err
 	}
+	opts.picked = len(ids) == 0
 
 	// by provider (an old id's watches with the current id's: one lock, one at a time),
 	// in the order of the watches
@@ -452,6 +456,23 @@ func (s *Service) checkProvider(ctx context.Context, provider string, watches []
 			report.Results[i] = s.skipped(w, "cancelled")
 			continue
 		}
+		// read again: it may have been paused, unwatched or re-linked since the run started
+		fresh, err := s.Watches.Get(w.ID)
+		switch {
+		case errors.Is(err, storage.ErrWatchNotFound):
+			report.Results[i] = s.skipped(w, "unwatched")
+			continue
+		case err != nil:
+			report.Results[i] = s.failed(w, s.now(), err)
+			continue
+		case fresh.Provider != w.Provider || fresh.MangaID != w.MangaID:
+			report.Results[i] = s.skipped(w, "re-linked")
+			continue
+		case opts.picked && !fresh.Enabled:
+			report.Results[i] = s.skipped(w, "paused")
+			continue
+		}
+		w = fresh
 		onEvent(Event{Kind: EventStart, Watch: w})
 		status := func(ctx context.Context) context.Context {
 			return progress.WithReporter(ctx, func(st progress.Status) {

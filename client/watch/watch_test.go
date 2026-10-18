@@ -1696,3 +1696,47 @@ func TestUpdateAnilistIsUndoable(t *testing.T) {
 		t.Errorf("operations %q, want %q", ops, want)
 	}
 }
+
+// a watch paused or unwatched while a scheduled run goes isn't checked, one unwatched
+// while it's checked keeps its run.
+func TestCheckRereadsWatches(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.svc.Options.Notify = NotifyNone
+	a := &fakeManga{info: mangadata.MangaInfo{ID: "a", Title: "A"}}
+	b := &fakeManga{info: mangadata.MangaInfo{ID: "b", Title: "B"}}
+	c := &fakeManga{info: mangadata.MangaInfo{ID: "c", Title: "C"}}
+	src := e.source("p", a, b, c)
+	src.chs["a"], src.chs["b"], src.chs["c"] = a.chapters(1), b.chapters(1), c.chapters(1)
+	var ids []int64
+	for _, m := range []string{"a", "b", "c"} {
+		w, err := e.svc.Add(ctx, AddOptions{Provider: "p", MangaID: m})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, w.ID)
+	}
+	src.onDownload = func(context.Context) {
+		src.onDownload = nil
+		if err := e.svc.Watches.Remove(ids[0]); err != nil {
+			t.Error(err)
+		}
+		if _, err := e.svc.SetEnabled(ctx, ids[1], false); err != nil {
+			t.Error(err)
+		}
+		if err := e.svc.Watches.Remove(ids[2]); err != nil {
+			t.Error(err)
+		}
+	}
+	report, err := e.svc.Check(ctx, nil, CheckOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := report.Results
+	if len(r) != 3 || r[0].Status == storage.StatusSkipped || r[1].Error != "paused" || r[2].Error != "unwatched" {
+		t.Fatalf("results %+v", r)
+	}
+	if run, _, err := e.svc.Watches.WatchRun(r[0].ID); err != nil || run.Watch != 0 || run.MangaID != "a" {
+		t.Errorf("run of the unwatched one %+v, %v", run, err)
+	}
+}

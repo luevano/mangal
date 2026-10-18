@@ -91,13 +91,14 @@ func (s Watches) FinishRun(run CheckRun) error {
 	return nil
 }
 
-// RecordWatchRun records the check of a watch with its chapters, its ID is set.
+// RecordWatchRun records the check of a watch with its chapters, its ID is set. A watch
+// removed meanwhile is recorded without its watch.
 func (s Watches) RecordWatchRun(r WatchRun) (WatchRun, error) {
 	s.DB.touch()
 	err := s.DB.InTx(func(tx *sql.Tx) error {
 		r.NewChapters = r.New()
 		res, err := tx.Exec(`INSERT INTO watch_runs (check_run, watch, provider, manga_id, title, from_number, status, error, started, finished, new_chapters, skipped)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.CheckRun, nullID(r.Watch), r.Provider, r.MangaID, r.Title, nullFloat(r.From), r.Status, r.Error,
+VALUES (?, (SELECT id FROM watches WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.CheckRun, nullID(r.Watch), r.Provider, r.MangaID, r.Title, nullFloat(r.From), r.Status, r.Error,
 			unix(r.Started), unix(r.Finished), r.NewChapters, formatNumbers(r.Skipped))
 		if err != nil {
 			return err
