@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/storage"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 )
@@ -672,19 +672,7 @@ func (s *Service) manga(ctx context.Context, src Source, w storage.Watch) (manga
 // FindManga gets the provider's manga by its id, or (providers that can't) by searching
 // its title for the id. ErrMangaNotFound when the provider doesn't have it.
 func FindManga(ctx context.Context, src Source, mangaID, title string) (mangadata.Manga, error) {
-	manga, found, err := src.MangaByID(ctx, mangaID)
-	if errors.Is(err, libmangal.ErrMangaByIDUnsupported) {
-		mangas, err := src.SearchMangas(ctx, title)
-		if err != nil {
-			return nil, fmt.Errorf("search %q: %w", title, err)
-		}
-		for _, m := range mangas {
-			if m.Info().ID == mangaID {
-				return m, nil
-			}
-		}
-		return nil, fmt.Errorf("manga %q in a search of %q: %w", mangaID, title, ErrMangaNotFound)
-	}
+	manga, found, err := selector.ByID(ctx, src, mangaID, title)
 	if err != nil {
 		return nil, err
 	}

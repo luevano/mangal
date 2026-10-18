@@ -13,6 +13,7 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
@@ -267,19 +268,8 @@ func AddCmd(ctx context.Context, provider, mangaID, title string) tea.Cmd {
 // findManga is the provider's manga with the id, found by a title search when the
 // provider can't get one by its id.
 func findManga(ctx context.Context, c *libmangal.Client, id, title string) (mangadata.Manga, error) {
-	manga, found, err := c.MangaByIDContext(ctx, id)
-	if errors.Is(err, libmangal.ErrMangaByIDUnsupported) {
-		mangas, err := c.SearchMangasContext(ctx, title)
-		if err != nil {
-			return nil, fmt.Errorf("search %q: %w", title, err)
-		}
-		for _, m := range mangas {
-			if m.Info().ID == id {
-				return m, nil
-			}
-		}
-		found = false
-	} else if err != nil {
+	manga, found, err := selector.ByID(ctx, client.Searcher(c), id, title)
+	if err != nil {
 		return nil, err
 	}
 	if !found {

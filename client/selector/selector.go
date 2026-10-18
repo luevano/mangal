@@ -40,7 +40,8 @@ var (
 	chapterToID   = chapterRegex.SubexpIndex("to")
 )
 
-// IDQuery returns the id of a query like "mid: <id>" or "manga-id: <id>".
+// IDQuery returns the id of a query like "mid: <id>" or "manga-id: <id>", the deprecated
+// way to give a manga id where a title query goes.
 func IDQuery(query string) (string, bool) {
 	m := idQueryRegex.FindStringSubmatch(query)
 	if m == nil {

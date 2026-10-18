@@ -2,14 +2,12 @@ package health
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/luevano/libmangal"
-	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangoprovider"
 
@@ -18,6 +16,7 @@ import (
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/kitsu"
 	"github.com/luevano/mangal/v5/client/myanimelist"
+	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
@@ -199,12 +198,7 @@ func probeProvider(ctx context.Context, loaders []libmangal.ProviderLoader, prov
 		}
 	}
 	start := time.Now()
-	_, found, err := c.MangaByIDContext(ctx, m.MangaID)
-	if errors.Is(err, libmangal.ErrMangaByIDUnsupported) {
-		var mangas []mangadata.Manga
-		mangas, err = c.SearchMangasContext(ctx, m.Title)
-		found = slices.ContainsFunc(mangas, func(x mangadata.Manga) bool { return x.Info().ID == m.MangaID })
-	}
+	_, found, err := selector.ByID(ctx, client.Searcher(c), m.MangaID, m.Title)
 	p.Took = time.Since(start)
 	mu.Lock()
 	defer mu.Unlock()
