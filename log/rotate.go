@@ -180,9 +180,15 @@ func listFiles(dir string, now time.Time) ([]File, error) {
 		last[stamp] = max(last[stamp], segment)
 	}
 	slices.SortFunc(files, compareFiles)
+	// now's periods are open: an hour repeated when the clocks go back has the stamp of
+	// the one before it, which parseStamp ends an hour early
+	current := map[string]bool{}
+	for _, p := range []Period{Hourly, Daily, Weekly, Monthly} {
+		current[p.stamp(now.In(time.Local))] = true
+	}
 	for i := range files {
 		f := &files[i]
-		over := !now.Before(f.End.Add(closedAfter))
+		over := !now.Before(f.End.Add(closedAfter)) && !current[f.stamp]
 		later := f.Segment < last[f.stamp] && f.ModTime.Before(now.Add(-closedAfter))
 		f.Closed = over || later
 	}

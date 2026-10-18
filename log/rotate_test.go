@@ -341,3 +341,31 @@ func TestMaintenanceOnOpen(t *testing.T) {
 		t.Errorf("files %s", got)
 	}
 }
+
+// TestRepeatedHour: when the clocks go back, the repeated hour's file is still written.
+func TestRepeatedHour(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip(err)
+	}
+	local := time.Local
+	time.Local = ny
+	t.Cleanup(func() { time.Local = local })
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "2026-11-01T01.log"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		now    time.Time
+		closed bool
+	}{
+		{time.Date(2026, 11, 1, 5, 30, 0, 0, time.UTC), false}, // 01:30 EDT
+		{time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC), false}, // 01:30 EST, again
+		{time.Date(2026, 11, 1, 7, 5, 0, 0, time.UTC), true},   // 02:05 EST
+	} {
+		files, err := listFiles(dir, tc.now)
+		if err != nil || len(files) != 1 || files[0].Closed != tc.closed {
+			t.Errorf("at %s: %+v, %v; want closed %t", tc.now.In(ny), files, err, tc.closed)
+		}
+	}
+}
