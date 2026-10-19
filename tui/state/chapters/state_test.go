@@ -45,13 +45,14 @@ func (v fakeVolume) Info() mangadata.VolumeInfo { return mangadata.VolumeInfo{Nu
 func (v fakeVolume) Manga() mangadata.Manga     { return v.manga }
 
 type fakeChapter struct {
-	volume fakeVolume
-	number float32
+	volume      fakeVolume
+	number      float32
+	unavailable string
 }
 
 func (c fakeChapter) String() string { return fmt.Sprintf("Chapter %v", c.number) }
 func (c fakeChapter) Info() mangadata.ChapterInfo {
-	return mangadata.ChapterInfo{Number: c.number, Title: c.String()}
+	return mangadata.ChapterInfo{Number: c.number, Title: c.String(), Unavailable: c.unavailable}
 }
 func (c fakeChapter) Volume() mangadata.Volume { return c.volume }
 
@@ -312,4 +313,27 @@ func testCore(t *testing.T, db *storage.DB) *core.Core {
 		t.Fatal(err)
 	}
 	return c
+}
+
+func TestSelectAllSkipsUnavailable(t *testing.T) {
+	manga, list := chapters(3)
+	list[1] = fakeChapter{volume: fakeVolume{manga}, number: 2, unavailable: "retired"}
+	s := New(nil, manga, nil, list).(*state)
+	s.Resize(base.Size{Width: 80, Height: 30})
+	if !strings.Contains(s.View(), "[retired]") {
+		t.Errorf("the reason isn't shown:\n%s", s.View())
+	}
+	cmd := s.selectAll()
+	if len(s.selected) != 2 {
+		t.Errorf("selected %d, want 2", len(s.selected))
+	}
+	if cmd == nil {
+		t.Fatal("no notice")
+	}
+	if msg, ok := cmd().(base.NotificationMsg); !ok || msg.Message != "Selected 2 chapters (1 unavailable skipped)" {
+		t.Errorf("notice: %#v", msg)
+	}
+	if _, list := chapters(2); New(nil, manga, nil, list).(*state).selectAll() != nil {
+		t.Error("a notice with nothing skipped")
+	}
 }

@@ -319,7 +319,7 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 		s.show.date = !s.show.date
 		s.updateItemHeight()
 	case key.Matches(msg, k.selectAll):
-		s.selectAll()
+		return s.selectAll()
 	case key.Matches(msg, k.unselectAll):
 		s.unselectAll()
 	default:
@@ -363,13 +363,22 @@ func (s *state) unselectAll() {
 	}
 }
 
-func (s *state) selectAll() {
+// selectAll skips the unavailable chapters, saying how many when there are any.
+func (s *state) selectAll() tea.Cmd {
+	skipped := 0
 	for _, i := range s.items() {
-		if !i.selected && i.unavailable() == "" {
+		switch {
+		case i.unavailable() != "":
+			skipped++
+		case !i.selected:
 			i.toggle()
 			s.selected[i] = struct{}{}
 		}
 	}
+	if skipped == 0 {
+		return nil
+	}
+	return base.Notify(fmt.Sprintf("Selected %d chapters (%d unavailable skipped)", len(s.selected), skipped))
 }
 
 // refresh finds where the chapters are downloaded, scan checks the library against the
