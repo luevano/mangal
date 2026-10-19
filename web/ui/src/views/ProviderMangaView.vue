@@ -5,7 +5,8 @@ import client, { ok, fetchJSON } from '@/api/client'
 import { errorMessage, mangaGone } from '@/api/errors'
 import { change } from '@/api/changes'
 import { imageURL } from '@/api/urls'
-import type { ApplyFields, Binding, ChangeResponse, MetadataResult, MetadataSource, ProviderChapter } from '@/api/schemas'
+import type { ApplyFields, Binding, ChangeResponse, Job, MetadataResult, MetadataSource, ProviderChapter } from '@/api/schemas'
+import FillDialog from '@/components/FillDialog.vue'
 import MetadataPicker from '@/components/MetadataPicker.vue'
 import LoadState from '@/components/LoadState.vue'
 import PagerNav from '@/components/PagerNav.vue'
@@ -91,6 +92,13 @@ async function download(selectors: string[]) {
   selected.value = new Set()
 }
 
+// fill: the unavailable chapters from another provider
+const fillOpen = ref(false)
+const hasUnavailable = computed(() => (chapters.data.value ?? []).some((c) => c.unavailable))
+function queued(j: Job) {
+  useToasts().push('success', `Queued: ${j.title}`)
+}
+
 function read(c: ProviderChapter) {
   const lib = pm.data.value?.library
   if (c.downloaded && c.path && lib) {
@@ -172,6 +180,7 @@ function unbind(b: Binding) {
 
     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
       <h6 class="me-auto mb-0">Chapters <small v-if="chapters.data.value" class="text-secondary">{{ chapters.data.value.length }}</small></h6>
+      <button v-if="hasUnavailable" class="btn btn-sm btn-outline-primary" data-test="fill" @click="fillOpen = true">Get unavailable chapters from another provider</button>
       <button class="btn btn-sm btn-outline-secondary" @click="selectMissing">Select the missing</button>
       <button class="btn btn-sm btn-outline-secondary" :disabled="!selected.size" @click="selected = new Set()">Unselect</button>
       <button class="btn btn-sm btn-primary" :disabled="!selected.size || action.busy.value" data-test="download-selected" @click="download(selectorRanges())">Download {{ selected.size || '' }}</button>
@@ -200,5 +209,6 @@ function unbind(b: Binding) {
     <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
   </template>
 
+  <FillDialog :open="fillOpen" :provider="provider" :manga-id="mangaID" :title="pm.data.value?.manga.title ?? mangaID" @close="fillOpen = false" @queued="queued" />
   <MetadataPicker :open="bindOpen" :title="`Bind ${pm.data.value?.manga.title ?? ''}`" :query="pm.data.value?.manga.title" :source="bindSource" @close="bindOpen = false" @pick="planBind" />
 </template>
