@@ -67,6 +67,36 @@ func TestDownloadHoldsClient(t *testing.T) {
 	}
 }
 
+// TestFillSpec: a fill is a download job of the provider it gets the chapters from, with
+// that provider's client.
+func TestFillSpec(t *testing.T) {
+	oldHold, oldFill := holdClient, downloadFill
+	t.Cleanup(func() { holdClient, downloadFill = oldHold, oldFill })
+	held, err := libmangal.NewClientContext(context.Background(), fakeLoader{}, libmangal.DefaultClientOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	holdClient = func(_ context.Context, id string) (*libmangal.Client, []string, func(), error) {
+		if id != "p" {
+			t.Errorf("held %q", id)
+		}
+		return held, nil, func() {}, nil
+	}
+	fill := client.Fill{Provider: libmangal.ProviderInfo{ID: "home"}, From: fakeLoader{}.Info(), Folder: "/lib/M"}
+	downloadFill = func(ctx context.Context, c *libmangal.Client, f client.Fill, list []mangadata.Chapter, _ libmangal.DownloadOptions, onEvent func(client.Event)) client.Results {
+		if c != held || f.Folder != fill.Folder {
+			t.Errorf("fill %+v with %v", f, c)
+		}
+		return fakeDownload(nil)(ctx, list, onEvent)
+	}
+	m := newManager(t)
+	j := m.Add(FillSpec(fill, "m", chapters(1, 2), libmangal.DownloadOptions{}, "M", "test"))
+	if j.Kind != KindDownload || j.MangaID != "m" || len(j.Providers) != 1 || j.Providers[0] != "p" {
+		t.Errorf("job %+v", j)
+	}
+	waitFor(t, m, j.ID, "done", status(Done))
+}
+
 func TestDescribeBusy(t *testing.T) {
 	h := storage.LockHolder{Purpose: "rename", PID: os.Getpid()}
 	if got := DescribeBusy(client.ProviderBusy{Provider: "p", Holder: h, Library: true}); got != "waiting for the library (rename, this mangal)" {

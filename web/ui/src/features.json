@@ -150,6 +150,15 @@
       ]
     },
     {
+      "name": "get unavailable chapters elsewhere",
+      "web": [
+        "provider-manga"
+      ],
+      "api": [
+        "fillProviderManga"
+      ]
+    },
+    {
       "name": "links",
       "web": [
         "library-manga"

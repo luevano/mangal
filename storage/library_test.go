@@ -521,3 +521,31 @@ func TestFindMangaDirLikeMangas(t *testing.T) {
 		}
 	}
 }
+
+// a fill keeps the folder's source current and doesn't link the other provider's manga
+func TestRecordFill(t *testing.T) {
+	library := Library{DB: openData(t)}
+	home := Source{Provider: "mango-mangadex", MangaID: "md", Title: "Dark Gathering"}
+	if err := library.RecordDownload("/lib", "Dark Gathering", Download{Path: "/lib/Dark Gathering/68.cbz", Provider: home.Provider, MangaID: home.MangaID, MangaTitle: home.Title, Chapter: 68, Format: "CBZ", Downloaded: time.Unix(100, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	fill := Download{Path: "/lib/Dark Gathering/1.cbz", Provider: "mango-mangapill", MangaID: "mp", MangaTitle: "Dark Gathering", Chapter: 1, ChapterURL: "https://mangapill.com/1", Format: "CBZ", Downloaded: time.Unix(200, 0)}
+	if err := library.RecordFill("/lib", "Dark Gathering", home, fill); err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ := library.MangaByFolder("/lib", "Dark Gathering")
+	if len(m.Sources) != 1 || m.Sources[0].Provider != home.Provider || !m.Sources[0].Current {
+		t.Errorf("sources %+v, want mangadex only", m.Sources)
+	}
+	downloads, _ := library.Downloads(m.ID)
+	if len(downloads) != 2 || downloads[0].Provider != "mango-mangapill" || downloads[0].MangaID != "mp" || downloads[0].ChapterURL != fill.ChapterURL {
+		t.Errorf("downloads %+v", downloads)
+	}
+	// a new folder gets home as its source
+	if err := library.RecordFill("/lib", "New", Source{Provider: "mango-mangadex", MangaID: "new", Title: "New"}, Download{Path: "/lib/New/1.cbz", Provider: "mango-mangapill", MangaID: "mp2", Chapter: 1, Format: "CBZ"}); err != nil {
+		t.Fatal(err)
+	}
+	if m, ok, _ := library.MangaBySource("mango-mangadex", "new"); !ok || m.Title != "New" || len(m.Sources) != 1 {
+		t.Errorf("new folder %+v", m)
+	}
+}

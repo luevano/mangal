@@ -88,6 +88,13 @@ func (e Event) String() string {
 // (EventBusy) while a watch check or another download has it; each chapter waits
 // (EventBusy) while a library operation runs (see Ops.Lock).
 func Download(ctx context.Context, client *libmangal.Client, chapters []mangadata.Chapter, options libmangal.DownloadOptions, onEvent func(Event)) Results {
+	return downloadWith(ctx, client, chapters, options, onEvent, downloadChapter)
+}
+
+// downloadWith is Download getting each chapter with get.
+func downloadWith(ctx context.Context, client *libmangal.Client, chapters []mangadata.Chapter, options libmangal.DownloadOptions, onEvent func(Event),
+	get func(context.Context, *libmangal.Client, mangadata.Chapter, libmangal.DownloadOptions) (*metadata.DownloadedChapter, error),
+) Results {
 	if onEvent == nil {
 		onEvent = func(Event) {}
 	}
@@ -103,7 +110,7 @@ func Download(ctx context.Context, client *libmangal.Client, chapters []mangadat
 		onEvent(Event{Kind: EventProgress, Index: started.Index, Result: started.Result, Progress: &p})
 	}
 	return download(ctx, client.Info().ID, chapters, track, lockStored, chapterStored, func(ctx context.Context, ch mangadata.Chapter) (*metadata.DownloadedChapter, error) {
-		return downloadChapter(ctx, client, ch, options)
+		return get(ctx, client, ch, options)
 	})
 }
 
@@ -316,6 +323,22 @@ func downloadChapter(ctx context.Context, client *libmangal.Client, chapter mang
 }
 
 func recordDownload(client *libmangal.Client, chapter mangadata.Chapter, options libmangal.DownloadOptions, down *metadata.DownloadedChapter) error {
+	folder := down.Directory
+	if options.CreateVolumeDir {
+		folder = filepath.Dir(folder)
+	}
+	parent, dir := folder, ""
+	if options.CreateMangaDir {
+		parent, dir = filepath.Dir(folder), filepath.Base(folder)
+	}
+	manga := chapter.Volume().Manga().Info()
+	home := storage.Source{Provider: client.Info().ID, MangaID: manga.ID, Title: manga.Title}
+	return recordIn(parent, dir, home, client.Info().ID, manga, chapter, options.Format, down)
+}
+
+// recordIn records the chapter of the provider's manga, downloaded into the folder of
+// home (storage.Library.RecordFill).
+func recordIn(parent, dir string, home storage.Source, provider string, manga mangadata.MangaInfo, chapter mangadata.Chapter, format libmangal.Format, down *metadata.DownloadedChapter) error {
 	library, err := cache.Library()
 	if err != nil {
 		return err
@@ -326,28 +349,17 @@ func recordDownload(client *libmangal.Client, chapter mangadata.Chapter, options
 			return err
 		}
 	}
-
-	folder := down.Directory
-	if options.CreateVolumeDir {
-		folder = filepath.Dir(folder)
-	}
-	parent, dir := folder, ""
-	if options.CreateMangaDir {
-		parent, dir = filepath.Dir(folder), filepath.Base(folder)
-	}
-
-	manga := chapter.Volume().Manga().Info()
 	info := chapter.Info()
-	return library.RecordDownload(parent, dir, storage.Download{
+	return library.RecordFill(parent, dir, home, storage.Download{
 		Path:         down.Path(),
-		Provider:     client.Info().ID,
+		Provider:     provider,
 		MangaID:      manga.ID,
 		MangaTitle:   manga.Title,
 		Volume:       chapter.Volume().Info().Number,
 		Chapter:      info.Number,
 		ChapterTitle: info.Title,
 		ChapterURL:   info.URL,
-		Format:       options.Format.String(),
+		Format:       format.String(),
 		Pages:        down.Pages,
 		Downloaded:   time.Now(),
 	})

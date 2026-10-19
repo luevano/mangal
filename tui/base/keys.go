@@ -129,6 +129,9 @@ var (
 	// library retitle (library manga): t is the trash
 	KeyRetitle = util.Bind("retitle chapters", "alt+t")
 
+	// a provider manga's unavailable chapters from another provider (chapters)
+	KeyFill = util.Bind("get unavailable elsewhere", "alt+g")
+
 	// a manga by its id instead of a title (mangas, re-link/move search: a toggle;
 	// providers: open the search by id); alt: it works while typing, i is info (old)
 	KeyByID = util.Bind("search by id", "alt+i")
@@ -189,7 +192,7 @@ func Keys() (old, newer []key.Binding) {
 		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,
 		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel, KeyNarrow,
 		KeyLogFiles, KeyPrevPeriod, KeyNextPeriod, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
-		KeyRename, KeyChapterFiles, KeyFallback, KeyReadHistory, KeyClearAll, KeyByID, KeyRetitle,
+		KeyRename, KeyChapterFiles, KeyFallback, KeyReadHistory, KeyClearAll, KeyByID, KeyRetitle, KeyFill,
 	}
 }
 

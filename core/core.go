@@ -81,6 +81,10 @@ type Env struct {
 	// AllChapters finds a provider's manga (selector.Find's id, query and selector) and
 	// lists every one of its chapters, unavailable, retired and duplicate ones too.
 	AllChapters func(ctx context.Context, provider, id, query, sel string) (libmangal.ProviderInfo, mangadata.Manga, []mangadata.Chapter, error)
+	// ProviderChapters finds a provider's manga (selector.Find's id, query and selector)
+	// with the provider's client, held until release, and lists its chapters (as the
+	// screens list them).
+	ProviderChapters func(ctx context.Context, provider, id, query, sel string) (c *libmangal.Client, manga mangadata.Manga, chapters []mangadata.Chapter, release func(), err error)
 	// LogDir is the log files' directory.
 	LogDir func() string
 	// Now is the clock.
@@ -151,6 +155,9 @@ func (e Env) withDefaults() (Env, error) {
 	}
 	if e.AllChapters == nil {
 		e.AllChapters = allChapters
+	}
+	if e.ProviderChapters == nil {
+		e.ProviderChapters = providerChapters
 	}
 	if e.LogDir == nil {
 		e.LogDir = path.Logs

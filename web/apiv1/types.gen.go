@@ -300,6 +300,66 @@ type ErrorResponse struct {
 	Reasons *[]string `json:"reasons,omitempty"`
 }
 
+// FillChapter defines model for FillChapter.
+type FillChapter struct {
+	// FromTitle the other provider's chapter's title
+	FromTitle *string `json:"from_title,omitempty"`
+	Number    float32 `json:"number"`
+
+	// Title the manga's title for it (the file's)
+	Title string `json:"title"`
+
+	// Url the other provider's chapter
+	Url *string `json:"url,omitempty"`
+}
+
+// FillPlan defines model for FillPlan.
+type FillPlan struct {
+	// Downloaded the ones the folder has
+	Downloaded []FillChapter `json:"downloaded"`
+
+	// Folder where the chapters go
+	Folder string `json:"folder"`
+
+	// Found the chapters to get
+	Found []FillChapter `json:"found"`
+
+	// From the other provider (empty when nothing was looked up there)
+	From           *string  `json:"from,omitempty"`
+	FromMangaId    *string  `json:"from_manga_id,omitempty"`
+	FromMangaTitle *string  `json:"from_manga_title,omitempty"`
+	Job            *Job     `json:"job,omitempty"`
+	Lines          []string `json:"lines"`
+	MangaId        string   `json:"manga_id"`
+	MangaTitle     string   `json:"manga_title"`
+
+	// NotFound the ones the other provider's manga doesn't have
+	NotFound []FillChapter `json:"not_found"`
+	Provider string        `json:"provider"`
+}
+
+// FillRequest defines model for FillRequest.
+type FillRequest struct {
+	// Chapters only these chapter numbers (12, 10-20, 30-)
+	Chapters *string `json:"chapters,omitempty"`
+
+	// From the provider to get the chapters from
+	From string `json:"from"`
+
+	// FromMangaId its manga (without it, a search of from_query, else of the manga's title)
+	FromMangaId *string `json:"from_manga_id,omitempty"`
+	FromQuery   *string `json:"from_query,omitempty"`
+
+	// MangaId the provider's manga
+	MangaId *string `json:"manga_id,omitempty"`
+
+	// Query a search, when the provider can't get a manga by id (or without manga_id)
+	Query *string `json:"query,omitempty"`
+
+	// Selector the manga selector of that search (exact by default)
+	Selector *string `json:"selector,omitempty"`
+}
+
 // ForgetRequest defines model for ForgetRequest.
 type ForgetRequest struct {
 	// Confirm empty-trash for an irreversible plan, force-undo for a forced undo
@@ -1322,6 +1382,12 @@ type ListProviderChaptersParams struct {
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
+// FillProviderMangaParams defines parameters for FillProviderManga.
+type FillProviderMangaParams struct {
+	// Apply start the job, else only plan it
+	Apply *bool `form:"apply,omitempty" json:"apply,omitempty"`
+}
+
 // GetProviderMangaParams defines parameters for GetProviderManga.
 type GetProviderMangaParams struct {
 	// MangaId the provider's manga id
@@ -1460,6 +1526,9 @@ type EmptyTrashJSONRequestBody = ApplyFields
 
 // UndoOpJSONRequestBody defines body for UndoOp for application/json ContentType.
 type UndoOpJSONRequestBody = ApplyFields
+
+// FillProviderMangaJSONRequestBody defines body for FillProviderManga for application/json ContentType.
+type FillProviderMangaJSONRequestBody = FillRequest
 
 // SetProviderMirrorJSONRequestBody defines body for SetProviderMirror for application/json ContentType.
 type SetProviderMirrorJSONRequestBody = MirrorRequest

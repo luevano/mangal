@@ -1056,6 +1056,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/providers/{provider}/fill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get a provider's manga's unavailable chapters from another provider (a job)
+         * @description The manga's chapter numbers it can't download and its folder doesn't have, matched by number on the other provider's manga (the first available chapter with the number). Applied, a download job of the other provider gets them into the manga's folder with the manga's titles and series metadata, recorded as the other provider's downloads; the folder's source stays the manga's.
+         */
+        post: operations["fillProviderManga"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/providers/{provider}/pages": {
         parameters: {
             query?: never;
@@ -2076,6 +2096,50 @@ export interface components {
             chapters: string;
             /** @description the download format, download.format by default */
             format?: string;
+        };
+        FillRequest: {
+            /** @description the provider's manga */
+            manga_id?: string;
+            /** @description a search, when the provider can't get a manga by id (or without manga_id) */
+            query?: string;
+            /** @description the provider to get the chapters from */
+            from: string;
+            /** @description its manga (without it, a search of from_query, else of the manga's title) */
+            from_manga_id?: string;
+            from_query?: string;
+            /** @description the manga selector of that search (exact by default) */
+            selector?: string;
+            /** @description only these chapter numbers (12, 10-20, 30-) */
+            chapters?: string;
+        };
+        FillChapter: {
+            /** Format: float */
+            number: number;
+            /** @description the manga's title for it (the file's) */
+            title: string;
+            /** @description the other provider's chapter's title */
+            from_title?: string;
+            /** @description the other provider's chapter */
+            url?: string;
+        };
+        FillPlan: {
+            provider: string;
+            manga_id: string;
+            manga_title: string;
+            /** @description the other provider (empty when nothing was looked up there) */
+            from?: string;
+            from_manga_id?: string;
+            from_manga_title?: string;
+            /** @description where the chapters go */
+            folder: string;
+            /** @description the chapters to get */
+            found: components["schemas"]["FillChapter"][];
+            /** @description the ones the other provider's manga doesn't have */
+            not_found: components["schemas"]["FillChapter"][];
+            /** @description the ones the folder has */
+            downloaded: components["schemas"]["FillChapter"][];
+            lines: string[];
+            job?: components["schemas"]["Job"];
         };
         LogEntry: {
             /** Format: date-time */
@@ -3965,6 +4029,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderChapter"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    fillProviderManga: {
+        parameters: {
+            query?: {
+                /** @description start the job, else only plan it */
+                apply?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description a provider id */
+                provider: components["parameters"]["ProviderPathParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FillRequest"];
+            };
+        };
+        responses: {
+            /** @description the plan, and the job when applied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FillPlan"];
                 };
             };
             default: components["responses"]["Error"];

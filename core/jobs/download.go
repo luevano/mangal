@@ -20,6 +20,7 @@ import (
 // swapped in tests
 var (
 	downloadChapters = client.Download
+	downloadFill     = client.DownloadFill
 	lockStore        = cache.Watches
 	holdClient       = client.HoldByID
 )
@@ -29,12 +30,25 @@ var (
 // job holds the provider's current client while it runs (a reload doesn't close it under
 // the download). title names the job, origin is the screen that starts it.
 func DownloadSpec(c *libmangal.Client, manga mangadata.Manga, chapters []mangadata.Chapter, options libmangal.DownloadOptions, title, origin string) Spec {
-	provider := c.Info().ID
+	return chaptersSpec(c.Info().ID, manga.Info().ID, chapters, title, origin, func(ctx context.Context, c *libmangal.Client, chapters []mangadata.Chapter, onEvent func(client.Event)) client.Results {
+		return downloadChapters(ctx, c, chapters, options, onEvent)
+	})
+}
+
+// FillSpec is DownloadSpec of a fill (client.DownloadFill): the chapters (fill.Chapter's)
+// of fill.From's manga with the id.
+func FillSpec(fill client.Fill, mangaID string, chapters []mangadata.Chapter, options libmangal.DownloadOptions, title, origin string) Spec {
+	return chaptersSpec(fill.From.ID, mangaID, chapters, title, origin, func(ctx context.Context, c *libmangal.Client, chapters []mangadata.Chapter, onEvent func(client.Event)) client.Results {
+		return downloadFill(ctx, c, fill, chapters, options, onEvent)
+	})
+}
+
+func chaptersSpec(provider, mangaID string, chapters []mangadata.Chapter, title, origin string, download func(context.Context, *libmangal.Client, []mangadata.Chapter, func(client.Event)) client.Results) Spec {
 	return Spec{
 		Kind:      KindDownload,
 		Title:     title,
 		Providers: []string{provider},
-		MangaID:   manga.Info().ID,
+		MangaID:   mangaID,
 		Origin:    origin,
 		Chapters:  chapters,
 		Run: func(ctx context.Context, p *Progress) error {
@@ -44,7 +58,7 @@ func DownloadSpec(c *libmangal.Client, manga mangadata.Manga, chapters []mangada
 			}
 			defer release()
 			return RunDownload(ctx, p, func(ctx context.Context, chapters []mangadata.Chapter, onEvent func(client.Event)) client.Results {
-				return downloadChapters(ctx, c, chapters, options, onEvent)
+				return download(ctx, c, chapters, onEvent)
 			})
 		},
 	}

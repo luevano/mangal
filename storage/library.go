@@ -404,9 +404,16 @@ LIMIT 1`, filepath.Dir(mangaDir), filepath.Base(mangaDir), mangaDir, chapter.Inf
 
 // RecordDownload records a downloaded chapter of the manga folder.
 func (l Library) RecordDownload(parent, dir string, dl Download) error {
+	return l.RecordFill(parent, dir, Source{Provider: dl.Provider, MangaID: dl.MangaID, Title: dl.MangaTitle}, dl)
+}
+
+// RecordFill records a chapter of another provider's manga (dl's) downloaded into the
+// manga folder of home, a provider's manga: home is linked to the folder as RecordDownload
+// links dl's manga, which isn't (the folder stays home's, dl keeps where it came from).
+func (l Library) RecordFill(parent, dir string, home Source, dl Download) error {
 	l.DB.touch()
 	err := l.DB.InTx(func(tx *sql.Tx) error {
-		manga, err := mangaFor(tx, parent, dir, Source{Provider: dl.Provider, MangaID: dl.MangaID, Title: dl.MangaTitle})
+		manga, err := mangaFor(tx, parent, dir, home)
 		if err != nil {
 			return err
 		}

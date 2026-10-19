@@ -1286,6 +1286,36 @@ paths:
                   $ref: '#/components/schemas/ProviderChapter'
         default:
           $ref: '#/components/responses/Error'
+  /v1/providers/{provider}/fill:
+    post:
+      summary: Get a provider's manga's unavailable chapters from another provider (a job)
+      description: The manga's chapter numbers it can't download and its folder doesn't have, matched by number on the other provider's manga (the first available chapter with the number). Applied, a download job of the other provider gets them into the manga's folder with the manga's titles and series metadata, recorded as the other provider's downloads; the folder's source stays the manga's.
+      operationId: fillProviderManga
+      tags: [v1, providers, jobs]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ProviderPathParam'
+        - name: apply
+          in: query
+          description: start the job, else only plan it
+          schema:
+            type: boolean
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FillRequest'
+      responses:
+        '200':
+          description: the plan, and the job when applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FillPlan'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/providers/{provider}/pages:
     get:
       summary: The pages of a provider's chapter (read online)
@@ -3206,6 +3236,88 @@ components:
         format:
           type: string
           description: the download format, download.format by default
+
+    FillRequest:
+      type: object
+      required: [from]
+      properties:
+        manga_id:
+          type: string
+          description: the provider's manga
+        query:
+          type: string
+          description: a search, when the provider can't get a manga by id (or without manga_id)
+        from:
+          type: string
+          description: the provider to get the chapters from
+        from_manga_id:
+          type: string
+          description: its manga (without it, a search of from_query, else of the manga's title)
+        from_query:
+          type: string
+        selector:
+          type: string
+          description: the manga selector of that search (exact by default)
+        chapters:
+          type: string
+          description: only these chapter numbers (12, 10-20, 30-)
+    FillChapter:
+      type: object
+      required: [number, title]
+      properties:
+        number:
+          type: number
+          format: float
+        title:
+          type: string
+          description: the manga's title for it (the file's)
+        from_title:
+          type: string
+          description: the other provider's chapter's title
+        url:
+          type: string
+          description: the other provider's chapter
+    FillPlan:
+      type: object
+      required: [provider, manga_id, manga_title, folder, found, not_found, downloaded, lines]
+      properties:
+        provider:
+          type: string
+        manga_id:
+          type: string
+        manga_title:
+          type: string
+        from:
+          type: string
+          description: the other provider (empty when nothing was looked up there)
+        from_manga_id:
+          type: string
+        from_manga_title:
+          type: string
+        folder:
+          type: string
+          description: where the chapters go
+        found:
+          type: array
+          description: the chapters to get
+          items:
+            $ref: '#/components/schemas/FillChapter'
+        not_found:
+          type: array
+          description: the ones the other provider's manga doesn't have
+          items:
+            $ref: '#/components/schemas/FillChapter'
+        downloaded:
+          type: array
+          description: the ones the folder has
+          items:
+            $ref: '#/components/schemas/FillChapter'
+        lines:
+          type: array
+          items:
+            type: string
+        job:
+          $ref: '#/components/schemas/Job'
 
     LogEntry:
       type: object
