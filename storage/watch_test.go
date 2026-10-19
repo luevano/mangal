@@ -37,13 +37,11 @@ func TestMigrateWatches(t *testing.T) {
 }
 
 //go:fix inline
-func f32(f float32) *float32 { return new(f) }
-
 func TestWatches(t *testing.T) {
 	data := openData(t)
 	watches := Watches{DB: data}
 
-	w, err := watches.Add(Watch{Provider: "mango-mangaplus", MangaID: "100171", Title: "Dandadan", Enabled: true, From: f32(200)})
+	w, err := watches.Add(Watch{Provider: "mango-mangaplus", MangaID: "100171", Title: "Dandadan", Enabled: true, From: new(float32(200))})
 	if err != nil || w.ID == 0 {
 		t.Fatalf("add: %+v, %v", w, err)
 	}
@@ -56,7 +54,7 @@ func TestWatches(t *testing.T) {
 	}
 
 	got.Schedule = "0 */2 * * *"
-	got.LastChecked, got.LastNew, got.LastNewAt = time.Unix(100, 0), f32(201.5), time.Unix(100, 0)
+	got.LastChecked, got.LastNew, got.LastNewAt = time.Unix(100, 0), new(float32(201.5)), time.Unix(100, 0)
 	got.Failures, got.LastError, got.Enabled = 2, "boom", false
 	if err := watches.Save(got); err != nil {
 		t.Fatal(err)
@@ -75,7 +73,7 @@ func TestWatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = watches.RecordWatchRun(WatchRun{CheckRun: run.ID, Watch: w.ID, Provider: w.Provider, MangaID: w.MangaID, Title: w.Title,
-		From: f32(200), Status: StatusNew, Started: time.Unix(200, 0), Finished: time.Unix(210, 0),
+		From: new(float32(200)), Status: StatusNew, Started: time.Unix(200, 0), Finished: time.Unix(210, 0),
 		Chapters: []RunChapter{{Number: 202, Title: "b", Path: "/x/202.cbz"}, {Number: 201.5, Title: "a", Path: "/x/201.5.cbz"}}})
 	if err != nil {
 		t.Fatal(err)
@@ -260,7 +258,7 @@ func TestWatchRelink(t *testing.T) {
 		t.Errorf("re-linked to another watch's manga: %v", err)
 	}
 	got, _ := watches.Get(w.ID)
-	got.Failures, got.LastError, got.From = 3, "manga not found", f32(10)
+	got.Failures, got.LastError, got.From = 3, "manga not found", new(float32(10))
 	_ = watches.Save(got)
 	at := time.Unix(1_000_000, 0)
 	if err := watches.Relink(w.ID, "mango-mangapill", "1/berserk", "Berserk (pill)", 0, at); err != nil {

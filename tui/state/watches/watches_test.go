@@ -143,13 +143,11 @@ func press(k string) tea.KeyPressMsg {
 var now = time.Date(2026, 10, 11, 12, 0, 0, 0, time.Local)
 
 //go:fix inline
-func ptr(n float32) *float32 { return new(n) }
-
 func testManager() *fakeManager {
 	return &fakeManager{
 		watches: []watch.Watch{
 			{ID: 1, Title: "Berserk", Provider: "mango-mangapill", Enabled: true, LastChecked: now.Add(-2 * time.Hour),
-				LastDownloaded: ptr(380), NextCheck: now.Add(2 * time.Hour), NextScheduled: now.Add(2 * time.Hour)},
+				LastDownloaded: new(float32(380)), NextCheck: now.Add(2 * time.Hour), NextScheduled: now.Add(2 * time.Hour)},
 			{ID: 2, Title: "Dandadan", Provider: "mango-mangaplus", Enabled: false, Failures: 2, LastError: "boom",
 				NextCheck: now.Add(-time.Hour), NextScheduled: now.Add(-time.Hour)},
 			{ID: 3, Title: "Frieren", Provider: "mango-mangaplus", Enabled: true,
@@ -157,7 +155,7 @@ func testManager() *fakeManager {
 		},
 		runs: []watch.CheckRun{
 			{ID: 2, Kind: watch.KindManual, Started: now.Add(-2 * time.Hour), Results: []storage.WatchRun{
-				{Watch: 1, Title: "Berserk", Provider: "mango-mangapill", Status: storage.StatusNew, Started: now.Add(-2 * time.Hour), From: ptr(377),
+				{Watch: 1, Title: "Berserk", Provider: "mango-mangapill", Status: storage.StatusNew, Started: now.Add(-2 * time.Hour), From: new(float32(377)),
 					Chapters: []storage.RunChapter{{Number: 378, Title: "A"}, {Number: 379}, {Number: 380}}},
 				{Watch: 3, Title: "Frieren", Provider: "mango-mangaplus", Status: storage.StatusSkipped},
 			}},
@@ -489,10 +487,10 @@ func TestParse(t *testing.T) {
 	if _, err := parseAnilistID("abc"); err == nil {
 		t.Error("abc accepted as an anilist id")
 	}
-	if got := defaultFrom(nil, ptr(70)); got != "70" {
+	if got := defaultFrom(nil, new(float32(70))); got != "70" {
 		t.Errorf("default from the latest: %q", got)
 	}
-	if got := defaultFrom(ptr(60), ptr(70)); got != "60" {
+	if got := defaultFrom(new(float32(60)), new(float32(70))); got != "60" {
 		t.Errorf("default from the library: %q", got)
 	}
 	if got := defaultFrom(nil, nil); got != fromAll {

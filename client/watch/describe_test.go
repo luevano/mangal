@@ -9,7 +9,7 @@ import (
 )
 
 func TestCheckLines(t *testing.T) {
-	r := Result{Title: "Dandadan", Provider: "mango-mangaplus", From: f32(65), Status: storage.StatusNew,
+	r := Result{Title: "Dandadan", Provider: "mango-mangaplus", From: new(float32(65)), Status: storage.StatusNew,
 		Chapters: []storage.RunChapter{{Number: 65.5}, {Number: 66}, {Number: 70}}}
 	line := Describe(r, false)
 	if line != "Checking for new chapters [65-] for Dandadan from mango-mangaplus... downloaded 3 (65 → 70)" {
@@ -22,7 +22,7 @@ func TestCheckLines(t *testing.T) {
 	if got := Describe(r, false); !strings.HasPrefix(got, "Downloading all chapters and gaps for Dandadan") {
 		t.Errorf("first %q", got)
 	}
-	gaps := Result{Gaps: true, Title: "OPM", Provider: "p", From: f32(241), Status: storage.StatusNew,
+	gaps := Result{Gaps: true, Title: "OPM", Provider: "p", From: new(float32(241)), Status: storage.StatusNew,
 		Chapters: []storage.RunChapter{{Number: 233}, {Number: 234}}}
 	if got := outcome(gaps, false); got != "downloaded 2 (233 → 234)" {
 		t.Errorf("gaps %q", got)

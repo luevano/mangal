@@ -79,11 +79,11 @@ func TestLiveEventMessages(t *testing.T) {
 	if le, ok := liveEvent(9, wait); !ok || le.Kind != LiveWait || le.Run != 9 || le.Watch != 3 || le.Message != "chapter 65 rate limited (retry #2), waiting 10s" {
 		t.Errorf("wait %+v", le)
 	}
-	found := Event{Kind: EventFound, Watch: w, Found: &Found{Chapters: 70, Picked: []float32{65.5, 66}, From: f32(65)}}
+	found := Event{Kind: EventFound, Watch: w, Found: &Found{Chapters: 70, Picked: []float32{65.5, 66}, From: new(float32(65))}}
 	if le, _ := liveEvent(9, found); le.Message != "found 70 chapters, 2 to download (65.5, 66)" {
 		t.Errorf("found %q", le.Message)
 	}
-	nothing := Event{Kind: EventFound, Watch: w, Found: &Found{Chapters: 70, From: f32(65)}}
+	nothing := Event{Kind: EventFound, Watch: w, Found: &Found{Chapters: 70, From: new(float32(65))}}
 	if le, _ := liveEvent(9, nothing); le.Message != "found 70 chapters, nothing new from 65" {
 		t.Errorf("nothing %q", le.Message)
 	}

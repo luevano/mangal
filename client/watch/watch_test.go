@@ -296,8 +296,6 @@ func numbers(chs []storage.RunChapter) []float32 {
 }
 
 //go:fix inline
-func f32(f float32) *float32 { return new(f) }
-
 func TestPick(t *testing.T) {
 	m := &fakeManga{info: mangadata.MangaInfo{ID: "m", Title: "M"}}
 	all := []mangadata.Chapter{m.chapter(1), m.chapter(2), m.chapter(3), m.chapter(4), m.chapter(4.5), m.chapter(5), m.chapter(5), m.unavailable(6), m.chapter(7)}
@@ -318,12 +316,12 @@ func TestPick(t *testing.T) {
 		want        []float32
 		unavailable int
 	}{
-		{name: "from the last, .5 caught", have: have, last: f32(4), want: []float32{4.5, 5, 7}, unavailable: 1},
-		{name: "gaps", have: have, last: f32(4), gaps: true, want: []float32{2, 4.5, 5, 7}, unavailable: 1},
+		{name: "from the last, .5 caught", have: have, last: new(float32(4)), want: []float32{4.5, 5, 7}, unavailable: 1},
+		{name: "gaps", have: have, last: new(float32(4)), gaps: true, want: []float32{2, 4.5, 5, 7}, unavailable: 1},
 		{name: "first check", want: []float32{1, 2, 3, 4, 4.5, 5, 7}, unavailable: 1},
-		{name: "from", from: f32(4), want: []float32{4.5, 5, 7}, unavailable: 1},
-		{name: "from above the last", have: have, last: f32(4), from: f32(5), want: []float32{7}, unavailable: 1},
-		{name: "gaps above from", have: map[float32]bool{5: true}, last: f32(5), from: f32(1), gaps: true, want: []float32{2, 3, 4, 4.5, 7}, unavailable: 1},
+		{name: "from", from: new(float32(4)), want: []float32{4.5, 5, 7}, unavailable: 1},
+		{name: "from above the last", have: have, last: new(float32(4)), from: new(float32(5)), want: []float32{7}, unavailable: 1},
+		{name: "gaps above from", have: map[float32]bool{5: true}, last: new(float32(5)), from: new(float32(1)), gaps: true, want: []float32{2, 3, 4, 4.5, 7}, unavailable: 1},
 	} {
 		got, unavailable := pick(tc.have, tc.last, tc.from, tc.gaps)
 		if !slices.Equal(got, tc.want) || unavailable != tc.unavailable {
@@ -332,7 +330,7 @@ func TestPick(t *testing.T) {
 	}
 
 	// the skip list wins over gaps and retry; only what would have been picked is skipped
-	picked, _, skipped := Pick(all, have, f32(4), nil, true, map[float32]bool{2: true}, map[float32]bool{2: true, 4.5: true, 3: true, 6: true})
+	picked, _, skipped := Pick(all, have, new(float32(4)), nil, true, map[float32]bool{2: true}, map[float32]bool{2: true, 4.5: true, 3: true, 6: true})
 	var got []float32
 	for _, c := range picked {
 		got = append(got, c.Info().Number)
@@ -496,7 +494,7 @@ func TestCheckFirstAndFrom(t *testing.T) {
 	if _, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangapill", Query: "mid:opm"}); err == nil {
 		t.Error("an id without a provider that can look it up")
 	}
-	w1, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangapill", Query: "One-Punch Man", From: f32(3)})
+	w1, err := e.svc.Add(ctx, AddOptions{Provider: "mango-mangapill", Query: "One-Punch Man", From: new(float32(3))})
 	if err != nil {
 		t.Fatal(err)
 	}

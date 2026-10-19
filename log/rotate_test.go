@@ -126,6 +126,9 @@ func readAll(t *testing.T, dir string) map[string][]string {
 			}
 			all[f.Name] = append(all[f.Name], sc.Text())
 		}
+		if err := sc.Err(); err != nil {
+			t.Fatal(err)
+		}
 		r.Close()
 	}
 	return all

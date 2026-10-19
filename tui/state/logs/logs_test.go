@@ -219,7 +219,10 @@ func TestViewerScrollAndWrap(t *testing.T) {
 	dir := t.TempDir()
 	var sb strings.Builder
 	for i := range 30 {
-		sb.WriteString(time.Date(2026, 10, 13, 10, 0, i, 0, time.Local).Format("2006-01-02T15:04:05.000") + " INFO  line " + strings.Repeat("x", i) + "\n")
+		sb.WriteString(time.Date(2026, 10, 13, 10, 0, i, 0, time.Local).Format("2006-01-02T15:04:05.000"))
+		sb.WriteString(" INFO  line ")
+		sb.WriteString(strings.Repeat("x", i))
+		sb.WriteString("\n")
 	}
 	writeFile(t, dir, "2026-10-13.log", sb.String())
 	v := loadedFile(t, dir, "2026-10-13.log", false, base.Size{Width: 30, Height: 5})

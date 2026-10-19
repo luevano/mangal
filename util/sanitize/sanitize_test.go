@@ -48,7 +48,7 @@ func TestSafeDoesntAllocate(t *testing.T) {
 func BenchmarkStyled(b *testing.B) {
 	frame := strings.Repeat("\x1b[1;38;5;212mOne Piece\x1b[0m · mangadex · 1100 chapters\n", 40)
 	b.SetBytes(int64(len(frame)))
-	for range b.N {
+	for b.Loop() {
 		_ = Styled(frame)
 	}
 }
