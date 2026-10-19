@@ -266,14 +266,17 @@ func AddCmd(ctx context.Context, provider, mangaID, title string) tea.Cmd {
 }
 
 // findManga is the provider's manga with the id, found by a title search when the
-// provider can't get one by its id.
+// provider can't get one by its id. One it doesn't have (any more) is said as such.
 func findManga(ctx context.Context, c *libmangal.Client, id, title string) (mangadata.Manga, error) {
 	manga, found, err := selector.ByID(ctx, client.Searcher(c), id, title)
-	if err != nil {
-		return nil, err
+	switch {
+	case errors.Is(err, libmangal.ErrNotFound):
+		found = false
+	case err != nil:
+		return nil, fmt.Errorf("look up %q on %s: %w", title, c.Info().Name, err)
 	}
 	if !found {
-		return nil, fmt.Errorf("manga %q of %s: %w", id, c.Info().Name, watch.ErrMangaNotFound)
+		return nil, fmt.Errorf("%w: %q isn't on %s any more, it may have been removed (manga id %s)", watch.ErrMangaNotFound, title, c.Info().Name, id)
 	}
 	return manga, nil
 }
