@@ -110,6 +110,17 @@ function planMove() {
   plan.open({ title: `Move ${manga.value?.title} to ${move.provider}`, verb: 'Move', run: change('POST', '/library/move', body) })
 }
 
+// retitle: the titles of another provider's manga (the current source's by default)
+const retitleOpen = ref(false)
+const retitle = reactive({ provider: '', manga_id: '', query: '' })
+function planRetitle() {
+  retitleOpen.value = false
+  const body: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(retitle)) if (v) body[k] = v
+  const from = retitle.provider || 'the current source'
+  plan.open({ title: `Retitle the chapters of ${manga.value?.title} from ${from}`, verb: 'Retitle', run: change('POST', `/library/mangas/${id.value}/retitle`, body) })
+}
+
 // merge
 const mergeOpen = ref(false)
 const mergeQ = ref('')
@@ -166,6 +177,7 @@ function watchSource(provider: string, mangaID: string) {
           <button class="btn btn-sm btn-outline-primary" @click="openLinks">Links</button>
           <a v-if="sorted.length" class="btn btn-sm btn-outline-secondary" :href="mangaZipURL(manga.id)" title="Every downloaded chapter in one zip"><i class="bi bi-file-earmark-zip" /> Zip</a>
           <button class="btn btn-sm btn-outline-primary" @click="moveOpen = true">Move</button>
+          <button class="btn btn-sm btn-outline-primary" data-test="retitle" title="Give the chapters another provider's titles" @click="retitleOpen = true">Retitle</button>
           <button class="btn btn-sm btn-outline-secondary" data-test="hold" @click="holdOpen = true">Hold…</button>
           <button class="btn btn-sm btn-outline-primary" data-test="merge" @click="mergeOpen = true">Merge</button>
           <button class="btn btn-sm btn-outline-primary" @click="rename">Rename</button>
@@ -281,6 +293,19 @@ function watchSource(provider: string, mangaID: string) {
     <label class="form-label small mb-0">or a search</label>
     <input v-model.trim="move.query" class="form-control form-control-sm mb-2" :placeholder="manga?.title" />
     <div class="form-check"><input id="mf" v-model="move.full" class="form-check-input" type="checkbox" /><label class="form-check-label" for="mf">adopt the new provider's title and folder name</label></div>
+  </FormModal>
+
+  <FormModal title="Retitle the chapters" :open="retitleOpen" submit-text="Plan" @close="retitleOpen = false" @submit="planRetitle">
+    <p class="small text-secondary">The titles the provider's manga has for the same chapter numbers (retired and unavailable chapters too): the files get new names, CBZs a new ComicInfo.xml title, the originals go to the trash.</p>
+    <label class="form-label small mb-0">Provider</label>
+    <select v-model="retitle.provider" class="form-select form-select-sm mb-2">
+      <option value="">the current source</option>
+      <option v-for="p in providers.data.value ?? []" :key="p.id" :value="p.id">{{ p.name }}</option>
+    </select>
+    <label class="form-label small mb-0">Manga id</label>
+    <input v-model.trim="retitle.manga_id" class="form-control form-control-sm mb-2" placeholder="the provider's manga id" />
+    <label class="form-label small mb-0">or a search</label>
+    <input v-model.trim="retitle.query" class="form-control form-control-sm mb-2" :placeholder="manga?.title" />
   </FormModal>
 
   <FormModal title="Merge" :open="mergeOpen" submit-text="Plan" :disabled="!mergeOther" size="lg" @close="mergeOpen = false" @submit="planMerge">
