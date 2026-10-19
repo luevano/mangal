@@ -3240,6 +3240,9 @@ components:
           type: string
         reads:
           type: integer
+        unavailable:
+          type: string
+          description: why the chapter can't be downloaded (e.g. "external", "retired"), if it can't
 
     Binding:
       type: object

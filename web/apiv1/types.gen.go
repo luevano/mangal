@@ -757,8 +757,11 @@ type ProviderChapter struct {
 	Path       *string `json:"path,omitempty"`
 	Reads      int     `json:"reads"`
 	Title      string  `json:"title"`
-	Url        *string `json:"url,omitempty"`
-	Volume     float32 `json:"volume"`
+
+	// Unavailable why the chapter can't be downloaded (e.g. "external", "retired"), if it can't
+	Unavailable *string `json:"unavailable,omitempty"`
+	Url         *string `json:"url,omitempty"`
+	Volume      float32 `json:"volume"`
 }
 
 // ProviderManga defines model for ProviderManga.

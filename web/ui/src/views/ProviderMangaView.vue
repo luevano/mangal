@@ -16,6 +16,7 @@ import { crumbs } from '@/stores/crumbs'
 import { useChanges } from '@/stores/changes'
 import { useJobs } from '@/stores/jobs'
 import { usePlan } from '@/stores/plan'
+import { useToasts } from '@/stores/toasts'
 
 const route = useRoute()
 const router = useRouter()
@@ -45,8 +46,13 @@ function toggle(c: ProviderChapter) {
   else s.add(key(c))
   selected.value = s
 }
+// selectMissing skips the unavailable chapters, saying how many when there are any.
 function selectMissing() {
-  selected.value = new Set((chapters.data.value ?? []).filter((c) => !c.downloaded).map(key))
+  const missing = (chapters.data.value ?? []).filter((c) => !c.downloaded)
+  const available = missing.filter((c) => !c.unavailable)
+  selected.value = new Set(available.map(key))
+  const skipped = missing.length - available.length
+  if (skipped) useToasts().push('info', `Selected ${available.length} chapters (${skipped} unavailable skipped)`)
 }
 
 // selectorRanges are the chapter selectors (from-to) of the runs of selected chapters, in
@@ -161,18 +167,19 @@ function unbind(b: Binding) {
     <table v-if="chapters.data.value?.length" class="table table-sm table-hover" data-test="provider-chapters">
       <thead><tr><th style="width: 2rem"></th><th>#</th><th>Title</th><th>Vol</th><th></th><th></th></tr></thead>
       <tbody>
-        <tr v-for="c in pager.items.value" :key="key(c)" :class="{ 'table-active': selected.has(key(c)) }">
-          <td><input class="form-check-input" type="checkbox" :checked="selected.has(key(c))" @change="toggle(c)" /></td>
+        <tr v-for="c in pager.items.value" :key="key(c)" :class="{ 'table-active': selected.has(key(c)), 'text-secondary': c.unavailable }">
+          <td><input class="form-check-input" type="checkbox" :checked="selected.has(key(c))" :disabled="!!c.unavailable" @change="toggle(c)" /></td>
           <td>{{ num(c.number) }}</td>
-          <td><a href="#" class="text-decoration-none" @click.prevent="read(c)">{{ c.title }}</a></td>
+          <td v-if="c.unavailable" data-test="unavailable" :title="`Chapter unavailable: ${c.unavailable}`">{{ c.title }} [{{ c.unavailable }}]</td>
+          <td v-else><a href="#" class="text-decoration-none" @click.prevent="read(c)">{{ c.title }}</a></td>
           <td class="small">{{ num(c.volume) || '' }}</td>
           <td class="text-nowrap">
             <i v-if="c.downloaded" class="bi bi-download text-success me-1" title="downloaded" />
             <i v-if="c.reads" class="bi bi-check2 text-success" :title="`read ${c.reads}×`" />
           </td>
           <td class="text-end text-nowrap">
-            <button class="btn btn-sm btn-link py-0" :title="c.downloaded ? 'Read (downloaded)' : 'Read online'" data-test="read-online" @click="read(c)"><i class="bi bi-book" /></button>
-            <button v-if="!c.downloaded" class="btn btn-sm btn-link py-0" title="Download" @click="download([num(c.number)])"><i class="bi bi-download" /></button>
+            <button v-if="!c.unavailable" class="btn btn-sm btn-link py-0" :title="c.downloaded ? 'Read (downloaded)' : 'Read online'" data-test="read-online" @click="read(c)"><i class="bi bi-book" /></button>
+            <button v-if="!c.downloaded && !c.unavailable" class="btn btn-sm btn-link py-0" title="Download" @click="download([num(c.number)])"><i class="bi bi-download" /></button>
           </td>
         </tr>
       </tbody>

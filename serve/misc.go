@@ -255,6 +255,9 @@ func (a *API) ListProviderChapters(ctx context.Context, request apiv1.ListProvid
 			if info.URL != "" {
 				pc.Url = &info.URL
 			}
+			if info.Unavailable != "" {
+				pc.Unavailable = &info.Unavailable
+			}
 			if p, ok := paths[info.Number]; ok {
 				pc.Downloaded, pc.Path = true, &p
 			}

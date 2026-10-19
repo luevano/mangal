@@ -2089,6 +2089,8 @@ export interface components {
             downloaded: boolean;
             path?: string;
             reads: number;
+            /** @description why the chapter can't be downloaded (e.g. "external", "retired"), if it can't */
+            unavailable?: string;
         };
         Binding: {
             provider?: string;
