@@ -46,7 +46,8 @@ func Search(ctx context.Context, src Searcher, id, query string) ([]mangadata.Ma
 }
 
 // Find is the manga with the id (see Search; with a title query too, ByID), else the one
-// the manga selector (exact if empty) picks from a search of the query.
+// the manga selector (exact if empty) picks from a search of the query. An id the
+// provider doesn't have is an error matching libmangal.ErrNotFound.
 func Find(ctx context.Context, src Searcher, id, query, sel string) (mangadata.Manga, error) {
 	if qid, ok := IDQuery(query); ok {
 		id, query = cmp.Or(id, qid), ""
@@ -70,7 +71,7 @@ func Find(ctx context.Context, src Searcher, id, query, sel string) (mangadata.M
 		case err != nil:
 			return nil, err
 		case !found:
-			return nil, fmt.Errorf("no manga with id %q in %s", id, src.Info().ID)
+			return nil, notFoundError{id: id, provider: src.Info().ID}
 		}
 		return manga, nil
 	}
@@ -115,3 +116,13 @@ func ByID(ctx context.Context, src Searcher, id, title string) (manga mangadata.
 	}
 	return nil, false, nil
 }
+
+// notFoundError is a manga id the provider doesn't have (any more), it matches
+// libmangal.ErrNotFound.
+type notFoundError struct{ id, provider string }
+
+func (e notFoundError) Error() string {
+	return fmt.Sprintf("no manga with id %q in %s", e.id, e.provider)
+}
+
+func (notFoundError) Is(target error) bool { return target == libmangal.ErrNotFound }

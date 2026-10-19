@@ -11,6 +11,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/libmangal/netutil"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
@@ -164,9 +165,18 @@ func warnIDQuery(q string) {
 func providerManga(ctx context.Context, c *libmangal.Client, id, q string) (mangadata.Manga, error) {
 	m, err := selector.Find(ctx, client.Searcher(c), id, q, "")
 	if err != nil {
-		return nil, unprocessable(err)
+		return nil, providerError(err)
 	}
 	return m, nil
+}
+
+// providerError is a provider's error: a manga it doesn't have (any more) is a 404, the
+// rest a 422 (rate limits stay 429s).
+func providerError(err error) error {
+	if _, limited := netutil.RetryAfterOf(err); limited || errors.Is(err, libmangal.ErrNotFound) {
+		return err
+	}
+	return unprocessable(err)
 }
 
 // GetProviderManga implements apiv1.StrictServerInterface.
@@ -224,7 +234,7 @@ func (a *API) ListProviderChapters(ctx context.Context, request apiv1.ListProvid
 		}
 		chapters, err := client.MangaChapters(ctx, c, m)
 		if err != nil {
-			return nil, err
+			return nil, providerError(err)
 		}
 		svc, err := a.services(ctx)
 		if err != nil {

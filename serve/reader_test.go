@@ -248,6 +248,9 @@ func (readerProvider) SearchMangas(context.Context, string) ([]mangadata.Manga, 
 	return []mangadata.Manga{&rManga{}}, nil
 }
 func (readerProvider) MangaByID(_ context.Context, id string) (mangadata.Manga, bool, error) {
+	if id == "down" {
+		return nil, false, fmt.Errorf("site down")
+	}
 	return &rManga{}, id == "m", nil
 }
 func (readerProvider) MangaVolumes(context.Context, mangadata.Manga) ([]mangadata.Volume, error) {
@@ -299,5 +302,24 @@ func TestV1SearchByID(t *testing.T) {
 	}
 	if code := s.call(t, "GET", "/api/v1/providers/reader/search", "", nil); code != http.StatusBadRequest {
 		t.Errorf("no q or id: %d", code)
+	}
+}
+
+// TestV1ProviderMangaGone: a manga the provider doesn't have (any more) is a 404
+// not_found, its chapters too; another error of the provider a 422 with its reason.
+func TestV1ProviderMangaGone(t *testing.T) {
+	s, _ := newReaderServer(t)
+	for _, path := range []string{"/api/v1/providers/reader/manga?manga_id=gone", "/api/v1/providers/reader/chapters?manga_id=gone"} {
+		var e ErrorResponse
+		if code := s.call(t, "GET", path, "", &e); code != http.StatusNotFound || e.Code != watch.CodeNotFound || e.Error != `no manga with id "gone" in reader` {
+			t.Errorf("%s: %d %+v", path, code, e)
+		}
+	}
+	var e ErrorResponse
+	if code := s.call(t, "GET", "/api/v1/providers/reader/manga?manga_id=down", "", &e); code != http.StatusUnprocessableEntity || e.Code != CodeUnprocessable || !strings.Contains(e.Error, "site down") {
+		t.Errorf("down: %d %+v", code, e)
+	}
+	if code := s.call(t, "GET", "/api/v1/providers/reader/manga?manga_id=m", "", nil); code != http.StatusOK {
+		t.Errorf("there: %d", code)
 	}
 }
