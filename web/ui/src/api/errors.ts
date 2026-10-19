@@ -33,3 +33,9 @@ export function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message
   return String(e)
 }
+
+// mangaGone is a provider's 404 for a manga it doesn't have (any more), not the one of a
+// provider that isn't installed (`provider "x": not found`).
+export function mangaGone(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 404 && e.code === 'not_found' && !e.message.startsWith('provider ')
+}

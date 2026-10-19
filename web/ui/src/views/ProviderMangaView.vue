@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import client, { ok, fetchJSON } from '@/api/client'
+import { errorMessage, mangaGone } from '@/api/errors'
 import { change } from '@/api/changes'
 import { imageURL } from '@/api/urls'
 import type { ApplyFields, Binding, ChangeResponse, MetadataResult, MetadataSource, ProviderChapter } from '@/api/schemas'
@@ -27,10 +28,18 @@ const jobs = useJobs()
 const plan = usePlan()
 const action = useAction()
 
-const pm = useLoad(
-  () => ok(client.GET('/v1/providers/{provider}/manga', { params: { path: { provider: provider.value }, query: { manga_id: mangaID.value } } })),
-  [provider, mangaID, () => changes.version]
-)
+// gone: the provider doesn't have the manga (any more), said as such; another error of the
+// provider is said with its reason
+const gone = ref(false)
+const pm = useLoad(async () => {
+  gone.value = false
+  try {
+    return await ok(client.GET('/v1/providers/{provider}/manga', { params: { path: { provider: provider.value }, query: { manga_id: mangaID.value } } }))
+  } catch (e) {
+    gone.value = mangaGone(e)
+    throw new Error(gone.value ? errorMessage(e) : `Couldn't get it from ${provider.value}: ${errorMessage(e)}`)
+  }
+}, [provider, mangaID, () => changes.version])
 const chapters = useLoad(
   () => ok(client.GET('/v1/providers/{provider}/chapters', { params: { path: { provider: provider.value }, query: { manga_id: mangaID.value } } })),
   [provider, mangaID, () => jobs.finished]
@@ -129,7 +138,11 @@ function unbind(b: Binding) {
 </script>
 
 <template>
-  <LoadState :loading="pm.loading.value && !pm.data.value" :error="pm.error.value" />
+  <div v-if="gone" class="alert alert-warning" data-test="manga-gone">
+    This manga isn't on {{ provider }} anymore (it may have been removed). Its downloaded chapters stay in the library; moving the library manga to another provider gets it a new source.
+    <div class="small text-secondary mt-1">{{ pm.error.value }}</div>
+  </div>
+  <LoadState v-else :loading="pm.loading.value && !pm.data.value" :error="pm.error.value" />
   <template v-if="pm.data.value">
     <div class="row g-3 mb-3">
       <div class="col-4 col-md-2">
