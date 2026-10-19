@@ -141,6 +141,7 @@ type configProvidersFilter struct {
 	Language                *entry[string, string]
 	AvoidDuplicateChapters  *entry[bool, bool]
 	ShowUnavailableChapters *entry[bool, bool]
+	ShowRetiredChapters     *entry[bool, bool]
 }
 
 type configProvidersMangaPlus struct {

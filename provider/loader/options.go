@@ -109,6 +109,7 @@ func commonOptions() common {
 			Language:                config.Providers.Filter.Language.Get(),
 			AvoidDuplicateChapters:  config.Providers.Filter.AvoidDuplicateChapters.Get(),
 			ShowUnavailableChapters: config.Providers.Filter.ShowUnavailableChapters.Get(),
+			ShowRetiredChapters:     config.Providers.Filter.ShowRetiredChapters.Get(),
 		},
 	}
 }

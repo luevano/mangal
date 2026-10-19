@@ -25,6 +25,8 @@ func addLoaderFlags(f *pflag.FlagSet) {
 	configKeyFlag(f, "avoid-duplicate-chapters", config.Providers.Filter.AvoidDuplicateChapters.Key)
 	f.Bool("show-unavailable-chapters", false, "Show undownloadable chapters")
 	configKeyFlag(f, "show-unavailable-chapters", config.Providers.Filter.ShowUnavailableChapters.Key)
+	f.Bool("show-retired-chapters", false, "Show chapters the source took down")
+	configKeyFlag(f, "show-retired-chapters", config.Providers.Filter.ShowRetiredChapters.Key)
 	f.Bool("headless-use-flaresolverr", false, "Use Flaresolverr for headless providers")
 	configKeyFlag(f, "headless-use-flaresolverr", config.Providers.Headless.UseFlaresolverr.Key)
 	f.String("headless-flaresolverr-url", "", "Flaresolverr service URL")

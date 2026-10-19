@@ -478,6 +478,8 @@ var Providers = configProviders{
 			"Only select one chapter when multiple of the same number are present."),
 		ShowUnavailableChapters: boolEntry("providers.filter.show_unavailable_chapters", false,
 			"When there are non-downloadable chapters, show them anyways. Should only be used to search around."),
+		ShowRetiredChapters: boolEntry("providers.filter.show_retired_chapters", false,
+			"Also list chapters the source took down (MangaDex), shown as unavailable \"retired\" and never downloaded."),
 	},
 	MangaDex: configProvidersMangaDex{
 		DataSaver: boolEntry("providers.mangadex.data_saver", false, `Use MangaDex "data-saver" option for chapter pages.`),
