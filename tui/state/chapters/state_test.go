@@ -240,7 +240,9 @@ func TestDownloadQueues(t *testing.T) {
 	// job before the blocker could end the check
 	t.Cleanup(func() {
 		m.CancelAll()
-		m.Shutdown(time.Second)
+		if !m.Shutdown(time.Second) {
+			t.Error("a job still runs: the queued download started")
+		}
 		tuijobs.SetManager(nil)
 	})
 	blocker := make(chan struct{})
