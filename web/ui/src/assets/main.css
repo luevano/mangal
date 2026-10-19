@@ -48,3 +48,12 @@ body {
 .mono {
   font-family: var(--bs-font-monospace);
 }
+
+/* a site's icon next to its name */
+.site-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  vertical-align: -0.125em;
+  flex-shrink: 0;
+}

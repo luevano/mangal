@@ -10,6 +10,7 @@ import FillDialog from '@/components/FillDialog.vue'
 import MetadataPicker from '@/components/MetadataPicker.vue'
 import LoadState from '@/components/LoadState.vue'
 import PagerNav from '@/components/PagerNav.vue'
+import SiteIcon from '@/components/SiteIcon.vue'
 import { usePager } from '@/composables/usePager'
 import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
@@ -45,7 +46,9 @@ const chapters = useLoad(
   () => ok(client.GET('/v1/providers/{provider}/chapters', { params: { path: { provider: provider.value }, query: { manga_id: mangaID.value } } })),
   [provider, mangaID, () => jobs.finished]
 )
-crumbs(() => [{ title: 'Providers', to: { name: 'providers' } }, { title: provider.value }, { title: pm.data.value?.manga.title ?? mangaID.value }])
+const info = useLoad(() => ok(client.GET('/v1/providers/{provider}', { params: { path: { provider: provider.value } } })), [provider])
+const providerName = computed(() => info.data.value?.name ?? provider.value)
+crumbs(() => [{ title: 'Providers', to: { name: 'providers' } }, { title: providerName.value }, { title: pm.data.value?.manga.title ?? mangaID.value }])
 
 const selected = ref(new Set<string>())
 const pager = usePager(computed(() => chapters.data.value), 100)
@@ -158,9 +161,18 @@ function unbind(b: Binding) {
       </div>
       <div class="col">
         <h4 class="mb-1">{{ pm.data.value.manga.title }}</h4>
-        <div class="small text-secondary mb-2">
-          {{ provider }} · {{ pm.data.value.manga.id }}
-          <a v-if="pm.data.value.manga.url" :href="pm.data.value.manga.url" target="_blank" rel="noopener noreferrer"> · site</a>
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2" data-test="live-source">
+          <span class="badge text-bg-info d-inline-flex align-items-center gap-1" title="The site's data right now, not the library's"><SiteIcon :provider="provider" /> {{ providerName }} — live from the site</span>
+          <span class="small text-secondary">{{ pm.data.value.manga.id }}</span>
+          <a
+            v-if="pm.data.value.manga.url || info.data.value?.preferred"
+            class="btn btn-sm btn-outline-secondary py-0"
+            :href="pm.data.value.manga.url || info.data.value?.preferred"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-test="open-site"
+            ><i class="bi bi-box-arrow-up-right me-1" />Open on {{ providerName }}</a
+          >
         </div>
         <div class="d-flex flex-wrap gap-2 mb-2">
           <RouterLink v-if="pm.data.value.library" class="btn btn-sm btn-outline-secondary" :to="{ name: 'library-manga', params: { id: pm.data.value.library } }">In the library</RouterLink>
@@ -170,7 +182,7 @@ function unbind(b: Binding) {
         </div>
         <div class="d-flex flex-wrap gap-1">
           <span v-for="b in pm.data.value.bindings" :key="b.source" class="badge text-bg-secondary">
-            {{ sourceNames[b.source] ?? b.source }} {{ b.id }}{{ b.default ? ' (default)' : '' }}
+            <SiteIcon :source="b.source" /> {{ sourceNames[b.source] ?? b.source }} {{ b.id }}{{ b.default ? ' (default)' : '' }}
             <a href="#" class="text-reset ms-1" title="Replace" @click.prevent="openBind(b.source)"><i class="bi bi-arrow-repeat" /></a>
             <a href="#" class="text-reset ms-1" title="Unbind" @click.prevent="unbind(b)"><i class="bi bi-x" /></a>
           </span>

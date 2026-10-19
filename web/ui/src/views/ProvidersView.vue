@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import client, { ok } from '@/api/client'
 import type { Provider, ProvidersUpdate } from '@/api/schemas'
 import LoadState from '@/components/LoadState.vue'
+import SiteIcon from '@/components/SiteIcon.vue'
 import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
 import { crumbs } from '@/stores/crumbs'
@@ -62,7 +63,7 @@ function search(id: string) {
     <div v-for="p in (data ?? []).filter((x) => !filter || (x.name + x.id).toLowerCase().includes(filter.toLowerCase()))" :key="p.id" class="col-12 col-md-6 col-xl-4">
       <div class="card h-100" data-test="provider">
         <div class="card-body">
-          <h6 class="card-title mb-0">{{ p.name }} <small class="text-secondary">{{ p.version }}</small></h6>
+          <h6 class="card-title mb-0"><SiteIcon :provider="p.id" class="me-1" />{{ p.name }} <small class="text-secondary">{{ p.version }}</small></h6>
           <div class="small text-secondary mb-2">{{ p.id }}<span v-if="p.description"> · {{ p.description }}</span></div>
           <div v-if="p.mirrors?.length" class="input-group input-group-sm mb-2" title="the preferred website, the others are tried when it's down">
             <span class="input-group-text">site</span>

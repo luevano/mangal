@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MetadataID } from '@/api/schemas'
 import { sourceNames, sourceURL } from '@/composables/format'
+import SiteIcon from '@/components/SiteIcon.vue'
 defineProps<{ ids: MetadataID[] }>()
 </script>
 
@@ -8,9 +9,9 @@ defineProps<{ ids: MetadataID[] }>()
   <span class="d-inline-flex flex-wrap gap-1">
     <template v-for="id in ids" :key="id.source + id.id">
       <a v-if="sourceURL(id.source, id.id)" :href="sourceURL(id.source, id.id)" target="_blank" rel="noopener noreferrer" class="badge text-bg-secondary text-decoration-none">
-        {{ sourceNames[id.source] ?? id.source }} {{ id.id }}
+        <SiteIcon :source="id.source" /> {{ sourceNames[id.source] ?? id.source }} {{ id.id }}
       </a>
-      <span v-else class="badge text-bg-secondary">{{ sourceNames[id.source] ?? id.source }} {{ id.id }}</span>
+      <span v-else class="badge text-bg-secondary"><SiteIcon :source="id.source" /> {{ sourceNames[id.source] ?? id.source }} {{ id.id }}</span>
     </template>
   </span>
 </template>

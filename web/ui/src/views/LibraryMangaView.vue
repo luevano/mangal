@@ -10,6 +10,7 @@ import HoldDialog from '@/components/HoldDialog.vue'
 import MetadataPicker from '@/components/MetadataPicker.vue'
 import LoadState from '@/components/LoadState.vue'
 import PagerNav from '@/components/PagerNav.vue'
+import SiteIcon from '@/components/SiteIcon.vue'
 import { usePager } from '@/composables/usePager'
 import MetaIDs from '@/components/MetaIDs.vue'
 import { useLoad } from '@/composables/useLoad'
@@ -34,6 +35,10 @@ const chapters = useLoad(
   [id, () => changes.version, () => jobs.finished]
 )
 const providers = useLoad(() => ok(client.GET('/v1/providers')))
+const providerOf = (id: string) => providers.data.value?.find((p) => p.id === id)
+const providerName = (id: string) => providerOf(id)?.name ?? id
+// the site a source's manga is on: the library doesn't keep the manga's url
+const providerSite = (id: string) => providerOf(id)?.preferred ?? providerOf(id)?.website
 
 const manga = computed(() => detail.data.value?.manga)
 crumbs(() => [{ title: 'Library', to: { name: 'library' } }, { title: manga.value?.title ?? `#${id.value}` }])
@@ -228,19 +233,23 @@ function watchSource(provider: string, mangaID: string) {
         <h6>Sources</h6>
         <ul class="list-group mb-3">
           <li v-if="!manga.sources.length" class="list-group-item text-secondary small">No source (a scanned folder): Move links it to a provider.</li>
-          <li v-for="s in manga.sources" :key="s.provider + s.manga_id" class="list-group-item d-flex align-items-center gap-2">
-            <div class="me-auto">
-              <RouterLink :to="{ name: 'provider-manga', params: { provider: s.provider, manga: s.manga_id } }">{{ s.title }}</RouterLink>
-              <div class="small text-secondary">{{ s.provider }} · {{ s.manga_id }}<span v-if="s.current"> · current</span><span v-if="s.moved"> · moved {{ date(s.moved) }}</span></div>
+          <li v-for="s in manga.sources" :key="s.provider + s.manga_id" class="list-group-item" data-test="source">
+            <div class="d-flex align-items-center gap-2">
+              <SiteIcon :provider="s.provider" :title="providerName(s.provider)" />
+              <span class="fw-semibold me-auto">{{ providerName(s.provider) }} <span v-if="s.current" class="badge text-bg-primary fw-normal">current</span></span>
+              <a v-if="providerSite(s.provider)" class="btn btn-sm btn-link py-0" :href="providerSite(s.provider)" target="_blank" rel="noopener noreferrer" :title="`Open ${providerName(s.provider)}'s website`"><i class="bi bi-box-arrow-up-right" /></a>
+              <button v-if="s.current && !detail.data.value.watches.some((w) => w.provider === s.provider && w.manga_id === s.manga_id)" class="btn btn-sm btn-outline-secondary" @click="watchSource(s.provider, s.manga_id)">Watch</button>
             </div>
-            <button v-if="s.current && !detail.data.value.watches.some((w) => w.provider === s.provider && w.manga_id === s.manga_id)" class="btn btn-sm btn-outline-secondary" @click="watchSource(s.provider, s.manga_id)">Watch</button>
+            <div>{{ s.title }}</div>
+            <div class="small text-secondary">{{ s.manga_id }}<span v-if="s.moved"> · moved {{ date(s.moved) }}</span></div>
+            <RouterLink class="small" :to="{ name: 'provider-manga', params: { provider: s.provider, manga: s.manga_id } }" title="The site's chapters right now: read, download, bind">View on {{ providerName(s.provider) }} (live)</RouterLink>
           </li>
         </ul>
         <h6>Watches</h6>
         <ul class="list-group mb-3">
           <li v-for="w in detail.data.value.watches" :key="w.id" class="list-group-item">
             <RouterLink :to="{ name: 'watch', params: { id: w.id } }">{{ w.title }}</RouterLink>
-            <span class="small text-secondary"> · {{ w.provider }} · {{ w.hold ? `on hold: ${w.hold}` : w.enabled ? 'enabled' : 'paused' }}</span>
+            <span class="small text-secondary"> · <SiteIcon :provider="w.provider" /> {{ providerName(w.provider) }} · {{ w.hold ? `on hold: ${w.hold}` : w.enabled ? 'enabled' : 'paused' }}</span>
             <span v-if="w.needs_relink" class="badge text-bg-warning ms-1">{{ w.relink_kind === 'provider' ? 'needs a new provider' : 'needs a re-link' }}</span>
             <div v-if="w.coverage && !w.needs_relink" class="small text-warning">another provider? {{ w.coverage }}</div>
           </li>
@@ -249,7 +258,7 @@ function watchSource(provider: string, mangaID: string) {
         <h6>Bindings</h6>
         <ul class="list-group">
           <li v-for="b in detail.data.value.bindings" :key="`${b.provider}${b.manga_id}${b.source}`" class="list-group-item small">
-            <span v-if="b.provider">{{ b.provider }} {{ b.manga_id }} → </span>{{ sourceNames[b.source] ?? b.source }} {{ b.id }}<span v-if="b.default"> (default)</span>
+            <span v-if="b.provider"><SiteIcon :provider="b.provider" /> {{ providerName(b.provider) }} {{ b.manga_id }} → </span><SiteIcon :source="b.source" /> {{ sourceNames[b.source] ?? b.source }} {{ b.id }}<span v-if="b.default"> (default)</span>
           </li>
           <li v-if="!detail.data.value.bindings.length" class="list-group-item text-secondary small">No bindings.</li>
         </ul>

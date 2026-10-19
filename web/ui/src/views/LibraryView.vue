@@ -6,6 +6,7 @@ import { change } from '@/api/changes'
 import { coverURL } from '@/api/urls'
 import LoadState from '@/components/LoadState.vue'
 import MetaIDs from '@/components/MetaIDs.vue'
+import SiteIcon from '@/components/SiteIcon.vue'
 import { useLoad } from '@/composables/useLoad'
 import { useAction } from '@/composables/useAction'
 import { crumbs } from '@/stores/crumbs'
@@ -137,7 +138,7 @@ function planAll(title: string, path: string, body: object = {}) {
         <td class="text-end">{{ m.chapters }}</td>
         <td class="d-none d-md-table-cell small">{{ m.status }}</td>
         <td class="d-none d-lg-table-cell small">
-          <span v-for="s in m.sources" :key="s.provider + s.manga_id" class="badge me-1" :class="s.current ? 'text-bg-primary' : 'text-bg-dark'">{{ s.provider }}</span>
+          <span v-for="s in m.sources" :key="s.provider + s.manga_id" class="badge me-1" :class="s.current ? 'text-bg-primary' : 'text-bg-dark'" :title="s.provider"><SiteIcon :provider="s.provider" /> {{ providers.data.value?.find((p) => p.id === s.provider)?.name ?? s.provider }}</span>
         </td>
         <td class="d-none d-lg-table-cell"><MetaIDs :ids="m.metadata_ids" /></td>
       </tr>

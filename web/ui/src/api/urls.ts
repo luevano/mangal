@@ -37,3 +37,11 @@ export function providerPageURL(
 export function mangaZipURL(manga: number): string {
   return `/api/v1/library/mangas/${manga}/zip`
 }
+
+export function providerIconURL(provider: string): string {
+  return `/api/v1/providers/${encodeURIComponent(provider)}/icon`
+}
+
+export function metadataIconURL(source: string): string {
+  return `/api/v1/metadata/${encodeURIComponent(source)}/icon`
+}
