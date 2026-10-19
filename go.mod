@@ -24,11 +24,11 @@ require (
 	github.com/ivanpirog/coloredcobra v1.0.1
 	github.com/labstack/echo/v5 v5.4.0
 	github.com/lithammer/fuzzysearch v1.1.8
-	github.com/luevano/gopher-luadoc v0.3.6
-	github.com/luevano/libmangal v0.32.2
-	github.com/luevano/luaprovider v0.19.3
+	github.com/luevano/gopher-luadoc v0.3.7
+	github.com/luevano/libmangal v0.32.3
+	github.com/luevano/luaprovider v0.19.4
 	github.com/luevano/mangoplus v0.7.6
-	github.com/luevano/mangoprovider v0.24.0
+	github.com/luevano/mangoprovider v0.24.1
 	github.com/maruel/natural v1.3.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/pelletier/go-toml/v2 v2.4.3
@@ -105,7 +105,7 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
-	github.com/luevano/mangodex v0.5.5 // indirect
+	github.com/luevano/mangodex v0.5.6 // indirect
 	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-runewidth v0.0.31 // indirect
