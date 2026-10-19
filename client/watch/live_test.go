@@ -2,6 +2,7 @@ package watch
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,5 +108,17 @@ func TestLiveEventMessages(t *testing.T) {
 	h.publish(LiveEvent{Run: 1, Kind: LiveStatus})
 	if recent := h.Recent(); len(recent) != 1 || recent[0].Kind != LiveStatus {
 		t.Errorf("recent %+v", recent)
+	}
+}
+
+// an event too long to read is skipped, not replayed on every reconnection
+func TestReadEventsTooLong(t *testing.T) {
+	body := "id: 1\ndata: {\"seq\":1}\n\nid: 2\ndata: " + strings.Repeat("x", 2<<20) + "\n\n"
+	out := make(chan LiveEvent, 2)
+	if last := readEvents(context.Background(), strings.NewReader(body), out, 0); last != 2 {
+		t.Errorf("last %d, want 2", last)
+	}
+	if len(out) != 1 {
+		t.Errorf("%d events, want 1", len(out))
 	}
 }

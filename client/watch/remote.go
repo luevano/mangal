@@ -422,10 +422,15 @@ func (r *Remote) events(ctx context.Context, since uint64) (*http.Response, erro
 func readEvents(ctx context.Context, body io.Reader, out chan<- LiveEvent, last uint64) uint64 {
 	sc := bufio.NewScanner(body)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	var id uint64
 	for sc.Scan() {
+		if v, ok := strings.CutPrefix(sc.Text(), "id:"); ok {
+			id, _ = strconv.ParseUint(strings.TrimSpace(v), 10, 64)
+			continue
+		}
 		data, ok := strings.CutPrefix(sc.Text(), "data:")
 		if !ok {
-			// id:, comments (keep-alives) and the blank line between events
+			// comments (keep-alives) and the blank line between events
 			continue
 		}
 		var e LiveEvent
@@ -438,6 +443,10 @@ func readEvents(ctx context.Context, body io.Reader, out chan<- LiveEvent, last 
 		case <-ctx.Done():
 			return last
 		}
+	}
+	if errors.Is(sc.Err(), bufio.ErrTooLong) && id > last {
+		// skipped, the server would replay it on every reconnection
+		last = id
 	}
 	return last
 }
