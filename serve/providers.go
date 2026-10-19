@@ -149,6 +149,9 @@ func toAPIProvider(info libmangal.ProviderInfo) apiv1.Provider {
 		preferred := cmpOr(config.Providers.Mirrors.Get()[info.ID], info.Website)
 		out.Preferred = &preferred
 	}
+	if info.Icon != "" {
+		out.Icon = &info.Icon
+	}
 	if len(info.Mirrors) != 0 {
 		out.Mirrors = &info.Mirrors
 	}

@@ -115,6 +115,26 @@ func (a *API) GetProviderInfo(ctx context.Context, request apiv1.GetProviderInfo
 	return apiv1.GetProviderInfo200JSONResponse(toAPIProvider(info)), nil
 }
 
+// iconCache is how long the browser keeps a site's icon.
+const iconCache = "private, max-age=86400"
+
+// GetProviderIcon implements apiv1.StrictServerInterface.
+func (a *API) GetProviderIcon(ctx context.Context, request apiv1.GetProviderIconRequestObject) (apiv1.GetProviderIconResponseObject, error) {
+	if a.Browser == nil {
+		return nil, newAPIError(http.StatusServiceUnavailable, CodeUnavailable, "no image proxy here")
+	}
+	info, err := core.NewProviders(a.loaders).Info(ctx, request.Provider)
+	if err != nil {
+		return nil, err
+	}
+	data, contentType, err := a.Browser.Icon(ctx, info.Icon, info.Website)
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.GetProviderIcon200ImageResponse{Body: bytes.NewReader(data), ContentType: contentType, ContentLength: int64(len(data)),
+		Headers: apiv1.GetProviderIcon200ResponseHeaders{CacheControl: new(iconCache)}}, nil
+}
+
 // withClient runs fn with the provider's client.
 func withClient[T any](ctx context.Context, a *API, provider string, fn func(*libmangal.Client) (T, error)) (T, error) {
 	var zero T

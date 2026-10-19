@@ -7,7 +7,8 @@
       ],
       "api": [
         "listProviders",
-        "getProviderInfo"
+        "getProviderInfo",
+        "getProviderIcon"
       ]
     },
     {
@@ -283,7 +284,8 @@
       ],
       "api": [
         "listMetadataSources",
-        "searchMetadata"
+        "searchMetadata",
+        "getMetadataIcon"
       ]
     },
     {

@@ -102,6 +102,9 @@ var rasterTypes = map[string]bool{
 	"image/webp": true,
 	"image/avif": true,
 	"image/bmp":  true,
+	// favicons
+	"image/x-icon":             true,
+	"image/vnd.microsoft.icon": true,
 }
 
 // imageType is the image's media type, from the header or else the content.

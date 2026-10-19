@@ -1,14 +1,17 @@
 package serve
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
@@ -37,6 +40,36 @@ func (a *API) ListMetadataSources(context.Context, apiv1.ListMetadataSourcesRequ
 		out = append(out, s)
 	}
 	return out, nil
+}
+
+// metadataSites are the metadata sites' websites and icons (none: the website's
+// /favicon.ico), by code and key.
+var metadataSites = []struct{ code, key, website, icon string }{
+	{string(lmmeta.IDCodeAnilist), "anilist", "https://anilist.co/", "https://anilist.co/img/icons/favicon-32x32.png"},
+	{string(lmmeta.IDCodeKitsu), "kitsu", "https://kitsu.app/", ""},
+	{string(lmmeta.IDCodeMyAnimeList), "myanimelist", "https://myanimelist.net/", "https://cdn.myanimelist.net/images/favicon.ico"},
+	// TODO: only an SVG icon (refused), so a 404 for now
+	{string(lmmeta.IDCodeMangaUpdates), "mangaupdates", "https://www.mangaupdates.com/", ""},
+}
+
+// GetMetadataIcon implements apiv1.StrictServerInterface.
+func (a *API) GetMetadataIcon(ctx context.Context, request apiv1.GetMetadataIconRequestObject) (apiv1.GetMetadataIconResponseObject, error) {
+	if a.Browser == nil {
+		return nil, newAPIError(http.StatusServiceUnavailable, CodeUnavailable, "no image proxy here")
+	}
+	source := strings.ToLower(request.Source)
+	for _, site := range metadataSites {
+		if source != site.code && source != site.key {
+			continue
+		}
+		data, contentType, err := a.Browser.Icon(ctx, site.icon, site.website)
+		if err != nil {
+			return nil, err
+		}
+		return apiv1.GetMetadataIcon200ImageResponse{Body: bytes.NewReader(data), ContentType: contentType, ContentLength: int64(len(data)),
+			Headers: apiv1.GetMetadataIcon200ResponseHeaders{CacheControl: new(iconCache)}}, nil
+	}
+	return nil, fmt.Errorf("metadata source %q: %w", request.Source, core.ErrNotFound)
 }
 
 // metadataIDQuery is a search for an id: "123" or "id:123".

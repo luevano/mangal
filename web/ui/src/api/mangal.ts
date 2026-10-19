@@ -1002,6 +1002,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/providers/{provider}/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The provider's site icon
+         * @description Its icon, else its website's /favicon.ico, fetched once and kept in the cache dir (raster images only). A site without one is a 404, asked again after a day.
+         */
+        get: operations["getProviderIcon"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/providers/{provider}/search": {
         parameters: {
             query?: never;
@@ -1222,6 +1242,26 @@ export interface paths {
         };
         /** The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList) */
         get: operations["listMetadataSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/metadata/{source}/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A metadata site's icon
+         * @description Fetched once and kept in the cache dir, like getProviderIcon.
+         */
+        get: operations["getMetadataIcon"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1583,6 +1623,8 @@ export interface components {
             description?: string;
             version: string;
             website?: string;
+            /** @description the url of the site's icon, none for the website's /favicon.ico (getProviderIcon serves it) */
+            icon?: string;
             /** @description the other websites it can use (providers.mirrors) */
             mirrors?: string[];
             /** @description the preferred website (providers.mirrors), the website when none is set */
@@ -3947,6 +3989,31 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    getProviderIcon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description a provider id */
+                provider: components["parameters"]["ProviderPathParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the icon */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     searchProvider: {
         parameters: {
             query?: {
@@ -4334,6 +4401,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetadataSource"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getMetadataIcon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the source's key or code (anilist/al, kitsu/kt, mal, mangaupdates/mu) */
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the icon */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
                 };
             };
             default: components["responses"]["Error"];

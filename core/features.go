@@ -69,7 +69,7 @@ const (
 
 // Features are mangal's features.
 var Features = []Feature{
-	{Name: "providers", Web: []string{"providers"}, API: []string{"listProviders", "getProviderInfo"}, CLI: []string{"providers ls"}, TUI: "enter (home)", Script: "client.info"},
+	{Name: "providers", Web: []string{"providers"}, API: []string{"listProviders", "getProviderInfo", "getProviderIcon"}, CLI: []string{"providers ls"}, TUI: "enter (home)", Script: "client.info"},
 	{Name: "provider install", CLI: []string{"providers add", "providers rm", "providers new"},
 		NotApplicable: map[Mode]string{ModeWeb: "providers run code: never installed over HTTP", ModeAPI: "providers run code: never installed over HTTP", ModeTUI: "git installs are a terminal's job", ModeScript: "a script doesn't install code"}},
 	{Name: "provider update", Web: []string{"providers"}, API: []string{"updateProviders"}, CLI: []string{"providers up"},
@@ -122,7 +122,7 @@ var Features = []Feature{
 		NotApplicable: map[Mode]string{ModeScript: "scripts bind titles to AniList ids only (anilist.bind_title_with_id)"}},
 	{Name: "unbind", Web: []string{"provider-manga"}, API: []string{"removeBinding"}, CLI: []string{"bind"}, TUI: "d (bindings)", TUIKey: "d", Change: KindUnbind,
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
-	{Name: "metadata search", Web: []string{"provider-manga", "library-manga"}, API: []string{"listMetadataSources", "searchMetadata"}, CLI: []string{"bind"}, TUI: "s (bindings)", TUIKey: "s", Script: "anilist.search_mangas"},
+	{Name: "metadata search", Web: []string{"provider-manga", "library-manga"}, API: []string{"listMetadataSources", "searchMetadata", "getMetadataIcon"}, CLI: []string{"bind"}, TUI: "s (bindings)", TUIKey: "s", Script: "anilist.search_mangas"},
 	{Name: "health", Web: []string{"health"}, API: []string{"getHealth", "getHealthJob", "dismissHealthFindings"}, CLI: []string{"health"}, TUI: "! (home)", TUIKey: "!",
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
 	{Name: "health fix", Web: []string{"health"}, API: []string{"fixHealthFinding"}, CLI: []string{"health fix"}, TUI: "x (health)", TUIKey: "x", Change: KindHealthFix,

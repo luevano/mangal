@@ -7,10 +7,12 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/manager"
 )
 
@@ -71,6 +73,7 @@ func NewBrowser(out io.Writer) (*Server, error) {
 		loaders:    loaders,
 		images:     newImageCache(imageCacheSize),
 		httpClient: imageClient(),
+		iconDir:    filepath.Join(path.Cache(), "icons"),
 	}, nil
 }
 

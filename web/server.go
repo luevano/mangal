@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/luevano/libmangal"
+	"golang.org/x/sync/singleflight"
 )
 
 // Server has the providers, the image proxy and the web UI (the API v1 is serve's).
@@ -14,6 +15,9 @@ type Server struct {
 	loaders    []libmangal.ProviderLoader
 	images     *imageCache
 	httpClient *http.Client
+	// iconDir keeps the sites' icons (Icon)
+	iconDir string
+	icons   singleflight.Group
 }
 
 // RegisterUI serves the web UI on /.

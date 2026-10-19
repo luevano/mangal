@@ -798,7 +798,10 @@ type Plan = core.Plan
 // Provider defines model for Provider.
 type Provider struct {
 	Description *string `json:"description,omitempty"`
-	Id          string  `json:"id"`
+
+	// Icon the url of the site's icon, none for the website's /favicon.ico (getProviderIcon serves it)
+	Icon *string `json:"icon,omitempty"`
+	Id   string  `json:"id"`
 
 	// Mirrors the other websites it can use (providers.mirrors)
 	Mirrors *[]string `json:"mirrors,omitempty"`

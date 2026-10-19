@@ -1208,6 +1208,29 @@ paths:
                 $ref: '#/components/schemas/Provider'
         default:
           $ref: '#/components/responses/Error'
+  /v1/providers/{provider}/icon:
+    get:
+      summary: The provider's site icon
+      description: Its icon, else its website's /favicon.ico, fetched once and kept in the cache dir (raster images only). A site without one is a 404, asked again after a day.
+      operationId: getProviderIcon
+      tags: [v1, providers]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/ProviderPathParam'
+      responses:
+        '200':
+          description: the icon
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: '#/components/responses/Error'
   /v1/providers/{provider}/search:
     get:
       summary: Search a provider's mangas
@@ -1564,6 +1587,34 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/MetadataSource'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/metadata/{source}/icon:
+    get:
+      summary: A metadata site's icon
+      description: Fetched once and kept in the cache dir, like getProviderIcon.
+      operationId: getMetadataIcon
+      tags: [v1, metadata]
+      x-mangal-scope: read
+      parameters:
+        - name: source
+          in: path
+          required: true
+          description: the source's key or code (anilist/al, kitsu/kt, mal, mangaupdates/mu)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: the icon
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
         default:
           $ref: '#/components/responses/Error'
   /v1/metadata/{source}/search:
@@ -2199,6 +2250,9 @@ components:
           type: string
         website:
           type: string
+        icon:
+          type: string
+          description: the url of the site's icon, none for the website's /favicon.ico (getProviderIcon serves it)
         mirrors:
           type: array
           description: the other websites it can use (providers.mirrors)
