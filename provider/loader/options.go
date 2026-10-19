@@ -101,8 +101,11 @@ type common struct {
 	Filter    luaoptions.Filter
 }
 
-func commonOptions() common {
-	return common{
+// FilterOption changes the config's filters of the providers loaded.
+type FilterOption func(*luaoptions.Filter)
+
+func commonOptions(filters ...FilterOption) common {
+	c := common{
 		UserAgent: config.Download.UserAgent.Get(),
 		Filter: luaoptions.Filter{
 			NSFW:                    config.Providers.Filter.NSFW.Get(),
@@ -112,11 +115,15 @@ func commonOptions() common {
 			ShowRetiredChapters:     config.Providers.Filter.ShowRetiredChapters.Get(),
 		},
 	}
+	for _, f := range filters {
+		f(&c.Filter)
+	}
+	return c
 }
 
 // LuaOptions are the options of a Lua provider in dir, from the config.
-func LuaOptions(dir string) luaprovider.Options {
-	c := commonOptions()
+func LuaOptions(dir string, filters ...FilterOption) luaprovider.Options {
+	c := commonOptions(filters...)
 	return luaprovider.Options{
 		HTTPClient:   ProviderHTTPClient(),
 		UserAgent:    c.UserAgent,

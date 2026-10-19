@@ -22,12 +22,12 @@ var newLuaLoader = luaprovider.NewLoader
 
 // LuaLoaders are the Lua providers in the providers dir. A provider that can't be loaded
 // is skipped, its error is in problems.
-func LuaLoaders() (loaders []libmangal.ProviderLoader, problems []error, err error) {
+func LuaLoaders(filters ...FilterOption) (loaders []libmangal.ProviderLoader, problems []error, err error) {
 	dir := path.Providers()
 	if _, err := afs.Afero.Stat(dir); errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, nil
 	}
-	loaders, problems, err = getLoaderBundles("", dir)
+	loaders, problems, err = getLoaderBundles("", dir, filters...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read providers dir: %w", err)
 	}
@@ -37,7 +37,7 @@ func LuaLoaders() (loaders []libmangal.ProviderLoader, problems []error, err err
 // getLoaderBundles returns a linear list of all providers with their parent bundle id attached.
 // A bundle is a collection of providers, any amount of nested providers (or even bundles) is valid.
 // The providers that can't be loaded are skipped and returned as problems, err is only for dir.
-func getLoaderBundles(bundleID, dir string) (loaders []libmangal.ProviderLoader, problems []error, err error) {
+func getLoaderBundles(bundleID, dir string, filters ...FilterOption) (loaders []libmangal.ProviderLoader, problems []error, err error) {
 	dirEntries, err := afs.Afero.ReadDir(dir)
 	if err != nil {
 		return nil, nil, err
@@ -61,7 +61,7 @@ func getLoaderBundles(bundleID, dir string) (loaders []libmangal.ProviderLoader,
 			continue
 		}
 
-		l, p, err := getLoaders(bundleID, dirEntryPath)
+		l, p, err := getLoaders(bundleID, dirEntryPath, filters...)
 		if err != nil {
 			problems = append(problems, fmt.Errorf("provider %s: %w", dirEntryPath, err))
 			continue
@@ -75,7 +75,7 @@ func getLoaderBundles(bundleID, dir string) (loaders []libmangal.ProviderLoader,
 
 // getLoaders returns either the providerloader or the next subset of bundles.
 // It all depends if the provider type is Lua (actual provider loader) or bundle.
-func getLoaders(bundleID, dir string) ([]libmangal.ProviderLoader, []error, error) {
+func getLoaders(bundleID, dir string, filters ...FilterOption) ([]libmangal.ProviderLoader, []error, error) {
 	infoFile, err := afs.Afero.Open(filepath.Join(dir, info.Filename))
 	if err != nil {
 		return nil, nil, err
@@ -95,19 +95,19 @@ func getLoaders(bundleID, dir string) ([]libmangal.ProviderLoader, []error, erro
 		if err != nil {
 			return nil, nil, err
 		}
-		loader, err := newLoader(providerInfo.ProviderInfo, dir, limits)
+		loader, err := newLoader(providerInfo.ProviderInfo, dir, limits, filters...)
 		if err != nil {
 			return nil, nil, err
 		}
 		return []libmangal.ProviderLoader{loader}, nil, nil
 	case info.TypeBundle:
-		return getLoaderBundles(providerInfo.ID, dir)
+		return getLoaderBundles(providerInfo.ID, dir, filters...)
 	default:
 		return nil, nil, fmt.Errorf("unknown provider type %v", providerInfo.Type)
 	}
 }
 
-func newLoader(info libmangal.ProviderInfo, dir string, limits []luahttp.RateLimit) (libmangal.ProviderLoader, error) {
+func newLoader(info libmangal.ProviderInfo, dir string, limits []luahttp.RateLimit, filters ...FilterOption) (libmangal.ProviderLoader, error) {
 	script, err := afs.Afero.ReadFile(filepath.Join(dir, mainLua))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("%s is missing", mainLua)
@@ -116,7 +116,7 @@ func newLoader(info libmangal.ProviderInfo, dir string, limits []luahttp.RateLim
 		return nil, err
 	}
 
-	options := LuaOptions(dir)
+	options := LuaOptions(dir, filters...)
 	options.RateLimits = limits
 	loader, err := newLuaLoader(script, info, options)
 	if err != nil {

@@ -141,6 +141,15 @@
       ]
     },
     {
+      "name": "retitle",
+      "web": [
+        "library-manga"
+      ],
+      "api": [
+        "retitleLibraryManga"
+      ]
+    },
+    {
       "name": "links",
       "web": [
         "library-manga"

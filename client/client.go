@@ -210,8 +210,22 @@ func CurrentProviderID(id string) string {
 	return id
 }
 
-func loaderByID(id string) (libmangal.ProviderLoader, []string, error) {
-	loaders, problems, err := manager.Load()
+// Unfiltered is a new client of the provider with the id (as AcquireByID), not the shared
+// one: its chapter lists keep every chapter, unavailable, retired and duplicate ones too.
+// The caller closes it.
+func Unfiltered(ctx context.Context, id string) (*libmangal.Client, []string, error) {
+	loader, warnings, err := loaderByID(id, func(f *libmangal.FilterOptions) {
+		f.ShowUnavailableChapters, f.ShowRetiredChapters, f.AvoidDuplicateChapters = true, true, false
+	})
+	if err != nil {
+		return nil, warnings, err
+	}
+	client, err := create(ctx, loader)
+	return client, warnings, err
+}
+
+func loaderByID(id string, filters ...providerloader.FilterOption) (libmangal.ProviderLoader, []string, error) {
+	loaders, problems, err := manager.Load(filters...)
 	if err != nil {
 		return nil, nil, err
 	}

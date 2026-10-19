@@ -718,6 +718,22 @@ func (l Library) SetDownloadPath(from, to string) error {
 	return nil
 }
 
+// Retitle records the new title of a chapter file, moved from one path to another (the
+// same one when its name didn't change): its download's and its library chapter's.
+func (l Library) Retitle(from, to, title string) error {
+	err := l.DB.InTx(func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`UPDATE downloads SET path = ?, chapter_title = ? WHERE path = ?`, to, title, from); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`UPDATE library_chapters SET name = ? WHERE id = (SELECT chapter_id FROM downloads WHERE path = ?)`, title, to)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("retitle download %s: %w", from, err)
+	}
+	return nil
+}
+
 // RemoveDownload forgets a recorded file, and its chapter if it has no other file.
 func (l Library) RemoveDownload(path string) error {
 	err := l.DB.InTx(func(tx *sql.Tx) error {

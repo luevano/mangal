@@ -19,8 +19,8 @@ import (
 	"github.com/luevano/mangoprovider/scrapers"
 )
 
-func MangoLoaders() ([]libmangal.ProviderLoader, error) {
-	o := mangoOptions()
+func MangoLoaders(filters ...FilterOption) ([]libmangal.ProviderLoader, error) {
+	o := mangoOptions(filters...)
 
 	var loaders []libmangal.ProviderLoader
 	loaders = append(loaders, apis.Loaders(o)...)
@@ -36,10 +36,10 @@ func MangoLoaders() ([]libmangal.ProviderLoader, error) {
 }
 
 // mangoOptions are mangoprovider's default options with the config's.
-func mangoOptions() mango.Options {
+func mangoOptions(filters ...FilterOption) mango.Options {
 	o := mango.DefaultOptions()
 
-	c := commonOptions()
+	c := commonOptions(filters...)
 	o.HTTPClient = ProviderHTTPClient()
 	o.UserAgent = c.UserAgent
 	o.CacheStore = cache.CacheStore

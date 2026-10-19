@@ -555,17 +555,7 @@ func (n Namer) PlanChapters(mangas []storage.Manga) ([]Rename, error) {
 				renames = append(renames, r)
 				continue
 			}
-			provider := libmangal.ProviderInfo{ID: dl.Provider, Name: dl.Provider}
-			if loader, _, ok := libmangal.FindLoader(n.Loaders, dl.Provider); ok {
-				provider = loader.Info()
-			}
-			name := n.ChapterName(provider, &dirChapter{
-				info:   mangadata.ChapterInfo{Title: dl.ChapterTitle, URL: dl.ChapterURL, Number: dl.Chapter},
-				volume: &dirVolume{info: mangadata.VolumeInfo{Number: dl.Volume}, manga: &dirManga{info: mangadata.MangaInfo{ID: dl.MangaID, Title: dl.MangaTitle}}},
-			})
-			if format, err := libmangal.FormatString(dl.Format); err == nil {
-				name += format.Extension()
-			}
+			name := chapterFileName(n.ChapterName, n.Loaders, dl)
 			r.To = filepath.Join(filepath.Dir(dl.Path), name)
 			if name == "" || r.To == dl.Path {
 				continue
@@ -583,6 +573,23 @@ func (n Namer) PlanChapters(mangas []storage.Manga) ([]Rename, error) {
 		}
 	}
 	return renames, nil
+}
+
+// chapterFileName is the file name the chapter name template gives the download, with
+// its format's extension.
+func chapterFileName(template func(libmangal.ProviderInfo, mangadata.Chapter) string, loaders []libmangal.ProviderLoader, dl storage.Download) string {
+	provider := libmangal.ProviderInfo{ID: dl.Provider, Name: dl.Provider}
+	if loader, _, ok := libmangal.FindLoader(loaders, dl.Provider); ok {
+		provider = loader.Info()
+	}
+	name := template(provider, &dirChapter{
+		info:   mangadata.ChapterInfo{Title: dl.ChapterTitle, URL: dl.ChapterURL, Number: dl.Chapter},
+		volume: &dirVolume{info: mangadata.VolumeInfo{Number: dl.Volume}, manga: &dirManga{info: mangadata.MangaInfo{ID: dl.MangaID, Title: dl.MangaTitle}}},
+	})
+	if format, err := libmangal.FormatString(dl.Format); err == nil {
+		name += format.Extension()
+	}
+	return name
 }
 
 type dirVolume struct {

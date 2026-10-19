@@ -305,6 +305,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/library/mangas/{id}/retitle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Give a library manga's chapters the titles another provider's manga has
+         * @description The titles of the provider's manga (the library manga's current source's by default) for the same chapter numbers, every chapter listed (unavailable and retired ones too); the files get the names the chapter name template gives and, zips with a ComicInfo.xml, its Title (the originals go to the trash).
+         */
+        post: operations["retitleLibraryManga"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/library/mangas/{id}/chapters": {
         parameters: {
             query?: never;
@@ -1853,6 +1873,16 @@ export interface components {
             /** @description adopt the new provider's title and folder name */
             full?: boolean;
         };
+        RetitleRequest: components["schemas"]["ApplyFields"] & {
+            /** @description the provider to take the titles from, the library manga's current source's when empty */
+            provider?: string;
+            /** @description the provider's manga (without it and query, the current source's manga or a search of the library title) */
+            manga_id?: string;
+            /** @description a search, when the provider can't get a manga by id (or without manga_id) */
+            query?: string;
+            /** @description the manga selector of the search (exact by default) */
+            selector?: string;
+        };
         LinkRequest: components["schemas"]["ApplyFields"] & {
             /** Format: int64 */
             manga: number;
@@ -2915,6 +2945,28 @@ export interface operations {
                     "application/json": components["schemas"]["HoldResult"];
                 };
             };
+            default: components["responses"]["Error"];
+        };
+    };
+    retitleLibraryManga: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetitleRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
             default: components["responses"]["Error"];
         };
     };

@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -130,6 +131,33 @@ func (a *API) MoveLibraryManga(ctx context.Context, request apiv1.MoveLibraryMan
 		return nil, err
 	}
 	return apiv1.MoveLibraryManga200JSONResponse{ChangeJSONResponse: resp}, nil
+}
+
+// RetitleLibraryManga implements apiv1.StrictServerInterface: the titles are found as
+// `mangal library retitle` finds them.
+func (a *API) RetitleLibraryManga(ctx context.Context, request apiv1.RetitleLibraryMangaRequestObject) (apiv1.RetitleLibraryMangaResponseObject, error) {
+	b := deref(request.Body)
+	if p := deref(b.Provider); p != "" {
+		if _, err := a.loader(p); err != nil {
+			return nil, err
+		}
+	}
+	c, err := a.services(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req, err := c.RetitleSource(ctx, request.Id, core.RetitleFrom{Provider: deref(b.Provider), MangaID: deref(b.MangaId), Query: deref(b.Query), Selector: deref(b.Selector)})
+	if err != nil {
+		if !errors.Is(err, core.ErrNotFound) && !errors.Is(err, core.ErrInvalid) {
+			err = unprocessable(err)
+		}
+		return nil, err
+	}
+	resp, err := changeResponse(a.change(ctx, req, deref(request.Params.Apply), applyFields{b.Expect, b.Force, b.Confirm}))
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.RetitleLibraryManga200JSONResponse{ChangeJSONResponse: resp}, nil
 }
 
 // LinkLibraryManga implements apiv1.StrictServerInterface.

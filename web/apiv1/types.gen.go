@@ -890,6 +890,30 @@ type RenameRequest struct {
 	Refresh *bool     `json:"refresh,omitempty"`
 }
 
+// RetitleRequest defines model for RetitleRequest.
+type RetitleRequest struct {
+	// Confirm empty-trash for an irreversible plan, force-undo for a forced undo
+	Confirm *string `json:"confirm,omitempty"`
+
+	// Expect the hash of the plan confirmed, needed with apply
+	Expect *string `json:"expect,omitempty"`
+
+	// Force apply a forceable plan with blocked reasons
+	Force *bool `json:"force,omitempty"`
+
+	// MangaId the provider's manga (without it and query, the current source's manga or a search of the library title)
+	MangaId *string `json:"manga_id,omitempty"`
+
+	// Provider the provider to take the titles from, the library manga's current source's when empty
+	Provider *string `json:"provider,omitempty"`
+
+	// Query a search, when the provider can't get a manga by id (or without manga_id)
+	Query *string `json:"query,omitempty"`
+
+	// Selector the manga selector of the search (exact by default)
+	Selector *string `json:"selector,omitempty"`
+}
+
 // RunChapter defines model for RunChapter.
 type RunChapter struct {
 	Number float32 `json:"number"`
@@ -1209,6 +1233,12 @@ type GetChapterPageParams struct {
 	Path ChapterPathParam `form:"path" json:"path"`
 }
 
+// RetitleLibraryMangaParams defines parameters for RetitleLibraryManga.
+type RetitleLibraryMangaParams struct {
+	// Apply apply the change (needs `expect`, the hash of the plan confirmed), else only plan it
+	Apply *ApplyParam `form:"apply,omitempty" json:"apply,omitempty"`
+}
+
 // MarkLibraryMangasParams defines parameters for MarkLibraryMangas.
 type MarkLibraryMangasParams struct {
 	// Apply apply the change (needs `expect`, the hash of the plan confirmed), else only plan it
@@ -1403,6 +1433,9 @@ type LinkLibraryMangaJSONRequestBody = LinkRequest
 
 // HoldLibraryMangaJSONRequestBody defines body for HoldLibraryManga for application/json ContentType.
 type HoldLibraryMangaJSONRequestBody = HoldRequest
+
+// RetitleLibraryMangaJSONRequestBody defines body for RetitleLibraryManga for application/json ContentType.
+type RetitleLibraryMangaJSONRequestBody = RetitleRequest
 
 // MarkLibraryMangasJSONRequestBody defines body for MarkLibraryMangas for application/json ContentType.
 type MarkLibraryMangasJSONRequestBody = MarkRequest

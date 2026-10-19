@@ -35,11 +35,7 @@ func newTrashBatch() string {
 // (outside root, its parent folder's name and its own). Nothing in the trash is
 // overwritten: a name already taken gets a number.
 func moveToTrash(ctx context.Context, fsys afero.Fs, j Journal, root, batch, path string, modes Modes) error {
-	rel, err := filepath.Rel(root, path)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		rel = filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path))
-	}
-	to := filepath.Join(root, TrashDir, batch, rel)
+	to := inTrash(root, batch, path)
 	isDir, err := afero.DirExists(fsys, path)
 	if err != nil {
 		return err
@@ -62,6 +58,16 @@ func moveToTrash(ctx context.Context, fsys afero.Fs, j Journal, root, batch, pat
 		return err
 	}
 	return moveFile(ctx, fsys, j, path, to, modes)
+}
+
+// inTrash is where path goes in the trash batch of root: its path relative to root (outside
+// root, its parent folder's name and its own).
+func inTrash(root, batch, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		rel = filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path))
+	}
+	return filepath.Join(root, TrashDir, batch, rel)
 }
 
 // freeName is path, or path with a number (before a file's extension) if it's taken: it

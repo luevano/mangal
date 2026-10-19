@@ -9,16 +9,17 @@ import (
 	"github.com/luevano/mangal/v5/provider/loader"
 )
 
-// Load returns the installed providers. A Lua provider that can't be loaded is skipped,
-// its error is in problems, for the callers to show.
-func Load() (loaders []libmangal.ProviderLoader, problems []error, err error) {
-	mangoLoaders, err := loader.MangoLoaders()
+// Load returns the installed providers (their filters the config's, changed by filters).
+// A Lua provider that can't be loaded is skipped, its error is in problems, for the
+// callers to show.
+func Load(filters ...loader.FilterOption) (loaders []libmangal.ProviderLoader, problems []error, err error) {
+	mangoLoaders, err := loader.MangoLoaders(filters...)
 	if err != nil {
 		return nil, nil, err
 	}
 	loaders = append(loaders, mangoLoaders...)
 
-	luaLoaders, problems, err := loader.LuaLoaders()
+	luaLoaders, problems, err := loader.LuaLoaders(filters...)
 	if err != nil {
 		return nil, nil, err
 	}

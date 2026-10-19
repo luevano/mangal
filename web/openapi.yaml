@@ -379,6 +379,28 @@ paths:
                 $ref: '#/components/schemas/HoldResult'
         default:
           $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}/retitle:
+    post:
+      summary: Give a library manga's chapters the titles another provider's manga has
+      description: The titles of the provider's manga (the library manga's current source's by default) for the same chapter numbers, every chapter listed (unavailable and retired ones too); the files get the names the chapter name template gives and, zips with a ComicInfo.xml, its Title (the originals go to the trash).
+      operationId: retitleLibraryManga
+      tags: [v1, library, changes]
+      x-mangal-scope: write
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetitleRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/library/mangas/{id}/chapters:
     get:
       summary: A library manga's downloaded chapters, with how often each was read
@@ -2757,6 +2779,23 @@ components:
             full:
               type: boolean
               description: adopt the new provider's title and folder name
+    RetitleRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          properties:
+            provider:
+              type: string
+              description: the provider to take the titles from, the library manga's current source's when empty
+            manga_id:
+              type: string
+              description: the provider's manga (without it and query, the current source's manga or a search of the library title)
+            query:
+              type: string
+              description: a search, when the provider can't get a manga by id (or without manga_id)
+            selector:
+              type: string
+              description: the manga selector of the search (exact by default)
     LinkRequest:
       allOf:
         - $ref: '#/components/schemas/ApplyFields'

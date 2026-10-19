@@ -56,7 +56,7 @@ type mangaState struct {
 	bindings []storage.Binding
 	size     base.Size
 
-	open, scan, delete, watch, itsWatch, links, hold key.Binding
+	open, scan, delete, watch, itsWatch, links, hold, retitle key.Binding
 }
 
 type downloadsMsg []_list.Item
@@ -81,6 +81,7 @@ func newMangaState(manga storage.Manga) *mangaState {
 		itsWatch: base.KeyItsWatch,
 		links:    base.KeyBindings,
 		hold:     base.KeyHold,
+		retitle:  base.KeyRetitle,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "chapter", "chapters", []*downloadItem{}, func(i *downloadItem) _list.DefaultItem { return i }), s.keyMap)
 	s.Confirm = newDialog()
@@ -88,7 +89,7 @@ func newMangaState(manga storage.Manga) *mangaState {
 }
 
 func (s *mangaState) keyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete, s.watch, s.itsWatch, s.links, s.hold}}
+	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete, s.watch, s.itsWatch, s.links, s.hold, s.retitle}}
 }
 
 // watchesCmd loads the manga's watches.
@@ -294,6 +295,8 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return s.addWatch(ctx)
 		case key.Matches(msg, s.links):
 			return linksCmd(s.manga)
+		case key.Matches(msg, s.retitle):
+			return retitleCmd(s.manga)
 		case key.Matches(msg, s.hold):
 			holdCmd(s.Confirm, s.View(), s.manga, s.watches)
 			return nil

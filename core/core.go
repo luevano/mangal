@@ -78,6 +78,9 @@ type Env struct {
 	BackupFinder func() (library.BackupFinder, error)
 	// Checker is the health checker over the watches (health.NewWith).
 	Checker func(watch.Manager) (health.Checker, error)
+	// AllChapters finds a provider's manga (selector.Find's id, query and selector) and
+	// lists every one of its chapters, unavailable, retired and duplicate ones too.
+	AllChapters func(ctx context.Context, provider, id, query, sel string) (libmangal.ProviderInfo, mangadata.Manga, []mangadata.Chapter, error)
 	// LogDir is the log files' directory.
 	LogDir func() string
 	// Now is the clock.
@@ -145,6 +148,9 @@ func (e Env) withDefaults() (Env, error) {
 	}
 	if e.Checker == nil {
 		e.Checker = health.NewWith
+	}
+	if e.AllChapters == nil {
+		e.AllChapters = allChapters
 	}
 	if e.LogDir == nil {
 		e.LogDir = path.Logs

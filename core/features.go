@@ -92,6 +92,8 @@ var Features = []Feature{
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
 	{Name: "move", Web: []string{"library-manga"}, API: []string{"moveLibraryManga"}, CLI: []string{"library move"}, TUI: "X (library)", TUIKey: "X", Change: KindMove,
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
+	{Name: "retitle", Web: []string{"library-manga"}, API: []string{"retitleLibraryManga"}, CLI: []string{"library retitle"}, TUI: "alt+t (library manga)", TUIKey: "alt+t", Change: KindRetitle,
+		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
 	{Name: "links", Web: []string{"library-manga"}, API: []string{"linkLibraryManga"}, CLI: []string{"library bind"}, TUI: "A (library, library manga)", TUIKey: "A", Change: KindLink,
 		NotApplicable: map[Mode]string{ModeScript: noLibraryScripts}},
 	{Name: "dismiss a link pick", CLI: []string{"library bind"}, TUI: "d (links, a pick)", TUIKey: "d", Change: KindDismissPick,
