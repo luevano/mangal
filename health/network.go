@@ -314,6 +314,9 @@ func checkNewChapters(s *snapshot) []Finding {
 			continue
 		}
 		switch {
+		case errors.Is(r.err, watch.ErrMangaNotFound) && s.gone(m.ID):
+			// L11's finding
+			continue
 		case errors.Is(r.err, watch.ErrMangaNotFound):
 			out = append(out, Finding{Severity: Warning, Subject: mangaSubject(m), Network: true,
 				Message: fmt.Sprintf("not found on %s any more", r.provider),
@@ -508,4 +511,148 @@ func formatTook(d time.Duration) string {
 		return d.Round(100 * time.Millisecond).String()
 	}
 	return d.Round(time.Second).String()
+}
+
+// sourceResult is what L11's lookup found of a library manga's current source.
+type sourceResult struct {
+	provider, mangaID string
+	found             bool
+	err               error
+}
+
+// currentSource is the source the manga's folder follows (Mangas lists it first) when its
+// provider is installed and its id is the current site's (L7 and L10 report the others).
+func currentSource(s *snapshot, m storage.Manga) (storage.Source, bool) {
+	if len(m.Sources) == 0 {
+		return storage.Source{}, false
+	}
+	src := m.Sources[0]
+	if src.MangaID == "" || strings.HasPrefix(src.MangaID, storage.PlaceholderPrefix) || !s.installed(src.Provider) {
+		return storage.Source{}, false
+	}
+	if _, old := s.oldSite(src.Provider, src.MangaID); old {
+		return storage.Source{}, false
+	}
+	return src, true
+}
+
+// currentSources are the library mangas' current sources as L11's Part.
+func (s *snapshot) currentSources() map[int64]string {
+	out := make(map[int64]string, len(s.mangas))
+	for _, m := range s.mangas {
+		if src, ok := currentSource(s, m); ok {
+			out[m.ID] = s.providerInfo(src.Provider).ID + "/" + src.MangaID
+		}
+	}
+	return out
+}
+
+// loadSources looks the current source of each library manga up by its id (L11): one
+// provider's mangas one at a time (Lookup goes through its shared client, so its
+// throttle applies), Parallel providers at once.
+func (c Checker) loadSources(ctx context.Context, s *snapshot) error {
+	if c.Lookup == nil {
+		return errors.New("not available")
+	}
+	type todo struct {
+		manga   int64
+		mangaID string
+	}
+	byProvider := map[string][]todo{}
+	for _, m := range s.mangas {
+		if src, ok := currentSource(s, m); ok {
+			provider := s.providerInfo(src.Provider).ID
+			byProvider[provider] = append(byProvider[provider], todo{m.ID, src.MangaID})
+		}
+	}
+	total := 0
+	for _, list := range byProvider {
+		total += len(list)
+	}
+	var mu sync.Mutex
+	done := 0
+	c.progress(fmt.Sprintf("looking up the library's sources: 0/%d", total))
+	c.parallel(ctx, slices.Sorted(maps.Keys(byProvider)), func(provider string) {
+		list := byProvider[provider]
+		ids := make([]string, len(list))
+		for i, t := range list {
+			ids[i] = t.mangaID
+		}
+		err := c.Lookup(ctx, provider, ids, func(i int, found bool, err error) {
+			mu.Lock()
+			defer mu.Unlock()
+			s.sources[list[i].manga] = sourceResult{provider: provider, mangaID: list[i].mangaID, found: found, err: err}
+			done++
+			c.progress(fmt.Sprintf("looking up the library's sources: %d/%d (%s)", done, total, provider))
+		})
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case errors.Is(err, libmangal.ErrMangaByIDUnsupported):
+			s.noByID[provider] = len(list)
+		case err != nil && ctx.Err() == nil:
+			s.errors = append(s.errors, fmt.Sprintf("L11: %s: %s", provider, err))
+		}
+	})
+	return ctx.Err()
+}
+
+// gone is true when L11 found the manga's current source gone.
+func (s *snapshot) gone(manga int64) bool {
+	r, ok := s.sources[manga]
+	return ok && (r.err == nil && !r.found || notFound(r.err))
+}
+
+// L11 (network): library mangas whose current source the provider doesn't have any more.
+// A lookup that failed otherwise isn't a finding (Report.Errors says why), never a "gone".
+func checkSourceGone(s *snapshot) []Finding {
+	var out []Finding
+	for _, m := range s.mangas {
+		r, ok := s.sources[m.ID]
+		switch {
+		case !ok:
+			continue
+		case !s.gone(m.ID):
+			if r.err != nil {
+				s.errors = append(s.errors, fmt.Sprintf("L11: manga %d %s on %s: %s", m.ID, m.Title, r.provider, r.err))
+			}
+			continue
+		}
+		f := Finding{Severity: Warning, Subject: mangaSubject(m), Network: true, Part: r.provider + "/" + r.mangaID,
+			Message: fmt.Sprintf("not on %s any more (it may have been removed)", r.provider),
+			Details: []string{"its manga id there: " + r.mangaID}}
+		var w *watch.Watch
+		for _, x := range s.watchesOf(m) {
+			if x.Enabled && s.providerInfo(x.Provider).ID == r.provider && x.MangaID == r.mangaID {
+				w = &x
+				break
+			}
+		}
+		switch {
+		case library.StatusDone(m.Status):
+			f.Severity = Info
+			f.Message += fmt.Sprintf(", %s: nothing is lost, its chapters are local", strings.ToLower(m.Status))
+			f.Fix.Note = fmt.Sprintf("nothing to do; mangal library move %d <provider> if you want a source to re-download from", m.ID)
+		case w != nil:
+			reason := fmt.Sprintf("its manga isn't on %s any more", r.provider)
+			f.Fix = Fix{
+				Commands: []string{fmt.Sprintf("mangal watch move %d <provider>", w.ID), fmt.Sprintf("mangal watch hold %d provider", w.ID)},
+				Note:     "re-link its watch to another provider (or this one, if the manga got a new id there), or mark it to do later",
+				TUI:      tuiWatches + ": re-link manga, hold",
+				Action:   &Action{Kind: ActionHold, Watch: w.ID, Mark: watch.MarkProvider, Reason: reason},
+			}
+		default:
+			f.Fix = Fix{
+				Commands: []string{fmt.Sprintf("mangal library move %d <provider>", m.ID), fmt.Sprintf("mangal library hold %d provider", m.ID)},
+				Note:     "move it to another provider (or this one, if the manga got a new id there: the move searches its title), or mark it to do later",
+				TUI:      tuiLibrary + ": move to a provider, hold",
+			}
+		}
+		out = append(out, f)
+	}
+	for _, provider := range slices.Sorted(maps.Keys(s.noByID)) {
+		out = append(out, Finding{Severity: Info, Subject: Subject{Kind: "provider", Name: provider}, Network: true,
+			Message: fmt.Sprintf("can't look mangas up by id: %s not checked", stringutil.Quantify(s.noByID[provider], "library source", "library sources"))})
+	}
+	return out
 }

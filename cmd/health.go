@@ -68,7 +68,9 @@ provider directories "library rename" would rename (L4: a provider's old name), 
 names off the manga template (L5: from the cached AniList metadata, --network looks the
 rest up; "--only L5" lists them), the trash (L6), mangas whose providers are all gone
 (L7), mangas without chapters (L8), folders not in the library (L9), sources with a manga
-id of the provider's old site (L10, as W13).
+id of the provider's old site (L10, as W13), current sources their provider doesn't have
+any more (L11, --network: each looked up by id; "mangal serve" runs it on its own every
+health.source_check_interval).
 Global: expired logins, Lua providers that didn't load, notifications without a Discord
 webhook (A1); the providers the library and the watches use, each asked for one of its
 mangas (A2, --network: answered, Cloudflare challenge, site down, rate limited, account;

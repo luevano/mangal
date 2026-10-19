@@ -52,6 +52,7 @@ var checks = []check{
 	{id: "L8", category: Library, needs: []part{partLibrary}, wants: []part{partFS}, run: checkEmpty},
 	{id: "L9", category: Library, needs: []part{partLibrary, partFS}, run: checkUntracked},
 	{id: "L10", category: Library, needs: []part{partLibrary}, wants: []part{partWatches}, run: checkOldSiteSources},
+	{id: "L11", category: Library, needs: []part{partLibrary, partSources}, wants: []part{partWatches}, run: checkSourceGone, network: true},
 	{id: "A1", category: Global, needs: []part{partAccounts}, wants: []part{partWatches}, run: checkAccounts},
 	{id: "A2", category: Global, needs: []part{partLibrary, partProbes}, wants: []part{partWatches}, run: checkProviders, network: true},
 	{id: "A3", category: Global, needs: []part{partConfig}, run: checkConfig},

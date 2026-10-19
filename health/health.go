@@ -214,19 +214,25 @@ type Report struct {
 	// counted, shown (Finding.Dismissed) with Options.All.
 	Dismissed int `json:"dismissed,omitempty"`
 	// links are the library mangas' linked ids when the library loaded: KeepNetwork
-	// keeps M2 and M5 while they still hold
-	links map[int64]library.Links
+	// keeps M2 and M5 while they still hold; sources their current sources
+	// (provider/manga id, L11's Part)
+	links   map[int64]library.Links
+	sources map[int64]string
 }
 
 // Options of a run.
 type Options struct {
-	// Network also runs the checks that make requests (W12, G2, A2, M2, M5, M1's AniList
-	// lookups) and fetches the publication statuses.
+	// Network also runs the checks that make requests (W12, G2, A2, M2, M5, L11, M1's
+	// AniList lookups) and fetches the publication statuses.
 	Network bool
 	// Only runs these categories or checks (ids), all when empty.
 	Only []string
 	// All also has the dismissed findings.
 	All bool
+	// Kept are findings of an earlier network run added to an offline one while they still
+	// hold (L11's: the manga's current source is still the one looked up), as mangal serve
+	// does with its scheduled source check.
+	Kept []Finding
 }
 
 // Login is a saved login that needs attention.
@@ -299,6 +305,10 @@ type Checker struct {
 	Chapters func(ctx context.Context, provider string, mangas []ProviderManga, wait func(string), done func(i int, chapters ProviderChapters, err error)) error
 	// Probe asks the provider for the manga (A2), within ProbeTimeout; nil skips A2.
 	Probe func(ctx context.Context, provider string, manga ProviderManga) Probe
+	// Lookup looks each of the provider's manga ids up by id (L11), done is told each
+	// one (found false: the provider doesn't have it); an error matching
+	// libmangal.ErrMangaByIDUnsupported is a provider that can't. Nil skips L11.
+	Lookup func(ctx context.Context, provider string, ids []string, done func(i int, found bool, err error)) error
 	// SearchAnilist is AniList's closest match to each query (FindClosestManyContext),
 	// M1's suggestions with the network checks; nil skips them.
 	SearchAnilist func(ctx context.Context, queries []metadata.Query) ([]metadata.Match, []bool, error)
@@ -354,11 +364,14 @@ const (
 	partIDChecks
 	partSearch
 	partBackups
+	// partSources is what the providers said of the library's current sources (network)
+	partSources
 )
 
 var partNames = map[part]string{partLibrary: "the library", partWatches: "the watches", partOldIDs: "the old provider ids",
 	partAccounts: "the accounts", partConfig: "the config file", partFS: "the folders", partRenames: "the rename plan", partProbes: "the providers' answers",
-	partChapters: "the providers' chapters", partIDChecks: "the id checks", partSearch: "the AniList search", partBackups: "the backup ids"}
+	partChapters: "the providers' chapters", partIDChecks: "the id checks", partSearch: "the AniList search", partBackups: "the backup ids",
+	partSources: "the library sources' lookups"}
 
 // check is one check over the snapshot.
 type check struct {
@@ -450,9 +463,9 @@ func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 	report.Errors = append(report.Errors, s.errors...)
 	loadErrors := len(s.errors)
 	if needed[partLibrary] && failed[partLibrary] == nil {
-		report.links = s.linked()
+		report.links, report.sources = s.linked(), s.currentSources()
 	}
-	for p := partLibrary; p <= partBackups; p++ {
+	for p := partLibrary; p <= partSources; p++ {
 		if err := failed[p]; err != nil {
 			report.Errors = append(report.Errors, fmt.Sprintf("load %s: %s", partNames[p], err))
 		}
@@ -482,6 +495,16 @@ func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 		}
 	}
 	report.Errors = append(report.Errors, s.errors[loadErrors:]...)
+	if !opts.Network && report.sources != nil && (len(opts.Only) == 0 || slices.ContainsFunc(opts.Only, func(name string) bool {
+		return strings.EqualFold(name, "L11") || strings.EqualFold(name, string(Library))
+	})) {
+		for _, f := range opts.Kept {
+			if f.Check == "L11" && f.Subject.Kind == "manga" && report.sources[f.Subject.ID] == f.Part {
+				f.Dismissed = false
+				report.Findings = append(report.Findings, f)
+			}
+		}
+	}
 	if err := c.dismiss(&report, opts.All); err != nil {
 		report.Errors = append(report.Errors, "dismissed findings: "+err.Error())
 	}
@@ -512,8 +535,8 @@ func (r *Report) recount() {
 // KeepNetwork is the offline report next with the findings of the network run last (the
 // caller knows it was one) that still hold: W12 while its manga is still unwatched (a W10 item), G2 while its manga
 // still has the gaps G1 found, A2, M1's AniList matches while the manga still has
-// no AniList link, M2's backup ids the mangas still have no id of, and M5 while the
-// manga still has the id.
+// no AniList link, M2's backup ids the mangas still have no id of, M5 while the
+// manga still has the id, and L11 while the manga's current source is the one looked up.
 func KeepNetwork(last, next Report) Report {
 	if next.Network {
 		return next
@@ -559,6 +582,10 @@ func KeepNetwork(last, next Report) Report {
 				continue
 			}
 			f = kept
+		case "L11":
+			if f.Subject.Kind != "manga" || next.sources == nil || next.sources[f.Subject.ID] != f.Part {
+				continue
+			}
 		case "M5":
 			code, id, _ := strings.Cut(f.Part, "/")
 			if next.links == nil || next.links[f.Subject.ID][metadata.IDCode(code)] != id {
@@ -687,7 +714,8 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool, r
 		coverageMin: c.CoverageMin, coverageExempt: c.CoverageExempt,
 		loaders: c.Loaders, fsys: c.FS, mark: mark, providerName: c.ProviderName, bindings: map[[2]string][]storage.Binding{}, network: network, running: running,
 		probes: map[string]Probe{}, probed: map[string]ProviderManga{}, chapters: map[int64]chapterResult{}, anilist: map[int64]metadata.Match{},
-		fromMAL: map[int64]string{}, backups: map[int64]library.Backup{}, mal: c.MyAnimeList}
+		fromMAL: map[int64]string{}, backups: map[int64]library.Backup{}, mal: c.MyAnimeList,
+		sources: map[int64]sourceResult{}, noByID: map[string]int{}}
 	failed := map[part]error{}
 	if needed[partLibrary] {
 		c.progress("loading the library")
@@ -792,6 +820,13 @@ func (c Checker) load(ctx context.Context, needed map[part]bool, network bool, r
 	if needed[partBackups] && network && failed[partLibrary] == nil {
 		if err := c.loadBackups(ctx, s); err != nil {
 			failed[partBackups] = err
+		}
+	}
+	if needed[partSources] && network {
+		if failed[partLibrary] != nil {
+			failed[partSources] = errors.New("needs the library")
+		} else if err := c.loadSources(ctx, s); err != nil {
+			failed[partSources] = err
 		}
 	}
 	return s, failed

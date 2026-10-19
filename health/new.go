@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -74,6 +75,9 @@ func NewWith(m watch.Manager) (Checker, error) {
 		Chapters: listChapters,
 		Probe: func(ctx context.Context, provider string, m ProviderManga) Probe {
 			return probeProvider(ctx, loaders, provider, m)
+		},
+		Lookup: func(ctx context.Context, provider string, ids []string, done func(int, bool, error)) error {
+			return lookupMangas(ctx, loaders, provider, ids, done)
 		},
 		SearchAnilist:  searchAnilist,
 		AnilistFromMAL: anilistFromMAL,
@@ -209,6 +213,40 @@ func probeProvider(ctx context.Context, loaders []libmangal.ProviderLoader, prov
 		p.Err = fmt.Errorf("manga %q: %w", m.MangaID, watch.ErrMangaNotFound)
 	}
 	return p
+}
+
+// lookupMangas looks the provider's mangas up by their ids (L11) through its shared
+// client (its throttle applies), one at a time, their cached answers dropped first as A2's.
+func lookupMangas(ctx context.Context, loaders []libmangal.ProviderLoader, provider string, ids []string, done func(int, bool, error)) error {
+	if provider == mangaPlus && mangaPlusPaid() {
+		return errors.New("not asked: a paid MangaPlus secret is set (asking risks a device lockout)")
+	}
+	c, _, release, err := client.HoldByID(ctx, provider)
+	if err != nil {
+		return fmt.Errorf("load: %w", err)
+	}
+	defer release()
+	st, err := cache.Storage()
+	if err != nil {
+		return err
+	}
+	if l, _, ok := libmangal.FindLoader(loaders, provider); ok {
+		if _, mango := l.(*mangoprovider.Loader); !mango {
+			_ = cache.ClearChapterCache(c.Info().ID)
+		}
+	}
+	for i, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		_ = st.ForgetMangaByID(c.Info().ID, id)
+		_, found, err := c.MangaByIDContext(ctx, id)
+		if errors.Is(err, libmangal.ErrMangaByIDUnsupported) {
+			return err
+		}
+		done(i, found, err)
+	}
+	return nil
 }
 
 // cachedAccount is the provider's account as the accounts screen last saw it.

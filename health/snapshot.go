@@ -74,6 +74,10 @@ type snapshot struct {
 	fromMAL  map[int64]string
 	backups  map[int64]library.Backup
 	mal      bool
+	// sources are what L11's lookups found of the library mangas' current sources, noByID
+	// the providers that can't look mangas up by id (how many sources weren't asked)
+	sources map[int64]sourceResult
+	noByID  map[string]int
 
 	// errors are what didn't load without skipping a check, and what a check couldn't do
 	errors []string

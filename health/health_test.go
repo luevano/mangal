@@ -751,3 +751,88 @@ func TestCoverageNetwork(t *testing.T) {
 		t.Errorf("offline: %v, asked %q", err, *asked)
 	}
 }
+
+// TestSourceGone: L11 looks up each library manga's current source by id (not old-site
+// ids, not uninstalled providers): not found is a finding (a watch's re-link or hold when
+// watched, an info when finished), an error isn't, a provider without lookups by id is
+// a note; the findings stay on offline runs while the source is still current.
+func TestSourceGone(t *testing.T) {
+	c := newChecker(t)
+	var asked []string
+	unsupported := false
+	c.Lookup = func(_ context.Context, provider string, ids []string, done func(int, bool, error)) error {
+		if provider == "mango-weebcentral" && unsupported {
+			return fmt.Errorf("%s: %w", provider, libmangal.ErrMangaByIDUnsupported)
+		}
+		for i, id := range ids {
+			asked = append(asked, provider+" "+id)
+			switch id {
+			case "berserk":
+				done(i, false, nil)
+			case "01J":
+				done(i, false, errors.New("site down"))
+			default:
+				done(i, true, nil)
+			}
+		}
+		return nil
+	}
+	report, err := c.Run(context.Background(), Options{Network: true, Only: []string{"L11"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(asked)
+	if !slices.Equal(asked, []string{"mango-mangadex berserk", "mango-mangadex opm", "mango-weebcentral 01J"}) {
+		t.Errorf("asked %q", asked)
+	}
+	if len(report.Findings) != 1 {
+		t.Fatalf("findings %+v", report.Findings)
+	}
+	f := report.Findings[0]
+	if f.Check != "L11" || f.Subject.ID != 3 || f.Severity != Warning || f.Message != "not on mango-mangadex any more (it may have been removed)" ||
+		f.Key != "L11/manga/3/mango-mangadex/berserk" || f.Fix.Commands[0] != "mangal watch move 3 <provider>" ||
+		f.Fix.Action == nil || f.Fix.Action.Kind != ActionHold || f.Fix.Action.Watch != 3 || f.Fix.Action.Mark != watch.MarkProvider {
+		t.Errorf("L11 %+v", f)
+	}
+	if !slices.ContainsFunc(report.Errors, func(e string) bool {
+		return strings.HasPrefix(e, "L11: manga 6 ") && strings.HasSuffix(e, "on mango-weebcentral: site down")
+	}) {
+		t.Errorf("errors %q", report.Errors)
+	}
+
+	// kept on offline runs while the source is current
+	offline, err := c.Run(context.Background(), Options{Kept: report.Findings})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := find(offline, want{check: "L11", kind: "manga", id: 3}); !ok || offline.Network {
+		t.Errorf("not kept: %+v", offline.Findings)
+	}
+	if _, ok := find(KeepNetwork(report, offline), want{check: "L11", kind: "manga", id: 3}); !ok {
+		t.Error("KeepNetwork didn't keep it")
+	}
+	moved := slices.Clone(report.Findings)
+	moved[0].Part = "mango-weebcentral/bk"
+	if offline, _ := c.Run(context.Background(), Options{Kept: moved}); slices.ContainsFunc(offline.Findings, func(f Finding) bool { return f.Check == "L11" }) {
+		t.Error("kept for a source that isn't current")
+	}
+
+	// finished: nothing is lost; a provider that can't look up by id is a note
+	if err := c.Library.SetStatuses(map[int64]string{3: string(metadata.StatusFinished)}, now); err != nil {
+		t.Fatal(err)
+	}
+	unsupported = true
+	report, err = c.Run(context.Background(), Options{Network: true, Only: []string{"L11"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f, ok := find(report, want{check: "L11", kind: "manga", id: 3}); !ok || f.Severity != Info || !strings.Contains(f.Message, "finished: nothing is lost") || f.Fix.Action != nil {
+		t.Errorf("finished %+v", f)
+	}
+	if f, ok := find(report, want{check: "L11", kind: "provider"}); !ok || f.Subject.Name != "mango-weebcentral" || f.Message != "can't look mangas up by id: 1 library source not checked" {
+		t.Errorf("unsupported %+v", f)
+	}
+	if _, err := c.Run(context.Background(), Options{Only: []string{"L11"}}); err == nil {
+		t.Error("L11 ran without the network")
+	}
+}
