@@ -160,7 +160,9 @@ func (m *model) viewSwitcher(behind string) string {
 		if i == sel {
 			prefix = style.Bold.Accent.Render("> ")
 		}
-		b.WriteString("\n" + prefix + line)
+		b.WriteString("\n")
+		b.WriteString(prefix)
+		b.WriteString(line)
 	}
 	return m.dialog(b.String(), color.Accent, behind)
 }

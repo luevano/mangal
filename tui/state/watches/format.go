@@ -93,7 +93,8 @@ func runReport(r storage.WatchRun) string {
 		if ch.Path != "" {
 			line += "\n      " + ch.Path
 		}
-		b.WriteString(line + "\n")
+		b.WriteString(line)
+		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

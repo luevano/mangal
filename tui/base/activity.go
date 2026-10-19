@@ -114,12 +114,20 @@ func (m *model) viewQuitAsk(behind string) string {
 	b.WriteString("\nThese are cancelled (the chapters downloaded stay):\n")
 	for i, line := range m.quitAsk {
 		if i == maxQuitLines {
-			b.WriteString("  … and " + strconv.Itoa(len(m.quitAsk)-maxQuitLines) + " more\n")
+			b.WriteString("  … and ")
+			b.WriteString(strconv.Itoa(len(m.quitAsk) - maxQuitLines))
+			b.WriteString(" more\n")
 			break
 		}
-		b.WriteString("  • " + line + "\n")
+		b.WriteString("  • ")
+		b.WriteString(line)
+		b.WriteString("\n")
 	}
-	b.WriteString("\n" + quitYes.Help().Key + " quit · " + quitNo.Help().Key + " stay")
+	b.WriteString("\n")
+	b.WriteString(quitYes.Help().Key)
+	b.WriteString(" quit · ")
+	b.WriteString(quitNo.Help().Key)
+	b.WriteString(" stay")
 	return m.dialog(b.String(), color.Warning, behind)
 }
 

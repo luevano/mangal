@@ -457,7 +457,8 @@ func checkReport(checks []library.IDCheck, err error) string {
 	var report strings.Builder
 	fmt.Fprintf(&report, "Check the ids of %d folders without a .libmangal.json:", len(checks))
 	for _, c := range checks {
-		report.WriteString("\n  " + c.String())
+		report.WriteString("\n  ")
+		report.WriteString(c.String())
 	}
 	return report.String()
 }
@@ -472,13 +473,17 @@ func scanReport(res library.ScanResult) string {
 	if len(res.Missing) != 0 {
 		fmt.Fprintf(&report, "\n\n%d mangas weren't found (marked missing in the list, %s removes one):", len(res.Missing), base.KeyDelete.Help().Key)
 		for _, m := range res.Missing {
-			report.WriteString("\n  " + m.Title + "  " + m.Path())
+			report.WriteString("\n  ")
+			report.WriteString(m.Title)
+			report.WriteString("  ")
+			report.WriteString(m.Path())
 		}
 	}
 	if len(res.Unrecognized) != 0 {
 		fmt.Fprintf(&report, "\n\n%d files without a chapter number:", len(res.Unrecognized))
 		for _, f := range res.Unrecognized {
-			report.WriteString("\n  " + f)
+			report.WriteString("\n  ")
+			report.WriteString(f)
 		}
 	}
 	return report.String()

@@ -95,7 +95,9 @@ func (i *item) Title() string {
 
 	// grayed out with the reason, it can't be selected nor downloaded
 	if reason := i.unavailable(); reason != "" {
-		title.WriteString(" [" + reason + "]")
+		title.WriteString(" [")
+		title.WriteString(reason)
+		title.WriteString("]")
 		return style.Normal.Secondary.Render(title.String())
 	}
 

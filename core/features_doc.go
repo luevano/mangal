@@ -49,7 +49,9 @@ func FeaturesMarkdown() string {
 		for i, c := range cells {
 			cells[i] = strings.ReplaceAll(c, "|", `\|`)
 		}
-		b.WriteString("| " + strings.Join(cells, " | ") + " |\n")
+		b.WriteString("| ")
+		b.WriteString(strings.Join(cells, " | "))
+		b.WriteString(" |\n")
 	}
 	fmt.Fprintf(&b, "\nCommands of no feature (the modes' own): %s.\n", code(slices.Sorted(maps.Keys(ModeCommands))))
 	return b.String()

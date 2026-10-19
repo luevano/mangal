@@ -264,9 +264,12 @@ func Recent() []Entry {
 func Lines() string {
 	var sb strings.Builder
 	for _, e := range Recent() {
-		sb.WriteString("[" + e.Time.Format(time.TimeOnly) + "] ")
+		sb.WriteString("[")
+		sb.WriteString(e.Time.Format(time.TimeOnly))
+		sb.WriteString("] ")
 		if e.Level != LevelInfo {
-			sb.WriteString(e.Level.String() + " ")
+			sb.WriteString(e.Level.String())
+			sb.WriteString(" ")
 		}
 		sb.WriteString(e.Message)
 		sb.WriteByte('\n')

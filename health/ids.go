@@ -165,7 +165,10 @@ func bindCommand(manga int64, links library.Links) string {
 	fmt.Fprintf(&cmd, "mangal library bind %d", manga)
 	for _, code := range backupCodes {
 		if id, ok := links[code]; ok {
-			cmd.WriteString(" " + linkFlags[code] + " " + id)
+			cmd.WriteString(" ")
+			cmd.WriteString(linkFlags[code])
+			cmd.WriteString(" ")
+			cmd.WriteString(id)
 		}
 	}
 	return cmd.String()

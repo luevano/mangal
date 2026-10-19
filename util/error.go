@@ -31,10 +31,14 @@ func writeErrorTree(sb *strings.Builder, err error, indent string, root bool) {
 		// wrappers that add nothing (e.g. "%w") don't get a line
 		if own != "" {
 			if root {
-				sb.WriteString(own + "\n")
+				sb.WriteString(own)
+				sb.WriteString("\n")
 				root = false
 			} else {
-				sb.WriteString(indent + "└ " + own + "\n")
+				sb.WriteString(indent)
+				sb.WriteString("└ ")
+				sb.WriteString(own)
+				sb.WriteString("\n")
 				indent += "  "
 			}
 		}
