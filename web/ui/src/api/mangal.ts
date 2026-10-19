@@ -2323,6 +2323,8 @@ export interface components {
         CheckRequest: {
             ids?: number[];
             gaps?: boolean;
+            /** @description the check of a hold, before the watches pause (recorded as a hold run) */
+            hold?: boolean;
             dry_run?: boolean;
         };
         CheckResponse: {

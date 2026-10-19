@@ -407,6 +407,21 @@ func TestAPICheck(t *testing.T) {
 	}
 }
 
+// a remote hold's check is recorded as a hold run
+func TestAPICheckHold(t *testing.T) {
+	s := newTestServer(t, "")
+	if code := s.call(t, "POST", "/api/watches", `{"provider":"fake","manga_id":"opm","from":1}`, nil); code != http.StatusCreated {
+		t.Fatal(code)
+	}
+	var resp watch.CheckResponse
+	if code := s.call(t, "POST", "/api/check", `{"hold":true}`, &resp); code != http.StatusAccepted {
+		t.Fatalf("check: %d %+v", code, resp)
+	}
+	if run := waitRun(t, s, resp.Run); run.Kind != watch.KindHold {
+		t.Errorf("run kind %q, want %q", run.Kind, watch.KindHold)
+	}
+}
+
 func TestAPIToken(t *testing.T) {
 	s := newTestServer(t, "s3cret")
 	for auth, want := range map[string]int{"": http.StatusUnauthorized, "Bearer nope": http.StatusUnauthorized, "Bearer s3cret": http.StatusOK} {

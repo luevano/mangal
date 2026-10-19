@@ -137,8 +137,8 @@ func (r *Remote) Relink(ctx context.Context, id int64, opts RelinkOptions) (Watc
 	return w, err
 }
 
-// Hold checks the watches first as Check does (OnEvent isn't called, the server records
-// it as a manual check), then has the server mark them without checking again.
+// Hold checks the watches first as Check does (OnEvent isn't called), then has the server
+// mark them without checking again.
 func (r *Remote) Hold(ctx context.Context, opts HoldOptions) (HoldResult, error) {
 	var res HoldResult
 	if opts.Mark != "" && !slices.Contains(Marks, opts.Mark) {
@@ -248,7 +248,7 @@ func (r *Remote) Status(ctx context.Context) (Status, error) {
 
 // Check asks the server to check and waits until it's done.
 func (r *Remote) Check(ctx context.Context, ids []int64, opts CheckOptions) (Report, error) {
-	req := CheckRequest{IDs: ids, Gaps: opts.Gaps, DryRun: opts.DryRun}
+	req := CheckRequest{IDs: ids, Gaps: opts.Gaps, Hold: opts.Kind == KindHold, DryRun: opts.DryRun}
 	if opts.DryRun {
 		var report Report
 		err := r.do(ctx, http.MethodPost, "/api/check", req, &report)

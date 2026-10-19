@@ -60,9 +60,11 @@ func patchRequest(o UpdateOptions) PatchRequest {
 // provider is being checked by another run) and runs in the server: GET /api/runs/{run} has it, finished once its
 // finished time is set.
 type CheckRequest struct {
-	IDs    []int64 `json:"ids,omitempty"`
-	Gaps   bool    `json:"gaps,omitempty"`
-	DryRun bool    `json:"dry_run,omitempty"`
+	IDs  []int64 `json:"ids,omitempty"`
+	Gaps bool    `json:"gaps,omitempty"`
+	// Hold is the check of a hold, before the watches pause (a KindHold run).
+	Hold   bool `json:"hold,omitempty"`
+	DryRun bool `json:"dry_run,omitempty"`
 }
 
 // CheckResponse is the check run a CheckRequest started, and the providers it skipped

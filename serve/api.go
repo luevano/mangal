@@ -390,8 +390,11 @@ func (a *API) RemoveWatchRun(ctx context.Context, request apiv1.RemoveWatchRunRe
 func (a *API) CheckWatches(ctx context.Context, request apiv1.CheckWatchesRequestObject) (apiv1.CheckWatchesResponseObject, error) {
 	req := deref(request.Body)
 	kind := watch.KindManual
-	if req.Gaps {
+	switch {
+	case req.Gaps:
 		kind = watch.KindGaps
+	case req.Hold:
+		kind = watch.KindHold
 	}
 	m := a.Manager()
 	if req.DryRun {
