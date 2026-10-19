@@ -79,7 +79,8 @@ type keyMap struct {
 	toggleVolumeNumber,
 	toggleChapterNumber,
 	toggleGroup,
-	toggleDate key.Binding
+	toggleDate,
+	fill key.Binding
 }
 
 // filesMsg is where the chapters are downloaded: in the library by number and format,
@@ -125,6 +126,7 @@ func New(client *libmangal.Client, manga mangadata.Manga, volume mangadata.Volum
 			toggleChapterNumber: base.KeyChapterNumber,
 			toggleGroup:         base.KeyGroup,
 			toggleDate:          base.KeyDate,
+			fill:                base.KeyFill,
 		},
 	}
 
@@ -157,7 +159,7 @@ func (s *state) keyMap() help.KeyMap {
 	short := []key.Binding{k.toggle, k.read, k.download, k.info}
 	return util.KeyMap{Short: short, Full: [][]key.Binding{
 		short,
-		{k.anilist, k.metadata, k.changeFormat, k.openURL, k.watch, k.jump},
+		{k.anilist, k.metadata, k.changeFormat, k.openURL, k.watch, k.jump, k.fill},
 		{k.selectAll, k.unselectAll},
 		{k.toggleVolumeNumber, k.toggleChapterNumber, k.toggleGroup, k.toggleDate},
 	}}
@@ -320,6 +322,8 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 		s.updateItemHeight()
 	case key.Matches(msg, k.selectAll):
 		return s.selectAll()
+	case key.Matches(msg, k.fill):
+		return s.fillCmd()
 	case key.Matches(msg, k.unselectAll):
 		s.unselectAll()
 	default:

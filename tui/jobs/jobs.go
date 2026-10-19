@@ -81,14 +81,7 @@ func Download(c *libmangal.Client, manga mangadata.Manga, chapters []mangadata.C
 			return run(ctx, p)
 		}
 	}
-	spec.Finally = func(ctx context.Context, j jobs.Job) {
-		if j.Status == jobs.Cancelled || read || !config.Notification.TUI.Get() {
-			return
-		}
-		if err := notify.SendContext(ctx, j.Results); err != nil {
-			log.Warn("send the notification: %s", err)
-		}
-	}
+	spec.Finally = notifyDone(read)
 	if !silent {
 		return Manager().Add(spec)
 	}
@@ -98,6 +91,26 @@ func Download(c *libmangal.Client, manga mangadata.Manga, chapters []mangadata.C
 	job := m.Add(spec)
 	quiet[job.ID] = true
 	return job
+}
+
+// Queue adds a download job made elsewhere (a fill's, core.FillPlan.Job), with Download's
+// desktop notification when it ends.
+func Queue(spec jobs.Spec) jobs.Job {
+	spec.Finally = notifyDone(false)
+	return Manager().Add(spec)
+}
+
+// notifyDone sends the desktop notification of a download that ended (notification.tui),
+// not for reading.
+func notifyDone(read bool) func(context.Context, jobs.Job) {
+	return func(ctx context.Context, j jobs.Job) {
+		if j.Status == jobs.Cancelled || read || !config.Notification.TUI.Get() {
+			return
+		}
+		if err := notify.SendContext(ctx, j.Results); err != nil {
+			log.Warn("send the notification: %s", err)
+		}
+	}
 }
 
 // silenced is whether the job's added notice is skipped (once).
