@@ -78,6 +78,7 @@ type file struct {
 	Version     string   `toml:"version"`
 	Description string   `toml:"description"`
 	Website     string   `toml:"website"`
+	Icon        string   `toml:"icon,omitempty"`
 	Mirrors     []string `toml:"mirrors,omitempty"`
 	History     []alias  `toml:"history,omitempty"`
 	// RateLimits only apply to Lua providers.
@@ -113,6 +114,7 @@ func New(r io.Reader) (Info, error) {
 		Version:     f.Version,
 		Description: f.Description,
 		Website:     f.Website,
+		Icon:        f.Icon,
 		Mirrors:     f.Mirrors,
 		Type:        f.Type,
 		RateLimits:  f.RateLimits,
@@ -138,6 +140,7 @@ func (i Info) Encode(w io.Writer) error {
 		Version:     i.Version,
 		Description: i.Description,
 		Website:     i.Website,
+		Icon:        i.Icon,
 		Mirrors:     i.Mirrors,
 		RateLimits:  i.RateLimits,
 	}

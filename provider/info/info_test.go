@@ -135,7 +135,7 @@ func TestNewUnknownKeys(t *testing.T) {
 
 func TestEncode(t *testing.T) {
 	want := Info{
-		ID: "x", Name: "X", Version: "0.1.0", Website: "https://x.org/",
+		ID: "x", Name: "X", Version: "0.1.0", Website: "https://x.org/", Icon: "https://x.org/icon.png",
 		Mirrors: []string{"https://x.net/"},
 		History: []libmangal.ProviderAlias{{ID: "y"}}, Type: TypeLua}
 	var sb strings.Builder
