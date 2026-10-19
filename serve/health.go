@@ -12,6 +12,8 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/web/apiv1"
 
 	"github.com/luevano/libmangal/progress"
@@ -35,6 +37,9 @@ type HealthJob struct {
 	Status string         `json:"status,omitempty"`
 	Error  string         `json:"error,omitempty"`
 	Report *health.Report `json:"report,omitempty"`
+
+	// only are the checks it ran (health.Options.Only)
+	only []string
 }
 
 // HealthFixRequest asks for the plan of a finding's fix (POST /api/health/fix), or to
@@ -78,20 +83,45 @@ func (j *healthJobs) running() (HealthJob, bool) {
 	return HealthJob{}, false
 }
 
-// latest is the report of the last job that finished with one.
-func (j *healthJobs) latest() (health.Report, bool) {
+// findings are the findings of the jobs' reports, the newest job's first.
+func (j *healthJobs) findings() []health.Finding {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	var out []health.Finding
+	for _, job := range slices.Backward(j.list) {
+		if job.Report != nil {
+			out = append(out, job.Report.Findings...)
+		}
+	}
+	return out
+}
+
+// sourceFindings are the L11 findings of the newest job that ran L11 (the scheduled
+// source check, or a network one with it).
+func (j *healthJobs) sourceFindings() []health.Finding {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	for _, job := range slices.Backward(j.list) {
-		if job.Report != nil {
-			return *job.Report, true
+		ran := len(job.only) == 0 || slices.ContainsFunc(job.only, func(name string) bool {
+			return strings.EqualFold(name, "L11") || strings.EqualFold(name, string(health.Library))
+		})
+		if job.Report == nil || !ran {
+			continue
 		}
+		var out []health.Finding
+		for _, f := range job.Report.Findings {
+			if f.Check == "L11" {
+				out = append(out, f)
+			}
+		}
+		return out
 	}
-	return health.Report{}, false
+	return nil
 }
 
-// start adds a running job, false with the running one when there's one.
-func (j *healthJobs) start() (HealthJob, bool) {
+// start adds a running job of the checks only, false with the running one when there's
+// one.
+func (j *healthJobs) start(only []string) (HealthJob, bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	for _, job := range j.list {
@@ -100,7 +130,7 @@ func (j *healthJobs) start() (HealthJob, bool) {
 		}
 	}
 	j.next++
-	job := &HealthJob{ID: j.next, Started: time.Now(), Running: true}
+	job := &HealthJob{ID: j.next, Started: time.Now(), Running: true, only: only}
 	j.list = append(j.list, job)
 	if len(j.list) > keepHealthJobs+1 {
 		j.list = j.list[len(j.list)-keepHealthJobs-1:]
@@ -141,8 +171,9 @@ func (r healthJobResponse) VisitGetHealthResponse(w http.ResponseWriter) error {
 	return json.NewEncoder(w).Encode(r.job)
 }
 
-// GetHealth implements apiv1.StrictServerInterface: the offline report; with network=1
-// it starts a job (or answers the running one) with 202.
+// GetHealth implements apiv1.StrictServerInterface: the offline report (with the L11
+// findings of the last source check that still hold); with network=1 it starts a job (or
+// answers the running one) with 202.
 func (a *API) GetHealth(ctx context.Context, request apiv1.GetHealthRequestObject) (apiv1.GetHealthResponseObject, error) {
 	p := request.Params
 	opts := health.Options{Only: splitList(deref(p.Only)), All: deref(p.All), Network: deref(p.Network)}
@@ -151,6 +182,7 @@ func (a *API) GetHealth(ctx context.Context, request apiv1.GetHealthRequestObjec
 		return nil, err
 	}
 	if !opts.Network {
+		opts.Kept = a.healthJobs.sourceFindings()
 		report, err := c.Health.Report(ctx, opts)
 		if err != nil {
 			return nil, badRequest("%w", err)
@@ -162,7 +194,7 @@ func (a *API) GetHealth(ctx context.Context, request apiv1.GetHealthRequestObjec
 	if err := health.Validate(opts); err != nil {
 		return nil, badRequest("%w", err)
 	}
-	job, ok := a.healthJobs.start()
+	job, ok := a.healthJobs.start(opts.Only)
 	if !ok {
 		return healthJobResponse{job}, nil
 	}
@@ -170,13 +202,34 @@ func (a *API) GetHealth(ctx context.Context, request apiv1.GetHealthRequestObjec
 		a.healthJobs.update(job.ID, func(j *HealthJob) { j.Running, j.Finished, j.Error = false, time.Now(), "the server is stopping" })
 		return nil, newAPIError(http.StatusServiceUnavailable, CodeUnavailable, "the server is stopping")
 	}
-	go a.runHealth(job.ID, c.Health, opts)
+	go a.runHealth(job.ID, c.Health, opts, false)
 	return healthJobResponse{job}, nil
 }
 
+// runSourceCheck runs the library sources check (L11) as a health job and waits for it,
+// false when it couldn't start (another health job runs, the server is stopping).
+func (a *API) runSourceCheck() bool {
+	c, err := a.services(a.ctx)
+	if err != nil {
+		a.Log.Warnf("library sources check: %s", err)
+		return false
+	}
+	only := []string{"L11"}
+	job, ok := a.healthJobs.start(only)
+	if !ok {
+		return false
+	}
+	if !a.startCheck() {
+		a.healthJobs.update(job.ID, func(j *HealthJob) { j.Running, j.Finished, j.Error = false, time.Now(), "the server is stopping" })
+		return false
+	}
+	a.runHealth(job.ID, c.Health, health.Options{Network: true, Only: only}, true)
+	return true
+}
+
 // runHealth runs the job in the server (not cancelled with the request), its progress as
-// events.
-func (a *API) runHealth(id int64, h core.Health, opts health.Options) {
+// events; a scheduled one logs only its result.
+func (a *API) runHealth(id int64, h core.Health, opts health.Options, scheduled bool) {
 	defer a.checks.Done()
 	publish := func(kind, msg string) {
 		if svc, ok := a.Manager().(*watch.Service); ok && svc.Events != nil {
@@ -191,7 +244,9 @@ func (a *API) runHealth(id int64, h core.Health, opts health.Options) {
 	if len(opts.Only) != 0 {
 		what += " (" + strings.Join(opts.Only, ", ") + ")"
 	}
-	a.Log.Infof("health check %d (asked through the API): %s", id, what)
+	if !scheduled {
+		a.Log.Infof("health check %d (asked through the API): %s", id, what)
+	}
 	publish(watch.LiveHealthStart, "health: checking "+what)
 	ctx := progress.WithReporter(a.ctx, func(s progress.Status) {
 		if !s.IsMinor() {
@@ -218,7 +273,11 @@ func (a *API) runHealth(id int64, h core.Health, opts health.Options) {
 		a.Log.Warnf("health check %d: %s", id, e)
 	}
 	done := fmt.Sprintf("health: %d errors, %d warnings, %d info", report.Counts.Error, report.Counts.Warning, report.Counts.Info)
-	a.Log.Infof("health check %d done: %s", id, strings.TrimPrefix(done, "health: "))
+	if scheduled {
+		a.Log.Infof("health check %d (scheduled, %s) done: %s", id, strings.Join(opts.Only, ", "), strings.TrimPrefix(done, "health: "))
+	} else {
+		a.Log.Infof("health check %d done: %s", id, strings.TrimPrefix(done, "health: "))
+	}
 	publish(watch.LiveHealthDone, done)
 }
 
@@ -258,8 +317,8 @@ func (a *API) finding(ctx context.Context, key string) (health.Finding, error) {
 		}
 		f, ok = report.Find(key)
 	}
-	if latest, found := a.healthJobs.latest(); found && (!ok || f.Fix.Action == nil) {
-		if nf, ok2 := latest.Find(key); ok2 {
+	if !ok || f.Fix.Action == nil {
+		if nf, ok2 := (health.Report{Findings: a.healthJobs.findings()}).Find(key); ok2 {
 			f, ok = nf, true
 		}
 	}
@@ -306,10 +365,8 @@ func (a *API) DismissHealthFindings(ctx context.Context, request apiv1.DismissHe
 	if len(dismiss) == 0 {
 		return resp, nil
 	}
-	req := core.DismissReq{Keys: dismiss, Network: deref(body.Network)}
-	if latest, found := a.healthJobs.latest(); found {
-		req.Fallback = latest.Findings
-	}
+	// the source check's findings are in the offline report: dismissed as they are
+	req := core.DismissReq{Keys: dismiss, Network: deref(body.Network), Known: a.healthJobs.sourceFindings(), Fallback: a.healthJobs.findings()}
 	dismissed, err := c.Health.Dismiss(ctx, req)
 	for _, f := range dismissed {
 		a.Log.Infof("health finding %s dismissed through the API: %s", f.Key, f.Message)
@@ -366,4 +423,103 @@ func fixFinding(ctx context.Context, c *core.Core, f health.Finding, choice stri
 		return health.FixResult{}, err
 	}
 	return res.Detail.(health.FixResult), nil
+}
+
+// sourceCheckDelay is how long after the server starts an overdue source check waits.
+const sourceCheckDelay = 15 * time.Minute
+
+// sourceCheck runs the library sources check (L11) every Interval
+// (health.source_check_interval): an Interval after the last one (kept across restarts),
+// never at startup (the first one an Interval after it, an overdue one sourceCheckDelay
+// after it).
+type sourceCheck struct {
+	Interval time.Duration
+	// Last and SetLast read and keep when it last ran (zero: never).
+	Last    func() (time.Time, error)
+	SetLast func(time.Time) error
+	// Run runs one and waits for it, false when it couldn't start (tried again
+	// sourceCheckDelay later).
+	Run func() bool
+	// Now is time.Now, After time.After (swapped in tests).
+	Now   func() time.Time
+	After func(time.Duration) <-chan time.Time
+	Log   logger
+}
+
+// due is when the next check runs.
+func (c sourceCheck) due(last, started time.Time) time.Time {
+	if last.IsZero() {
+		return started.Add(c.Interval)
+	}
+	return later(last.Add(c.Interval), started.Add(sourceCheckDelay))
+}
+
+func later(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+// loop runs the checks until ctx ends.
+func (c sourceCheck) loop(ctx context.Context) {
+	if c.Interval <= 0 {
+		return
+	}
+	started := c.Now()
+	// ran is the last run of this server, should the stored one fail
+	var ran time.Time
+	for {
+		last, err := c.Last()
+		if err != nil {
+			c.Log.Warnf("library sources check: when it last ran: %s", err)
+		}
+		wait := c.due(later(last, ran), started).Sub(c.Now())
+		if wait <= 0 {
+			now := c.Now()
+			if c.Run() {
+				ran = now
+				if err := c.SetLast(now); err != nil {
+					c.Log.Warnf("library sources check: keep when it ran: %s", err)
+				}
+				continue
+			}
+			wait = sourceCheckDelay
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.After(wait):
+		}
+	}
+}
+
+// newSourceCheck is the server's source check, its last run kept in the cache db.
+func (a *API) newSourceCheck(interval time.Duration) sourceCheck {
+	kv := func() (storage.KV, error) {
+		st, err := cache.Storage()
+		return storage.KV{DB: st.Cache, Table: storage.TableOther, Owner: storage.OwnerMangal + "/serve"}, err
+	}
+	return sourceCheck{
+		Interval: interval,
+		Last: func() (time.Time, error) {
+			var last time.Time
+			store, err := kv()
+			if err == nil {
+				_, err = store.Get("source-check", &last)
+			}
+			return last, err
+		},
+		SetLast: func(t time.Time) error {
+			store, err := kv()
+			if err != nil {
+				return err
+			}
+			return store.Set("source-check", t)
+		},
+		Run:   a.runSourceCheck,
+		Now:   time.Now,
+		After: time.After,
+		Log:   a.Log,
+	}
 }

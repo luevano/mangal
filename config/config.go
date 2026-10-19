@@ -603,6 +603,11 @@ var Serve = configServe{
 	TLSKey: stringEntry("serve.tls_key", "", "Private key file (PEM) of serve.tls_cert."),
 }
 
+var Health = configHealth{
+	SourceCheckInterval: durationEntry("health.source_check_interval", "168h",
+		"How often `mangal serve` checks on its own that each library manga's current source is still on its provider (health L11: one lookup by id per manga, through the provider's throttle; the result is logged and kept like a network health check's). 168h is a week, counted from the last check (across restarts), never at startup; 0 turns it off. Read when the server starts.", false),
+}
+
 var Log = configLog{
 	Rotate: oneOfEntry("log.rotate", "daily",
 		"How often a new log file starts (in $XDG_STATE_HOME/mangal/logs, named after its period: 2026-10-13T15.log, 2026-10-13.log, 2026-W42.log, 2026-10.log); a long `mangal serve` moves to the next one by itself. Every mangal process (serve, CLI, TUI) appends to the same files.",

@@ -191,3 +191,123 @@ func TestHealthNetworkJob(t *testing.T) {
 		}
 	}
 }
+
+// TestSourceCheckLoop: the scheduled source check waits an interval from the last run (or
+// from the start when it never ran), an overdue one sourceCheckDelay; a run that can't
+// start is tried again sourceCheckDelay later; 0 is off.
+func TestSourceCheckLoop(t *testing.T) {
+	const week = 7 * 24 * time.Hour
+	start := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	run := func(t *testing.T, interval time.Duration, last time.Time, results ...bool) (waits []time.Duration, stored time.Time) {
+		t.Helper()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		now := start
+		stored = last
+		runs := 0
+		c := sourceCheck{
+			Interval: interval,
+			Last:     func() (time.Time, error) { return stored, nil },
+			SetLast:  func(t time.Time) error { stored = t; return nil },
+			Run: func() bool {
+				ok := results[runs]
+				runs++
+				if runs == len(results) {
+					cancel()
+				}
+				return ok
+			},
+			Now: func() time.Time { return now },
+			After: func(d time.Duration) <-chan time.Time {
+				if ctx.Err() != nil {
+					return nil
+				}
+				waits = append(waits, d)
+				now = now.Add(d)
+				ch := make(chan time.Time, 1)
+				ch <- now
+				return ch
+			},
+			Log: newLogger(nil),
+		}
+		c.loop(ctx)
+		return waits, stored
+	}
+	t.Run("never ran", func(t *testing.T) {
+		waits, stored := run(t, week, time.Time{}, true, true)
+		if !slices.Equal(waits, []time.Duration{week, week}) || !stored.Equal(start.Add(2*week)) {
+			t.Errorf("waits %v, stored %v", waits, stored)
+		}
+	})
+	t.Run("overdue", func(t *testing.T) {
+		if waits, _ := run(t, week, start.Add(-8*24*time.Hour), true); !slices.Equal(waits, []time.Duration{sourceCheckDelay}) {
+			t.Errorf("waits %v", waits)
+		}
+	})
+	t.Run("ran lately", func(t *testing.T) {
+		if waits, _ := run(t, week, start.Add(-2*24*time.Hour), true); !slices.Equal(waits, []time.Duration{5 * 24 * time.Hour}) {
+			t.Errorf("waits %v", waits)
+		}
+	})
+	t.Run("busy", func(t *testing.T) {
+		waits, stored := run(t, week, start.Add(-8*24*time.Hour), false, true)
+		if !slices.Equal(waits, []time.Duration{sourceCheckDelay, sourceCheckDelay}) || !stored.Equal(start.Add(2*sourceCheckDelay)) {
+			t.Errorf("waits %v, stored %v", waits, stored)
+		}
+	})
+	t.Run("off", func(t *testing.T) {
+		if waits, _ := run(t, 0, time.Time{}); len(waits) != 0 {
+			t.Errorf("waits %v", waits)
+		}
+	})
+}
+
+// TestSourceCheckRun: the scheduled source check is a health job; its L11 findings are in
+// the offline report while they hold, and can be dismissed from it.
+func TestSourceCheckRun(t *testing.T) {
+	s, _, _ := newHealthServer(t)
+	inner := s.api.Health
+	s.api.Health = func(m watch.Manager) (health.Checker, error) {
+		c, err := inner(m)
+		c.Ignores = storage.HealthIgnores{DB: s.src.library.DB}.List
+		c.Lookup = func(_ context.Context, _ string, ids []string, done func(int, bool, error)) error {
+			for i := range ids {
+				done(i, false, nil)
+			}
+			return nil
+		}
+		return c, err
+	}
+	if !s.api.runSourceCheck() {
+		t.Fatal("didn't run")
+	}
+	job, ok := s.api.healthJobs.get(1)
+	if !ok || job.Running || job.Report == nil {
+		t.Fatalf("job %+v", job)
+	}
+	const key = "L11/manga/1/fake/opm"
+	if f, ok := job.Report.Find(key); !ok || f.Message != "not on fake any more (it may have been removed)" {
+		t.Errorf("job's L11 %+v", job.Report.Findings)
+	}
+	var report health.Report
+	if code := s.call(t, "GET", "/api/v1/health", "", &report); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if _, ok := report.Find(key); !ok || report.Network {
+		t.Errorf("offline report %+v", report.Findings)
+	}
+	if code := s.call(t, "GET", "/api/v1/health?only=gaps", "", &report); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	} else if _, ok := report.Find(key); ok {
+		t.Error("L11 with only=gaps")
+	}
+	if code := s.call(t, "POST", "/api/v1/health/dismiss", `{"dismiss":["`+key+`"]}`, nil); code != http.StatusOK {
+		t.Fatalf("dismiss %d", code)
+	}
+	report = health.Report{}
+	if s.call(t, "GET", "/api/v1/health", "", &report); report.Dismissed == 0 {
+		t.Errorf("not dismissed: %+v", report)
+	} else if _, ok := report.Find(key); ok {
+		t.Error("dismissed, still there")
+	}
+}

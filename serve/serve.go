@@ -185,6 +185,9 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		defer close(schedDone)
 		sched.Run(ctx)
 	}()
+	if every, err := time.ParseDuration(config.Health.SourceCheckInterval.Get()); err == nil && every > 0 {
+		go api.newSourceCheck(every).loop(ctx)
+	}
 
 	err = web.Serve(ctx, server, listener, func() {
 		// stopped by the caller (its cause may be the signal), not a failure

@@ -200,6 +200,11 @@ type configLog struct {
 	Compress     *entry[bool, bool]
 }
 
+type configHealth struct {
+	// SourceCheckInterval is how often mangal serve runs L11, 0 for never.
+	SourceCheckInterval *entry[string, string]
+}
+
 type configServe struct {
 	Host *entry[string, string]
 	Port *entry[int64, int]
