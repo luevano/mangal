@@ -10,7 +10,7 @@ const current = computed(() => jobs.list.find((j) => activeStatuses.includes(j.s
 <template>
   <RouterLink
     v-if="jobs.running || jobs.queued"
-    :to="{ name: 'jobs' }"
+    :to="{ name: 'downloads' }"
     class="jobbar d-flex align-items-center gap-2 px-3 py-1 small text-decoration-none text-body"
     data-test="jobbar"
   >

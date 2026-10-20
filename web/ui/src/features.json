@@ -60,7 +60,7 @@
       "name": "download",
       "web": [
         "provider-manga",
-        "jobs"
+        "downloads"
       ],
       "api": [
         "startDownload",
@@ -74,6 +74,10 @@
     },
     {
       "name": "maintenance jobs",
+      "web": [
+        "jobs",
+        "job-kind"
+      ],
       "api": [
         "listJobKinds",
         "getJobKind",
@@ -81,8 +85,7 @@
         "pauseJobKind",
         "resumeJobKind",
         "setJobKindSettings"
-      ],
-      "not_applicable": "not in the API yet (docs/core.md Progress)"
+      ]
     },
     {
       "name": "read",

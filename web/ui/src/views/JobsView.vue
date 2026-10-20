@@ -1,95 +1,113 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import client, { ok } from '@/api/client'
-import type { Job } from '@/api/schemas'
+import type { Job, JobKind } from '@/api/schemas'
 import LoadState from '@/components/LoadState.vue'
-import PagerNav from '@/components/PagerNav.vue'
-import { usePager } from '@/composables/usePager'
+import JobSettingsDialog from '@/components/JobSettingsDialog.vue'
 import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
-import { date, num } from '@/composables/format'
+import { ago, date } from '@/composables/format'
+import { kindState, nextLabel, stateClass } from '@/composables/jobKinds'
 import { crumbs } from '@/stores/crumbs'
-import { useJobs, activeStatuses, finishedStatuses } from '@/stores/jobs'
+import { useJobs, activeStatuses } from '@/stores/jobs'
+import { useStatus } from '@/stores/status'
 
-crumbs(() => [{ title: 'Downloads' }])
+crumbs(() => [{ title: 'Jobs' }])
 const jobs = useJobs()
+const st = useStatus()
 const action = useAction()
-onMounted(() => jobs.load())
+// an admin changes the settings (every permission)
+const admin = computed(() => st.scopes.length >= 4)
 
-const sorted = computed(() => [...jobs.list].sort((a, b) => b.id - a.id))
-const pager = usePager(sorted, 50)
-const recent = useLoad(() => ok(client.GET('/v1/library/downloads', { params: { query: { limit: 50 } } })), [() => jobs.finished])
+const kinds = useLoad(() => ok(client.GET('/v1/jobs/kinds')), [() => jobs.finished, () => jobs.running, () => jobs.queued])
+const downloads = computed(() => {
+  const d = jobs.list.filter((j) => j.kind === 'download')
+  return { running: d.filter((j) => activeStatuses.includes(j.status)).length, queued: d.filter((j) => j.status === 'queued').length }
+})
+// a running kind's job as the events say it now
+function live(k: JobKind): Job | undefined {
+  return k.running ? (jobs.list.find((j) => j.id === k.running!.id) ?? k.running) : undefined
+}
 
-const statusClass: Record<string, string> = { running: 'text-bg-info', waiting: 'text-bg-info', queued: 'text-bg-secondary', done: 'text-bg-success', failed: 'text-bg-danger', cancelled: 'text-bg-dark' }
-
-function cancel(j: Job) {
-  action.run(() => ok(client.POST('/v1/jobs/{id}/cancel', { params: { path: { id: j.id } } })), 'Cancelling')
+function run(k: JobKind, all: boolean) {
+  action
+    .run(() => ok(client.POST('/v1/jobs/kinds/{kind}/run', { params: { path: { kind: k.kind } }, body: { all } })), (j) => `Started ${j.title}`)
+    .then(() => kinds.load())
 }
-function retry(j: Job) {
-  action.run(() => ok(client.POST('/v1/jobs/{id}/retry', { params: { path: { id: j.id } } })), (n) => `Queued again as ${n.id}`)
+function pause(k: JobKind) {
+  const path = k.paused ? '/v1/jobs/kinds/{kind}/resume' : '/v1/jobs/kinds/{kind}/pause'
+  action.run(() => ok(client.POST(path, { params: { path: { kind: k.kind } } })), k.paused ? `${k.title} resumed` : `${k.title} paused`).then(() => kinds.load())
 }
-function remove(j: Job) {
-  action.run(() => ok(client.DELETE('/v1/jobs/{id}', { params: { path: { id: j.id } } }))).then(() => jobs.load())
-}
-function clearQueue() {
-  action.run(() => ok(client.POST('/v1/jobs/clear', { body: {} })), (r) => `${r.count} removed from the queue`).then(() => jobs.load())
-}
+const editing = ref<JobKind>()
 </script>
 
 <template>
-  <div class="d-flex align-items-center mb-2">
-    <h4 class="me-auto mb-0">Downloads <small class="text-secondary fs-6">{{ jobs.running }} running · {{ jobs.queued }} queued</small></h4>
-    <button class="btn btn-sm btn-outline-danger" :disabled="!jobs.queued" @click="clearQueue">Clear the queue</button>
+  <div class="d-flex align-items-center mb-3">
+    <h4 class="me-auto mb-0">Jobs <small class="text-secondary fs-6">the maintenance jobs; mangal serve runs their schedules</small></h4>
   </div>
-  <LoadState :loading="!jobs.loaded" :error="jobs.error" :empty="jobs.loaded && !jobs.list.length" empty-text="No jobs (downloads and scans asked here or through the API show here)." />
-  <div v-for="j in pager.items.value" :key="j.id" class="card mb-2" data-test="job">
-    <div class="card-body py-2">
-      <div class="d-flex flex-wrap gap-2 align-items-center">
-        <span class="badge" :class="statusClass[j.status] ?? 'text-bg-secondary'">{{ j.status }}</span>
-        <span class="small text-secondary">{{ j.kind }} #{{ j.id }}</span>
-        <span class="fw-semibold me-auto">{{ j.title }}</span>
-        <span v-if="j.total" class="small">{{ j.done ?? 0 }}/{{ j.total }}</span>
-        <button v-if="!finishedStatuses.includes(j.status)" class="btn btn-sm btn-outline-danger py-0" @click="cancel(j)">Cancel</button>
-        <button v-if="j.status === 'failed' || j.status === 'cancelled'" class="btn btn-sm btn-outline-primary py-0" @click="retry(j)">Retry</button>
-        <button v-if="finishedStatuses.includes(j.status)" class="btn btn-sm btn-outline-secondary py-0" title="Remove from the list" @click="remove(j)"><i class="bi bi-x" /></button>
+  <RouterLink :to="{ name: 'downloads' }" class="card mb-3 text-decoration-none" data-test="downloads-card">
+    <div class="card-body py-2 d-flex align-items-center gap-2">
+      <i class="bi bi-download" />
+      <span class="fw-semibold">Downloads:</span>
+      <span>{{ downloads.running }} running, {{ downloads.queued }} queued</span>
+      <i class="bi bi-arrow-right ms-auto" />
+    </div>
+  </RouterLink>
+  <LoadState :loading="kinds.loading.value && !kinds.data.value" :error="kinds.error.value" />
+  <div class="row row-cols-1 row-cols-lg-2 g-3">
+    <div v-for="k in kinds.data.value ?? []" :key="k.kind" class="col">
+      <div class="card h-100" :data-test="`kind-${k.kind}`">
+        <div class="card-header d-flex align-items-center gap-2">
+          <span class="fw-semibold me-auto">{{ k.title }}</span>
+          <span class="badge" :class="stateClass[kindState(k)]">{{ kindState(k) }}</span>
+        </div>
+        <div class="card-body small">
+          <p class="text-secondary mb-2">{{ k.about }}</p>
+          <div v-if="live(k)" class="mb-2" data-test="kind-running">
+            <div>{{ live(k)!.message || live(k)!.title }}<span v-if="live(k)!.total"> · {{ live(k)!.done ?? 0 }}/{{ live(k)!.total }}</span></div>
+            <div v-if="live(k)!.total" class="progress mt-1" style="height: 6px">
+              <div class="progress-bar" :style="{ width: `${Math.round(((live(k)!.done ?? 0) / live(k)!.total!) * 100)}%` }" />
+            </div>
+          </div>
+          <div v-else-if="k.busy" class="mb-2">{{ k.busy }}</div>
+          <dl class="row mb-0">
+            <dt class="col-4">Last run</dt>
+            <dd class="col-8" data-test="kind-last">
+              <template v-if="k.last">
+                <span :title="date(k.last.finished || k.last.started)">{{ ago(k.last.finished || k.last.started) }}</span>
+                <span v-if="k.last.error" class="text-danger"> · {{ k.last.error }}</span>
+                <span v-else-if="k.last.summary"> · {{ k.last.summary }}</span>
+                <RouterLink v-if="k.kind === 'check' && k.last.run" class="ms-1" :to="{ name: 'run', params: { id: k.last.run } }">run {{ k.last.run }}</RouterLink>
+                <RouterLink v-else-if="(k.kind === 'sources' || k.kind === 'health') && k.last.run" class="ms-1" :to="{ name: 'health' }">findings</RouterLink>
+              </template>
+              <span v-else class="text-secondary">never</span>
+            </dd>
+            <dt class="col-4">Next run</dt>
+            <dd class="col-8" data-test="kind-next">{{ nextLabel(k) }}</dd>
+            <template v-if="k.schedule">
+              <dt class="col-4">Schedule</dt>
+              <dd class="col-8"><code>{{ k.schedule }}</code></dd>
+            </template>
+            <template v-if="k.missing !== undefined">
+              <dt class="col-4">Missing</dt>
+              <dd class="col-8">{{ k.missing }} <span class="text-secondary">{{ k.missing_what }}</span></dd>
+            </template>
+          </dl>
+        </div>
+        <div class="card-footer d-flex flex-wrap gap-2">
+          <button v-if="k.missing !== undefined" class="btn btn-sm btn-primary" :disabled="!!k.running || !k.missing" data-test="run-missing" @click="run(k, false)">
+            <i class="bi bi-play me-1" />Run missing
+          </button>
+          <button class="btn btn-sm btn-outline-primary" :disabled="!!k.running" data-test="run-all" @click="run(k, true)"><i class="bi bi-play-fill me-1" />Run all</button>
+          <button v-if="!k.manual" class="btn btn-sm btn-outline-secondary" data-test="pause" @click="pause(k)">
+            <i class="bi me-1" :class="k.paused ? 'bi-play-circle' : 'bi-pause-circle'" />{{ k.paused ? 'Resume' : 'Pause' }}
+          </button>
+          <button v-if="admin" class="btn btn-sm btn-outline-secondary" data-test="settings" @click="editing = k"><i class="bi bi-gear me-1" />Settings</button>
+          <RouterLink class="btn btn-sm btn-link ms-auto" :to="{ name: 'job-kind', params: { kind: k.kind } }">Details</RouterLink>
+        </div>
       </div>
-      <div v-if="activeStatuses.includes(j.status) && j.part" class="progress mt-2" style="height: 6px">
-        <div class="progress-bar" :style="{ width: `${Math.round((j.part ?? 0) * 100)}%` }" />
-      </div>
-      <div class="small text-secondary mt-1">
-        <span v-if="j.message">{{ j.message }}</span>
-        <span v-if="j.note"> · {{ j.note }}</span>
-        <span v-if="j.behind"> · behind {{ j.behind }}</span>
-        <span v-if="j.error" class="text-danger"> · {{ j.error }}</span>
-        <span> · added {{ date(j.added) }}</span>
-      </div>
-      <ul v-if="j.results?.length" class="small mb-0 mt-1">
-        <li v-for="r in j.results" :key="r.chapter + r.title" :class="{ 'text-danger': r.error }">
-          {{ num(r.chapter) }} {{ r.title }}
-          <span v-if="r.skipped" class="text-secondary"> skipped: {{ r.skipped }}</span>
-          <span v-if="r.unavailable" class="text-warning"> unavailable: {{ r.unavailable }}</span>
-          <span v-if="r.error"> {{ r.error }}</span>
-        </li>
-      </ul>
     </div>
   </div>
-  <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
-  <h6 class="mt-4">Downloaded lately</h6>
-  <LoadState :loading="recent.loading.value && !recent.data.value" :error="recent.error.value" :empty="recent.data.value && !recent.data.value.downloads.length" empty-text="Nothing downloaded yet." />
-  <table v-if="recent.data.value?.downloads.length" class="table table-sm">
-    <thead><tr><th>Manga</th><th>Chapter</th><th class="d-none d-md-table-cell">Provider</th><th class="d-none d-md-table-cell">Format</th><th>When</th></tr></thead>
-    <tbody>
-      <tr v-for="d in recent.data.value.downloads" :key="d.path">
-        <td>
-          <RouterLink v-if="d.provider && d.manga_id" :to="{ name: 'provider-manga', params: { provider: d.provider, manga: d.manga_id } }">{{ d.manga_title }}</RouterLink>
-          <span v-else>{{ d.manga_title }}</span>
-        </td>
-        <td>{{ num(d.chapter) }} <span class="small text-secondary">{{ d.chapter_title }}</span></td>
-        <td class="d-none d-md-table-cell small">{{ d.provider }}</td>
-        <td class="d-none d-md-table-cell small">{{ d.format }}</td>
-        <td class="small">{{ date(d.downloaded) }}</td>
-      </tr>
-    </tbody>
-  </table>
+  <JobSettingsDialog v-if="editing" :open="!!editing" :kind="editing" @close="editing = undefined" @done="(editing = undefined), kinds.load()" />
 </template>
