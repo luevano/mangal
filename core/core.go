@@ -85,6 +85,8 @@ type Env struct {
 	// with the provider's client, held until release, and lists its chapters (as the
 	// screens list them).
 	ProviderChapters func(ctx context.Context, provider, id, query, sel string) (c *libmangal.Client, manga mangadata.Manga, chapters []mangadata.Chapter, release func(), err error)
+	// SearchProvider searches the query on the provider with the id (Core.Search).
+	SearchProvider func(ctx context.Context, provider, query string) (libmangal.ProviderInfo, []mangadata.Manga, error)
 	// ProviderManga is the provider's manga with the id (a search of title when the
 	// provider can't get one by id), found false when the provider doesn't have it.
 	ProviderManga func(ctx context.Context, provider, id, title string) (info libmangal.ProviderInfo, manga mangadata.MangaInfo, found bool, err error)
@@ -163,6 +165,9 @@ func (e Env) withDefaults() (Env, error) {
 	}
 	if e.ProviderChapters == nil {
 		e.ProviderChapters = providerChapters
+	}
+	if e.SearchProvider == nil {
+		e.SearchProvider = searchProvider
 	}
 	if e.ProviderManga == nil {
 		e.ProviderManga = providerManga
