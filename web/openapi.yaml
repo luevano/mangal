@@ -644,7 +644,7 @@ paths:
   /v1/library/urls:
     post:
       summary: Look the web pages of the library's sources up (a job)
-      description: The sources without a url (and not gone), or all of them (stale urls refreshed, gone ones asked again); a provider is asked one manga at a time with a 1 to 3 seconds pause, watch.parallel_providers providers at once, the providers not installed skipped. Answers 202 with the job.
+      description: The sources without a url (and not gone), or all of them (stale urls refreshed, gone ones asked again); a provider is asked one manga at a time with a pause of jobs.delay_min to jobs.delay_max, watch.parallel_providers providers at once, the providers not installed or off in jobs.urls.providers skipped. Answers 202 with the job.
       operationId: lookupSourceURLs
       tags: [v1, library]
       x-mangal-scope: write
@@ -1036,6 +1036,122 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Count'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/jobs/kinds:
+    get:
+      summary: The maintenance job kinds (the Jobs page), with their state
+      description: Watch checks (check), source checks (sources, health L11), source addresses (urls), the library scan (scan) and the network health checks (health); each with its schedule, last and next run, its running job and per-provider settings (without their counts, GET /v1/jobs/kinds/{kind} has them).
+      operationId: listJobKinds
+      tags: [v1, jobs]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the kinds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobKind'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/jobs/kinds/{kind}:
+    get:
+      summary: A job kind with its per-provider counts
+      operationId: getJobKind
+      tags: [v1, jobs]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/KindParam'
+      responses:
+        '200':
+          description: the kind
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobKind'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/jobs/kinds/{kind}/run:
+    post:
+      summary: Run a job kind now (a job)
+      description: Only the missing items (the due watches, the sources not checked within their interval, those without an address; the scan and the network health check do everything), or all of them. The providers off for the kind are skipped. 409 refused while one runs, 409 nothing_to_do when nothing is missing.
+      operationId: runJobKind
+      tags: [v1, jobs]
+      x-mangal-scope: write
+      parameters:
+        - $ref: '#/components/parameters/KindParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobKindRunRequest'
+      responses:
+        '202':
+          description: the job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/jobs/kinds/{kind}/pause:
+    post:
+      summary: Pause a job kind's schedule (a running job goes on)
+      operationId: pauseJobKind
+      tags: [v1, jobs]
+      x-mangal-scope: write
+      parameters:
+        - $ref: '#/components/parameters/KindParam'
+      responses:
+        '200':
+          description: the kind
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobKind'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/jobs/kinds/{kind}/resume:
+    post:
+      summary: Resume a job kind's schedule
+      operationId: resumeJobKind
+      tags: [v1, jobs]
+      x-mangal-scope: write
+      parameters:
+        - $ref: '#/components/parameters/KindParam'
+      responses:
+        '200':
+          description: the kind
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobKind'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/jobs/kinds/{kind}/settings:
+    put:
+      summary: Change a job kind's settings (in the config file)
+      description: enabled, schedule (its config key's value), per-provider on, off or an interval (empty for the prebuilt default), and the pause between requests (shared by the kinds). Needs every permission (an admin), whatever its x-mangal-scope says.
+      operationId: setJobKindSettings
+      tags: [v1, jobs]
+      x-mangal-scope: write
+      parameters:
+        - $ref: '#/components/parameters/KindParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobSettings'
+      responses:
+        '200':
+          description: the kind
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobKind'
         default:
           $ref: '#/components/responses/Error'
   /v1/jobs/{id}:
@@ -2075,6 +2191,13 @@ paths:
 
 components:
   parameters:
+    KindParam:
+      name: kind
+      in: path
+      required: true
+      description: check, sources, urls, scan or health
+      schema:
+        type: string
     IDParam:
       name: id
       in: path
@@ -3280,7 +3403,7 @@ components:
           format: int64
         kind:
           type: string
-          description: download, check, scan or urls
+          description: download, check, scan, urls, sources or health
         title:
           type: string
         providers:
@@ -3322,6 +3445,128 @@ components:
           type: integer
         behind:
           type: string
+    JobKind:
+      type: object
+      x-go-type: core.JobKind
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/core
+      required: [kind, title, about, enabled, paused, manual]
+      properties:
+        kind:
+          type: string
+          description: check, sources, urls, scan or health
+        title:
+          type: string
+        about:
+          type: string
+        enabled:
+          type: boolean
+        paused:
+          type: boolean
+        manual:
+          type: boolean
+          description: never scheduled (scan, health)
+        schedule:
+          type: string
+          description: a cron schedule (check) or a Go duration
+        schedule_key:
+          type: string
+        providers_key:
+          type: string
+        last:
+          $ref: '#/components/schemas/JobRun'
+        next:
+          type: string
+          format: date-time
+        no_next:
+          type: string
+          description: why there's no next run (paused, turned off, manual, no mangal serve...)
+        running:
+          $ref: '#/components/schemas/Job'
+        busy:
+          type: string
+          description: what runs it elsewhere (the scheduler's watch checks)
+        missing:
+          type: integer
+          description: how many items a run of the missing ones does; absent when that's all of them
+        missing_what:
+          type: string
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobProvider'
+    JobRun:
+      type: object
+      required: [all]
+      properties:
+        job:
+          type: integer
+          format: int64
+          description: its job (GET /v1/jobs/{id}, while kept)
+        run:
+          type: integer
+          format: int64
+          description: its watch check run (check), or health job (sources, health)
+        all:
+          type: boolean
+        started:
+          type: string
+          format: date-time
+        finished:
+          type: string
+          format: date-time
+        summary:
+          type: string
+        error:
+          type: string
+    JobProvider:
+      type: object
+      required: [provider, name, on, items, missing]
+      properties:
+        provider:
+          type: string
+        name:
+          type: string
+        on:
+          type: boolean
+        interval:
+          type: string
+          description: its own interval (a cron schedule for check), empty for the kind's
+        default:
+          type: string
+          description: the prebuilt default (off for MangaPlus in the maintenance kinds)
+        items:
+          type: integer
+        missing:
+          type: integer
+        next:
+          type: string
+          format: date-time
+    JobSettings:
+      type: object
+      x-go-type: core.JobSettings
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/core
+      properties:
+        enabled:
+          type: boolean
+        schedule:
+          type: string
+        providers:
+          type: object
+          additionalProperties:
+            type: string
+          description: provider id = on, off or an interval; empty for the prebuilt default
+        delay_min:
+          type: string
+        delay_max:
+          type: string
+    JobKindRunRequest:
+      type: object
+      properties:
+        all:
+          type: boolean
+          description: every item, not only the missing ones
     JobResult:
       type: object
       required: [chapter, title]

@@ -406,7 +406,8 @@ func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObjec
 	if config.IsSecret(key) || strings.HasPrefix(key, "serve.") {
 		return nil, newAPIError(http.StatusForbidden, CodeForbidden, "%s isn't set over HTTP (mangal config set, or the config file)", key)
 	}
-	if slices.Contains(adminConfigKeys, key) {
+	// the jobs' settings are an admin's, as through PUT /v1/jobs/kinds/{kind}/settings
+	if slices.Contains(adminConfigKeys, key) || strings.HasPrefix(key, "jobs.") {
 		if err := needAdmin(ctx); err != nil {
 			return nil, err
 		}

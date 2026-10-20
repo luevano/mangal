@@ -73,6 +73,18 @@
       ]
     },
     {
+      "name": "maintenance jobs",
+      "api": [
+        "listJobKinds",
+        "getJobKind",
+        "runJobKind",
+        "pauseJobKind",
+        "resumeJobKind",
+        "setJobKindSettings"
+      ],
+      "not_applicable": "not in the API yet (docs/core.md Progress)"
+    },
+    {
       "name": "read",
       "web": [
         "read-library",

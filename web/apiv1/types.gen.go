@@ -498,7 +498,7 @@ type Job struct {
 	Finished *time.Time `json:"finished,omitempty"`
 	Id       int64      `json:"id"`
 
-	// Kind download, check, scan or urls
+	// Kind download, check, scan, urls, sources or health
 	Kind      string       `json:"kind"`
 	MangaId   *string      `json:"manga_id,omitempty"`
 	Message   *string      `json:"message,omitempty"`
@@ -514,6 +514,30 @@ type Job struct {
 	Total  *int   `json:"total,omitempty"`
 }
 
+// JobKind defines model for JobKind.
+type JobKind = core.JobKind
+
+// JobKindRunRequest defines model for JobKindRunRequest.
+type JobKindRunRequest struct {
+	// All every item, not only the missing ones
+	All *bool `json:"all,omitempty"`
+}
+
+// JobProvider defines model for JobProvider.
+type JobProvider struct {
+	// Default the prebuilt default (off for MangaPlus in the maintenance kinds)
+	Default *string `json:"default,omitempty"`
+
+	// Interval its own interval (a cron schedule for check), empty for the kind's
+	Interval *string    `json:"interval,omitempty"`
+	Items    int        `json:"items"`
+	Missing  int        `json:"missing"`
+	Name     string     `json:"name"`
+	Next     *time.Time `json:"next,omitempty"`
+	On       bool       `json:"on"`
+	Provider string     `json:"provider"`
+}
+
 // JobResult defines model for JobResult.
 type JobResult struct {
 	Chapter     float32 `json:"chapter"`
@@ -523,6 +547,24 @@ type JobResult struct {
 	Title       string  `json:"title"`
 	Unavailable *string `json:"unavailable,omitempty"`
 }
+
+// JobRun defines model for JobRun.
+type JobRun struct {
+	All      bool       `json:"all"`
+	Error    *string    `json:"error,omitempty"`
+	Finished *time.Time `json:"finished,omitempty"`
+
+	// Job its job (GET /v1/jobs/{id}, while kept)
+	Job *int64 `json:"job,omitempty"`
+
+	// Run its watch check run (check), or health job (sources, health)
+	Run     *int64     `json:"run,omitempty"`
+	Started *time.Time `json:"started,omitempty"`
+	Summary *string    `json:"summary,omitempty"`
+}
+
+// JobSettings defines model for JobSettings.
+type JobSettings = core.JobSettings
 
 // LibraryChapter defines model for LibraryChapter.
 type LibraryChapter struct {
@@ -1120,6 +1162,9 @@ type ChapterPathParam = string
 // IDParam defines model for IDParam.
 type IDParam = int64
 
+// KindParam defines model for KindParam.
+type KindParam = string
+
 // LimitParam defines model for LimitParam.
 type LimitParam = int
 
@@ -1525,6 +1570,12 @@ type ClearHistoryJSONRequestBody = HistoryClearRequest
 
 // ClearJobQueueJSONRequestBody defines body for ClearJobQueue for application/json ContentType.
 type ClearJobQueueJSONRequestBody = ClearJobsRequest
+
+// RunJobKindJSONRequestBody defines body for RunJobKind for application/json ContentType.
+type RunJobKindJSONRequestBody = JobKindRunRequest
+
+// SetJobKindSettingsJSONRequestBody defines body for SetJobKindSettings for application/json ContentType.
+type SetJobKindSettingsJSONRequestBody = JobSettings
 
 // FillBackupLinksJSONRequestBody defines body for FillBackupLinks for application/json ContentType.
 type FillBackupLinksJSONRequestBody = BackupsRequest

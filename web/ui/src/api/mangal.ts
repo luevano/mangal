@@ -536,7 +536,7 @@ export interface paths {
         put?: never;
         /**
          * Look the web pages of the library's sources up (a job)
-         * @description The sources without a url (and not gone), or all of them (stale urls refreshed, gone ones asked again); a provider is asked one manga at a time with a 1 to 3 seconds pause, watch.parallel_providers providers at once, the providers not installed skipped. Answers 202 with the job.
+         * @description The sources without a url (and not gone), or all of them (stale urls refreshed, gone ones asked again); a provider is asked one manga at a time with a pause of jobs.delay_min to jobs.delay_max, watch.parallel_providers providers at once, the providers not installed or off in jobs.urls.providers skipped. Answers 202 with the job.
          */
         post: operations["lookupSourceURLs"];
         delete?: never;
@@ -859,6 +859,117 @@ export interface paths {
         put?: never;
         /** Cancel the queued jobs (of a provider) */
         post: operations["clearJobQueue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The maintenance job kinds (the Jobs page), with their state
+         * @description Watch checks (check), source checks (sources, health L11), source addresses (urls), the library scan (scan) and the network health checks (health); each with its schedule, last and next run, its running job and per-provider settings (without their counts, GET /v1/jobs/kinds/{kind} has them).
+         */
+        get: operations["listJobKinds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/kinds/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A job kind with its per-provider counts */
+        get: operations["getJobKind"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/kinds/{kind}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a job kind now (a job)
+         * @description Only the missing items (the due watches, the sources not checked within their interval, those without an address; the scan and the network health check do everything), or all of them. The providers off for the kind are skipped. 409 refused while one runs, 409 nothing_to_do when nothing is missing.
+         */
+        post: operations["runJobKind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/kinds/{kind}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause a job kind's schedule (a running job goes on) */
+        post: operations["pauseJobKind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/kinds/{kind}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume a job kind's schedule */
+        post: operations["resumeJobKind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/kinds/{kind}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a job kind's settings (in the config file)
+         * @description enabled, schedule (its config key's value), per-provider on, off or an interval (empty for the prebuilt default), and the pause between requests (shared by the kinds). Needs every permission (an admin), whatever its x-mangal-scope says.
+         */
+        put: operations["setJobKindSettings"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2151,7 +2262,7 @@ export interface components {
         Job: {
             /** Format: int64 */
             id: number;
-            /** @description download, check, scan or urls */
+            /** @description download, check, scan, urls, sources or health */
             kind: string;
             title: string;
             providers: string[];
@@ -2174,6 +2285,78 @@ export interface components {
             finished?: string;
             ahead?: number;
             behind?: string;
+        };
+        JobKind: {
+            /** @description check, sources, urls, scan or health */
+            kind: string;
+            title: string;
+            about: string;
+            enabled: boolean;
+            paused: boolean;
+            /** @description never scheduled (scan, health) */
+            manual: boolean;
+            /** @description a cron schedule (check) or a Go duration */
+            schedule?: string;
+            schedule_key?: string;
+            providers_key?: string;
+            last?: components["schemas"]["JobRun"];
+            /** Format: date-time */
+            next?: string;
+            /** @description why there's no next run (paused, turned off, manual, no mangal serve...) */
+            no_next?: string;
+            running?: components["schemas"]["Job"];
+            /** @description what runs it elsewhere (the scheduler's watch checks) */
+            busy?: string;
+            /** @description how many items a run of the missing ones does; absent when that's all of them */
+            missing?: number;
+            missing_what?: string;
+            providers?: components["schemas"]["JobProvider"][];
+        };
+        JobRun: {
+            /**
+             * Format: int64
+             * @description its job (GET /v1/jobs/{id}, while kept)
+             */
+            job?: number;
+            /**
+             * Format: int64
+             * @description its watch check run (check), or health job (sources, health)
+             */
+            run?: number;
+            all: boolean;
+            /** Format: date-time */
+            started?: string;
+            /** Format: date-time */
+            finished?: string;
+            summary?: string;
+            error?: string;
+        };
+        JobProvider: {
+            provider: string;
+            name: string;
+            on: boolean;
+            /** @description its own interval (a cron schedule for check), empty for the kind's */
+            interval?: string;
+            /** @description the prebuilt default (off for MangaPlus in the maintenance kinds) */
+            default?: string;
+            items: number;
+            missing: number;
+            /** Format: date-time */
+            next?: string;
+        };
+        JobSettings: {
+            enabled?: boolean;
+            schedule?: string;
+            /** @description provider id = on, off or an interval; empty for the prebuilt default */
+            providers?: {
+                [key: string]: string;
+            };
+            delay_min?: string;
+            delay_max?: string;
+        };
+        JobKindRunRequest: {
+            /** @description every item, not only the missing ones */
+            all?: boolean;
         };
         JobResult: {
             /** Format: float */
@@ -2665,6 +2848,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description check, sources, urls, scan or health */
+        KindParam: string;
         IDParam: number;
         /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
         ApplyParam: boolean;
@@ -3838,6 +4023,155 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Count"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listJobKinds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the kinds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobKind"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getJobKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description check, sources, urls, scan or health */
+                kind: components["parameters"]["KindParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the kind */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobKind"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    runJobKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description check, sources, urls, scan or health */
+                kind: components["parameters"]["KindParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JobKindRunRequest"];
+            };
+        };
+        responses: {
+            /** @description the job */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    pauseJobKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description check, sources, urls, scan or health */
+                kind: components["parameters"]["KindParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the kind */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobKind"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    resumeJobKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description check, sources, urls, scan or health */
+                kind: components["parameters"]["KindParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the kind */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobKind"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setJobKindSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description check, sources, urls, scan or health */
+                kind: components["parameters"]["KindParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSettings"];
+            };
+        };
+        responses: {
+            /** @description the kind */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobKind"];
                 };
             };
             default: components["responses"]["Error"];

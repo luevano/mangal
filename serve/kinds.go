@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/health"
+	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
 // kinds are the server's job kinds (the Jobs page) over its jobs, made once.
@@ -216,4 +218,114 @@ func (a *API) checkGate() (bool, func(string) bool) {
 func (a *API) kindPaused(kind jobs.Kind) bool {
 	c, err := a.services(a.ctx)
 	return err == nil && c.KindPaused(kind)
+}
+
+// kind is the request's kind with the server's kinds.
+func (a *API) kind(ctx context.Context, name string) (jobs.Kind, core.JobKinds, error) {
+	kind, err := core.ParseJobKind(name)
+	if err != nil {
+		return kind, nil, err
+	}
+	kinds, err := a.kinds(ctx)
+	return kind, kinds, err
+}
+
+// ListJobKinds implements apiv1.StrictServerInterface.
+func (a *API) ListJobKinds(ctx context.Context, _ apiv1.ListJobKindsRequestObject) (apiv1.ListJobKindsResponseObject, error) {
+	kinds, err := a.kinds(ctx)
+	if err != nil {
+		return nil, err
+	}
+	list, err := kinds.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.ListJobKinds200JSONResponse(list), nil
+}
+
+// GetJobKind implements apiv1.StrictServerInterface.
+func (a *API) GetJobKind(ctx context.Context, request apiv1.GetJobKindRequestObject) (apiv1.GetJobKindResponseObject, error) {
+	kind, kinds, err := a.kind(ctx, request.Kind)
+	if err != nil {
+		return nil, err
+	}
+	k, err := kinds.Get(ctx, kind)
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.GetJobKind200JSONResponse(k), nil
+}
+
+// RunJobKind implements apiv1.StrictServerInterface.
+func (a *API) RunJobKind(ctx context.Context, request apiv1.RunJobKindRequestObject) (apiv1.RunJobKindResponseObject, error) {
+	kind, kinds, err := a.kind(ctx, request.Kind)
+	if err != nil {
+		return nil, err
+	}
+	all := deref(deref(request.Body).All)
+	job, err := kinds.Run(ctx, kind, all)
+	if errors.Is(err, core.ErrRefused) {
+		return nil, &apiError{status: http.StatusConflict, code: CodeRefused, err: err}
+	}
+	if err != nil {
+		return nil, err
+	}
+	what := "missing"
+	if all {
+		what = "all"
+	}
+	a.Log.Infof("job %d (%s, %s, asked through the API): %s", job.ID, kind, what, job.Title)
+	return apiv1.RunJobKind202JSONResponse(toAPIJob(job)), nil
+}
+
+func (a *API) pauseKind(ctx context.Context, name string, paused bool) (core.JobKind, error) {
+	kind, kinds, err := a.kind(ctx, name)
+	if err != nil {
+		return core.JobKind{}, err
+	}
+	k, err := kinds.Pause(ctx, kind, paused)
+	if err != nil {
+		return k, err
+	}
+	what := "resumed"
+	if paused {
+		what = "paused"
+	}
+	a.Log.Infof("%s %s through the API", strings.ToLower(k.Title), what)
+	return k, nil
+}
+
+// PauseJobKind implements apiv1.StrictServerInterface.
+func (a *API) PauseJobKind(ctx context.Context, request apiv1.PauseJobKindRequestObject) (apiv1.PauseJobKindResponseObject, error) {
+	k, err := a.pauseKind(ctx, request.Kind, true)
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.PauseJobKind200JSONResponse(k), nil
+}
+
+// ResumeJobKind implements apiv1.StrictServerInterface.
+func (a *API) ResumeJobKind(ctx context.Context, request apiv1.ResumeJobKindRequestObject) (apiv1.ResumeJobKindResponseObject, error) {
+	k, err := a.pauseKind(ctx, request.Kind, false)
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.ResumeJobKind200JSONResponse(k), nil
+}
+
+// SetJobKindSettings implements apiv1.StrictServerInterface: only an admin changes them.
+func (a *API) SetJobKindSettings(ctx context.Context, request apiv1.SetJobKindSettingsRequestObject) (apiv1.SetJobKindSettingsResponseObject, error) {
+	if err := needAdmin(ctx); err != nil {
+		return nil, err
+	}
+	kind, kinds, err := a.kind(ctx, request.Kind)
+	if err != nil {
+		return nil, err
+	}
+	k, err := kinds.Set(ctx, kind, deref(request.Body))
+	if err != nil {
+		return nil, err
+	}
+	a.Log.Infof("%s settings changed through the API", strings.ToLower(k.Title))
+	return apiv1.SetJobKindSettings200JSONResponse(k), nil
 }
