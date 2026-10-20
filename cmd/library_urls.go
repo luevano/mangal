@@ -26,9 +26,10 @@ marked gone (its old url kept) and isn't asked again. --all looks every source u
 stale urls are refreshed, gone sources asked again. Downloads, moves and scans record the url
 when they know it, this is for the sources recorded before.
 
-A provider is asked one manga at a time with a pause of 1 to 3 seconds between them,
-watch.parallel_providers providers at once; the sources of providers not installed are
-skipped. Prints each source looked up and what was found.`,
+A provider is asked one manga at a time with a pause of jobs.delay_min to jobs.delay_max
+between them, watch.parallel_providers providers at once; the sources of providers not
+installed or off in jobs.urls.providers (MangaPlus by default) are skipped. Prints each
+source looked up and what was found.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)

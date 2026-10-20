@@ -107,13 +107,15 @@ func TestSourceURL(t *testing.T) {
 }
 
 func TestLookupSourceURLs(t *testing.T) {
-	c, site := urlCore(t, "mango-mangadex", "mango-mangapill")
+	c, site := urlCore(t, "mango-mangadex", "mango-mangapill", "mango-mangaplus")
 	ctx := context.Background()
 	addManga(t, c, "A", "mango-mangadex", "a", "A", 1)
 	addManga(t, c, "B", "mango-mangadex", "b", "B", 1)
 	addManga(t, c, "C", "mango-mangadex", "gone", "C", 1)
 	addManga(t, c, "D", "mango-mangapill", "d", "D", 1)
 	addManga(t, c, "E", "mango-comick", "e", "E", 1)
+	// off in jobs.urls.providers by default
+	addManga(t, c, "F", "mango-mangaplus", "f", "F", 1)
 	if err := c.env.Storage.Library().SetSourceURL("mango-mangadex", "a", "https://mangadex.org/title/a"); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +145,7 @@ func TestLookupSourceURLs(t *testing.T) {
 	if want := "B https://mango-mangadex/title/b,C gone,D https://mango-mangapill/title/d"; strings.Join(got, ",") != want {
 		t.Errorf("results %q, want %q", got, want)
 	}
-	if len(rep.Skipped) != 1 || !strings.Contains(rep.Skipped[0], "mango-comick: not installed") {
+	if len(rep.Skipped) != 2 || !strings.Contains(rep.Skipped[0], "mango-comick: not installed") || !strings.Contains(rep.Skipped[1], "mango-mangaplus: turned off") {
 		t.Errorf("skipped %q", rep.Skipped)
 	}
 	// mangadex's two lookups have a pause between them, mangapill's one none

@@ -146,23 +146,13 @@ func listChapters(ctx context.Context, provider string, mangas []ProviderManga, 
 	return nil
 }
 
-// mangaPlus is MangaPlus' provider id.
-const mangaPlus = "mango-mangaplus"
-
-// mangaPlusPaid is true when a paid MangaPlus device secret is set (saved or a
-// secret_file): asking with it risks locking the device out.
-func mangaPlusPaid() bool {
-	secret, err := cache.MangaPlusSecret()
-	return err != nil || secret != "" || config.Providers.MangaPlus.SecretFile.Get() != ""
-}
-
 // probeProvider asks the provider for the manga by its id (a title search when it can't),
 // what the provider reports meanwhile kept and passed on; the account comes from the
 // accounts cache (no request).
 func probeProvider(ctx context.Context, loaders []libmangal.ProviderLoader, provider string, m ProviderManga) Probe {
 	var p Probe
-	if provider == mangaPlus && mangaPlusPaid() {
-		p.Skipped = "a paid MangaPlus secret is set (asking risks a device lockout)"
+	if !config.Jobs.Health.Providers.Fresh().On(provider) {
+		p.Skipped = "turned off in jobs.health.providers"
 		return p
 	}
 	ctx, cancel := context.WithTimeout(ctx, ProbeTimeout)
@@ -216,10 +206,11 @@ func probeProvider(ctx context.Context, loaders []libmangal.ProviderLoader, prov
 }
 
 // lookupMangas looks the provider's mangas up by their ids (L11) through its shared
-// client (its throttle applies), one at a time, their cached answers dropped first as A2's.
+// client (its throttle applies), one at a time with a pause between them (jobs.delay_min
+// to jobs.delay_max), their cached answers dropped first as A2's.
 func lookupMangas(ctx context.Context, loaders []libmangal.ProviderLoader, provider string, ids []string, done func(int, bool, error)) error {
-	if provider == mangaPlus && mangaPlusPaid() {
-		return errors.New("not asked: a paid MangaPlus secret is set (asking risks a device lockout)")
+	if !config.Jobs.Sources.Providers.Fresh().On(provider) {
+		return errors.New("not asked: turned off in jobs.sources.providers")
 	}
 	c, _, release, err := client.HoldByID(ctx, provider)
 	if err != nil {
@@ -236,6 +227,11 @@ func lookupMangas(ctx context.Context, loaders []libmangal.ProviderLoader, provi
 		}
 	}
 	for i, id := range ids {
+		if i > 0 {
+			if err := sleep(ctx, config.JobDelay()); err != nil {
+				return err
+			}
+		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -247,6 +243,18 @@ func lookupMangas(ctx context.Context, loaders []libmangal.ProviderLoader, provi
 		done(i, found, err)
 	}
 	return nil
+}
+
+// sleep waits d, an error when ctx is done first.
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // cachedAccount is the provider's account as the accounts screen last saw it.

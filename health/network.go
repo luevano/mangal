@@ -562,7 +562,9 @@ func (c Checker) loadSources(ctx context.Context, s *snapshot) error {
 	for _, m := range s.mangas {
 		if src, ok := currentSource(s, m); ok {
 			provider := s.providerInfo(src.Provider).ID
-			byProvider[provider] = append(byProvider[provider], todo{m.ID, src.MangaID})
+			if c.sources == nil || c.sources(provider, src.MangaID) {
+				byProvider[provider] = append(byProvider[provider], todo{m.ID, src.MangaID})
+			}
 		}
 	}
 	total := 0
@@ -582,6 +584,9 @@ func (c Checker) loadSources(ctx context.Context, s *snapshot) error {
 			mu.Lock()
 			defer mu.Unlock()
 			s.sources[list[i].manga] = sourceResult{provider: provider, mangaID: list[i].mangaID, found: found, err: err}
+			if c.looked != nil {
+				c.looked(provider, list[i].mangaID)
+			}
 			done++
 			c.progress(fmt.Sprintf("looking up the library's sources: %d/%d (%s)", done, total, provider))
 		})

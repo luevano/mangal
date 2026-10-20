@@ -205,6 +205,35 @@ type configHealth struct {
 	SourceCheckInterval *entry[string, string]
 }
 
+type configJobs struct {
+	Check    configJobsCheck
+	Sources  configJobsSources
+	URLs     configJobsURLs
+	Health   configJobsHealth
+	DelayMin *entry[string, string]
+	DelayMax *entry[string, string]
+}
+
+type configJobsCheck struct {
+	Enabled   *entry[bool, bool]
+	Providers *entry[map[string]any, ProviderSettings]
+}
+
+type configJobsSources struct {
+	Enabled   *entry[bool, bool]
+	Providers *entry[map[string]any, ProviderSettings]
+}
+
+type configJobsURLs struct {
+	Enabled   *entry[bool, bool]
+	Interval  *entry[string, string]
+	Providers *entry[map[string]any, ProviderSettings]
+}
+
+type configJobsHealth struct {
+	Providers *entry[map[string]any, ProviderSettings]
+}
+
 type configServe struct {
 	Host *entry[string, string]
 	Port *entry[int64, int]

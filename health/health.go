@@ -233,6 +233,10 @@ type Options struct {
 	// hold (L11's: the manga's current source is still the one looked up), as mangal serve
 	// does with its scheduled source check.
 	Kept []Finding
+	// Sources picks the current sources (provider id, manga id) L11 looks up, every one
+	// when nil; Looked is told each one looked up (found, gone or failed), may be nil.
+	Sources func(provider, mangaID string) bool `json:"-"`
+	Looked  func(provider, mangaID string)      `json:"-"`
 }
 
 // Login is a saved login that needs attention.
@@ -341,6 +345,10 @@ type Checker struct {
 	OnProgress func(string)
 	// Ignores are the dismissed findings, nil when none.
 	Ignores func() ([]storage.HealthIgnore, error)
+
+	// sources and looked are the run's Options.Sources and Options.Looked
+	sources func(provider, mangaID string) bool
+	looked  func(provider, mangaID string)
 }
 
 // part is a piece of the snapshot some checks need.
@@ -456,6 +464,7 @@ func (c Checker) Run(ctx context.Context, opts Options) (Report, error) {
 			needed[p] = true
 		}
 	}
+	c.sources, c.looked = opts.Sources, opts.Looked
 	s, failed := c.load(ctx, needed, opts.Network, running)
 	if err := ctx.Err(); err != nil {
 		return report, err

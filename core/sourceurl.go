@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"net/url"
 	"slices"
 	"strings"
@@ -120,6 +119,8 @@ type SourceURLsOptions struct {
 	// All looks every source up again (refreshing the stored urls, the gone ones asked
 	// again), not only those without a url and not gone.
 	All bool `json:"all,omitempty"`
+	// Sources picks the sources to look up among those, every one when nil.
+	Sources func(provider, mangaID string) bool `json:"-"`
 }
 
 // SourceURLResult is a source looked up: its URL, or why it has none (Err, MangaGone's
@@ -141,11 +142,6 @@ type SourceURLsReport struct {
 	Skipped []string
 }
 
-// sourceURLPause is the pause between two lookups on the same provider: 1 to 3 seconds,
-// random so the site doesn't see a beat (a fair pace for a job nobody waits for).
-// TODO: configurable.
-func sourceURLPause() time.Duration { return time.Second + rand.N(2*time.Second) }
-
 // sleep waits d, an error when ctx is done first.
 func sleep(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
@@ -161,8 +157,8 @@ func sleep(ctx context.Context, d time.Duration) error {
 // LookupSourceURLs looks the library's sources up on their providers (SourceURL) and
 // records their urls (the sources not found are marked gone): those without one, or all.
 // A provider is asked one source at a
-// time with a pause between them, watch.parallel_providers providers at once; the
-// providers not installed are skipped. A cancelled ctx stops it, the report has what was
+// time with a pause between them (config.JobDelay), watch.parallel_providers providers at
+// once; the providers not installed or off in jobs.urls.providers are skipped. A cancelled ctx stops it, the report has what was
 // done.
 func (l *localLibrary) LookupSourceURLs(ctx context.Context, opts SourceURLsOptions) (SourceURLsReport, error) {
 	c := l.core
@@ -182,6 +178,9 @@ func (l *localLibrary) LookupSourceURLs(ctx context.Context, opts SourceURLsOpti
 			if s.MangaID == "" || strings.HasPrefix(s.MangaID, storage.PlaceholderPrefix) || !opts.All && (WebURL(s.URL) || !s.Gone.IsZero()) {
 				continue
 			}
+			if opts.Sources != nil && !opts.Sources(s.Provider, s.MangaID) {
+				continue
+			}
 			if _, ok := byProvider[s.Provider]; !ok {
 				providers = append(providers, s.Provider)
 			}
@@ -189,10 +188,17 @@ func (l *localLibrary) LookupSourceURLs(ctx context.Context, opts SourceURLsOpti
 		}
 	}
 	total := 0
+	settings := config.Jobs.URLs.Providers.Fresh()
 	for _, p := range slices.Clone(providers) {
 		n := len(byProvider[p])
+		skip := ""
 		if _, _, ok := libmangal.FindLoader(loaders, p); !ok {
-			rep.Skipped = append(rep.Skipped, fmt.Sprintf("%s: not installed (%d sources)", p, n))
+			skip = "not installed"
+		} else if !settings.On(p) {
+			skip = "turned off in jobs.urls.providers"
+		}
+		if skip != "" {
+			rep.Skipped = append(rep.Skipped, fmt.Sprintf("%s: %s (%d sources)", p, skip, n))
 			providers = slices.DeleteFunc(providers, func(id string) bool { return id == p })
 			continue
 		}
@@ -206,7 +212,7 @@ func (l *localLibrary) LookupSourceURLs(ctx context.Context, opts SourceURLsOpti
 		g.Go(func() error {
 			for i, r := range byProvider[p] {
 				if i > 0 {
-					if err := c.env.Sleep(ctx, sourceURLPause()); err != nil {
+					if err := c.env.Sleep(ctx, config.JobDelay()); err != nil {
 						return err
 					}
 				}
