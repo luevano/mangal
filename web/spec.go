@@ -26,7 +26,9 @@ type Operation struct {
 	// Scope is the token scope it needs (x-mangal-scope), read when not said.
 	Scope string
 	// Plan is a plan/apply operation (x-mangal-plan): Scope is for apply, a plan is read.
-	Plan    bool
+	Plan bool
+	// Admin needs every permission (x-mangal-admin), whatever Scope says.
+	Admin   bool
 	Summary string
 	// V1 is an operation of the API v1, else of the browse routes.
 	V1         bool
@@ -51,6 +53,7 @@ var operations = sync.OnceValues(func() ([]Operation, error) {
 				o.Scope = s
 			}
 			o.Plan, _ = extension[bool](op.Extensions, "x-mangal-plan")
+			o.Admin, _ = extension[bool](op.Extensions, "x-mangal-admin")
 			ops = append(ops, o)
 		}
 	}
@@ -92,4 +95,28 @@ func extension[T any](ext map[string]any, key string) (T, bool) {
 		}
 	}
 	return zero, false
+}
+
+//go:generate go run ./internal/scopesgen ui/src/api/scopes.json
+
+// UIScopesJSON is the web UI's api/scopes.json: what each v1 operation needs, by
+// "METHOD /v1/path": its scope, or admin.
+func UIScopesJSON() ([]byte, error) {
+	ops, err := Operations()
+	if err != nil {
+		return nil, err
+	}
+	scopes := map[string]string{}
+	for _, o := range ops {
+		if !o.V1 {
+			continue
+		}
+		s := o.Scope
+		if o.Admin {
+			s = "admin"
+		}
+		scopes[o.Method+" "+strings.TrimPrefix(o.Path, "/api")] = s
+	}
+	b, err := json.MarshalIndent(scopes, "", "  ")
+	return append(b, '\n'), err
 }

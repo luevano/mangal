@@ -195,9 +195,9 @@ func (a *API) GetIndex(context.Context, apiv1.GetIndexRequestObject) (apiv1.GetI
 		if !o.V1 {
 			continue
 		}
-		plan := o.Plan
+		plan, admin := o.Plan, o.Admin
 		index.Operations = append(index.Operations, apiv1.IndexOperation{Method: o.Method, Path: o.Path, OperationId: o.ID,
-			Scope: o.Scope, Plan: &plan, Summary: o.Summary})
+			Scope: o.Scope, Plan: &plan, Admin: &admin, Summary: o.Summary})
 	}
 	return index, nil
 }

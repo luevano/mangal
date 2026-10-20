@@ -1,6 +1,10 @@
 package web
 
-import "testing"
+import (
+	"bytes"
+	"os"
+	"testing"
+)
 
 // every operation of the API v1 says its scope, the plan/apply ones aren't GETs
 func TestSpecOperations(t *testing.T) {
@@ -36,5 +40,20 @@ func TestSpecOperations(t *testing.T) {
 	}
 	if o, ok := OperationByID("mergeLibraryMangas"); !ok || !o.Plan || o.Scope != "write" || o.Path != "/api/v1/library/merge" {
 		t.Errorf("merge: %+v", o)
+	}
+}
+
+// the web UI's api/scopes.json is up to date (go generate ./web writes it)
+func TestUIScopesJSON(t *testing.T) {
+	want, err := UIScopesJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile("ui/src/api/scopes.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Error("web/ui/src/api/scopes.json is stale: go generate ./web")
 	}
 }

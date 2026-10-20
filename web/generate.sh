@@ -19,6 +19,8 @@ main() {
 	done
 
 	"$UI_DIR/node_modules/.bin/openapi-typescript" "$OPENAPI_SCHEMA" -o "$UI_DIR/src/api/mangal.ts"
+	# the UI's api/scopes.json: what each operation needs
+	go generate .
 
 	pushd ui
 	npm run build

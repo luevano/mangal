@@ -1865,6 +1865,8 @@ export interface components {
             scope: string;
             /** @description a plan/apply operation (the scope is for apply) */
             plan?: boolean;
+            /** @description needs every permission (an admin), whatever the scope */
+            admin?: boolean;
             summary: string;
         };
         Status: {

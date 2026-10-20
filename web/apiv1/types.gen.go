@@ -478,6 +478,8 @@ type Index struct {
 
 // IndexOperation defines model for IndexOperation.
 type IndexOperation struct {
+	// Admin needs every permission (an admin), whatever the scope
+	Admin       *bool  `json:"admin,omitempty"`
 	Method      string `json:"method"`
 	OperationId string `json:"operation_id"`
 	Path        string `json:"path"`

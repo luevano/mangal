@@ -7,7 +7,7 @@ info:
     relative to /api. Every v1 operation has an x-mangal-scope (read, watch, progress or write):
     the permission it needs (a user's, or an API token's scope); the plan/apply ones
     (x-mangal-plan) need it only with apply=1, a plan needs read; public ones (the login)
-    need none. A request is a user's (the session cookie of POST /v1/auth/login, or basic
+    need none; x-mangal-admin ones need every permission (an admin), whatever the scope. A request is a user's (the session cookie of POST /v1/auth/login, or basic
     auth with the user's name and password) or an API token's (Authorization: Bearer).
 servers:
   - url: /api
@@ -116,6 +116,7 @@ paths:
       operationId: listUsers
       tags: [v1, auth]
       x-mangal-scope: read
+      x-mangal-admin: true
       responses:
         '200':
           description: the users
@@ -134,6 +135,7 @@ paths:
       operationId: addUser
       tags: [v1, auth]
       x-mangal-scope: write
+      x-mangal-admin: true
       requestBody:
         required: true
         content:
@@ -163,6 +165,7 @@ paths:
       operationId: updateUser
       tags: [v1, auth]
       x-mangal-scope: write
+      x-mangal-admin: true
       requestBody:
         required: true
         content:
@@ -180,6 +183,7 @@ paths:
       operationId: removeUser
       tags: [v1, auth]
       x-mangal-scope: write
+      x-mangal-admin: true
       responses:
         '204':
           description: removed
@@ -192,6 +196,7 @@ paths:
       operationId: endUserLogins
       tags: [v1, auth]
       x-mangal-scope: write
+      x-mangal-admin: true
       parameters:
         - name: name
           in: path
@@ -210,6 +215,7 @@ paths:
       operationId: listTokens
       tags: [v1, auth]
       x-mangal-scope: read
+      x-mangal-admin: true
       responses:
         '200':
           description: the tokens
@@ -227,6 +233,7 @@ paths:
       operationId: addToken
       tags: [v1, auth]
       x-mangal-scope: write
+      x-mangal-admin: true
       requestBody:
         required: true
         content:
@@ -249,6 +256,7 @@ paths:
       operationId: removeToken
       tags: [v1, auth]
       x-mangal-scope: write
+      x-mangal-admin: true
       parameters:
         - name: name
           in: path
@@ -1137,6 +1145,7 @@ paths:
       operationId: setJobKindSettings
       tags: [v1, jobs]
       x-mangal-scope: write
+      x-mangal-admin: true
       parameters:
         - $ref: '#/components/parameters/KindParam'
       requestBody:
@@ -2605,6 +2614,9 @@ components:
         plan:
           type: boolean
           description: a plan/apply operation (the scope is for apply)
+        admin:
+          type: boolean
+          description: needs every permission (an admin), whatever the scope
         summary:
           type: string
 
