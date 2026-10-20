@@ -3,6 +3,7 @@ import { reactive, ref, watch as whenChanged } from 'vue'
 import client, { ok } from '@/api/client'
 import type { FillPlan, FillRequest, Job, Provider } from '@/api/schemas'
 import FormModal from '@/components/FormModal.vue'
+import MultiSearch from '@/components/MultiSearch.vue'
 import { useAction } from '@/composables/useAction'
 
 // gets a provider manga's unavailable chapters from another provider: plan, then the job
@@ -11,7 +12,7 @@ const emit = defineEmits<{ close: []; queued: [job: Job] }>()
 const action = useAction()
 
 const providers = ref<Provider[]>([])
-const form = reactive({ from: '', from_manga_id: '', from_query: '', chapters: '' })
+const form = reactive({ from: '', from_manga_id: '', chapters: '' })
 const plan = ref<FillPlan>()
 whenChanged(
   () => props.open,
@@ -24,7 +25,6 @@ whenChanged(
 function body(): FillRequest {
   const b: FillRequest = { manga_id: props.mangaId, from: form.from }
   if (form.from_manga_id) b.from_manga_id = form.from_manga_id
-  if (form.from_query) b.from_query = form.from_query
   if (form.chapters) b.chapters = form.chapters
   return b
 }
@@ -58,14 +58,13 @@ async function submit() {
   >
     <template v-if="!plan">
       <p class="small text-secondary">The chapters of {{ title }} that can't be downloaded here, from another provider's manga (matched by number): they go into this manga's folder with its titles, recorded as the other provider's.</p>
+      <MultiSearch storage-key="mangal.fill.providers" :query="title" :exclude="provider" :picked="`${form.from}/${form.from_manga_id}`" cols="col-6 col-md-4 col-lg-3" @pick="(p, m) => Object.assign(form, { from: p, from_manga_id: m.id })" />
       <label class="form-label small mb-0">Provider</label>
       <select v-model="form.from" class="form-select form-select-sm mb-2" data-test="fill-from">
         <option v-for="p in providers.filter((p) => p.id !== provider)" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
       <label class="form-label small mb-0">Manga id</label>
       <input v-model.trim="form.from_manga_id" class="form-control form-control-sm mb-2" placeholder="the provider's manga id" />
-      <label class="form-label small mb-0">or a search</label>
-      <input v-model.trim="form.from_query" class="form-control form-control-sm mb-2" :placeholder="title" />
       <label class="form-label small mb-0">Chapters</label>
       <input v-model.trim="form.chapters" class="form-control form-control-sm" placeholder="every unavailable one, or 1-2, 10-" />
     </template>

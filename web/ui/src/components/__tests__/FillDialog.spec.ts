@@ -10,6 +10,7 @@ describe('FillDialog', () => {
     const posted: { url: string; body: unknown }[] = []
     const plan = { provider: 'mango-mangadex', manga_id: 'md', manga_title: 'Dark Gathering', from: 'mango-mangapill', from_manga_title: 'Dark Gathering', folder: '/lib/Dark Gathering', found: [{ number: 1, title: 'Lie Low' }], not_found: [], downloaded: [], lines: ['get chapter 1 "Lie Low" from mango-mangapill ("Chapter 1")'] }
     vi.stubGlobal('fetch', async (input: Request) => {
+      if (input.method === 'GET' && input.url.includes('/search')) return Response.json([{ id: '2085', title: 'Dark Gathering' }])
       if (input.method === 'GET') return Response.json([{ id: 'mango-mangadex', name: 'MangaDex' }, { id: 'mango-mangapill', name: 'Mangapill' }])
       posted.push({ url: input.url, body: await input.json() })
       const job = input.url.includes('apply=true') ? { job: { id: 3, title: 'Dark Gathering: chapter 1 from Mangapill' } } : {}
@@ -31,13 +32,16 @@ describe('FillDialog', () => {
     await flushPromises()
     // not the manga's own provider
     expect(w.findAll('[data-test=fill-from] option').map((o) => o.text())).toEqual(['Mangapill'])
-    await w.find('[data-test=fill-from]').setValue('mango-mangapill')
+    // the title searched on the other providers right away, a result picks the manga
+    expect(w.findAll('[data-test=multi-section]').map((x) => x.text())).toEqual([expect.stringContaining('Mangapill')])
+    await w.find('[data-test=multi-result]').trigger('click')
+    expect((w.find('[data-test=fill-from]').element as HTMLSelectElement).value).toBe('mango-mangapill')
     await w.find('input[placeholder="every unavailable one, or 1-2, 10-"]').setValue('1-2')
     await w.find('form').trigger('submit')
     await flushPromises()
     expect(posted[0]!.url).toContain('/v1/providers/mango-mangadex/fill')
     expect(posted[0]!.url).not.toContain('apply')
-    expect(posted[0]!.body).toEqual({ manga_id: 'md', from: 'mango-mangapill', chapters: '1-2' })
+    expect(posted[0]!.body).toEqual({ manga_id: 'md', from: 'mango-mangapill', from_manga_id: '2085', chapters: '1-2' })
     expect(w.find('[data-test=fill-plan]').text()).toContain('Lie Low')
     await w.find('form').trigger('submit')
     await flushPromises()
