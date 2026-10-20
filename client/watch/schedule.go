@@ -14,7 +14,8 @@ import (
 // maxBackoff caps how many ticks a failing watch skips (2^3 = it waits 8 ticks).
 const maxBackoff = 3
 
-// Schedule is the watch's schedule: its own, else watch.schedule.
+// Schedule is the watch's schedule: its own, else its provider's (jobs.check.providers),
+// else watch.schedule.
 func (s *Service) Schedule(w storage.Watch) cron.Schedule {
 	if w.Schedule != "" {
 		sched, err := cron.Parse(w.Schedule)
@@ -22,6 +23,9 @@ func (s *Service) Schedule(w storage.Watch) cron.Schedule {
 			return sched
 		}
 		s.warn(fmt.Errorf("watch %d: %w, using watch.schedule", w.ID, err))
+	}
+	if sched, ok := s.Options.ProviderSchedules[w.Provider]; ok {
+		return sched
 	}
 	if s.Options.Schedule.IsZero() {
 		return DefaultSchedule

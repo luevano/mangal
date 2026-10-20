@@ -19,6 +19,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cron"
 )
@@ -1737,5 +1738,26 @@ func TestCheckRereadsWatches(t *testing.T) {
 	}
 	if run, _, err := e.svc.Watches.WatchRun(r[0].ID); err != nil || run.Watch != 0 || run.MangaID != "a" {
 		t.Errorf("run of the unwatched one %+v, %v", run, err)
+	}
+}
+
+func TestProviderSchedule(t *testing.T) {
+	svc := &Service{Options: Options{ProviderSchedules: ProviderSchedules(config.ProviderSettings{"p": "@daily", "q": config.ProviderOff, "r": config.ProviderOn})}}
+	if len(svc.Options.ProviderSchedules) != 1 {
+		t.Errorf("schedules %v", svc.Options.ProviderSchedules)
+	}
+	daily := cron.MustParse("@daily")
+	last := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		w    storage.Watch
+		want cron.Schedule
+	}{
+		{storage.Watch{Provider: "p"}, daily},
+		{storage.Watch{Provider: "p", Schedule: "@hourly"}, cron.MustParse("@hourly")},
+		{storage.Watch{Provider: "q"}, DefaultSchedule},
+	} {
+		if got := svc.Schedule(c.w); !got.Next(last).Equal(c.want.Next(last)) {
+			t.Errorf("%+v: next %s, want %s", c.w, got.Next(last), c.want.Next(last))
+		}
 	}
 }

@@ -160,6 +160,9 @@ type Options struct {
 	Schedule cron.Schedule
 	// Jitter is up to how long after a tick a provider's watches are due.
 	Jitter time.Duration
+	// ProviderSchedules are the providers' own schedules for their watches without one
+	// (jobs.check.providers).
+	ProviderSchedules map[string]cron.Schedule
 	// GapSchedule is when gap filling is due on the watches that have it, zero never.
 	GapSchedule cron.Schedule
 	// Gaps is gap filling for new watches.
@@ -206,6 +209,7 @@ func ConfigOptions() Options {
 	gapSchedule, _ := ParseSchedule(config.Watch.GapSchedule.Get())
 	return Options{
 		Schedule:          schedule,
+		ProviderSchedules: ProviderSchedules(config.Jobs.Check.Providers.Get()),
 		Jitter:            duration(config.Watch.Jitter.Get(), 0),
 		GapSchedule:       gapSchedule,
 		Gaps:              config.Watch.Gaps.Get(),
@@ -217,6 +221,18 @@ func ConfigOptions() Options {
 		CoverageMin:       float64(config.Watch.CoverageMin.Get()) / 100,
 		CoverageExempt:    config.Watch.CoverageExempt.Get(),
 	}
+}
+
+// ProviderSchedules are the providers' own schedules of the settings (the invalid ones
+// left out: the config checks them).
+func ProviderSchedules(p config.ProviderSettings) map[string]cron.Schedule {
+	out := map[string]cron.Schedule{}
+	for id := range p {
+		if sched, err := cron.Parse(p.Override(id)); err == nil {
+			out[id] = sched
+		}
+	}
+	return out
 }
 
 // Source is a provider as the watches use it, see ClientSource.

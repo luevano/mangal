@@ -340,6 +340,7 @@ func isLoopback(addr net.Addr) bool {
 var watchKeys = []string{
 	config.Watch.Schedule.Key, config.Watch.Jitter.Key, config.Watch.GapSchedule.Key, config.Watch.Gaps.Key,
 	config.Watch.ParallelProviders.Key, config.Watch.Backoff.Key, config.Watch.Notify.Key,
+	config.Jobs.Check.Providers.Key,
 }
 
 // reloader re-reads the watch.* keys from the config file at each cycle (edits from the
@@ -432,6 +433,13 @@ func optionsFrom(opts watch.Options, values map[string]any) watch.Options {
 	opts.Backoff = integer(config.Watch.Backoff.Key, opts.Backoff)
 	if s, ok := values[config.Watch.Notify.Key].(string); ok {
 		opts.Notify = s
+	}
+	if raw, ok := values[config.Jobs.Check.Providers.Key].(map[string]any); ok {
+		p := config.ProviderSettings{}
+		for id, v := range raw {
+			p[id], _ = v.(string)
+		}
+		opts.ProviderSchedules = watch.ProviderSchedules(p)
 	}
 	return opts
 }
