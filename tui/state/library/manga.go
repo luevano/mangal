@@ -56,7 +56,7 @@ type mangaState struct {
 	bindings []storage.Binding
 	size     base.Size
 
-	open, scan, delete, watch, itsWatch, links, hold, retitle key.Binding
+	open, openURL, scan, delete, watch, itsWatch, links, hold, retitle key.Binding
 }
 
 type downloadsMsg []_list.Item
@@ -75,6 +75,7 @@ func newMangaState(manga storage.Manga) *mangaState {
 	s := &mangaState{
 		manga:    manga,
 		open:     util.Bind("open", "enter"),
+		openURL:  base.KeyOpenURL,
 		scan:     base.KeyScan,
 		delete:   base.KeyDelete,
 		watch:    base.KeyWatch,
@@ -89,7 +90,7 @@ func newMangaState(manga storage.Manga) *mangaState {
 }
 
 func (s *mangaState) keyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.open, s.scan, s.delete, s.watch, s.itsWatch, s.links, s.hold, s.retitle}}
+	return util.KeyMap{Short: []key.Binding{s.open, s.openURL, s.scan, s.delete, s.watch, s.itsWatch, s.links, s.hold, s.retitle}}
 }
 
 // watchesCmd loads the manga's watches.
@@ -289,6 +290,8 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			break
 		}
 		switch {
+		case key.Matches(msg, s.openURL):
+			return s.openURLCmd(ctx)
 		case key.Matches(msg, s.itsWatch):
 			return watches.JumpCmd(s.watches, s.watch.Help().Key+" watches it")
 		case key.Matches(msg, s.watch):
@@ -331,6 +334,36 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	}
 	return s.List.Update(msg)
 }
+
+// openURLCmd opens the web page of the manga's current source, looked up (and recorded)
+// when it isn't known.
+func (s *mangaState) openURLCmd(ctx context.Context) tea.Cmd {
+	if len(s.manga.Sources) == 0 {
+		return base.Notify("No source, no web page")
+	}
+	id, src := s.manga.ID, s.manga.Sources[0]
+	label := ""
+	if !core.WebURL(src.URL) || !src.Gone.IsZero() {
+		label = "Looking up the address on " + src.Provider
+	}
+	return base.Load(ctx, label, func(ctx context.Context) (string, error) {
+		lib, err := base.Library()
+		if err != nil {
+			return "", err
+		}
+		u, err := lib.SourceURL(ctx, id, src.Provider, src.MangaID, false)
+		if err != nil {
+			return "", err
+		}
+		if err := openURL(u); err != nil {
+			return "", fmt.Errorf("open %s: %w", u, err)
+		}
+		return u, nil
+	}, func(string) tea.Msg { return nil })
+}
+
+// openURL opens a web page in the browser. Swapped in tests.
+var openURL = open.Start
 
 // addWatch watches the manga on its current source (the one its folder follows), with
 // the watch screen's options; it opens its watch when it's watched there already.
