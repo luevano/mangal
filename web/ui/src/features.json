@@ -47,6 +47,16 @@
       ]
     },
     {
+      "name": "multi-provider search",
+      "web": [
+        "search",
+        "provider-manga"
+      ],
+      "api": [
+        "searchProvider"
+      ]
+    },
+    {
       "name": "download",
       "web": [
         "provider-manga",

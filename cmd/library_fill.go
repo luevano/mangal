@@ -13,7 +13,7 @@ import (
 )
 
 var libraryFillArgs = struct {
-	From     string
+	From     []string
 	ID       string
 	Provider string
 	MangaID  string
@@ -25,7 +25,7 @@ var libraryFillArgs = struct {
 func init() {
 	libraryCmd.AddCommand(libraryFillCmd)
 	f := libraryFillCmd.Flags()
-	f.StringVar(&libraryFillArgs.From, "from", "", "Provider to get the chapters from")
+	f.StringSliceVar(&libraryFillArgs.From, "from", nil, "Provider to get the chapters from (several: search the title on each and list the candidates)")
 	f.StringVar(&libraryFillArgs.ID, "id", "", "The manga's id, instead of a title query")
 	f.StringVar(&libraryFillArgs.Provider, "provider", "", "Fill this provider's manga (--manga-id) instead of a library manga's source, in the library or not")
 	f.StringVar(&libraryFillArgs.MangaID, "manga-id", "", "The --provider's manga to fill")
@@ -54,11 +54,13 @@ Title) and series metadata; their downloads stay recorded as the other provider'
 chapter URL is the ComicInfo.xml Web, its Notes have a "mangal:" line saying where they're from), and the folder's
 source doesn't change.
 
-Only lists what would happen unless --apply is set.`,
+Only lists what would happen unless --apply is set. With several --from providers, it
+searches the title on each and lists the candidates, to run again with one --from and --id.`,
 	Example: `  mangal library fill 12 --from mango-mangapill
   mangal library fill 12 --from mango-mangapill --chapters 1-2 --apply
   mangal library fill 12 --from mango-mangapill --id 2085/dark-gathering
-  mangal library fill --provider mango-mangadex --manga-id d64b0768-bebe-433c-b923-99870503c0a3 --from mango-mangapill`,
+  mangal library fill --provider mango-mangadex --manga-id d64b0768-bebe-433c-b923-99870503c0a3 --from mango-mangapill
+  mangal library fill 12 --from mango-mangapill,mango-weebcentral`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		st := newStatus(cmd)
 		defer st.Done()
@@ -97,9 +99,28 @@ Only lists what would happen unless --apply is set.`,
 		if err != nil {
 			return err
 		}
+		if len(libraryFillArgs.From) > 1 {
+			if mangaID != "" {
+				return errors.New("--id needs a single --from")
+			}
+			if query == "" {
+				query = req.Query
+			}
+			if query == "" {
+				_, info, found, err := c.Env().ProviderManga(ctx, req.Provider, req.MangaID, "")
+				if err != nil {
+					return err
+				}
+				if !found {
+					return fmt.Errorf("%s has no manga %q", req.Provider, req.MangaID)
+				}
+				query = info.Title
+			}
+			return printSearch(ctx, cmd, st, c, libraryFillArgs.From, query)
+		}
 		ctx = core.WithProgress(ctx, st.Progress)
 		req.Chapters = libraryFillArgs.Chapters
-		req.From = core.RetitleFrom{Provider: libraryFillArgs.From, MangaID: mangaID, Query: query, Selector: libraryFillArgs.Selector}
+		req.From = core.RetitleFrom{Provider: libraryFillArgs.From[0], MangaID: mangaID, Query: query, Selector: libraryFillArgs.Selector}
 		plan, err := c.PlanFill(ctx, req)
 		st.Done()
 		if err != nil {
