@@ -152,6 +152,10 @@
     },
     {
       "name": "source urls",
+      "api": [
+        "getLibrarySourceURL",
+        "lookupSourceURLs"
+      ],
       "not_applicable": "not in the API yet (docs/core.md Progress)"
     },
     {

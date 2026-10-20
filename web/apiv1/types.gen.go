@@ -498,7 +498,7 @@ type Job struct {
 	Finished *time.Time `json:"finished,omitempty"`
 	Id       int64      `json:"id"`
 
-	// Kind download, check or scan
+	// Kind download, check, scan or urls
 	Kind      string       `json:"kind"`
 	MangaId   *string      `json:"manga_id,omitempty"`
 	Message   *string      `json:"message,omitempty"`
@@ -582,11 +582,17 @@ type LibraryMangaList struct {
 
 // LibrarySource defines model for LibrarySource.
 type LibrarySource struct {
-	Current  bool       `json:"current"`
+	Current bool `json:"current"`
+
+	// Gone when a lookup found the provider doesn't have it (any more); url is then the last one known
+	Gone     *time.Time `json:"gone,omitempty"`
 	MangaId  string     `json:"manga_id"`
 	Moved    *time.Time `json:"moved,omitempty"`
 	Provider string     `json:"provider"`
 	Title    string     `json:"title"`
+
+	// Url the manga's web page (http or https), absent when unknown
+	Url *string `json:"url,omitempty"`
 }
 
 // LinkRequest defines model for LinkRequest.
@@ -1001,6 +1007,17 @@ type ScanRequest struct {
 	Statuses *bool `json:"statuses,omitempty"`
 }
 
+// SourceURL defines model for SourceURL.
+type SourceURL struct {
+	Url string `json:"url"`
+}
+
+// SourceURLsRequest defines model for SourceURLsRequest.
+type SourceURLsRequest struct {
+	// All every source, not only those without a url
+	All *bool `json:"all,omitempty"`
+}
+
 // Status defines model for Status.
 type Status struct {
 	Address    *string `json:"address,omitempty"`
@@ -1311,6 +1328,18 @@ type RetitleLibraryMangaParams struct {
 	Apply *ApplyParam `form:"apply,omitempty" json:"apply,omitempty"`
 }
 
+// GetLibrarySourceURLParams defines parameters for GetLibrarySourceURL.
+type GetLibrarySourceURLParams struct {
+	// Provider the source's provider id
+	Provider string `form:"provider" json:"provider"`
+
+	// MangaId the provider's manga id
+	MangaId MangaIDRequiredParam `form:"manga_id" json:"manga_id"`
+
+	// Refresh ask the provider even when a url is recorded (a stale one) or the source is gone
+	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
+}
+
 // MarkLibraryMangasParams defines parameters for MarkLibraryMangas.
 type MarkLibraryMangasParams struct {
 	// Apply apply the change (needs `expect`, the hash of the plan confirmed), else only plan it
@@ -1535,6 +1564,9 @@ type ScanLibraryJSONRequestBody = ScanRequest
 
 // EmptyTrashJSONRequestBody defines body for EmptyTrash for application/json ContentType.
 type EmptyTrashJSONRequestBody = ApplyFields
+
+// LookupSourceURLsJSONRequestBody defines body for LookupSourceURLs for application/json ContentType.
+type LookupSourceURLsJSONRequestBody = SourceURLsRequest
 
 // UndoOpJSONRequestBody defines body for UndoOp for application/json ContentType.
 type UndoOpJSONRequestBody = ApplyFields

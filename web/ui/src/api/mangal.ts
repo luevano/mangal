@@ -325,6 +325,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/library/mangas/{id}/source-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The web page of a library manga's source
+         * @description The recorded url, else (or with refresh) the one the provider gives for the manga id, recorded then; read scope, as the recording is a cache of what the provider says. A source the provider doesn't have (any more) is a 404 and is marked gone (its last url kept in the source's url, gone set); until a refresh or a download finds it again that's the answer without asking the provider.
+         */
+        get: operations["getLibrarySourceURL"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/library/mangas/{id}/chapters": {
         parameters: {
             query?: never;
@@ -499,6 +519,26 @@ export interface paths {
          * @description Reconciles the library with the files (rows only, as a download does). Answers 202 with the job.
          */
         post: operations["scanLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/urls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Look the web pages of the library's sources up (a job)
+         * @description The sources without a url (and not gone), or all of them (stale urls refreshed, gone ones asked again); a provider is asked one manga at a time with a 1 to 3 seconds pause, watch.parallel_providers providers at once, the providers not installed skipped. Answers 202 with the job.
+         */
+        post: operations["lookupSourceURLs"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1781,6 +1821,20 @@ export interface components {
             /** Format: date-time */
             moved?: string;
             current: boolean;
+            /** @description the manga's web page (http or https), absent when unknown */
+            url?: string;
+            /**
+             * Format: date-time
+             * @description when a lookup found the provider doesn't have it (any more); url is then the last one known
+             */
+            gone?: string;
+        };
+        SourceURL: {
+            url: string;
+        };
+        SourceURLsRequest: {
+            /** @description every source, not only those without a url */
+            all?: boolean;
         };
         LibraryManga: {
             /** Format: int64 */
@@ -2097,7 +2151,7 @@ export interface components {
         Job: {
             /** Format: int64 */
             id: number;
-            /** @description download, check or scan */
+            /** @description download, check, scan or urls */
             kind: string;
             title: string;
             providers: string[];
@@ -3085,6 +3139,36 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    getLibrarySourceURL: {
+        parameters: {
+            query: {
+                /** @description the source's provider id */
+                provider: string;
+                /** @description the provider's manga id */
+                manga_id: components["parameters"]["MangaIDRequiredParam"];
+                /** @description ask the provider even when a url is recorded (a stale one) or the source is gone */
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the url */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceURL"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listLibraryChapters: {
         parameters: {
             query?: never;
@@ -3326,6 +3410,31 @@ export interface operations {
         };
         responses: {
             /** @description the scan's job */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    lookupSourceURLs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SourceURLsRequest"];
+            };
+        };
+        responses: {
+            /** @description the lookup's job */
             202: {
                 headers: {
                     [name: string]: unknown;

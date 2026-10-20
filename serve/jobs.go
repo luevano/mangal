@@ -292,6 +292,52 @@ func (a *API) ScanLibrary(ctx context.Context, request apiv1.ScanLibraryRequestO
 	return apiv1.ScanLibrary202JSONResponse(toAPIJob(core.JobOf(job))), nil
 }
 
+// LookupSourceURLs implements apiv1.StrictServerInterface.
+func (a *API) LookupSourceURLs(ctx context.Context, request apiv1.LookupSourceURLsRequestObject) (apiv1.LookupSourceURLsResponseObject, error) {
+	m, err := a.jobs()
+	if err != nil {
+		return nil, err
+	}
+	c, err := a.services(ctx)
+	if err != nil {
+		return nil, err
+	}
+	opts := core.SourceURLsOptions{All: deref(deref(request.Body).All)}
+	job := m.Add(jobs.Spec{Kind: jobs.KindSourceURLs, Title: "source urls", Origin: "api", Run: func(ctx context.Context, p *jobs.Progress) error {
+		p.Running("looking up the source addresses")
+		ctx = core.WithProgress(ctx, func(pr library.Progress) {
+			p.Step(pr.Done, pr.Total)
+			p.Message(pr.String())
+		})
+		rep, err := c.Library.LookupSourceURLs(ctx, opts)
+		msg := sourceURLsSummary(rep)
+		p.Message(msg)
+		a.Log.Infof("source urls (asked through the API): %s", msg)
+		return err
+	}})
+	return apiv1.LookupSourceURLs202JSONResponse(toAPIJob(core.JobOf(job))), nil
+}
+
+// sourceURLsSummary is what a source urls lookup found, in a line.
+func sourceURLsSummary(rep core.SourceURLsReport) string {
+	var found, gone, failed int
+	for _, r := range rep.Results {
+		switch {
+		case r.Err == nil:
+			found++
+		case errors.Is(r.Err, core.ErrNotFound):
+			gone++
+		default:
+			failed++
+		}
+	}
+	s := fmt.Sprintf("%d found, %d gone, %d failed", found, gone, failed)
+	if len(rep.Skipped) != 0 {
+		s += "; skipped " + strings.Join(rep.Skipped, ", ")
+	}
+	return s
+}
+
 // scanSummary is what a scan found, in a line.
 func scanSummary(rep core.ScanReport) string {
 	r := rep.Result

@@ -34,8 +34,12 @@ func toAPILibraryManga(m storage.Manga, watched bool) apiv1.LibraryManga {
 		out.MetadataIds = append(out.MetadataIds, apiv1.MetadataID{Source: string(id.Code), Id: id.Raw})
 	}
 	for _, s := range m.Sources {
-		out.Sources = append(out.Sources, apiv1.LibrarySource{Provider: s.Provider, MangaId: s.MangaID, Title: s.Title,
-			Moved: optTime(s.Moved), Current: s.Current})
+		src := apiv1.LibrarySource{Provider: s.Provider, MangaId: s.MangaID, Title: s.Title,
+			Moved: optTime(s.Moved), Current: s.Current, Gone: optTime(s.Gone)}
+		if core.WebURL(s.URL) {
+			src.Url = &s.URL
+		}
+		out.Sources = append(out.Sources, src)
 	}
 	if watched {
 		out.Watched = &watched
@@ -173,6 +177,20 @@ func (a *API) GetLibraryManga(ctx context.Context, request apiv1.GetLibraryManga
 		Marker:   markerErr == nil,
 		Missing:  statErr != nil,
 	}, nil
+}
+
+// GetLibrarySourceURL implements apiv1.StrictServerInterface.
+func (a *API) GetLibrarySourceURL(ctx context.Context, request apiv1.GetLibrarySourceURLRequestObject) (apiv1.GetLibrarySourceURLResponseObject, error) {
+	c, err := a.services(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p := request.Params
+	u, err := c.Library.SourceURL(ctx, request.Id, p.Provider, p.MangaId, deref(p.Refresh))
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.GetLibrarySourceURL200JSONResponse{Url: u}, nil
 }
 
 func toAPIDownload(d storage.Download) apiv1.Download {

@@ -74,6 +74,8 @@ const (
 	KindCheck
 	// KindScan is a library scan (mangal serve's).
 	KindScan
+	// KindSourceURLs is a lookup of the library sources' urls (mangal serve's).
+	KindSourceURLs
 )
 
 func (k Kind) String() string {
@@ -82,6 +84,8 @@ func (k Kind) String() string {
 		return "check"
 	case KindScan:
 		return "scan"
+	case KindSourceURLs:
+		return "urls"
 	}
 	return "download"
 }
@@ -89,7 +93,7 @@ func (k Kind) String() string {
 func (k Kind) MarshalText() ([]byte, error) { return []byte(k.String()), nil }
 
 func (k *Kind) UnmarshalText(b []byte) error {
-	for kind := KindDownload; kind <= KindScan; kind++ {
+	for kind := KindDownload; kind <= KindSourceURLs; kind++ {
 		if kind.String() == string(b) {
 			*k = kind
 			return nil

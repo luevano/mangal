@@ -401,6 +401,36 @@ paths:
           $ref: '#/components/responses/Change'
         default:
           $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}/source-url:
+    get:
+      summary: The web page of a library manga's source
+      description: The recorded url, else (or with refresh) the one the provider gives for the manga id, recorded then; read scope, as the recording is a cache of what the provider says. A source the provider doesn't have (any more) is a 404 and is marked gone (its last url kept in the source's url, gone set); until a refresh or a download finds it again that's the answer without asking the provider.
+      operationId: getLibrarySourceURL
+      tags: [v1, library]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+        - name: provider
+          in: query
+          required: true
+          description: the source's provider id
+          schema:
+            type: string
+        - $ref: '#/components/parameters/MangaIDRequiredParam'
+        - name: refresh
+          in: query
+          description: ask the provider even when a url is recorded (a stale one) or the source is gone
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: the url
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceURL'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/library/mangas/{id}/chapters:
     get:
       summary: A library manga's downloaded chapters, with how often each was read
@@ -605,6 +635,27 @@ paths:
       responses:
         '202':
           description: the scan's job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/urls:
+    post:
+      summary: Look the web pages of the library's sources up (a job)
+      description: The sources without a url (and not gone), or all of them (stale urls refreshed, gone ones asked again); a provider is asked one manga at a time with a 1 to 3 seconds pause, watch.parallel_providers providers at once, the providers not installed skipped. Answers 202 with the job.
+      operationId: lookupSourceURLs
+      tags: [v1, library]
+      x-mangal-scope: write
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceURLsRequest'
+      responses:
+        '202':
+          description: the lookup's job
           content:
             application/json:
               schema:
@@ -2558,6 +2609,25 @@ components:
           format: date-time
         current:
           type: boolean
+        url:
+          type: string
+          description: the manga's web page (http or https), absent when unknown
+        gone:
+          type: string
+          format: date-time
+          description: when a lookup found the provider doesn't have it (any more); url is then the last one known
+    SourceURL:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+    SourceURLsRequest:
+      type: object
+      properties:
+        all:
+          type: boolean
+          description: every source, not only those without a url
     LibraryManga:
       type: object
       required: [id, title, path, chapters, metadata_ids, sources]
@@ -3210,7 +3280,7 @@ components:
           format: int64
         kind:
           type: string
-          description: download, check or scan
+          description: download, check, scan or urls
         title:
           type: string
         providers:
