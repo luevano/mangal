@@ -132,6 +132,9 @@ type KindsOptions struct {
 	// Changed is told a kind's state or settings changed (serve's scheduler wakes), may
 	// be nil.
 	Changed func()
+	// Ran is told a job of the kind is over (not the watch checks: they're check runs),
+	// may be nil.
+	Ran func(kind jobs.Kind, run JobRun)
 }
 
 // The kinds' order on the Jobs screen.
@@ -716,6 +719,9 @@ func (k *localKinds) record(kind jobs.Kind, run JobRun, mark func(*kindState)) {
 			mark(st)
 		}
 	})
+	if k.opts.Ran != nil {
+		k.opts.Ran(kind, run)
+	}
 	k.changed()
 }
 

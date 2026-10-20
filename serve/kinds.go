@@ -26,7 +26,7 @@ func (a *API) kinds(ctx context.Context) (core.JobKinds, error) {
 		return nil, err
 	}
 	a.kindsOnce.Do(func() {
-		a.jobKinds = c.Kinds(m, core.KindsOptions{Origin: "api", Started: a.Info.Started, OnHealth: a.keepHealth, Changed: a.kindsChanged})
+		a.jobKinds = c.Kinds(m, core.KindsOptions{Origin: "api", Started: a.Info.Started, OnHealth: a.keepHealth, Changed: a.kindsChanged, Ran: a.kindRan})
 	})
 	return a.jobKinds, nil
 }
@@ -37,6 +37,15 @@ func (a *API) kindsChanged() {
 		a.Changed()
 	}
 	a.wakeKinds.wake()
+}
+
+// kindRan logs a job kind's run once it's over.
+func (a *API) kindRan(kind jobs.Kind, run core.JobRun) {
+	if run.Error != "" {
+		a.Log.Warnf("job %d (%s) failed: %s", run.Job, kind, run.Error)
+		return
+	}
+	a.Log.Infof("job %d (%s) done: %s", run.Job, kind, run.Summary)
 }
 
 // keepHealth keeps a job kind's health run (a source check, a network health check) as a
@@ -163,13 +172,9 @@ func (s kindSchedule) step(ctx context.Context) time.Duration {
 		s.Log.Infof("scheduled %s: %s, tried again in %s", strings.ToLower(k.Title), err, kindRetry)
 		return kindRetry
 	}
-	s.Log.Infof("%s (scheduled, job %d): %s", strings.ToLower(k.Title), job.ID, job.Title)
-	j := s.Wait(ctx, job.ID)
-	if j.Error != "" {
-		s.Log.Warnf("%s (job %d): %s", strings.ToLower(k.Title), job.ID, j.Error)
-	} else {
-		s.Log.Infof("%s (job %d) done: %s", strings.ToLower(k.Title), job.ID, j.Message)
-	}
+	// its end is logged by API.kindRan
+	s.Log.Infof("job %d (%s, scheduled): %s", job.ID, s.Kind, job.Title)
+	s.Wait(ctx, job.ID)
 	return 0
 }
 
