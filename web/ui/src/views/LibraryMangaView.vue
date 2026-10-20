@@ -4,7 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import client, { ok } from '@/api/client'
 import { change } from '@/api/changes'
 import { chapterFileURL, coverURL, mangaZipURL } from '@/api/urls'
-import type { LibraryChapter, MetadataResult } from '@/api/schemas'
+import type { LibraryChapter, LibrarySource, MetadataResult } from '@/api/schemas'
 import FormModal from '@/components/FormModal.vue'
 import HoldDialog from '@/components/HoldDialog.vue'
 import MetadataPicker from '@/components/MetadataPicker.vue'
@@ -15,11 +15,13 @@ import { usePager } from '@/composables/usePager'
 import MetaIDs from '@/components/MetaIDs.vue'
 import { useLoad } from '@/composables/useLoad'
 import { useAction } from '@/composables/useAction'
+import { openLookedUp } from '@/composables/openLookedUp'
 import { date, num, sourceNames } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
 import { useChanges } from '@/stores/changes'
 import { useJobs } from '@/stores/jobs'
 import { usePlan } from '@/stores/plan'
+import { useToasts } from '@/stores/toasts'
 
 const route = useRoute()
 const router = useRouter()
@@ -37,8 +39,32 @@ const chapters = useLoad(
 const providers = useLoad(() => ok(client.GET('/v1/providers')))
 const providerOf = (id: string) => providers.data.value?.find((p) => p.id === id)
 const providerName = (id: string) => providerOf(id)?.name ?? id
-// the site a source's manga is on: the library doesn't keep the manga's url
-const providerSite = (id: string) => providerOf(id)?.preferred ?? providerOf(id)?.website
+
+// a source's page: its url when known, else looked up (and kept); a gone one says so
+// instead, refresh asks the site again (a stale or gone link)
+const looking = ref('')
+const sourceKey = (s: LibrarySource) => `${s.provider} ${s.manga_id}`
+async function openSource(s: LibrarySource, refresh = false) {
+  const name = providerName(s.provider)
+  if (s.gone && !refresh) {
+    useToasts().push('warning', `"${s.title}" isn't on ${name} any more (found ${date(s.gone)}), it may have been removed; ↻ asks again`, 8000)
+    return
+  }
+  looking.value = sourceKey(s)
+  const toast = useToasts().push('info', `Looking up the address on ${name}…`, 0)
+  try {
+    await action.run(() =>
+      openLookedUp(async () => {
+        const r = await ok(client.GET('/v1/library/mangas/{id}/source-url', { params: { path: { id: id.value }, query: { provider: s.provider, manga_id: s.manga_id, refresh } } }))
+        return r.url
+      })
+    )
+  } finally {
+    useToasts().dismiss(toast)
+    looking.value = ''
+    detail.load()
+  }
+}
 
 const manga = computed(() => detail.data.value?.manga)
 crumbs(() => [{ title: 'Library', to: { name: 'library' } }, { title: manga.value?.title ?? `#${id.value}` }])
@@ -237,11 +263,21 @@ function watchSource(provider: string, mangaID: string) {
             <div class="d-flex align-items-center gap-2">
               <SiteIcon :provider="s.provider" :title="providerName(s.provider)" />
               <span class="fw-semibold me-auto">{{ providerName(s.provider) }} <span v-if="s.current" class="badge text-bg-primary fw-normal">current</span></span>
-              <a v-if="providerSite(s.provider)" class="btn btn-sm btn-link py-0" :href="providerSite(s.provider)" target="_blank" rel="noopener noreferrer" :title="`Open ${providerName(s.provider)}'s website`"><i class="bi bi-box-arrow-up-right" /></a>
+              <a v-if="s.url && !s.gone" class="btn btn-sm btn-link py-0" :href="s.url" target="_blank" rel="noopener noreferrer" :title="`Open it on ${providerName(s.provider)}`" data-test="source-url"><i class="bi bi-box-arrow-up-right" /></a>
+              <button v-else class="btn btn-sm btn-link py-0" :disabled="!!looking" :title="s.gone ? `Not on ${providerName(s.provider)} any more` : `Look its address up on ${providerName(s.provider)} and open it`" data-test="source-lookup" @click="openSource(s)">
+                <span v-if="looking === sourceKey(s)" class="spinner-border spinner-border-sm" role="status" />
+                <i v-else :class="s.gone ? 'bi bi-exclamation-triangle text-warning' : 'bi bi-box-arrow-up-right'" />
+              </button>
+              <button v-if="s.url || s.gone" class="btn btn-sm btn-link py-0" :disabled="!!looking" :title="`Look the address up on ${providerName(s.provider)} again (a stale or gone link)`" data-test="source-refresh" @click="openSource(s, true)">
+                <span v-if="looking === sourceKey(s) && s.url && !s.gone" class="spinner-border spinner-border-sm" role="status" />
+                <i v-else class="bi bi-arrow-repeat" />
+              </button>
               <button v-if="s.current && !detail.data.value.watches.some((w) => w.provider === s.provider && w.manga_id === s.manga_id)" class="btn btn-sm btn-outline-secondary" @click="watchSource(s.provider, s.manga_id)">Watch</button>
             </div>
             <div>{{ s.title }}</div>
             <div class="small text-secondary">{{ s.manga_id }}<span v-if="s.moved"> · moved {{ date(s.moved) }}</span></div>
+            <div v-if="s.gone" class="small text-warning">Not on {{ providerName(s.provider) }} any more (found {{ date(s.gone) }})</div>
+            <a v-if="s.url && !s.gone" class="small d-block text-truncate" :href="s.url" target="_blank" rel="noopener noreferrer">{{ s.url }}</a>
             <RouterLink class="small" :to="{ name: 'provider-manga', params: { provider: s.provider, manga: s.manga_id } }" title="The site's chapters right now: read, download, bind">View on {{ providerName(s.provider) }} (live)</RouterLink>
           </li>
         </ul>

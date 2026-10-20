@@ -152,11 +152,13 @@
     },
     {
       "name": "source urls",
+      "web": [
+        "library-manga"
+      ],
       "api": [
         "getLibrarySourceURL",
         "lookupSourceURLs"
-      ],
-      "not_applicable": "not in the API yet (docs/core.md Progress)"
+      ]
     },
     {
       "name": "get unavailable chapters elsewhere",
