@@ -21,6 +21,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/model/accounts"
 	healthstate "github.com/luevano/mangal/v5/tui/state/health"
 	"github.com/luevano/mangal/v5/tui/state/history"
+	"github.com/luevano/mangal/v5/tui/state/jobkinds"
 	"github.com/luevano/mangal/v5/tui/state/library"
 	"github.com/luevano/mangal/v5/tui/state/migrate"
 	"github.com/luevano/mangal/v5/tui/state/providers"
@@ -47,7 +48,8 @@ type state struct {
 	accounts,
 	migrate,
 	healthKey,
-	history key.Binding
+	history,
+	jobs key.Binding
 }
 
 // healthMsg is the summary of an offline health check.
@@ -68,6 +70,7 @@ func New() base.State {
 		migrate:   base.KeyMigrate,
 		healthKey: base.KeyHealth,
 		history:   base.KeyReadHistory,
+		jobs:      base.KeyJobs,
 	}
 }
 
@@ -80,7 +83,7 @@ func (s *state) Status() string                { return "" }
 func (s *state) Resize(size base.Size) tea.Cmd { return nil }
 
 func (s *state) KeyMap() help.KeyMap {
-	return util.KeyMap{Short: []key.Binding{s.confirm, s.library, s.watches, s.accounts, s.migrate, s.healthKey, s.history}}
+	return util.KeyMap{Short: []key.Binding{s.confirm, s.library, s.watches, s.accounts, s.migrate, s.healthKey, s.history, s.jobs}}
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
@@ -178,6 +181,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return func() tea.Msg { return healthstate.New() }
 		case key.Matches(msg, s.history):
 			return func() tea.Msg { return history.New() }
+		case key.Matches(msg, s.jobs):
+			return func() tea.Msg { return jobkinds.New() }
 		}
 	}
 	return nil

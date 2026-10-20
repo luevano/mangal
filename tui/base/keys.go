@@ -132,6 +132,13 @@ var (
 	// a provider manga's unavailable chapters from another provider (chapters)
 	KeyFill = util.Bind("get unavailable elsewhere", "alt+g")
 
+	// the Jobs screen (the maintenance jobs by kind, from the Downloads and the home
+	// screens): run every item, or the missing ones (as u and C check a watch now, the
+	// due ones); alt+j was free everywhere
+	KeyJobs       = util.Bind("jobs", "alt+j")
+	KeyRunAll     = util.Bind("run all", "u")
+	KeyRunMissing = util.Bind("run missing", "C")
+
 	// a manga by its id instead of a title (mangas, re-link/move search: a toggle;
 	// providers: open the search by id); alt: it works while typing, i is info (old)
 	KeyByID = util.Bind("search by id", "alt+i")
@@ -168,7 +175,9 @@ var keyConcepts = map[string][]string{
 	"n":     {"new login", "add"},
 	"e":     {"edit", "API client"},
 	// look for new chapters: on the provider (a watch), in the folders (the library)
-	"u": {"check now", "scan"},
+	"u": {"check now", "scan", "run all"},
+	// the due ones: watches, a job's missing items
+	"C": {"check due", "run missing"},
 	"L": {"library manga", "library"},
 	"W": {"its watch", "watches"},
 	"X": {"move to a provider", "migrate"},
@@ -193,6 +202,7 @@ func Keys() (old, newer []key.Binding) {
 		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel, KeyNarrow,
 		KeyLogFiles, KeyPrevPeriod, KeyNextPeriod, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
 		KeyRename, KeyChapterFiles, KeyFallback, KeyReadHistory, KeyClearAll, KeyByID, KeyRetitle, KeyFill,
+		KeyJobs, KeyRunAll, KeyRunMissing,
 	}
 }
 

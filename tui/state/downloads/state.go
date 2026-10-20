@@ -1,5 +1,6 @@
-// Package downloads is the Downloads screen: the background jobs (downloads and watch
-// checks) by provider, with their queues, and the finished ones.
+// Package downloads is the Downloads screen: the background jobs (downloads, watch checks
+// and the maintenance jobs) by provider, with their queues, and the finished ones; the
+// Jobs screen (base.KeyJobs) has the maintenance jobs by kind.
 package downloads
 
 import (
@@ -26,6 +27,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/state/download"
+	"github.com/luevano/mangal/v5/tui/state/jobkinds"
 	"github.com/luevano/mangal/v5/tui/state/watches"
 	"github.com/luevano/mangal/v5/tui/util"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -103,7 +105,7 @@ var KeyOpen = util.Bind("open", "enter")
 
 type keyMap struct {
 	// cancel is the remove key on a finished job (the same key)
-	open, origin, cancel, retry, clearQueue, clearQueues, cancelAll key.Binding
+	open, origin, cancel, retry, clearQueue, clearQueues, cancelAll, jobs key.Binding
 }
 
 // New is the Downloads screen.
@@ -116,6 +118,7 @@ func New() base.State {
 		clearQueue:  base.KeyClearQueue,
 		clearQueues: base.KeyClearQueues,
 		cancelAll:   base.KeyCancelAll,
+		jobs:        base.KeyJobs,
 	}}
 	s.Screen = list.NewScreen(list.New(2, 1, "job", "jobs", []*item{}, func(i *item) _list.DefaultItem { return i }), s.keyMap)
 	s.Confirm = confirm.NewDialog(40, color.Warning)
@@ -126,7 +129,7 @@ func New() base.State {
 func (s *state) keyMap() help.KeyMap {
 	k := s.keys
 	short := []key.Binding{k.open, k.cancel, k.origin, k.retry}
-	return util.KeyMap{Short: short, Full: [][]key.Binding{short, {k.clearQueue, k.clearQueues, k.cancelAll}}}
+	return util.KeyMap{Short: append(short, k.jobs), Full: [][]key.Binding{short, {k.clearQueue, k.clearQueues, k.cancelAll, k.jobs}}}
 }
 
 func (s *state) Key() string       { return "downloads" }
@@ -257,6 +260,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		k := s.keys
 		switch {
+		case key.Matches(msg, k.jobs):
+			return func() tea.Msg { return jobkinds.New() }
 		case key.Matches(msg, k.cancelAll):
 			active := 0
 			for _, i := range s.List.Items() {
@@ -282,8 +287,11 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		switch {
 		case key.Matches(msg, k.open):
-			if j.Kind == jobs.KindCheck {
+			switch j.Kind {
+			case jobs.KindCheck:
 				return func() tea.Msg { return watches.NewLiveLog() }
+			case jobs.KindScan, jobs.KindSourceURLs, jobs.KindSourceCheck, jobs.KindHealth:
+				return func() tea.Msg { return jobkinds.New() }
 			}
 			return func() tea.Msg { return download.New(j.ID) }
 		case key.Matches(msg, k.origin):
