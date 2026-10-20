@@ -105,6 +105,9 @@ type API struct {
 	Events *Events
 
 	healthJobs healthJobs
+	kindsOnce  sync.Once
+	jobKinds   core.JobKinds
+	wakeKinds  waker
 	online     onlinePages
 	coreOnce   sync.Mutex
 	core       *core.Core

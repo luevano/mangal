@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -77,6 +78,9 @@ type Scheduler struct {
 	AuthChanged func(provider string) (bool, error)
 	// AuthFingerprint is cache.AuthFingerprint (nil in tests: no reloads)
 	AuthFingerprint func() (string, error)
+	// Gate says whether the watches are checked now (jobs.check.enabled, not paused) and
+	// which providers' (jobs.check.providers); nil checks every one.
+	Gate func() (bool, func(provider string) bool)
 
 	mu sync.Mutex
 	// running are the providers being checked by the scheduler, waiting the ones of them
@@ -151,6 +155,13 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 	if err != nil {
 		s.Log.Errorf("list the watches: %s", err)
 		return s.MaxSleep
+	}
+	if s.Gate != nil {
+		run, on := s.Gate()
+		if !run {
+			return s.MaxSleep
+		}
+		all = slices.DeleteFunc(all, func(w watch.Watch) bool { return !on(w.Provider) })
 	}
 	var providers []string
 	todo := map[string]*work{}

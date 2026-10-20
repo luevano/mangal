@@ -180,14 +180,13 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	listen += " (" + auth.describe() + ")"
 	lg.Infof("mangal serve %s on %s%s, data %s (pid %d)", meta.Version, listen, extra, dataDB, os.Getpid())
 
+	sched.Gate = api.checkGate
 	schedDone := make(chan struct{})
 	go func() {
 		defer close(schedDone)
 		sched.Run(ctx)
 	}()
-	if every, err := time.ParseDuration(config.Health.SourceCheckInterval.Get()); err == nil && every > 0 {
-		go api.newSourceCheck(every).loop(ctx)
-	}
+	api.runKinds(ctx)
 
 	err = web.Serve(ctx, server, listener, func() {
 		// stopped by the caller (its cause may be the signal), not a failure

@@ -208,6 +208,26 @@ func TestSchedulerDue(t *testing.T) {
 	}
 }
 
+// TestSchedulerGate: off or paused checks nothing, a provider turned off is skipped.
+func TestSchedulerGate(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	f := &fakeChecker{now: now, watches: []watch.Watch{
+		providerWatch("p", 1, now.Add(-time.Hour), true),
+		providerWatch("q", 2, now.Add(-time.Hour), true),
+	}}
+	s := newTestScheduler(f)
+	run := false
+	s.Gate = func() (bool, func(string) bool) { return run, func(p string) bool { return p != "q" } }
+	if sleep := cycle(s); sleep != time.Minute || len(f.callList()) != 0 {
+		t.Errorf("off: sleep %s, calls %+v", sleep, f.callList())
+	}
+	run = true
+	cycle(s)
+	if calls := f.callList(); len(calls) != 1 || !slices.Equal(calls[0].ids, []int64{1}) {
+		t.Errorf("q off: calls %+v", calls)
+	}
+}
+
 // TestSchedulerParallel: providers run at once up to Parallel, never one twice.
 func TestSchedulerParallel(t *testing.T) {
 	now := time.Unix(1_000_000, 0)

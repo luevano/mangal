@@ -162,8 +162,17 @@ const (
 	kindMinGap = 15 * time.Minute
 )
 
-func (k *localKinds) kv() storage.KV {
-	return storage.KV{DB: k.core.env.Storage.Cache, Table: storage.TableOther, Owner: storage.OwnerMangal + "/jobs"}
+func (k *localKinds) kv() storage.KV { return k.core.kindsKV() }
+
+func (c *Core) kindsKV() storage.KV {
+	return storage.KV{DB: c.env.Storage.Cache, Table: storage.TableOther, Owner: storage.OwnerMangal + "/jobs"}
+}
+
+// KindPaused is true when the kind's scheduling is paused (JobKinds.Pause).
+func (c *Core) KindPaused(kind jobs.Kind) bool {
+	var st kindState
+	ok, err := c.kindsKV().Get(kind.String(), &st)
+	return err == nil && ok && st.Paused
 }
 
 func (k *localKinds) state(kind jobs.Kind) (kindState, error) {

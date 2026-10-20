@@ -3,7 +3,9 @@ package serve
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -13,6 +15,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
@@ -74,9 +77,14 @@ func newHealthServer(t *testing.T) (*testServer, chan struct{}, *[]string) {
 		}, nil
 	}
 	backups := t.TempDir()
+	cacheDB, err := storage.OpenCache(filepath.Join(t.TempDir(), storage.FilenameCache))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cacheDB.Close() })
 	s.api.Core = func(m watch.Manager) (*core.Core, error) {
 		return core.New(context.Background(), core.Env{
-			Storage:    storage.Storage{Data: s.src.library.DB},
+			Storage:    storage.Storage{Data: s.src.library.DB, Cache: cacheDB},
 			FS:         afero.NewMemMapFs(),
 			Root:       func() string { return "/lib" },
 			Modes:      func() library.Modes { return library.DefaultModes },
@@ -192,77 +200,62 @@ func TestHealthNetworkJob(t *testing.T) {
 	}
 }
 
-// TestSourceCheckLoop: the scheduled source check waits an interval from the last run (or
-// from the start when it never ran), an overdue one sourceCheckDelay; a run that can't
-// start is tried again sourceCheckDelay later; 0 is off.
-func TestSourceCheckLoop(t *testing.T) {
-	const week = 7 * 24 * time.Hour
-	start := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
-	run := func(t *testing.T, interval time.Duration, last time.Time, results ...bool) (waits []time.Duration, stored time.Time) {
-		t.Helper()
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		now := start
-		stored = last
-		runs := 0
-		c := sourceCheck{
-			Interval: interval,
-			Last:     func() (time.Time, error) { return stored, nil },
-			SetLast:  func(t time.Time) error { stored = t; return nil },
-			Run: func() bool {
-				ok := results[runs]
-				runs++
-				if runs == len(results) {
-					cancel()
-				}
-				return ok
-			},
-			Now: func() time.Time { return now },
-			After: func(d time.Duration) <-chan time.Time {
-				if ctx.Err() != nil {
-					return nil
-				}
-				waits = append(waits, d)
-				now = now.Add(d)
-				ch := make(chan time.Time, 1)
-				ch <- now
-				return ch
-			},
-			Log: newLogger(nil),
-		}
-		c.loop(ctx)
-		return waits, stored
-	}
-	t.Run("never ran", func(t *testing.T) {
-		waits, stored := run(t, week, time.Time{}, true, true)
-		if !slices.Equal(waits, []time.Duration{week, week}) || !stored.Equal(start.Add(2*week)) {
-			t.Errorf("waits %v, stored %v", waits, stored)
-		}
-	})
-	t.Run("overdue", func(t *testing.T) {
-		if waits, _ := run(t, week, start.Add(-8*24*time.Hour), true); !slices.Equal(waits, []time.Duration{sourceCheckDelay}) {
-			t.Errorf("waits %v", waits)
-		}
-	})
-	t.Run("ran lately", func(t *testing.T) {
-		if waits, _ := run(t, week, start.Add(-2*24*time.Hour), true); !slices.Equal(waits, []time.Duration{5 * 24 * time.Hour}) {
-			t.Errorf("waits %v", waits)
-		}
-	})
-	t.Run("busy", func(t *testing.T) {
-		waits, stored := run(t, week, start.Add(-8*24*time.Hour), false, true)
-		if !slices.Equal(waits, []time.Duration{sourceCheckDelay, sourceCheckDelay}) || !stored.Equal(start.Add(2*sourceCheckDelay)) {
-			t.Errorf("waits %v, stored %v", waits, stored)
-		}
-	})
-	t.Run("off", func(t *testing.T) {
-		if waits, _ := run(t, 0, time.Time{}); len(waits) != 0 {
-			t.Errorf("waits %v", waits)
-		}
-	})
+// fakeKinds are job kinds whose next run and runs a test sets.
+type fakeKinds struct {
+	core.JobKinds
+	next time.Time
+	run  error
+	ran  []bool
 }
 
-// TestSourceCheckRun: the scheduled source check is a health job; its L11 findings are in
+func (k *fakeKinds) Get(_ context.Context, kind jobs.Kind) (core.JobKind, error) {
+	return core.JobKind{Kind: kind, Title: "Source checks", Next: k.next}, nil
+}
+
+func (k *fakeKinds) Run(_ context.Context, kind jobs.Kind, all bool) (core.Job, error) {
+	k.ran = append(k.ran, all)
+	return core.Job{ID: 4, Kind: kind, Title: "source check: 2 sources"}, k.run
+}
+
+// TestKindSchedule: a scheduled kind waits for its next run (looking again every
+// kindPoll), then runs its missing ones and waits for the job; a run refused is tried
+// again kindRetry later, nothing to do waits a poll.
+func TestKindSchedule(t *testing.T) {
+	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	k := &fakeKinds{}
+	waited := 0
+	s := kindSchedule{Kind: jobs.KindSourceCheck, Kinds: func(context.Context) (core.JobKinds, error) { return k, nil },
+		Wait: func(context.Context, int64) core.Job { waited++; return core.Job{Message: "3 of 3 looked up"} },
+		Now:  func() time.Time { return now }, Log: newLogger(io.Discard)}
+	ctx := context.Background()
+	for _, c := range []struct {
+		next time.Time
+		run  error
+		want time.Duration
+		ran  int
+	}{
+		{time.Time{}, nil, kindPoll, 0},
+		{now.Add(time.Minute), nil, time.Minute, 0},
+		{now.Add(time.Hour), nil, kindPoll, 0},
+		{now, nil, 0, 1},
+		{now.Add(-time.Hour), core.ErrRefused, kindRetry, 1},
+		{now, core.ErrNothingToDo, kindPoll, 1},
+	} {
+		k.next, k.run, k.ran, waited = c.next, c.run, nil, 0
+		if got := s.step(ctx); got != c.want || len(k.ran) != c.ran || slices.Contains(k.ran, true) {
+			t.Errorf("next %s, run %v: waits %s, ran %v; want %s, %d runs", c.next, c.run, got, k.ran, c.want, c.ran)
+		}
+		wantWaits := 0
+		if c.run == nil && c.ran == 1 {
+			wantWaits = 1
+		}
+		if waited != wantWaits {
+			t.Errorf("next %s: waited for %d jobs, want %d", c.next, waited, wantWaits)
+		}
+	}
+}
+
+// TestSourceCheckRun: a source check job is kept as a health job; its L11 findings are in
 // the offline report while they hold, and can be dismissed from it.
 func TestSourceCheckRun(t *testing.T) {
 	s, _, _ := newHealthServer(t)
@@ -278,8 +271,19 @@ func TestSourceCheckRun(t *testing.T) {
 		}
 		return c, err
 	}
-	if !s.api.runSourceCheck() {
-		t.Fatal("didn't run")
+	m := jobs.New(context.Background())
+	defer m.Shutdown(time.Second)
+	s.api.Jobs = m
+	kinds, err := s.api.kinds(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := kinds.Run(context.Background(), jobs.KindSourceCheck, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j := waitJob(context.Background(), m, run.ID); j.Status != jobs.Done {
+		t.Fatalf("source check job %+v", j)
 	}
 	job, ok := s.api.healthJobs.get(1)
 	if !ok || job.Running || job.Report == nil {

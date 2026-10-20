@@ -12,8 +12,6 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/luevano/mangal/v5/library"
-	"github.com/luevano/mangal/v5/storage"
-	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/web/apiv1"
 
 	"github.com/luevano/libmangal/progress"
@@ -204,27 +202,6 @@ func (a *API) GetHealth(ctx context.Context, request apiv1.GetHealthRequestObjec
 	}
 	go a.runHealth(job.ID, c.Health, opts, false)
 	return healthJobResponse{job}, nil
-}
-
-// runSourceCheck runs the library sources check (L11) as a health job and waits for it,
-// false when it couldn't start (another health job runs, the server is stopping).
-func (a *API) runSourceCheck() bool {
-	c, err := a.services(a.ctx)
-	if err != nil {
-		a.Log.Warnf("library sources check: %s", err)
-		return false
-	}
-	only := []string{"L11"}
-	job, ok := a.healthJobs.start(only)
-	if !ok {
-		return false
-	}
-	if !a.startCheck() {
-		a.healthJobs.update(job.ID, func(j *HealthJob) { j.Running, j.Finished, j.Error = false, time.Now(), "the server is stopping" })
-		return false
-	}
-	a.runHealth(job.ID, c.Health, health.Options{Network: true, Only: only}, true)
-	return true
 }
 
 // runHealth runs the job in the server (not cancelled with the request), its progress as
@@ -423,103 +400,4 @@ func fixFinding(ctx context.Context, c *core.Core, f health.Finding, choice stri
 		return health.FixResult{}, err
 	}
 	return res.Detail.(health.FixResult), nil
-}
-
-// sourceCheckDelay is how long after the server starts an overdue source check waits.
-const sourceCheckDelay = 15 * time.Minute
-
-// sourceCheck runs the library sources check (L11) every Interval
-// (health.source_check_interval): an Interval after the last one (kept across restarts),
-// never at startup (the first one an Interval after it, an overdue one sourceCheckDelay
-// after it).
-type sourceCheck struct {
-	Interval time.Duration
-	// Last and SetLast read and keep when it last ran (zero: never).
-	Last    func() (time.Time, error)
-	SetLast func(time.Time) error
-	// Run runs one and waits for it, false when it couldn't start (tried again
-	// sourceCheckDelay later).
-	Run func() bool
-	// Now is time.Now, After time.After (swapped in tests).
-	Now   func() time.Time
-	After func(time.Duration) <-chan time.Time
-	Log   logger
-}
-
-// due is when the next check runs.
-func (c sourceCheck) due(last, started time.Time) time.Time {
-	if last.IsZero() {
-		return started.Add(c.Interval)
-	}
-	return later(last.Add(c.Interval), started.Add(sourceCheckDelay))
-}
-
-func later(a, b time.Time) time.Time {
-	if a.After(b) {
-		return a
-	}
-	return b
-}
-
-// loop runs the checks until ctx ends.
-func (c sourceCheck) loop(ctx context.Context) {
-	if c.Interval <= 0 {
-		return
-	}
-	started := c.Now()
-	// ran is the last run of this server, should the stored one fail
-	var ran time.Time
-	for {
-		last, err := c.Last()
-		if err != nil {
-			c.Log.Warnf("library sources check: when it last ran: %s", err)
-		}
-		wait := c.due(later(last, ran), started).Sub(c.Now())
-		if wait <= 0 {
-			now := c.Now()
-			if c.Run() {
-				ran = now
-				if err := c.SetLast(now); err != nil {
-					c.Log.Warnf("library sources check: keep when it ran: %s", err)
-				}
-				continue
-			}
-			wait = sourceCheckDelay
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-c.After(wait):
-		}
-	}
-}
-
-// newSourceCheck is the server's source check, its last run kept in the cache db.
-func (a *API) newSourceCheck(interval time.Duration) sourceCheck {
-	kv := func() (storage.KV, error) {
-		st, err := cache.Storage()
-		return storage.KV{DB: st.Cache, Table: storage.TableOther, Owner: storage.OwnerMangal + "/serve"}, err
-	}
-	return sourceCheck{
-		Interval: interval,
-		Last: func() (time.Time, error) {
-			var last time.Time
-			store, err := kv()
-			if err == nil {
-				_, err = store.Get("source-check", &last)
-			}
-			return last, err
-		},
-		SetLast: func(t time.Time) error {
-			store, err := kv()
-			if err != nil {
-				return err
-			}
-			return store.Set("source-check", t)
-		},
-		Run:   a.runSourceCheck,
-		Now:   time.Now,
-		After: time.After,
-		Log:   a.Log,
-	}
 }

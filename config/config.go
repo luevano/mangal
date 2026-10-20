@@ -605,7 +605,7 @@ var Serve = configServe{
 
 var Health = configHealth{
 	SourceCheckInterval: durationEntry("health.source_check_interval", "168h",
-		"How often `mangal serve` checks on its own that each library manga's current source is still on its provider (health L11: one lookup by id per manga, through the provider's throttle; the result is logged and kept like a network health check's). 168h is a week, counted from the last check (across restarts), never at startup; 0 turns it off. Read when the server starts.", false),
+		"How often `mangal serve` checks on its own that each library manga's current source is still on its provider (health L11: one lookup by id per manga, through the provider's throttle, a pause of jobs.delay_min to jobs.delay_max between them; the result is logged and kept like a network health check's). 168h is a week, counted from each source's last check (across restarts), never at startup; a provider's own interval in jobs.sources.providers; 0 turns it off (as jobs.sources.enabled = false).", false),
 }
 
 var Log = configLog{
