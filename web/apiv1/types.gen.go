@@ -706,6 +706,12 @@ type MarkRequest struct {
 
 // Me defines model for Me.
 type Me struct {
+	// Admin every permission (serve.auth none and local too), what the admin-only endpoints need
+	Admin bool `json:"admin"`
+
+	// HideUnavailable serve.hide_unavailable, the web UI hides the actions the scopes don't allow
+	HideUnavailable bool `json:"hide_unavailable"`
+
 	// Kind a user, an API token, the server's own CLI and TUI (local), or serve.auth none
 	Kind MeKind `json:"kind"`
 

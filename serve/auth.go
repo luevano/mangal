@@ -68,6 +68,16 @@ type identity struct {
 
 func (id identity) has(scope string) bool { return slices.Contains(id.Scopes, scope) }
 
+// admin is every permission: what the users, tokens and admin-only settings need.
+func (id identity) admin() bool {
+	for _, s := range Scopes {
+		if !id.has(s) {
+			return false
+		}
+	}
+	return true
+}
+
 // String says how the request is authorized, as the status has it.
 func (id identity) String() string {
 	switch id.Kind {

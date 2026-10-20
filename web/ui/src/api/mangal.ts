@@ -1767,6 +1767,10 @@ export interface components {
              */
             kind: "user" | "token" | "local" | "none";
             scopes: string[];
+            /** @description every permission (serve.auth none and local too), what the admin-only endpoints need */
+            admin: boolean;
+            /** @description serve.hide_unavailable, the web UI hides the actions the scopes don't allow */
+            hide_unavailable: boolean;
         };
         Provider: {
             name: string;

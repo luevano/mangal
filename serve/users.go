@@ -22,10 +22,8 @@ func needAdmin(ctx context.Context) error {
 	if !ok {
 		return newAPIError(http.StatusUnauthorized, CodeUnauthorized, "not logged in")
 	}
-	for _, s := range Scopes {
-		if !id.has(s) {
-			return newAPIError(http.StatusForbidden, CodeForbidden, "this needs every permission (an admin), %s hasn't", id)
-		}
+	if !id.admin() {
+		return newAPIError(http.StatusForbidden, CodeForbidden, "this needs every permission (an admin), %s hasn't", id)
 	}
 	return nil
 }

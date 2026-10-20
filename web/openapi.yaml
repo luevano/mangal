@@ -2394,7 +2394,7 @@ components:
           description: Authorization Bearer, shown only here
     Me:
       type: object
-      required: [name, kind, scopes]
+      required: [name, kind, scopes, admin, hide_unavailable]
       properties:
         name:
           type: string
@@ -2407,6 +2407,12 @@ components:
           type: array
           items:
             type: string
+        admin:
+          type: boolean
+          description: every permission (serve.auth none and local too), what the admin-only endpoints need
+        hide_unavailable:
+          type: boolean
+          description: serve.hide_unavailable, the web UI hides the actions the scopes don't allow
     Provider:
       type: object
       required:

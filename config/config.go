@@ -601,6 +601,8 @@ var Serve = configServe{
 	TLSCert: stringEntry("serve.tls_cert", "",
 		"Certificate file (PEM, with its chain) for `mangal serve` and `mangal web` to serve HTTPS, with serve.tls_key; read again when it changes (a renewal). Empty serves plain HTTP (a reverse proxy can do TLS instead)."),
 	TLSKey: stringEntry("serve.tls_key", "", "Private key file (PEM) of serve.tls_cert."),
+	HideUnavailable: boolEntry("serve.hide_unavailable", true,
+		"The web UI hides the actions the logged-in user or API token has no permission for (and the pages that are only such actions). false shows every action and the server refuses the ones not allowed."),
 }
 
 var Health = configHealth{

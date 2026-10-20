@@ -90,7 +90,7 @@ func TestLogin(t *testing.T) {
 	}
 	var me apiv1.Me
 	rec = do(h, "GET", "/api/v1/auth/me", "", remote, "", cookie)
-	if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil || me.Name != "David" || me.Kind != "user" || len(me.Scopes) != len(Scopes) {
+	if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil || me.Name != "David" || me.Kind != "user" || len(me.Scopes) != len(Scopes) || !me.Admin || !me.HideUnavailable {
 		t.Errorf("me: %d %+v %v", rec.Code, me, err)
 	}
 	if rec := do(h, "GET", "/api/v1/watches", "", remote, "", cookie); rec.Code != http.StatusOK {
@@ -223,13 +223,18 @@ func TestAPITokens(t *testing.T) {
 	}
 	var me apiv1.Me
 	rec := do(h, "GET", "/api/v1/auth/me", "", remote, "Bearer pr0g", nil)
-	if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil || me.Name != "phone" || me.Kind != "token" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil || me.Name != "phone" || me.Kind != "token" || me.Admin {
 		t.Errorf("me: %+v %v", me, err)
 	}
 
 	s.api.Auth.Mode = AuthNone
 	if rec := do(h, "POST", "/api/v1/history/clear?apply=1", `{"expect":"x"}`, remote, "", nil); rec.Code != http.StatusConflict {
 		t.Errorf("auth none: %d %s", rec.Code, rec.Body)
+	}
+	me = apiv1.Me{}
+	rec = do(h, "GET", "/api/v1/auth/me", "", remote, "", nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil || me.Kind != "none" || !me.Admin {
+		t.Errorf("me, auth none: %+v %v", me, err)
 	}
 }
 

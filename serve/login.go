@@ -14,6 +14,7 @@ import (
 	"github.com/alexedwards/argon2id"
 	"github.com/alexedwards/scs/v2"
 	"github.com/luevano/libmangal/netutil"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
@@ -206,7 +207,7 @@ func meOf(id identity) apiv1.Me {
 	if scopes == nil {
 		scopes = []string{}
 	}
-	return apiv1.Me{Name: id.Name, Kind: apiv1.MeKind(id.Kind), Scopes: scopes}
+	return apiv1.Me{Name: id.Name, Kind: apiv1.MeKind(id.Kind), Scopes: scopes, Admin: id.admin(), HideUnavailable: config.Serve.HideUnavailable.Get()}
 }
 
 // loginResponse answers the login with its cookie.

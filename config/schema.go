@@ -246,4 +246,6 @@ type configServe struct {
 	// TLSCert and TLSKey serve HTTPS when set.
 	TLSCert *entry[string, string]
 	TLSKey  *entry[string, string]
+	// HideUnavailable hides the web UI's actions the user may not do.
+	HideUnavailable *entry[bool, bool]
 }
