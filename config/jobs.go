@@ -114,6 +114,10 @@ func (e *entry[Raw, Value]) Fresh() Value {
 // (a paid device secret risks a lockout).
 var mangaPlusOff = ProviderSettings{"mango-mangaplus": ProviderOff}
 
+// MaintenanceDefaults are the prebuilt per-provider settings of the maintenance jobs
+// (source checks, source addresses, network health).
+func MaintenanceDefaults() ProviderSettings { return maps.Clone(mangaPlusOff) }
+
 var Jobs = configJobs{
 	Check: configJobsCheck{
 		Enabled: boolEntry("jobs.check.enabled", true,

@@ -284,7 +284,7 @@ func (a *API) ScanLibrary(ctx context.Context, request apiv1.ScanLibraryRequestO
 		if err != nil {
 			return err
 		}
-		msg := scanSummary(rep)
+		msg := core.ScanSummary(rep)
 		p.Message(msg)
 		a.Log.Infof("library scan (asked through the API): %s", msg)
 		return nil
@@ -310,43 +310,10 @@ func (a *API) LookupSourceURLs(ctx context.Context, request apiv1.LookupSourceUR
 			p.Message(pr.String())
 		})
 		rep, err := c.Library.LookupSourceURLs(ctx, opts)
-		msg := sourceURLsSummary(rep)
+		msg := core.SourceURLsSummary(rep)
 		p.Message(msg)
 		a.Log.Infof("source urls (asked through the API): %s", msg)
 		return err
 	}})
 	return apiv1.LookupSourceURLs202JSONResponse(toAPIJob(core.JobOf(job))), nil
-}
-
-// sourceURLsSummary is what a source urls lookup found, in a line.
-func sourceURLsSummary(rep core.SourceURLsReport) string {
-	var found, gone, failed int
-	for _, r := range rep.Results {
-		switch {
-		case r.Err == nil:
-			found++
-		case errors.Is(r.Err, core.ErrNotFound):
-			gone++
-		default:
-			failed++
-		}
-	}
-	s := fmt.Sprintf("%d found, %d gone, %d failed", found, gone, failed)
-	if len(rep.Skipped) != 0 {
-		s += "; skipped " + strings.Join(rep.Skipped, ", ")
-	}
-	return s
-}
-
-// scanSummary is what a scan found, in a line.
-func scanSummary(rep core.ScanReport) string {
-	r := rep.Result
-	parts := []string{fmt.Sprintf("%d chapters added, %d moved, %d removed, %d new folders", r.Added, r.Moved, r.Removed, r.New)}
-	if len(r.Missing) != 0 {
-		parts = append(parts, fmt.Sprintf("%d missing", len(r.Missing)))
-	}
-	if len(rep.Duplicates) != 0 {
-		parts = append(parts, fmt.Sprintf("%d duplicates", len(rep.Duplicates)))
-	}
-	return strings.Join(parts, ", ")
 }

@@ -1,4 +1,4 @@
-// Package jobs runs downloads and watch checks in the background, one at a time per
+// Package jobs runs downloads, watch checks and the maintenance jobs in the background, one at a time per
 // provider: a job of a busy provider waits in that provider's queue (FIFO) instead of being
 // refused. The TUI has one Manager (tui/jobs).
 package jobs
@@ -76,6 +76,10 @@ const (
 	KindScan
 	// KindSourceURLs is a lookup of the library sources' urls (mangal serve's).
 	KindSourceURLs
+	// KindSourceCheck checks the library sources are still on their providers (health L11).
+	KindSourceCheck
+	// KindHealth is a health check with the network checks.
+	KindHealth
 )
 
 func (k Kind) String() string {
@@ -86,6 +90,10 @@ func (k Kind) String() string {
 		return "scan"
 	case KindSourceURLs:
 		return "urls"
+	case KindSourceCheck:
+		return "sources"
+	case KindHealth:
+		return "health"
 	}
 	return "download"
 }
@@ -93,7 +101,7 @@ func (k Kind) String() string {
 func (k Kind) MarshalText() ([]byte, error) { return []byte(k.String()), nil }
 
 func (k *Kind) UnmarshalText(b []byte) error {
-	for kind := KindDownload; kind <= KindSourceURLs; kind++ {
+	for kind := KindDownload; kind <= KindHealth; kind++ {
 		if kind.String() == string(b) {
 			*k = kind
 			return nil
@@ -679,6 +687,9 @@ func (p *Progress) update(f func(e *entry)) {
 	f(p.e)
 	p.m.changedLocked()
 }
+
+// ID is the job's id.
+func (p *Progress) ID() int64 { return p.e.ID }
 
 // Waiting is the job waiting for another mangal to free a provider, message says which.
 func (p *Progress) Waiting(message string) {
