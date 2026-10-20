@@ -50,3 +50,16 @@ func SetAnilistSearchHistory(records Records) error {
 func GetAnilistSearchHistory(records *Records) (bool, error) {
 	return get(CacheDBNameMangal, BucketNameSearchHistory, AnilistSearchHistory, records)
 }
+
+// FillProviders is the key of the providers a fill searched last (the TUI's choice).
+const FillProviders = "fill-providers"
+
+// SetFillProviders stores the provider ids a fill searched.
+func SetFillProviders(ids []string) error {
+	return set(CacheDBNameMangal, BucketNameSearchHistory, FillProviders, ids)
+}
+
+// GetFillProviders reads the provider ids a fill searched last, false when there are none.
+func GetFillProviders(ids *[]string) (bool, error) {
+	return get(CacheDBNameMangal, BucketNameSearchHistory, FillProviders, ids)
+}

@@ -20,6 +20,9 @@ func TestFill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	get, save := fillProviders, saveFillProviders
+	t.Cleanup(func() { fillProviders, saveFillProviders = get, save })
+	fillProviders = func() []string { return nil }
 	manga, list := chapters(2)
 	if _, ok := New(c, manga, nil, list).(*state).Update(ctx, press("alt+g"))().(*pick.Providers); ok {
 		t.Error("alt+g opens the picker without unavailable chapters")
@@ -29,10 +32,10 @@ func TestFill(t *testing.T) {
 		t.Fatal("alt+g doesn't open the provider picker")
 	}
 
-	s := newFillState("fake", manga, "mango-mangapill", "chapters/fake/berserk")
+	s := newFillState("fake", manga, []libmangal.ProviderInfo{{ID: "mango-mangapill", Name: "Mangapill"}, {ID: "mango-weebcentral", Name: "Weeb Central"}}, "chapters/fake/berserk")
 	s.Resize(base.Size{Width: 120, Height: 40})
-	if s.Search.Query() != "Berserk" || s.Provider() != "mango-mangapill" {
-		t.Errorf("search %q on %s", s.Search.Query(), s.Provider())
+	if s.Search.Query() != "Berserk" || s.Subtitle() != "on Mangapill, Weeb Central" {
+		t.Errorf("search %q %s", s.Search.Query(), s.Subtitle())
 	}
 	if req := s.req("mango-mangapill", &fakeManga{id: "mp"}); req.Provider != "fake" || req.MangaID != "berserk" || req.From.Provider != "mango-mangapill" || req.From.MangaID != "mp" {
 		t.Errorf("req %+v", req)

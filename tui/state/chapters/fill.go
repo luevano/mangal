@@ -8,13 +8,16 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
+	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/tui/base"
 	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
 	"github.com/luevano/mangal/v5/tui/model/confirm"
 	"github.com/luevano/mangal/v5/tui/state/pick"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 // planFill plans getting the manga's unavailable chapters from the provider's manga.
@@ -27,26 +30,49 @@ var planFill = func(ctx context.Context, req core.FillReq) (core.FillPlan, error
 	return c.PlanFill(ctx, req)
 }
 
-// fillCmd opens the provider picker of a fill, the provider picked opens the search; only
-// for a manga with unavailable chapters.
+// fillProviders are the providers a fill searched last (nil: none yet), saveFillProviders
+// keeps them. Swapped in tests.
+var (
+	fillProviders = func() []string {
+		var ids []string
+		if _, err := cache.GetFillProviders(&ids); err != nil {
+			log.Warn("fill providers: %s", err)
+		}
+		return ids
+	}
+	saveFillProviders = cache.SetFillProviders
+)
+
+// fillCmd opens the providers to search for a fill (the last ones ticked, else every
+// other one), the ticked ones open the search; only for a manga with unavailable chapters.
 func (s *state) fillCmd() tea.Cmd {
 	if s.client == nil || !slices.ContainsFunc(s.items(), func(i *item) bool { return i.unavailable() != "" }) {
 		return base.Notify("No unavailable chapters to get from another provider")
 	}
 	provider, manga, origin := s.client.Info().ID, s.manga, s.Key()
 	return func() tea.Msg {
-		return pick.NewProviders("", func(from string) tea.Cmd {
-			return tea.Sequence(base.Back, func() tea.Msg { return newFillState(provider, manga, from, origin) })
+		return pick.NewProviderChecks(provider, fillProviders(), func(from []libmangal.ProviderInfo) tea.Cmd {
+			ids := make([]string, len(from))
+			for i, p := range from {
+				ids[i] = p.ID
+			}
+			save := func() tea.Msg {
+				if err := saveFillProviders(ids); err != nil {
+					log.Warn("fill providers: %s", err)
+				}
+				return nil
+			}
+			return tea.Sequence(base.Back, func() tea.Msg { return newFillState(provider, manga, from, origin) }, save)
 		})
 	}
 }
 
 var _ base.State = (*fillState)(nil)
 
-// fillState searches a provider for the manga to get the unavailable chapters from: enter
-// shows the plan, yes queues the download and goes back to the chapters.
+// fillState searches the providers for the manga to get the unavailable chapters from:
+// enter shows the plan, yes queues the download and goes back to the chapters.
 type fillState struct {
-	*pick.Manga
+	*pick.Multi
 	confirm.Host
 	provider, origin string
 	manga            mangadata.Manga
@@ -54,25 +80,25 @@ type fillState struct {
 
 type fillPlannedMsg struct{ plan core.FillPlan }
 
-func newFillState(provider string, manga mangadata.Manga, from, origin string) *fillState {
+func newFillState(provider string, manga mangadata.Manga, from []libmangal.ProviderInfo, origin string) *fillState {
 	s := &fillState{provider: provider, manga: manga, origin: origin, Host: confirm.NewHost(72, color.Success)}
-	s.Manga = pick.NewManga(pick.MangaOptions{
-		Title:    "Get the unavailable chapters of " + manga.Info().Title,
-		Provider: from,
-		Query:    manga.Info().Title,
-		Action:   "get its chapters",
-		Pick:     s.planCmd,
+	s.Multi = pick.NewMulti(pick.MultiOptions{
+		Title:     "Get the unavailable chapters of " + manga.Info().Title,
+		Providers: from,
+		Query:     manga.Info().Title,
+		Action:    "get its chapters",
+		Pick:      s.planCmd,
 	})
 	return s
 }
 
 func (s *fillState) Key() string { return "chapters-fill/" + s.provider + "/" + s.manga.Info().ID }
 
-func (s *fillState) Backable() bool                { return s.Host.Backable(s.Manga.Backable()) }
-func (s *fillState) Inputting() bool               { return s.Host.Inputting(s.Manga.Inputting()) }
-func (s *fillState) KeyMap() help.KeyMap           { return s.Host.KeyMap(s.Manga.KeyMap()) }
-func (s *fillState) Resize(size base.Size) tea.Cmd { return s.Host.Resize(size, s.Manga.Resize) }
-func (s *fillState) View() string                  { return s.Host.View(s.Manga.View) }
+func (s *fillState) Backable() bool                { return s.Host.Backable(s.Multi.Backable()) }
+func (s *fillState) Inputting() bool               { return s.Host.Inputting(s.Multi.Inputting()) }
+func (s *fillState) KeyMap() help.KeyMap           { return s.Host.KeyMap(s.Multi.KeyMap()) }
+func (s *fillState) Resize(size base.Size) tea.Cmd { return s.Host.Resize(size, s.Multi.Resize) }
+func (s *fillState) View() string                  { return s.Host.View(s.Multi.View) }
 
 func (s *fillState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	if cmd, ok := s.Answer(msg); ok {
@@ -81,7 +107,7 @@ func (s *fillState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	if msg, ok := msg.(fillPlannedMsg); ok {
 		return s.ask(msg.plan)
 	}
-	return s.Manga.Update(ctx, msg)
+	return s.Multi.Update(ctx, msg)
 }
 
 func (s *fillState) planCmd(ctx context.Context, provider string, from mangadata.Manga) tea.Cmd {
