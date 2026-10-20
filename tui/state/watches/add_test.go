@@ -25,6 +25,8 @@ type byIDProvider struct{ libmangal.Provider }
 
 type byIDManga struct{ mangadata.Manga }
 
+func (byIDManga) Info() mangadata.MangaInfo { return mangadata.MangaInfo{ID: "here", Title: "Here"} }
+
 func (byIDProvider) Info() libmangal.ProviderInfo { return byIDLoader{}.Info() }
 func (byIDProvider) String() string               { return "ByID" }
 func (byIDProvider) SetLogger(*logger.Logger)     {}
