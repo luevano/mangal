@@ -72,6 +72,9 @@ type JobKind struct {
 	MissingWhat string `json:"missing_what,omitempty"`
 	// Providers are its per-provider settings (and, from Get, counts).
 	Providers []JobProvider `json:"providers,omitempty"`
+	// Delay is the pause between two requests to a provider ("1s-3s", jobs.delay_min and
+	// jobs.delay_max, shared by the kinds), empty for a kind without.
+	Delay string `json:"delay,omitempty"`
 }
 
 // JobRun is a kind's run as kept.
@@ -316,6 +319,7 @@ func (k *localKinds) get(ctx context.Context, kind jobs.Kind, details bool) (Job
 			jk.Schedule, jk.ScheduleKey = config.Jobs.URLs.Interval.Fresh(), config.Jobs.URLs.Interval.Key
 			jk.MissingWhat = "sources without an address, not asked within their interval"
 		}
+		jk.Delay = config.Jobs.DelayMin.Fresh() + "-" + config.Jobs.DelayMax.Fresh()
 		if err := k.sourcesState(&jk, st, settings, since); err != nil {
 			return jk, err
 		}

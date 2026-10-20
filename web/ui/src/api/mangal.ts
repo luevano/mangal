@@ -2311,6 +2311,8 @@ export interface components {
             missing?: number;
             missing_what?: string;
             providers?: components["schemas"]["JobProvider"][];
+            /** @description the pause between two requests to a provider, min-max (jobs.delay_min, jobs.delay_max; shared by the kinds), absent for a kind without */
+            delay?: string;
         };
         JobRun: {
             /**

@@ -3495,6 +3495,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/JobProvider'
+        delay:
+          type: string
+          description: the pause between two requests to a provider, min-max (jobs.delay_min, jobs.delay_max; shared by the kinds), absent for a kind without
     JobRun:
       type: object
       required: [all]

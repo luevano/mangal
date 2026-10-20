@@ -73,8 +73,8 @@ func newSettings(k core.JobKind) base.State {
 		}
 		fields = append(fields, s.schedule)
 	}
-	if k.Kind == jobs.KindSourceCheck || k.Kind == jobs.KindSourceURLs {
-		s.delay = huhform.Text("Pause", config.Jobs.DelayMin.Fresh()+"-"+config.Jobs.DelayMax.Fresh(), "between two requests to a provider, min-max (every kind)", validDelay)
+	if k.Delay != "" {
+		s.delay = huhform.Text("Pause", k.Delay, "between two requests to a provider, min-max (every kind)", validDelay)
 		fields = append(fields, s.delay)
 	}
 	if k.ProvidersKey != "" {
@@ -126,7 +126,7 @@ func (s *settings) changes() core.JobSettings {
 		v := s.schedule.Value()
 		c.Schedule = &v
 	}
-	if s.delay != nil && s.delay.Value() != config.Jobs.DelayMin.Fresh()+"-"+config.Jobs.DelayMax.Fresh() {
+	if s.delay != nil && s.delay.Value() != s.k.Delay {
 		lo, hi, ok := strings.Cut(s.delay.Value(), "-")
 		if !ok {
 			hi = lo
