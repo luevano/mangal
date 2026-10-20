@@ -8,12 +8,14 @@ import { usePager } from '@/composables/usePager'
 import { useLoad } from '@/composables/useLoad'
 import { size, plural } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
+import { useStatus } from '@/stores/status'
 import { useChanges } from '@/stores/changes'
 import { usePlan } from '@/stores/plan'
 
 crumbs(() => [{ title: 'Library', to: { name: 'library' } }, { title: 'Trash' }])
 const changes = useChanges()
 const plan = usePlan()
+const st = useStatus()
 const { data, loading, error } = useLoad(() => ok(client.GET('/v1/library/trash')), [() => changes.version])
 const pager = usePager(computed(() => data.value?.batches), 100)
 
@@ -25,7 +27,7 @@ function empty() {
 <template>
   <div class="d-flex align-items-center mb-2">
     <h4 class="me-auto mb-0">Trash</h4>
-    <button class="btn btn-sm btn-outline-danger" :disabled="!data?.files" data-test="empty-trash" @click="empty">Empty</button>
+    <button v-if="st.allows('POST /v1/library/trash/empty')" class="btn btn-sm btn-outline-danger" :disabled="!data?.files" data-test="empty-trash" @click="empty">Empty</button>
   </div>
   <LoadState :loading="loading && !data" :error="error" :empty="data && !data.batches.length" empty-text="The trash is empty." />
   <template v-if="data?.batches.length">

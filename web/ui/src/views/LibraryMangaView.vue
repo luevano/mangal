@@ -21,6 +21,7 @@ import { crumbs } from '@/stores/crumbs'
 import { useChanges } from '@/stores/changes'
 import { useJobs } from '@/stores/jobs'
 import { usePlan } from '@/stores/plan'
+import { useStatus } from '@/stores/status'
 import { useToasts } from '@/stores/toasts'
 
 const route = useRoute()
@@ -30,6 +31,7 @@ const changes = useChanges()
 const jobs = useJobs()
 const plan = usePlan()
 const action = useAction()
+const st = useStatus()
 
 const detail = useLoad(() => ok(client.GET('/v1/library/mangas/{id}', { params: { path: { id: id.value } } })), [id, () => changes.version])
 const chapters = useLoad(
@@ -205,16 +207,16 @@ function watchSource(provider: string, mangaID: string) {
         </div>
         <div class="d-flex flex-wrap gap-2">
           <button v-if="next" class="btn btn-sm btn-primary" data-test="read-next" @click="read(next)"><i class="bi bi-book" /> Read {{ num(next.download.chapter) }}</button>
-          <button class="btn btn-sm btn-outline-primary" @click="openLinks">Links</button>
+          <button v-if="st.allows('POST /v1/library/links')" class="btn btn-sm btn-outline-primary" @click="openLinks">Links</button>
           <a v-if="sorted.length" class="btn btn-sm btn-outline-secondary" :href="mangaZipURL(manga.id)" title="Every downloaded chapter in one zip"><i class="bi bi-file-earmark-zip" /> Zip</a>
-          <button class="btn btn-sm btn-outline-primary" @click="moveOpen = true">Move</button>
-          <button class="btn btn-sm btn-outline-primary" data-test="retitle" title="Give the chapters another provider's titles" @click="retitleOpen = true">Retitle</button>
-          <button class="btn btn-sm btn-outline-secondary" data-test="hold" @click="holdOpen = true">Hold…</button>
-          <button class="btn btn-sm btn-outline-primary" data-test="merge" @click="mergeOpen = true">Merge</button>
-          <button class="btn btn-sm btn-outline-primary" @click="rename">Rename</button>
-          <button v-if="!detail.data.value.marker && !detail.data.value.missing" class="btn btn-sm btn-outline-primary" @click="mark">Mark</button>
-          <button v-if="detail.data.value.missing" class="btn btn-sm btn-outline-danger" @click="forget">Forget</button>
-          <button v-else class="btn btn-sm btn-outline-danger" data-test="delete-manga" @click="deleteManga">Delete</button>
+          <button v-if="st.allows('POST /v1/library/move')" class="btn btn-sm btn-outline-primary" @click="moveOpen = true">Move</button>
+          <button v-if="st.allows('POST /v1/library/mangas/{id}/retitle')" class="btn btn-sm btn-outline-primary" data-test="retitle" title="Give the chapters another provider's titles" @click="retitleOpen = true">Retitle</button>
+          <button v-if="st.allows('POST /v1/library/mangas/{id}/hold')" class="btn btn-sm btn-outline-secondary" data-test="hold" @click="holdOpen = true">Hold…</button>
+          <button v-if="st.allows('POST /v1/library/merge')" class="btn btn-sm btn-outline-primary" data-test="merge" @click="mergeOpen = true">Merge</button>
+          <button v-if="st.allows('POST /v1/library/rename')" class="btn btn-sm btn-outline-primary" @click="rename">Rename</button>
+          <button v-if="!detail.data.value.marker && !detail.data.value.missing && st.allows('POST /v1/library/mark')" class="btn btn-sm btn-outline-primary" @click="mark">Mark</button>
+          <button v-if="detail.data.value.missing && st.allows('POST /v1/library/forget')" class="btn btn-sm btn-outline-danger" @click="forget">Forget</button>
+          <button v-else-if="!detail.data.value.missing && st.allows('POST /v1/library/delete')" class="btn btn-sm btn-outline-danger" data-test="delete-manga" @click="deleteManga">Delete</button>
         </div>
       </div>
     </div>
@@ -248,7 +250,7 @@ function watchSource(provider: string, mangaID: string) {
               <td class="text-end text-nowrap">
                 <button class="btn btn-sm btn-link py-0" title="Read" data-test="read-chapter" @click="read(c)"><i class="bi bi-book" /></button>
                 <a class="btn btn-sm btn-link py-0" title="Download the file" :href="chapterFileURL(manga.id, c.download.path)"><i class="bi bi-file-earmark-arrow-down" /></a>
-                <button class="btn btn-sm btn-link text-danger py-0" title="Delete" @click="deleteChapter(c)"><i class="bi bi-trash" /></button>
+                <button v-if="st.allows('POST /v1/library/delete')" class="btn btn-sm btn-link text-danger py-0" title="Delete" @click="deleteChapter(c)"><i class="bi bi-trash" /></button>
               </td>
             </tr>
           </tbody>
@@ -272,7 +274,7 @@ function watchSource(provider: string, mangaID: string) {
                 <span v-if="looking === sourceKey(s) && s.url && !s.gone" class="spinner-border spinner-border-sm" role="status" />
                 <i v-else class="bi bi-arrow-repeat" />
               </button>
-              <button v-if="s.current && !detail.data.value.watches.some((w) => w.provider === s.provider && w.manga_id === s.manga_id)" class="btn btn-sm btn-outline-secondary" @click="watchSource(s.provider, s.manga_id)">Watch</button>
+              <button v-if="s.current && st.allows('POST /v1/watches') && !detail.data.value.watches.some((w) => w.provider === s.provider && w.manga_id === s.manga_id)" class="btn btn-sm btn-outline-secondary" @click="watchSource(s.provider, s.manga_id)">Watch</button>
             </div>
             <div>{{ s.title }}</div>
             <div class="small text-secondary">{{ s.manga_id }}<span v-if="s.moved"> · moved {{ date(s.moved) }}</span></div>

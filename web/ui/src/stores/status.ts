@@ -3,8 +3,11 @@ import { computed, ref } from 'vue'
 import client, { ok } from '@/api/client'
 import { ApiError, errorMessage } from '@/api/errors'
 import type { Me, Status } from '@/api/schemas'
+import opScopes from '@/api/scopes.json'
 
 export type Scope = 'read' | 'watch' | 'progress' | 'write'
+// an API v1 operation, "METHOD /v1/path" as the spec has it (api/scopes.json)
+export type Operation = keyof typeof opScopes
 
 // the status of the server and who this browser is logged in as; asks to log in (the
 // login dialog) when an action needs a login or a permission the user hasn't.
@@ -25,8 +28,28 @@ export const useStatus = defineStore('status', () => {
   const online = computed(() => !!status.value && !error.value)
   const loggedIn = computed(() => !!me.value)
 
+  // serve.auth none and the server's own mangal may do everything
+  const everything = computed(() => me.value?.kind === 'none' || me.value?.kind === 'local')
+  const admin = computed(() => everything.value || !!me.value?.admin)
+  // serve.hide_unavailable off: every action shows, the server refuses what isn't allowed
+  const hiding = computed(() => me.value?.hide_unavailable ?? true)
+
+  // can is whether to show what needs the scope.
   function can(scope: Scope): boolean {
-    return scopes.value.includes(scope)
+    return !hiding.value || everything.value || scopes.value.includes(scope)
+  }
+
+  // canAdmin is whether to show what needs every permission (users, tokens, job settings).
+  function canAdmin(): boolean {
+    return !hiding.value || admin.value
+  }
+
+  // allows is whether to show what calls the operation (its x-mangal-scope, or admin).
+  function allows(op: Operation): boolean {
+    const s: string = opScopes[op]
+    if (s === 'public') return true
+    if (s === 'admin') return canAdmin()
+    return can(s as Scope)
   }
 
   async function refresh() {
@@ -117,7 +140,10 @@ export const useStatus = defineStore('status', () => {
     loginReason,
     scopes,
     online,
+    admin,
     can,
+    canAdmin,
+    allows,
     refresh,
     loadMe,
     login,

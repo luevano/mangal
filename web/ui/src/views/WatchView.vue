@@ -11,6 +11,7 @@ import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
 import { ago, date, num } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
+import { useStatus } from '@/stores/status'
 import { useWatches } from '@/stores/watches'
 
 const route = useRoute()
@@ -18,6 +19,7 @@ const router = useRouter()
 const id = computed(() => Number(route.params.id))
 const watches = useWatches()
 const action = useAction()
+const st = useStatus()
 
 const w = useLoad(() => ok(client.GET('/v1/watches/{id}', { params: { path: { id: id.value } } })), [id, () => watches.runsVersion])
 const runs = useLoad(() => ok(client.GET('/v1/runs', { params: { query: { watch: id.value, limit: 30 } } })), [id, () => watches.runsVersion])
@@ -91,16 +93,18 @@ function remove() {
   <template v-if="w.data.value">
     <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
       <h4 class="me-auto mb-0">{{ w.data.value.title }}</h4>
-      <button class="btn btn-sm btn-primary" @click="check()">Check now</button>
-      <button class="btn btn-sm btn-outline-primary" title="Also the missing chapters below the last one" @click="check(true)">Fill gaps</button>
-      <template v-if="!w.data.value.hold">
+      <template v-if="st.allows('POST /v1/check')">
+        <button class="btn btn-sm btn-primary" @click="check()">Check now</button>
+        <button class="btn btn-sm btn-outline-primary" title="Also the missing chapters below the last one" @click="check(true)">Fill gaps</button>
+      </template>
+      <template v-if="!w.data.value.hold && st.allows('PATCH /v1/watches/{id}')">
         <button v-if="w.data.value.enabled" class="btn btn-sm btn-outline-secondary" @click="setEnabled(false)">Pause</button>
         <button v-else class="btn btn-sm btn-outline-secondary" @click="setEnabled(true)">Resume</button>
       </template>
-      <button class="btn btn-sm btn-outline-secondary" data-test="hold" @click="holdOpen = true">Hold…</button>
-      <button class="btn btn-sm btn-outline-primary" @click="openEdit">Edit</button>
-      <button class="btn btn-sm btn-outline-primary" @click="openRelink">Re-link</button>
-      <button class="btn btn-sm btn-outline-danger" @click="removeOpen = true">Remove</button>
+      <button v-if="st.allows('POST /v1/watches/{id}/hold')" class="btn btn-sm btn-outline-secondary" data-test="hold" @click="holdOpen = true">Hold…</button>
+      <button v-if="st.allows('PATCH /v1/watches/{id}')" class="btn btn-sm btn-outline-primary" @click="openEdit">Edit</button>
+      <button v-if="st.allows('POST /v1/watches/{id}/relink')" class="btn btn-sm btn-outline-primary" @click="openRelink">Re-link</button>
+      <button v-if="st.allows('DELETE /v1/watches/{id}')" class="btn btn-sm btn-outline-danger" @click="removeOpen = true">Remove</button>
     </div>
     <dl class="row small">
       <dt class="col-sm-3">Provider</dt>

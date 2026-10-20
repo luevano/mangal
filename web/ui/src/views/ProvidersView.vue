@@ -8,10 +8,12 @@ import SiteIcon from '@/components/SiteIcon.vue'
 import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
 import { crumbs } from '@/stores/crumbs'
+import { useStatus } from '@/stores/status'
 
 crumbs(() => [{ title: 'Providers' }])
 const router = useRouter()
 const action = useAction()
+const st = useStatus()
 const { data, loading, error, load } = useLoad(() => ok(client.GET('/v1/providers')))
 const update = ref<ProvidersUpdate>()
 
@@ -47,7 +49,7 @@ function search(id: string) {
   <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
     <h4 class="me-auto mb-0">Providers</h4>
     <RouterLink class="btn btn-sm btn-outline-primary" :to="{ name: 'multi-search' }" data-test="multi-search"><i class="bi bi-search me-1" />Search several</RouterLink>
-    <button class="btn btn-sm btn-outline-primary" :disabled="action.busy.value" title="git pull of each installed provider (installing one is mangal providers add)" data-test="update-providers" @click="updateAll">
+    <button v-if="st.allows('POST /v1/providers/update')" class="btn btn-sm btn-outline-primary" :disabled="action.busy.value" title="git pull of each installed provider (installing one is mangal providers add)" data-test="update-providers" @click="updateAll">
       <span v-if="action.busy.value" class="spinner-border spinner-border-sm me-1" />Update providers
     </button>
   </div>
@@ -68,7 +70,7 @@ function search(id: string) {
           <div class="small text-secondary mb-2">{{ p.id }}<span v-if="p.description"> · {{ p.description }}</span></div>
           <div v-if="p.mirrors?.length" class="input-group input-group-sm mb-2" title="the preferred website, the others are tried when it's down">
             <span class="input-group-text">site</span>
-            <select class="form-select" :value="p.preferred" :data-test="`mirror-${p.id}`" @change="prefer(p, ($event.target as HTMLSelectElement).value)">
+            <select class="form-select" :value="p.preferred" :disabled="!st.allows('PUT /v1/providers/{provider}/mirror')" :data-test="`mirror-${p.id}`" @change="prefer(p, ($event.target as HTMLSelectElement).value)">
               <option v-for="site in sites(p)" :key="site" :value="site">{{ site }}{{ site === p.website ? ' (website)' : '' }}</option>
             </select>
           </div>

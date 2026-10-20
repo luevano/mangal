@@ -15,11 +15,13 @@ import { sourceNames } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
 import { useChanges } from '@/stores/changes'
 import { usePlan } from '@/stores/plan'
+import { useStatus } from '@/stores/status'
 
 crumbs(() => [{ title: 'Health' }])
 const changes = useChanges()
 const plan = usePlan()
 const action = useAction()
+const st = useStatus()
 const all = ref(false)
 const category = ref('')
 const network = ref<HealthReport>()
@@ -163,7 +165,7 @@ function runNetwork() {
       </li>
     </ul>
     <p v-if="!findings.length" class="text-success">Nothing to fix.</p>
-    <HealthFindingCard v-for="f in pager.items.value" :key="f.key" :finding="f" @fix="fix" @dismiss="dismiss" />
+    <HealthFindingCard v-for="f in pager.items.value" :key="f.key" :finding="f" :readonly="!st.allows('POST /v1/health/fix')" @fix="fix" @dismiss="dismiss" />
     <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
   </template>
 

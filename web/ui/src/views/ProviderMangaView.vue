@@ -19,6 +19,7 @@ import { crumbs } from '@/stores/crumbs'
 import { useChanges } from '@/stores/changes'
 import { useJobs } from '@/stores/jobs'
 import { usePlan } from '@/stores/plan'
+import { useStatus } from '@/stores/status'
 import { useToasts } from '@/stores/toasts'
 
 const route = useRoute()
@@ -29,6 +30,7 @@ const changes = useChanges()
 const jobs = useJobs()
 const plan = usePlan()
 const action = useAction()
+const st = useStatus()
 
 // gone: the provider doesn't have the manga (any more), said as such; another error of the
 // provider is said with its reason
@@ -177,14 +179,14 @@ function unbind(b: Binding) {
         <div class="d-flex flex-wrap gap-2 mb-2">
           <RouterLink v-if="pm.data.value.library" class="btn btn-sm btn-outline-secondary" :to="{ name: 'library-manga', params: { id: pm.data.value.library } }">In the library</RouterLink>
           <RouterLink v-if="pm.data.value.watch" class="btn btn-sm btn-outline-secondary" :to="{ name: 'watch', params: { id: pm.data.value.watch } }">Watched</RouterLink>
-          <button v-else class="btn btn-sm btn-outline-primary" @click="watchIt">Watch</button>
-          <button class="btn btn-sm btn-outline-primary" data-test="bind" @click="openBind()">Bind</button>
+          <button v-else-if="st.allows('POST /v1/watches')" class="btn btn-sm btn-outline-primary" @click="watchIt">Watch</button>
+          <button v-if="st.allows('PUT /v1/bindings')" class="btn btn-sm btn-outline-primary" data-test="bind" @click="openBind()">Bind</button>
         </div>
         <div class="d-flex flex-wrap gap-1">
           <span v-for="b in pm.data.value.bindings" :key="b.source" class="badge text-bg-secondary">
             <SiteIcon :source="b.source" /> {{ sourceNames[b.source] ?? b.source }} {{ b.id }}{{ b.default ? ' (default)' : '' }}
-            <a href="#" class="text-reset ms-1" title="Replace" @click.prevent="openBind(b.source)"><i class="bi bi-arrow-repeat" /></a>
-            <a href="#" class="text-reset ms-1" title="Unbind" @click.prevent="unbind(b)"><i class="bi bi-x" /></a>
+            <a v-if="st.allows('PUT /v1/bindings')" href="#" class="text-reset ms-1" title="Replace" @click.prevent="openBind(b.source)"><i class="bi bi-arrow-repeat" /></a>
+            <a v-if="st.allows('DELETE /v1/bindings')" href="#" class="text-reset ms-1" title="Unbind" @click.prevent="unbind(b)"><i class="bi bi-x" /></a>
           </span>
         </div>
       </div>
@@ -192,17 +194,19 @@ function unbind(b: Binding) {
 
     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
       <h6 class="me-auto mb-0">Chapters <small v-if="chapters.data.value" class="text-secondary">{{ chapters.data.value.length }}</small></h6>
-      <button v-if="hasUnavailable" class="btn btn-sm btn-outline-primary" data-test="fill" @click="fillOpen = true">Get unavailable chapters from another provider</button>
-      <button class="btn btn-sm btn-outline-secondary" @click="selectMissing">Select the missing</button>
-      <button class="btn btn-sm btn-outline-secondary" :disabled="!selected.size" @click="selected = new Set()">Unselect</button>
-      <button class="btn btn-sm btn-primary" :disabled="!selected.size || action.busy.value" data-test="download-selected" @click="download(selectorRanges())">Download {{ selected.size || '' }}</button>
+      <button v-if="hasUnavailable && st.allows('POST /v1/providers/{provider}/fill')" class="btn btn-sm btn-outline-primary" data-test="fill" @click="fillOpen = true">Get unavailable chapters from another provider</button>
+      <template v-if="st.allows('POST /v1/downloads')">
+        <button class="btn btn-sm btn-outline-secondary" @click="selectMissing">Select the missing</button>
+        <button class="btn btn-sm btn-outline-secondary" :disabled="!selected.size" @click="selected = new Set()">Unselect</button>
+        <button class="btn btn-sm btn-primary" :disabled="!selected.size || action.busy.value" data-test="download-selected" @click="download(selectorRanges())">Download {{ selected.size || '' }}</button>
+      </template>
     </div>
     <LoadState :loading="chapters.loading.value && !chapters.data.value" :error="chapters.error.value" :empty="chapters.data.value && !chapters.data.value.length" empty-text="No chapters." />
     <table v-if="chapters.data.value?.length" class="table table-sm table-hover" data-test="provider-chapters">
       <thead><tr><th style="width: 2rem"></th><th>#</th><th>Title</th><th>Vol</th><th></th><th></th></tr></thead>
       <tbody>
         <tr v-for="c in pager.items.value" :key="key(c)" :class="{ 'table-active': selected.has(key(c)), 'text-secondary': c.unavailable }">
-          <td><input class="form-check-input" type="checkbox" :checked="selected.has(key(c))" :disabled="!!c.unavailable" @change="toggle(c)" /></td>
+          <td><input v-if="st.allows('POST /v1/downloads')" class="form-check-input" type="checkbox" :checked="selected.has(key(c))" :disabled="!!c.unavailable" @change="toggle(c)" /></td>
           <td>{{ num(c.number) }}</td>
           <td v-if="c.unavailable" data-test="unavailable" :title="`Chapter unavailable: ${c.unavailable}`">{{ c.title }} [{{ c.unavailable }}]</td>
           <td v-else><a href="#" class="text-decoration-none" @click.prevent="read(c)">{{ c.title }}</a></td>
@@ -213,7 +217,7 @@ function unbind(b: Binding) {
           </td>
           <td class="text-end text-nowrap">
             <button v-if="!c.unavailable" class="btn btn-sm btn-link py-0" :title="c.downloaded ? 'Read (downloaded)' : 'Read online'" data-test="read-online" @click="read(c)"><i class="bi bi-book" /></button>
-            <button v-if="!c.downloaded && !c.unavailable" class="btn btn-sm btn-link py-0" title="Download" @click="download([num(c.number)])"><i class="bi bi-download" /></button>
+            <button v-if="!c.downloaded && !c.unavailable && st.allows('POST /v1/downloads')" class="btn btn-sm btn-link py-0" title="Download" @click="download([num(c.number)])"><i class="bi bi-download" /></button>
           </td>
         </tr>
       </tbody>

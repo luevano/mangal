@@ -12,12 +12,14 @@ import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
 import { ago, num } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
+import { useStatus } from '@/stores/status'
 import { useWatches } from '@/stores/watches'
 
 crumbs(() => [{ title: 'Watches' }])
 const router = useRouter()
 const watches = useWatches()
 const action = useAction()
+const st = useStatus()
 const filter = ref('')
 const view = ref<'all' | 'paused' | 'relink' | 'errors'>('all')
 
@@ -72,8 +74,8 @@ function submitAdd() {
   <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
     <h4 class="me-auto mb-0">Watches <small class="text-secondary fs-6">{{ watches.list.length }}</small></h4>
     <RouterLink class="btn btn-sm btn-outline-secondary" :to="{ name: 'runs' }">Check runs</RouterLink>
-    <button class="btn btn-sm btn-outline-primary" @click="addOpen = true">Add</button>
-    <button class="btn btn-sm btn-primary" :disabled="action.busy.value" @click="check([])">Check all</button>
+    <button v-if="st.allows('POST /v1/watches')" class="btn btn-sm btn-outline-primary" @click="addOpen = true">Add</button>
+    <button v-if="st.allows('POST /v1/check')" class="btn btn-sm btn-primary" :disabled="action.busy.value" @click="check([])">Check all</button>
   </div>
   <div class="d-flex flex-wrap gap-2 mb-2">
     <input v-model="filter" class="form-control form-control-sm" style="max-width: 20rem" placeholder="filter" />
@@ -100,11 +102,13 @@ function submitAdd() {
         <td class="d-none d-lg-table-cell small">{{ ago(w.last_checked) }}</td>
         <td class="d-none d-lg-table-cell small">{{ ago(w.next_check) }}</td>
         <td class="text-end text-nowrap">
-          <button class="btn btn-sm btn-link py-0" title="Check now" @click="check([w.id])"><i class="bi bi-arrow-repeat" /></button>
-          <button v-if="w.enabled" class="btn btn-sm btn-link py-0" title="Pause" @click="setEnabled(w, false)"><i class="bi bi-pause" /></button>
-          <button v-else class="btn btn-sm btn-link py-0" title="Resume" @click="setEnabled(w, true)"><i class="bi bi-play" /></button>
+          <button v-if="st.allows('POST /v1/check')" class="btn btn-sm btn-link py-0" title="Check now" @click="check([w.id])"><i class="bi bi-arrow-repeat" /></button>
+          <template v-if="st.allows('PATCH /v1/watches/{id}')">
+            <button v-if="w.enabled" class="btn btn-sm btn-link py-0" title="Pause" @click="setEnabled(w, false)"><i class="bi bi-pause" /></button>
+            <button v-else class="btn btn-sm btn-link py-0" title="Resume" @click="setEnabled(w, true)"><i class="bi bi-play" /></button>
+          </template>
           <button v-if="w.library_manga" class="btn btn-sm btn-link py-0" title="Library manga" @click="router.push({ name: 'library-manga', params: { id: w.library_manga } })"><i class="bi bi-collection" /></button>
-          <button class="btn btn-sm btn-link text-danger py-0" title="Remove" @click="removing = w"><i class="bi bi-trash" /></button>
+          <button v-if="st.allows('DELETE /v1/watches/{id}')" class="btn btn-sm btn-link text-danger py-0" title="Remove" @click="removing = w"><i class="bi bi-trash" /></button>
         </td>
       </tr>
     </tbody>

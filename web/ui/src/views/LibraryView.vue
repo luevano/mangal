@@ -13,6 +13,7 @@ import { crumbs } from '@/stores/crumbs'
 import { useChanges } from '@/stores/changes'
 import { useJobs } from '@/stores/jobs'
 import { usePlan } from '@/stores/plan'
+import { useStatus } from '@/stores/status'
 
 crumbs(() => [{ title: 'Library' }])
 
@@ -22,6 +23,7 @@ const changes = useChanges()
 const jobs = useJobs()
 const plan = usePlan()
 const action = useAction()
+const st = useStatus()
 
 const pageSize = 100
 const q = ref(String(route.query.q ?? ''))
@@ -74,12 +76,12 @@ function planAll(title: string, path: string, body: object = {}) {
     <RouterLink class="btn btn-sm btn-outline-secondary" :to="{ name: 'duplicates' }">Duplicates</RouterLink>
     <RouterLink class="btn btn-sm btn-outline-secondary" :to="{ name: 'trash' }">Trash</RouterLink>
     <RouterLink class="btn btn-sm btn-outline-secondary" :to="{ name: 'ops' }">Operations</RouterLink>
-    <div class="btn-group btn-group-sm">
-      <button class="btn btn-outline-primary" :disabled="action.busy.value" data-test="scan" @click="scan">Scan</button>
-      <button class="btn btn-outline-primary" @click="planAll('Rename folders and chapters', '/library/rename', { chapters: true })">Rename</button>
-      <button class="btn btn-outline-primary" @click="planAll('Mark the folders without a marker', '/library/mark')">Mark</button>
-      <button class="btn btn-outline-primary" @click="planAll('Fill the backup links', '/library/backups')">Backups</button>
-      <button class="btn btn-outline-primary" @click="planAll('Migrate old provider ids', '/library/migrate')">Migrate</button>
+    <div v-if="st.can('write')" class="btn-group btn-group-sm">
+      <button v-if="st.allows('POST /v1/library/scan')" class="btn btn-outline-primary" :disabled="action.busy.value" data-test="scan" @click="scan">Scan</button>
+      <button v-if="st.allows('POST /v1/library/rename')" class="btn btn-outline-primary" @click="planAll('Rename folders and chapters', '/library/rename', { chapters: true })">Rename</button>
+      <button v-if="st.allows('POST /v1/library/mark')" class="btn btn-outline-primary" @click="planAll('Mark the folders without a marker', '/library/mark')">Mark</button>
+      <button v-if="st.allows('POST /v1/library/backups')" class="btn btn-outline-primary" @click="planAll('Fill the backup links', '/library/backups')">Backups</button>
+      <button v-if="st.allows('POST /v1/library/migrate')" class="btn btn-outline-primary" @click="planAll('Migrate old provider ids', '/library/migrate')">Migrate</button>
     </div>
   </div>
 

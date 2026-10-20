@@ -10,11 +10,13 @@ import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
 import { date, num } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
+import { useStatus } from '@/stores/status'
 import { useJobs, activeStatuses, finishedStatuses } from '@/stores/jobs'
 
 crumbs(() => [{ title: 'Jobs', to: { name: 'jobs' } }, { title: 'Downloads' }])
 const jobs = useJobs()
 const action = useAction()
+const st = useStatus()
 onMounted(() => jobs.load())
 
 const sorted = computed(() => [...jobs.list].sort((a, b) => b.id - a.id))
@@ -41,7 +43,7 @@ function clearQueue() {
   <div class="d-flex align-items-center mb-2">
     <h4 class="me-auto mb-0">Downloads <small class="text-secondary fs-6">{{ jobs.running }} running · {{ jobs.queued }} queued</small></h4>
     <RouterLink class="btn btn-sm btn-outline-secondary me-2" :to="{ name: 'jobs' }" data-test="to-jobs"><i class="bi bi-list-task me-1" />Jobs</RouterLink>
-    <button class="btn btn-sm btn-outline-danger" :disabled="!jobs.queued" @click="clearQueue">Clear the queue</button>
+    <button v-if="st.allows('POST /v1/jobs/clear')" class="btn btn-sm btn-outline-danger" :disabled="!jobs.queued" @click="clearQueue">Clear the queue</button>
   </div>
   <LoadState :loading="!jobs.loaded" :error="jobs.error" :empty="jobs.loaded && !jobs.list.length" empty-text="No jobs (downloads and scans asked here or through the API show here)." />
   <div v-for="j in pager.items.value" :key="j.id" class="card mb-2" data-test="job">
@@ -51,9 +53,9 @@ function clearQueue() {
         <span class="small text-secondary">{{ j.kind }} #{{ j.id }}</span>
         <span class="fw-semibold me-auto">{{ j.title }}</span>
         <span v-if="j.total" class="small">{{ j.done ?? 0 }}/{{ j.total }}</span>
-        <button v-if="!finishedStatuses.includes(j.status)" class="btn btn-sm btn-outline-danger py-0" @click="cancel(j)">Cancel</button>
-        <button v-if="j.status === 'failed' || j.status === 'cancelled'" class="btn btn-sm btn-outline-primary py-0" @click="retry(j)">Retry</button>
-        <button v-if="finishedStatuses.includes(j.status)" class="btn btn-sm btn-outline-secondary py-0" title="Remove from the list" @click="remove(j)"><i class="bi bi-x" /></button>
+        <button v-if="!finishedStatuses.includes(j.status) && st.allows('POST /v1/jobs/{id}/cancel')" class="btn btn-sm btn-outline-danger py-0" @click="cancel(j)">Cancel</button>
+        <button v-if="(j.status === 'failed' || j.status === 'cancelled') && st.allows('POST /v1/jobs/{id}/retry')" class="btn btn-sm btn-outline-primary py-0" @click="retry(j)">Retry</button>
+        <button v-if="finishedStatuses.includes(j.status) && st.allows('DELETE /v1/jobs/{id}')" class="btn btn-sm btn-outline-secondary py-0" title="Remove from the list" @click="remove(j)"><i class="bi bi-x" /></button>
       </div>
       <div v-if="activeStatuses.includes(j.status) && j.part" class="progress mt-2" style="height: 6px">
         <div class="progress-bar" :style="{ width: `${Math.round((j.part ?? 0) * 100)}%` }" />

@@ -18,7 +18,8 @@ const kind = computed(() => String(route.params.kind))
 const jobs = useJobs()
 const st = useStatus()
 const action = useAction()
-const admin = computed(() => st.scopes.length >= 4)
+// an admin's (every permission)
+const admin = computed(() => st.allows('PUT /v1/jobs/kinds/{kind}/settings'))
 
 const k = useLoad(() => ok(client.GET('/v1/jobs/kinds/{kind}', { params: { path: { kind: kind.value } } })), [kind, () => jobs.finished, () => jobs.running])
 crumbs(() => [{ title: 'Jobs', to: { name: 'jobs' } }, { title: k.data.value?.title ?? kind.value }])
@@ -52,9 +53,9 @@ const editing = ref(false)
   <template v-if="k.data.value">
     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
       <h4 class="me-auto mb-0">{{ k.data.value.title }} <span class="badge fs-6" :class="stateClass[kindState(k.data.value)]">{{ kindState(k.data.value) }}</span></h4>
-      <button v-if="k.data.value.missing !== undefined" class="btn btn-sm btn-primary" :disabled="!!k.data.value.running || !k.data.value.missing" @click="run(false)">Run missing</button>
-      <button class="btn btn-sm btn-outline-primary" :disabled="!!k.data.value.running" @click="run(true)">Run all</button>
-      <button v-if="!k.data.value.manual" class="btn btn-sm btn-outline-secondary" @click="pause(k.data.value)">{{ k.data.value.paused ? 'Resume' : 'Pause' }}</button>
+      <button v-if="k.data.value.missing !== undefined && st.allows('POST /v1/jobs/kinds/{kind}/run')" class="btn btn-sm btn-primary" :disabled="!!k.data.value.running || !k.data.value.missing" @click="run(false)">Run missing</button>
+      <button v-if="st.allows('POST /v1/jobs/kinds/{kind}/run')" class="btn btn-sm btn-outline-primary" :disabled="!!k.data.value.running" @click="run(true)">Run all</button>
+      <button v-if="!k.data.value.manual && st.allows('POST /v1/jobs/kinds/{kind}/pause')" class="btn btn-sm btn-outline-secondary" @click="pause(k.data.value)">{{ k.data.value.paused ? 'Resume' : 'Pause' }}</button>
       <button v-if="admin" class="btn btn-sm btn-outline-secondary" @click="editing = true"><i class="bi bi-gear me-1" />Settings</button>
     </div>
     <p class="text-secondary">{{ k.data.value.about }}</p>

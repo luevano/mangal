@@ -21,7 +21,7 @@ const links = [
   { name: 'config', title: 'Config', icon: 'bi-gear' }
 ]
 // the users page is an admin's (every permission)
-const shown = computed(() => (st.scopes.length >= 4 ? [...links, { name: 'users', title: 'Users', icon: 'bi-people' }] : links))
+const shown = computed(() => (st.allows('GET /v1/users') ? [...links, { name: 'users', title: 'Users', icon: 'bi-people' }] : links))
 </script>
 
 <template>

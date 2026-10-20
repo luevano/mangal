@@ -10,12 +10,14 @@ import { useAction } from '@/composables/useAction'
 import { useLoad } from '@/composables/useLoad'
 import { date, num } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
+import { useStatus } from '@/stores/status'
 import { useWatches } from '@/stores/watches'
 
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 const watches = useWatches()
 const action = useAction()
+const st = useStatus()
 const run = useLoad(() => ok(client.GET('/v1/runs/{id}', { params: { path: { id: id.value } } })), [id, () => watches.runsVersion])
 crumbs(() => [{ title: 'Watches', to: { name: 'watches' } }, { title: 'Check runs', to: { name: 'runs' } }, { title: `#${id.value}` }])
 const live = computed(() => watches.live.filter((e) => e.run === id.value))
@@ -31,7 +33,7 @@ function cancel() {
   <template v-if="run.data.value">
     <div class="d-flex align-items-center mb-2">
       <h4 class="me-auto mb-0">Check run #{{ run.data.value.id }} <small class="text-secondary fs-6">{{ run.data.value.kind }}</small></h4>
-      <button v-if="!run.data.value.finished" class="btn btn-sm btn-outline-danger" @click="cancel">Cancel</button>
+      <button v-if="!run.data.value.finished && st.allows('POST /v1/runs/{id}/cancel')" class="btn btn-sm btn-outline-danger" @click="cancel">Cancel</button>
     </div>
     <p class="small text-secondary">
       {{ date(run.data.value.started) }} → {{ date(run.data.value.finished) || 'running' }} · {{ run.data.value.watches }} watches · {{ run.data.value.new_chapters }} new · {{ run.data.value.errors }} errors

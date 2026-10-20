@@ -7,6 +7,7 @@ import { chapterFileURL, libraryPageURL, providerPageURL } from '@/api/urls'
 import type { ChapterPages } from '@/api/schemas'
 import type { components } from '@/api/mangal'
 import { num } from '@/composables/format'
+import { useStatus } from '@/stores/status'
 import { useToasts } from '@/stores/toasts'
 import {
   clampPage,
@@ -49,6 +50,8 @@ interface ChapterRef {
 const route = useRoute()
 const router = useRouter()
 const toasts = useToasts()
+// no progress permission: nothing recorded, as in incognito
+const progress = computed(() => useStatus().allows('POST /v1/reads'))
 
 const library = computed(() => route.name === 'read-library')
 const mangaKey = computed(() => (library.value ? `lib:${route.params.id}` : `${route.params.provider}:${route.params.manga}`))
@@ -210,7 +213,7 @@ watch(() => route.fullPath, load)
 onMounted(load)
 
 async function record() {
-  if (recorded.value || incognito.value || !chapter.value) return
+  if (recorded.value || incognito.value || !progress.value || !chapter.value) return
   recorded.value = true
   try {
     const res = await ok(client.POST('/v1/reads', { body: chapter.value.read }))
@@ -250,7 +253,7 @@ function pushPosition() {
 watch(index, (i) => {
   const at = Date.now()
   savePosition(chapterKey.value, i, at)
-  if (!incognito.value) {
+  if (!incognito.value && progress.value) {
     if (pending && pending.chapter !== chapterKey.value) pushPosition()
     pending = { chapter: chapterKey.value, page: i, at }
     clearTimeout(pushTimer)
@@ -541,7 +544,7 @@ watch([title, chapter], () => {
         <option value="gray">gray</option>
         <option value="white">white</option>
       </select>
-      <div class="form-check form-switch mb-0 small text-light" title="Incognito: no read history, no sync">
+      <div v-if="progress" class="form-check form-switch mb-0 small text-light" title="Incognito: no read history, no sync">
         <input id="incog" v-model="incognito" class="form-check-input" type="checkbox" data-test="incognito" />
         <label class="form-check-label" for="incog"><i class="bi bi-incognito" /></label>
       </div>

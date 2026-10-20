@@ -17,8 +17,6 @@ crumbs(() => [{ title: 'Jobs' }])
 const jobs = useJobs()
 const st = useStatus()
 const action = useAction()
-// an admin changes the settings (every permission)
-const admin = computed(() => st.scopes.length >= 4)
 
 const kinds = useLoad(() => ok(client.GET('/v1/jobs/kinds')), [() => jobs.finished, () => jobs.running, () => jobs.queued])
 const downloads = computed(() => {
@@ -96,14 +94,14 @@ const editing = ref<JobKind>()
           </dl>
         </div>
         <div class="card-footer d-flex flex-wrap gap-2">
-          <button v-if="k.missing !== undefined" class="btn btn-sm btn-primary" :disabled="!!k.running || !k.missing" data-test="run-missing" @click="run(k, false)">
+          <button v-if="k.missing !== undefined && st.allows('POST /v1/jobs/kinds/{kind}/run')" class="btn btn-sm btn-primary" :disabled="!!k.running || !k.missing" data-test="run-missing" @click="run(k, false)">
             <i class="bi bi-play me-1" />Run missing
           </button>
-          <button class="btn btn-sm btn-outline-primary" :disabled="!!k.running" data-test="run-all" @click="run(k, true)"><i class="bi bi-play-fill me-1" />Run all</button>
-          <button v-if="!k.manual" class="btn btn-sm btn-outline-secondary" data-test="pause" @click="pause(k)">
+          <button v-if="st.allows('POST /v1/jobs/kinds/{kind}/run')" class="btn btn-sm btn-outline-primary" :disabled="!!k.running" data-test="run-all" @click="run(k, true)"><i class="bi bi-play-fill me-1" />Run all</button>
+          <button v-if="!k.manual && st.allows('POST /v1/jobs/kinds/{kind}/pause')" class="btn btn-sm btn-outline-secondary" data-test="pause" @click="pause(k)">
             <i class="bi me-1" :class="k.paused ? 'bi-play-circle' : 'bi-pause-circle'" />{{ k.paused ? 'Resume' : 'Pause' }}
           </button>
-          <button v-if="admin" class="btn btn-sm btn-outline-secondary" data-test="settings" @click="editing = k"><i class="bi bi-gear me-1" />Settings</button>
+          <button v-if="st.allows('PUT /v1/jobs/kinds/{kind}/settings')" class="btn btn-sm btn-outline-secondary" data-test="settings" @click="editing = k"><i class="bi bi-gear me-1" />Settings</button>
           <RouterLink class="btn btn-sm btn-link ms-auto" :to="{ name: 'job-kind', params: { kind: k.kind } }">Details</RouterLink>
         </div>
       </div>

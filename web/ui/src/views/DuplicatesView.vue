@@ -9,12 +9,14 @@ import { usePager } from '@/composables/usePager'
 import { useLoad } from '@/composables/useLoad'
 import { sourceNames } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
+import { useStatus } from '@/stores/status'
 import { useChanges } from '@/stores/changes'
 import { usePlan } from '@/stores/plan'
 
 crumbs(() => [{ title: 'Library', to: { name: 'library' } }, { title: 'Duplicates' }])
 const changes = useChanges()
 const plan = usePlan()
+const st = useStatus()
 const { data, loading, error } = useLoad(() => ok(client.GET('/v1/library/duplicates')), [() => changes.version])
 const pager = usePager(data, 50)
 
@@ -38,8 +40,8 @@ function merge(d: Duplicate, keep: number, other: number) {
           <RouterLink :to="{ name: 'library-manga', params: { id: m.id } }">{{ m.title }}</RouterLink>
           <div class="small text-secondary">#{{ m.id }} · {{ m.chapters }} chapters · {{ m.sources.map((s) => s.provider).join(', ') }}</div>
         </div>
-        <button v-if="i > 0" class="btn btn-sm btn-outline-primary" data-test="merge-into-first" @click="merge(d, d.mangas[0]!.id, m.id)">Merge into the first</button>
-        <button v-if="i > 0" class="btn btn-sm btn-outline-secondary" @click="merge(d, m.id, d.mangas[0]!.id)">Keep this one</button>
+        <button v-if="i > 0 && st.allows('POST /v1/library/merge')" class="btn btn-sm btn-outline-primary" data-test="merge-into-first" @click="merge(d, d.mangas[0]!.id, m.id)">Merge into the first</button>
+        <button v-if="i > 0 && st.allows('POST /v1/library/merge')" class="btn btn-sm btn-outline-secondary" @click="merge(d, m.id, d.mangas[0]!.id)">Keep this one</button>
       </li>
     </ul>
   </div>

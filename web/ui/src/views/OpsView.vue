@@ -9,6 +9,7 @@ import { usePager } from '@/composables/usePager'
 import { useLoad } from '@/composables/useLoad'
 import { date } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
+import { useStatus } from '@/stores/status'
 import { useChanges } from '@/stores/changes'
 import { usePlan } from '@/stores/plan'
 
@@ -16,6 +17,7 @@ crumbs(() => [{ title: 'Library', to: { name: 'library' } }, { title: 'Operation
 const route = useRoute()
 const changes = useChanges()
 const plan = usePlan()
+const st = useStatus()
 const { data, loading, error } = useLoad(() => ok(client.GET('/v1/ops', { params: { query: { limit: 0 } } })), [() => changes.version])
 const pager = usePager(data, 100)
 
@@ -42,7 +44,7 @@ function undo(o: Op) {
         <td class="d-none d-md-table-cell small">{{ date(o.started) }}</td>
         <td class="text-end">
           <span v-if="o.undone" class="small text-secondary">undone {{ date(o.undone) }}</span>
-          <button v-else class="btn btn-sm btn-outline-warning py-0" data-test="undo" @click="undo(o)">Undo</button>
+          <button v-else-if="st.allows('POST /v1/ops/{id}/undo')" class="btn btn-sm btn-outline-warning py-0" data-test="undo" @click="undo(o)">Undo</button>
         </td>
       </tr>
     </tbody>

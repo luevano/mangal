@@ -7,8 +7,9 @@ import { usePager } from '@/composables/usePager'
 import { applyLabel, choiceList, choiceLabel } from '@/composables/health'
 
 // HealthFindingCard is a finding with its fix (the TUI's x and its choices) and, for a
-// summary, its items, paged (the TUI's enter on a summary).
-const props = defineProps<{ finding: HealthFinding; nested?: boolean }>()
+// summary, its items, paged (the TUI's enter on a summary). readonly: without the fix and
+// dismiss buttons (no permission for them).
+const props = defineProps<{ finding: HealthFinding; nested?: boolean; readonly?: boolean }>()
 const emit = defineEmits<{ fix: [f: HealthFinding, choice?: string]; dismiss: [f: HealthFinding, undo: boolean] }>()
 
 const sevClass: Record<string, string> = { error: 'text-bg-danger', warning: 'text-bg-warning', info: 'text-bg-info' }
@@ -32,15 +33,17 @@ const pager = usePager(items, 50)
         <RouterLink v-else-if="f.check === 'L6'" :to="{ name: 'trash' }" class="fw-semibold">{{ f.subject.name }}</RouterLink>
         <span v-else class="fw-semibold">{{ f.subject.name }}</span>
         <span class="me-auto">{{ f.message }}</span>
-        <template v-if="f.fix.action">
+        <template v-if="f.fix.action && !readonly">
           <select v-if="choices.length > 1" v-model="choice" class="form-select form-select-sm w-auto" data-test="fix-choice" :title="f.fix.action.kind === 'merge' ? 'the manga to keep' : 'the id to link'">
             <option v-for="c in choices" :key="c" :value="c">{{ choiceLabel(f, c) }}</option>
           </select>
           <button class="btn btn-sm btn-outline-primary py-0" data-test="fix" :title="label" @click="emit('fix', f, choices.length > 1 ? choice : undefined)">{{ label }}</button>
         </template>
         <button v-if="f.items?.length" class="btn btn-sm btn-outline-secondary py-0" data-test="items" @click="open = !open">{{ open ? 'hide' : 'list' }} them ({{ f.items.length }})</button>
-        <button v-if="!f.dismissed" class="btn btn-sm btn-outline-secondary py-0" title="Fine as it is" @click="emit('dismiss', f, false)">Dismiss</button>
-        <button v-else class="btn btn-sm btn-outline-secondary py-0" @click="emit('dismiss', f, true)">Bring back</button>
+        <template v-if="!readonly">
+          <button v-if="!f.dismissed" class="btn btn-sm btn-outline-secondary py-0" title="Fine as it is" @click="emit('dismiss', f, false)">Dismiss</button>
+          <button v-else class="btn btn-sm btn-outline-secondary py-0" @click="emit('dismiss', f, true)">Bring back</button>
+        </template>
       </div>
       <ul v-if="f.details?.length" class="small mb-1 mt-1">
         <li v-for="(d, i) in f.details" :key="i">{{ d }}</li>
@@ -50,7 +53,7 @@ const pager = usePager(items, 50)
         <code v-for="c in f.fix.commands" :key="c" class="me-3 d-inline-block">{{ c }}</code>
       </div>
       <div v-if="items?.length" class="ms-3 mt-2">
-        <HealthFindingCard v-for="it in pager.items.value" :key="it.key" :finding="it" nested @fix="(x, c) => emit('fix', x, c)" @dismiss="(x, u) => emit('dismiss', x, u)" />
+        <HealthFindingCard v-for="it in pager.items.value" :key="it.key" :finding="it" nested :readonly="readonly" @fix="(x, c) => emit('fix', x, c)" @dismiss="(x, u) => emit('dismiss', x, u)" />
         <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
       </div>
     </div>
