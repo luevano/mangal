@@ -143,7 +143,16 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 		res.Removed++
 	}
 
-	provider, mangaID := s.sourceOf(m, folder, root, providerDirs)
+	src := s.sourceOf(m, folder, root, providerDirs)
+	provider, mangaID := src.Provider, src.MangaID
+	// the .libmangal.json knows the url of a source recorded without one
+	if src.URL != "" && slices.ContainsFunc(m.Sources, func(s storage.Source) bool {
+		return s.Provider == provider && s.MangaID == mangaID && s.URL == ""
+	}) {
+		if err := s.Library.SetSourceURL(provider, mangaID, src.URL); err != nil {
+			return res, err
+		}
+	}
 	if slices.ContainsFunc(files, func(f chapterFile) bool { return !known[f.path] && f.hasNumber }) {
 		report(onProgress, Progress{Phase: "adding the new chapters", Item: m.Title})
 	}
@@ -167,7 +176,7 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 		if o := f.origin; o.TitleProvider != "" {
 			dl.TitleProvider, dl.TitleMangaID, dl.TitleChanged = o.TitleProvider, o.TitleMangaID, f.modTime
 		}
-		err := s.Library.RecordFill(m.Parent, m.Dir, storage.Source{Provider: provider, MangaID: mangaID, Title: m.Title}, dl)
+		err := s.Library.RecordFill(m.Parent, m.Dir, storage.Source{Provider: provider, MangaID: mangaID, Title: m.Title, URL: src.URL}, dl)
 		if err != nil {
 			return res, err
 		}

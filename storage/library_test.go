@@ -584,3 +584,76 @@ VALUES ('/lib/Berserk/1.cbz', 1, 'p', 'berserk', 'Berserk', 0, 1, 'One', '', 'CB
 		t.Errorf("downloads %+v %v", downloads, err)
 	}
 }
+
+func TestSourceURL(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FilenameData)
+	old, err := Open(path, dataMigrations[:24])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(`INSERT INTO library_mangas (id, title, parent, dir) VALUES (1, 'Berserk', '/lib', 'Berserk');
+INSERT INTO library_sources (provider, manga_id, manga, title) VALUES ('p', 'b', 1, 'Berserk')`); err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+	data, err := OpenData(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	library := Library{DB: data}
+	if m, _, err := library.MangaByID(1); err != nil || len(m.Sources) != 1 || m.Sources[0].URL != "" {
+		t.Errorf("migrated %+v %v", m, err)
+	}
+
+	url := "https://mangadex.org/title/md"
+	home := Source{Provider: "mango-mangadex", MangaID: "md", Title: "Dark Gathering", URL: url}
+	dl := Download{Path: "/lib/Dark Gathering/1.cbz", Provider: home.Provider, MangaID: home.MangaID, Chapter: 1, Format: "CBZ"}
+	if err := library.RecordFill("/lib", "Dark Gathering", home, dl); err != nil {
+		t.Fatal(err)
+	}
+	// a download without the url keeps it
+	dl.Path, dl.Chapter = "/lib/Dark Gathering/2.cbz", 2
+	if err := library.RecordDownload("/lib", "Dark Gathering", dl); err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ := library.MangaBySource(home.Provider, home.MangaID)
+	if len(m.Sources) != 1 || m.Sources[0].URL != url {
+		t.Errorf("downloaded %+v", m.Sources)
+	}
+
+	moved := MangaMove{Manga: m.ID, Source: Source{Provider: "mango-mangapill", MangaID: "1/dg", Title: "Dark Gathering", URL: "https://mangapill.com/manga/1/dg"},
+		From: m.Path(), To: m.Path(), At: time.Unix(100, 0)}
+	if err := library.Move(moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := library.SetSourceGone(home.Provider, home.MangaID, time.Unix(200, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if m, _, _ := library.MangaByID(m.ID); m.Sources[1].Gone.Unix() != 200 || m.Sources[1].URL != url {
+		t.Errorf("gone %+v", m.Sources)
+	}
+	if err := library.SetSourceURL(home.Provider, home.MangaID, "https://mangadex.org/title/md/dark-gathering"); err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ = library.MangaByID(m.ID)
+	urls := map[string]string{}
+	for _, s := range m.Sources {
+		urls[s.Provider] = s.URL
+		if !s.Gone.IsZero() {
+			t.Errorf("found again, still gone %+v", s)
+		}
+	}
+	if len(urls) != 2 || urls["mango-mangapill"] != moved.Source.URL || urls[home.Provider] != "https://mangadex.org/title/md/dark-gathering" {
+		t.Errorf("after the move and set %+v", m.Sources)
+	}
+
+	// a remembered folder's .libmangal.json url
+	info := libmangal.MangaDirInfo{Provider: "p2", Manga: mangadata.MangaInfo{ID: "v", Title: "Vagabond", URL: "https://example.com/v"}}
+	if err := library.RememberMangaDir("/lib", "Vagabond", info); err != nil {
+		t.Fatal(err)
+	}
+	if m, _, _ := library.MangaBySource("p2", "v"); len(m.Sources) != 1 || m.Sources[0].URL != info.Manga.URL {
+		t.Errorf("remembered %+v", m.Sources)
+	}
+}

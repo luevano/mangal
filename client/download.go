@@ -332,7 +332,7 @@ func recordDownload(client *libmangal.Client, chapter mangadata.Chapter, options
 		parent, dir = filepath.Dir(folder), filepath.Base(folder)
 	}
 	manga := chapter.Volume().Manga().Info()
-	home := storage.Source{Provider: client.Info().ID, MangaID: manga.ID, Title: manga.Title}
+	home := storage.Source{Provider: client.Info().ID, MangaID: manga.ID, Title: manga.Title, URL: manga.URL}
 	return recordIn(parent, dir, home, client.Info().ID, manga, chapter, options.Format, down)
 }
 

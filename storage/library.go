@@ -56,6 +56,11 @@ func (m Manga) Path() string {
 // Source is a provider's manga downloaded into a library manga.
 type Source struct {
 	Provider, MangaID, Title string
+	// URL is the manga's web page, "" when unknown (SourceURL looks it up).
+	URL string
+	// Gone is when a lookup found its provider doesn't have it (any more), zero when
+	// none did: URL is then the last one known.
+	Gone time.Time
 	// Moved is when a move (Library.Move) made it the manga's source, zero if none did.
 	Moved time.Time
 	// Current is the source the manga's folder follows now: the one moved to or downloaded
@@ -66,6 +71,11 @@ type Source struct {
 
 // sourceMoved: when a move made a source the library manga's.
 const sourceMoved = `ALTER TABLE library_sources ADD COLUMN moved INTEGER NOT NULL DEFAULT 0`
+
+// sourceURL (migration 25): the source manga's web page, empty when unknown, and when
+// its provider was found not to have it.
+const sourceURL = `ALTER TABLE library_sources ADD COLUMN url TEXT NOT NULL DEFAULT '';
+ALTER TABLE library_sources ADD COLUMN gone INTEGER NOT NULL DEFAULT 0`
 
 // LibraryChapter is a chapter of a library manga, the same for every provider.
 type LibraryChapter struct {
@@ -128,6 +138,8 @@ func migrateLibrary(tx *sql.Tx) error {
 		return err
 	}
 	for _, d := range dirs {
+		// the url column comes with a later migration
+		d.info.Manga.URL = ""
 		if err := rememberDir(tx, d.parent, d.name, d.info); err != nil {
 			return err
 		}
@@ -212,12 +224,15 @@ func (l Library) RememberMangaDir(parent, name string, info libmangal.MangaDirIn
 }
 
 func rememberDir(tx *sql.Tx, parent, name string, info libmangal.MangaDirInfo) error {
-	manga, err := mangaFor(tx, parent, name, Source{Provider: info.Provider, MangaID: info.Manga.ID, Title: info.Manga.Title})
+	manga, err := mangaFor(tx, parent, name, Source{Provider: info.Provider, MangaID: info.Manga.ID, Title: info.Manga.Title, URL: info.Manga.URL})
 	if err != nil {
 		return fmt.Errorf("remember manga dir %q: %w", name, err)
 	}
 	return addMetadataIDs(tx, manga, info.MetadataIDs)
 }
+
+// keepURL is an upsert's url: the new one, the known one when the new one is unknown.
+const keepURL = `CASE excluded.url WHEN '' THEN url ELSE excluded.url END`
 
 // mangaFor is the library manga of the folder (created if new), the source now points to it.
 func mangaFor(tx *sql.Tx, parent, dir string, src Source) (int64, error) {
@@ -241,6 +256,10 @@ func mangaFor(tx *sql.Tx, parent, dir string, src Source) (int64, error) {
 	}
 	_, err = tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title) VALUES (?, ?, ?, ?)
 ON CONFLICT (provider, manga_id) DO UPDATE SET manga = excluded.manga, title = excluded.title`, src.Provider, src.MangaID, id, src.Title)
+	if err != nil || src.URL == "" {
+		return id, err
+	}
+	_, err = tx.Exec(`UPDATE library_sources SET url = ?, gone = 0 WHERE provider = ? AND manga_id = ?`, src.URL, src.Provider, src.MangaID)
 	return id, err
 }
 
@@ -484,11 +503,11 @@ FROM library_mangas m `+where, args...)
 	}
 	sources, err := queryAll(l.DB, func(rows *sql.Rows) (source, error) {
 		var s source
-		var moved int64
-		err := rows.Scan(&s.manga, &s.Provider, &s.MangaID, &s.Title, &moved, &s.last)
-		s.Moved = fromUnix(moved)
+		var moved, gone int64
+		err := rows.Scan(&s.manga, &s.Provider, &s.MangaID, &s.Title, &s.URL, &gone, &moved, &s.last)
+		s.Moved, s.Gone = fromUnix(moved), fromUnix(gone)
 		return s, err
-	}, `SELECT s.manga, s.provider, s.manga_id, s.title, s.moved,
+	}, `SELECT s.manga, s.provider, s.manga_id, s.title, s.url, s.gone, s.moved,
 	max(s.moved, coalesce((SELECT max(d.downloaded) FROM downloads d WHERE d.provider = s.provider AND d.manga_id = s.manga_id), 0))
 FROM library_sources s WHERE s.manga IN (SELECT value FROM json_each(?)) ORDER BY s.manga, s.provider`, string(idsJSON))
 	if err != nil {
@@ -920,8 +939,9 @@ func (l Library) Move(m MangaMove) error {
 		case err != nil && !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
-		if _, err := tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title, moved) VALUES (?, ?, ?, ?, ?)
-ON CONFLICT (provider, manga_id) DO UPDATE SET title = excluded.title, moved = excluded.moved`, m.Source.Provider, m.Source.MangaID, m.Manga, m.Source.Title, unix(m.At)); err != nil {
+		if _, err := tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title, url, moved) VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (provider, manga_id) DO UPDATE SET title = excluded.title, moved = excluded.moved, gone = 0, url = `+keepURL,
+			m.Source.Provider, m.Source.MangaID, m.Manga, m.Source.Title, m.Source.URL, unix(m.At)); err != nil {
 			return err
 		}
 		// on another provider now
@@ -975,14 +995,34 @@ func addSource(tx *sql.Tx, manga int64, src Source) (bool, error) {
 	if src.Provider == "" || src.MangaID == "" || strings.HasPrefix(src.MangaID, PlaceholderPrefix) {
 		return false, nil
 	}
-	res, err := tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title)
-SELECT ?1, ?2, ?3, ?4 WHERE NOT EXISTS (SELECT 1 FROM library_sources WHERE manga = ?3 AND provider = ?1)
-ON CONFLICT (provider, manga_id) DO NOTHING`, src.Provider, src.MangaID, manga, src.Title)
+	res, err := tx.Exec(`INSERT INTO library_sources (provider, manga_id, manga, title, url)
+SELECT ?1, ?2, ?3, ?4, ?5 WHERE NOT EXISTS (SELECT 1 FROM library_sources WHERE manga = ?3 AND provider = ?1)
+ON CONFLICT (provider, manga_id) DO NOTHING`, src.Provider, src.MangaID, manga, src.Title, src.URL)
 	if err != nil {
 		return false, err
 	}
 	n, _ := res.RowsAffected()
 	return n != 0, nil
+}
+
+// SetSourceURL records the web page of a provider's manga linked to the library (it's
+// not gone then).
+func (l Library) SetSourceURL(provider, mangaID, url string) error {
+	l.DB.touch()
+	if _, err := l.DB.Exec(`UPDATE library_sources SET url = ?, gone = 0 WHERE provider = ? AND manga_id = ?`, url, provider, mangaID); err != nil {
+		return fmt.Errorf("set the url of source %s %q: %w", provider, mangaID, err)
+	}
+	return nil
+}
+
+// SetSourceGone records that the provider doesn't have its manga linked to the library
+// (any more), its url stays.
+func (l Library) SetSourceGone(provider, mangaID string, at time.Time) error {
+	l.DB.touch()
+	if _, err := l.DB.Exec(`UPDATE library_sources SET gone = ? WHERE provider = ? AND manga_id = ?`, unix(at), provider, mangaID); err != nil {
+		return fmt.Errorf("mark source %s %q gone: %w", provider, mangaID, err)
+	}
+	return nil
 }
 
 // Backfill is what BackfillSources found.

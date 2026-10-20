@@ -393,3 +393,21 @@ func TestScanReadsOrigin(t *testing.T) {
 		t.Errorf("sources %+v", m.Sources)
 	}
 }
+
+// a source recorded without its url gets its .libmangal.json's
+func TestScanFillsSourceURL(t *testing.T) {
+	root := t.TempDir()
+	library := newLibrary(t)
+	folder := filepath.Join(root, "Berserk")
+	writeCBZ(t, filepath.Join(folder, "[0001.0] x.cbz"), "1")
+	record(t, library, root, "Berserk", "[0001.0] x.cbz", 1, "p")
+	url := "https://example.com/berserk"
+	writeMarker(t, folder, libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "berserk", Title: "Berserk", URL: url}})
+
+	if _, err := (Scanner{FS: afero.NewOsFs(), Library: library}).Scan(root, false); err != nil {
+		t.Fatal(err)
+	}
+	if m, _, _ := library.MangaBySource("p", "berserk"); len(m.Sources) != 1 || m.Sources[0].URL != url {
+		t.Errorf("sources %+v", m.Sources)
+	}
+}

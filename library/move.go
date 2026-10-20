@@ -400,7 +400,7 @@ func (f Files) ApplyMoveContext(ctx context.Context, plan MovePlan) error {
 	}
 	move := storage.MangaMove{
 		Manga:    plan.Manga.ID,
-		Source:   storage.Source{Provider: plan.Provider.ID, MangaID: plan.To.ID, Title: plan.To.Title},
+		Source:   storage.Source{Provider: plan.Provider.ID, MangaID: plan.To.ID, Title: plan.To.Title, URL: plan.To.URL},
 		From:     plan.From,
 		To:       plan.Dir,
 		Title:    plan.Title,

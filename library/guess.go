@@ -85,16 +85,17 @@ func (s Scanner) holdsMangas(folder string) bool {
 }
 
 // sourceOf is the provider and manga id the folder's new chapters are recorded with: its
-// .libmangal.json, else its first source, else the provider directory it's in.
-func (s Scanner) sourceOf(m storage.Manga, folder, root string, providerDirs bool) (string, string) {
+// .libmangal.json's (with its url), else its first source's, else the provider directory
+// it's in.
+func (s Scanner) sourceOf(m storage.Manga, folder, root string, providerDirs bool) storage.Source {
 	if info, err := libmangal.ReadMangaDirInfo(s.FS, folder); err == nil {
-		return info.Provider, info.Manga.ID
+		return storage.Source{Provider: info.Provider, MangaID: info.Manga.ID, URL: info.Manga.URL}
 	}
 	if len(m.Sources) != 0 {
-		return m.Sources[0].Provider, m.Sources[0].MangaID
+		return storage.Source{Provider: m.Sources[0].Provider, MangaID: m.Sources[0].MangaID}
 	}
 	if providerDirs && m.Dir != "" && filepath.Dir(m.Parent) == filepath.Clean(root) {
-		return filepath.Base(m.Parent), ""
+		return storage.Source{Provider: filepath.Base(m.Parent)}
 	}
-	return "", ""
+	return storage.Source{}
 }

@@ -159,7 +159,7 @@ func (f Fill) download(ctx context.Context, client *libmangal.Client, chapter ma
 		from = w.Unwrap()
 	}
 	// the chapter is downloaded either way, a failed record is only logged
-	if err := recordIn(parent, dir, storage.Source{Provider: f.Provider.ID, MangaID: home.ID, Title: home.Title}, client.Info().ID, from.Volume().Manga().Info(), chapter, options.Format, down); err != nil {
+	if err := recordIn(parent, dir, storage.Source{Provider: f.Provider.ID, MangaID: home.ID, Title: home.Title, URL: home.URL}, client.Info().ID, from.Volume().Manga().Info(), chapter, options.Format, down); err != nil {
 		log.Error("%s", err)
 	}
 	return down, nil

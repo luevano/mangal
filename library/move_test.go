@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -45,7 +46,7 @@ func TestMove(t *testing.T) {
 	_ = bindings.Set(storage.Binding{Provider: "asura", MangaID: "berserk", Source: "al", ID: "30002"})
 
 	pill := libmangal.ProviderInfo{ID: "pill", Name: "Mangapill"}
-	to := &dirManga{info: mangadata.MangaInfo{ID: "1/berserk", Title: "Berserk (Pill)"}}
+	to := &dirManga{info: mangadata.MangaInfo{ID: "1/berserk", Title: "Berserk (Pill)", URL: "https://mangapill.com/manga/1/berserk"}}
 	// a full move would adopt the new title and folder name
 	full, err := m.PlanMove(ctx, manga, pill, to, MoveOptions{Full: true})
 	if err != nil {
@@ -82,7 +83,8 @@ func TestMove(t *testing.T) {
 		t.Errorf("marker %+v, %v", info, err)
 	}
 	got, _, _ := lib.MangaByID(manga.ID)
-	if got.Path() != newDir || len(got.Sources) != 2 || got.Title != "Berserk" {
+	if got.Path() != newDir || len(got.Sources) != 2 || got.Title != "Berserk" ||
+		!slices.ContainsFunc(got.Sources, func(s storage.Source) bool { return s.Provider == "pill" && s.URL == to.info.URL }) {
 		t.Errorf("manga %+v", got)
 	}
 	if ok, _ := lib.HasDownload(filepath.Join(newDir, "[0001.0] One.cbz")); !ok {
