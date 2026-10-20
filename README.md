@@ -11,6 +11,17 @@ Version 5 is now based on metafates' [mangalorg](https://github.com/mangalorg) s
 - [luaprovider](https://github.com/luevano/luaprovider): Lua script providers, using [gopher-luadoc](https://github.com/luevano/gopher-luadoc)
 - [saturno](https://github.com/luevano/saturno): Lua providers
 
+## Features
+
+- Search one provider or several at once, by title or by id; download as CBZ, PDF, ZIP, TAR, images, with ComicInfo.xml/series.json metadata from AniList, Kitsu or MyAnimeList.
+- Four ways to use it: the [TUI](#usage), the CLI ([inline](#inline), most commands), Lua [scripts](#script) and the [web UI](#web) (with a reader), all on the same data.
+- A [library](#library) of what's downloaded, from any provider: scan, merge, move to another provider, rename, link metadata ids, hold marks, trash and undo.
+- [Unavailable and retired chapters](#unavailable-and-retired-chapters): list them, get them from another provider, give the files the right titles.
+- [Watches](#headless): mangas kept up to date by `mangal serve` on a schedule, with Discord notifications.
+- [Jobs](#jobs): the maintenance runs (watch checks, source checks, source addresses, scan, health) with their schedules and per-provider settings.
+- [Health](#health): problems of the library and the watches, each with its fix.
+- `mangal serve`: the web UI, a JSON API and OPDS, with users and API tokens.
+
 ## Install
 
 Download a binary from the [releases](https://github.com/luevano/mangal/releases), or with Go:
@@ -83,7 +94,7 @@ By default if just executing the `mangal` command, it will start the TUI. To lis
 mangal -h
 ```
 
-In the TUI `?` shows the keys of each screen and `,` opens the config window from any of them. A key means one thing on every screen, `d` deletes (and confirms the delete). On the home screen: `L` library, `W` watches, `K` accounts, `X` migrate, `!` health; on a manga: `A` its metadata bindings, `w` watch it. In the watches: `u` check, `p` pause, `e` edit (`b` re-links the manga), `d` stop watching, `F` fill gaps, `O` live log, `V` every check, ctrl+r refresh; lists keep `g`/`G` (start/end), `h`/`l` (pages) and `/` (filter).
+In the TUI `?` shows the keys of each screen and `,` opens the config window from any of them. A key means one thing on every screen, `d` deletes (and confirms the delete). On the home screen: `L` library, `W` watches, `K` accounts, `X` migrate, `!` health, `alt+h` read history, `alt+j` jobs; anywhere: `Q` downloads, ctrl+l logs; on the providers: `space` ticks several to search at once, `alt+i` searches by id; on a manga: `A` its metadata bindings, `w` watch it; on its chapters: `alt+g` gets the unavailable ones from another provider. In the watches: `u` check, `p` pause, `e` edit (`b` re-links the manga), `d` stop watching, `F` fill gaps, `O` live log, `V` every check, ctrl+r refresh; lists keep `g`/`G` (start/end), `h`/`l` (pages) and `/` (filter).
 
 **Note:** A v4 config (usually `~/.config/mangal/mangal.toml`) doesn't work with v5: its keys are ignored with a warning, remove it.
 
@@ -121,11 +132,31 @@ mangal providers ls
 
 When a provider is renamed (e.g. MangaSee is now Weeb Central, `mango-weebcentral`), its old id still works with a warning. Data saved under the old id can be moved to the new one with `mangal migrate` (lists the changes, `--apply` does them), or with `X` on the TUI home. Moved watches need a re-link (the new site may use other manga ids): the scheduler skips them until a check finds the manga or `mangal watch move <id>` (`b` in the TUI watches, `N` lists them) points them to it.
 
+#### Search
+
+Several providers at once, each one's results shown as it answers (every installed provider without `-p`):
+
+```sh
+mangal search dark gathering -p mango-mangadex,mango-mangapill
+```
+
+In the TUI, `space` ticks providers on the providers screen and enter searches the ticked ones; the web UI has "Search several" on Providers. A manga can also be picked by its id instead of a title: `--id <id>` on `watch add`, `watch move`, `library move`, `bind` and `inline`, `alt+i` in the TUI, "By id" in the web UI.
+
+#### Unavailable and retired chapters
+
+`providers.filter.show_unavailable_chapters` lists the chapters a provider can't download (external, no pages), `providers.filter.show_retired_chapters` the ones it took down (MangaDex): shown as unavailable "retired" with their titles, never downloaded. `mangal inline` has `--show-retired-chapters` too.
+
+```sh
+mangal config set providers.filter.show_retired_chapters true
+```
+
+To get them anyway, see [Getting unavailable chapters](#getting-unavailable-chapters).
+
 #### Lua providers
 
 Some Lua providers are available at [saturno](https://github.com/luevano/saturno), mostly as examples since `mangoprovider` already covers those sites.
 
-Each Lua provider is a directory with the `main.lua` (scraper) and `mangal.toml` (metadata) files inside. By default, they need to be placed in `$XDG_CONFIG_HOME/mangal/providers`. Old ids of a renamed provider go in `mangal.toml` as `[[history]]` entries. Request rate limits go there too: `rate_limits = [{ rate = "1/2s", match = "site.com", burst = 1 }]` (`match`, a host with an optional path prefix, and `burst` are optional).
+Each Lua provider is a directory with the `main.lua` (scraper) and `mangal.toml` (metadata) files inside. By default, they need to be placed in `$XDG_CONFIG_HOME/mangal/providers`. Old ids of a renamed provider go in `mangal.toml` as `[[history]]` entries. Request rate limits go there too: `rate_limits = [{ rate = "1/2s", match = "site.com", burst = 1 }]` (`match`, a host with an optional path prefix, and `burst` are optional). `icon = "https://..."` sets the site icon the web UI shows, when the website's `/favicon.ico` isn't it (`mangal serve` fetches and caches the icons, none are shipped).
 
 A new provider can be created by running:
 
@@ -167,6 +198,11 @@ mangal library downloads [provider]        # the downloaded chapters
 mangal library merge <keep> <other> --apply  # one manga in two directories, duplicates go to the trash
 mangal library move <id> <provider> [title|--id <id>] --apply  # switch a manga to another provider (folder, watch and bindings follow; names stay)
 mangal library move <id> <provider> --full --apply          # also adopt the new provider's title and the folder name it gives
+mangal library retitle <id> [--from <provider>] --apply      # the chapters get a provider's titles (below)
+mangal library fill <id> --from <provider> --apply           # get unavailable chapters from another provider (below)
+mangal library urls [--all]                # look the sources' web pages up (on the provider, by manga id); a source the provider lost is marked gone
+mangal library hold <id> hiatus|ended|provider  # pause its watches (after a last check), or mark it as needing another provider; --clear
+mangal library rm <id> [chapter] --apply   # delete a library manga (or one of its chapters) to the trash
 mangal library bind <id> [--anilist N] [--kitsu N] [--mal N] [--rename] [--watches] --apply  # link a library manga (also without a provider source)
 mangal library bind <id>                   # its links, where each comes from, and a Kitsu id to pick
 mangal library bind [id] --backups --apply # fill the Kitsu and MyAnimeList links from AniList
@@ -181,9 +217,43 @@ The publication status comes from the AniList metadata mangal already has; `libr
 
 A library manga's links replace the old ids everywhere: its sources' bindings, its own ids and its `.libmangal.json`, so a wrong id stops matching. What a link implies (the folder's new name, a watch bound to another id, another library manga with the id) is shown and only done when asked (`--rename`, `--watches`, merge).
 
-Every operation that changes files (rename, merge, move, link, `scan --mark --apply`, `mark --apply`, `migrate`, a TUI delete) first snapshots the data database into `<data dir>/backups/` (the last `data.backups`, 10 by default, are kept) and journals its file changes, so `mangal library undo` can revert it. Nothing is overwritten, and an undo that would lose later changes is refused unless `--force`.
+Every operation that changes files (rename, merge, move, retitle, link, `scan --mark --apply`, `mark --apply`, `migrate`, a delete) first snapshots the data database into `<data dir>/backups/` (the last `data.backups`, 10 by default, are kept) and journals its file changes, so `mangal library undo` can revert it. Nothing is overwritten, and an undo that would lose later changes is refused unless `--force`.
 
-The TUI has the same under `L` on the home screen (`u` scan, `S` scan and check ids, `J` merge, `D` duplicates only, `X` move to another provider, `A` links, `B` fill backup links, `t` trash, `U` undo the last operation), where `d` deletes a manga or a chapter (to the trash; a manga whose folder is gone is forgotten).
+The TUI has the same under `L` on the home screen (`u` scan, `S` scan and check ids, `J` merge, `D` duplicates only, `X` move to another provider, `A` links, `B` fill backup links, `t` trash, `U` undo the last operation, `alt+r` rename, `alt+p` hold), where `d` deletes a manga or a chapter (to the trash; a manga whose folder is gone is forgotten). On a library manga, `alt+t` retitles its chapters and `o` opens its source's web page (looked up when unknown; a manga its provider lost says so).
+
+#### Getting unavailable chapters
+
+When a source lists chapters it can't download (retired on MangaDex, external), the same chapters can come from another provider. Three ways:
+
+**Fill directly**: the unavailable numbers the folder doesn't have are downloaded from another provider's manga into the manga's folder, with the source's titles and metadata. The folder's source doesn't change.
+
+```sh
+mangal library fill 12 --from mango-mangapill                     # plan: which chapters, from which manga
+mangal library fill 12 --from mango-mangapill,mango-weebcentral   # search several, list the candidates
+mangal library fill 12 --from mango-mangapill --id 2085/dark-gathering --chapters 1-67 --apply
+mangal library fill --provider mango-mangadex --manga-id <id> --from mango-mangapill   # a provider manga, in the library or not
+```
+
+In the TUI: `alt+g` on a manga's chapters screen (when it has unavailable chapters) ticks the providers to search, then pick the manga, review and confirm; it runs as a download. In the web UI: "Get unavailable chapters from another provider" on the provider manga page.
+
+**Download, merge, retitle**: download the chapters from the other provider as usual; when they land in another library manga, merge it into the first, then give the files the first one's titles:
+
+```sh
+mangal library merge 12 40 --apply   # 40's chapters move into 12's folder
+mangal library retitle 12 --apply    # titles from 12's current source
+```
+
+**Retitle alone**: chapters already downloaded with poor titles ("Chapter 3") get a provider's titles for the same numbers, every chapter listed (retired ones too). TUI `alt+t` on the library manga, web "Retitle" on the library manga page, or:
+
+```sh
+mangal library retitle 12 --from mango-mangadex --apply
+```
+
+A CBZ's ComicInfo.xml records where the file and its title came from, as a line in its Notes (scans read it back):
+
+```
+mangal: provider=mango-mangapill manga_id=2085/dark-gathering chapter_url=https://... title_provider=mango-mangadex title_manga_id=7c145eb7-...
+```
 
 ### Health
 
@@ -191,6 +261,7 @@ The TUI has the same under `L` on the home screen (`u` scan, `S` scan and check 
 mangal health [--only watches,W10,...] [--json]  # problems of the library and the watches, with the command that fixes each
 mangal health --only W10                         # the library mangas no watch keeps up to date, one by one
 mangal health --network                          # also look for new chapters of the unwatched ongoing mangas on their providers
+mangal health --network --only L11               # is each library manga still on its provider? (gone: `library move` it or `library hold <id> provider`)
 mangal health --dismiss L6/library/trash         # hide a finding that's fine as it is (its key starts its line); --undismiss brings it back
 mangal health --all                              # also the dismissed findings
 ```
@@ -229,6 +300,7 @@ mangal watch log --since 7d      # what each check got
 mangal watch log --rm 42         # delete run 42 from the history (library undo brings it back)
 mangal watch set 12 --skip 189.5 # never download chapter 189.5 (a fake one); --unskip 189.5, --unskip all
 mangal watch move 12 mango-weebcentral   # another provider (or the same one's new id), keeping the watch
+mangal watch hold 12 hiatus      # check once more, then pause it (hiatus, ended; provider: needs a new one); --clear
 mangal notify webhook            # save the Discord webhook: a message per manga with new chapters (watch.notify)
 ```
 
@@ -242,7 +314,8 @@ has its own schedule (`watch.gap_schedule`, off by default). Each provider has i
 (`watch.parallel_providers` at once, a provider never twice, also against a `mangal watch check`
 or a download elsewhere); the `watch.*` settings are re-read from the config file
 every minute, and logins or secrets saved meanwhile (e.g. the MangaPlus secret from a TUI on the
-same config) apply from the next run. On `127.0.0.1:6977` (`serve.host`, `serve.port`) it serves the
+same config) apply from the next run. It also runs the source checks and address lookups (see
+[Jobs](#jobs)). On `127.0.0.1:6977` (`serve.host`, `serve.port`) it serves the
 web UI (`serve.web`), a JSON API (that the TUI and the `mangal watch` commands use while it runs) and
 OPDS (`/opds`). Every request logs in, wherever it comes from: people as users (`mangal user add
 <name>`, then the web UI's login page, or basic auth for OPDS readers), programs with an API token
@@ -266,6 +339,20 @@ One server per config: a second instance (e.g. other mangas into another directo
 config file with its own `data.path`, `download.path` (and `cache.path`) and `serve.port`, and
 everything is run with `--config`: `ExecStart=/usr/local/bin/mangal --config /etc/mangal/b.toml
 serve`, `mangal --config /etc/mangal/b.toml watch add ...`.
+
+### Jobs
+
+Downloads are jobs per provider (TUI `Q`, web Downloads). The maintenance jobs are apart, by kind: `check` (the watch checks), `sources` (is each library source still on its provider, health L11) and `urls` (the sources' web pages), which `mangal serve` runs on their schedules, and `scan` (the library scan) and `health` (the network health checks), run when asked. Each can be run now (all, or only the missing items: the due watches, the sources not checked lately, those without an address), paused, turned off, and set per provider (on, off, its own interval or schedule); requests to a provider pause `jobs.delay_min` to `jobs.delay_max` (1-3 s) between them. MangaPlus is off for sources, urls and health by default.
+
+```sh
+mangal jobs                              # every kind: on/paused, schedule, last and next run, missing items
+mangal jobs urls                         # one kind, with its per-provider settings and counts
+mangal jobs run sources [--all]          # run it now, here
+mangal jobs pause check                  # stop its schedule (resume to restart)
+mangal jobs set urls --schedule 336h --provider mango-weebcentral=off --delay 2s-5s
+```
+
+The settings are `jobs.*` in mangal.toml (the schedules stay `watch.schedule` and `health.source_check_interval`). In the TUI: `alt+j` (home, Downloads): enter a kind for its providers (`space` on/off), `C` run missing, `u` run all, `p` pause, `e` settings. In the web UI: Jobs (`/jobs`).
 
 ### Templates
 
@@ -330,15 +417,35 @@ For more, use the `-h` flag.
 
 #### Web
 
-The web UI: the library (with plan/apply and undo for its changes), a reader for downloaded and
-online chapters, downloads, watches, health, logs, search. `mangal serve` serves it (`serve.web`);
-`mangal web` opens that one, or without a server running serves it the same way on `serve.host`,
-`serve.port` (`127.0.0.1:6977`), without the scheduler. It asks to log in as a user of `mangal serve
-user add <name>`.
+`mangal serve` serves the web UI (`serve.web`, on by default) on `serve.host`:`serve.port`
+(`127.0.0.1:6977`). `mangal web` opens that one, or without a server running serves it the same
+way, without the scheduled checks. It asks to log in as a user:
 
 ```sh
-mangal web --open
+mangal user add david              # the first user gets every permission
+mangal user add guest --perms read # the others read and progress unless --perms (read, progress, watch, write)
+mangal serve                       # or: mangal web --open
 ```
+
+What it has:
+- **Library**: filters, covers, a manga's sources, watches, links and chapters; scan, merge,
+  move, rename, mark, links, retitle, hold, delete, each shown as a plan before it's applied;
+  duplicates, trash, undo (Operations), read history. A source's link opens its web page
+  (looked up when unknown).
+- **Search**: one provider (by title or "By id"), or "Search several" at once; a provider
+  manga's chapters (downloaded, read and unavailable marked), download, read, watch,
+  bind, "Get unavailable chapters from another provider". Site icons on the providers and metadata
+  sources.
+- **Reader**: downloaded and online chapters, paged (left to right, right to left) or webtoon,
+  double pages, zoom, keys and tap zones, the position kept per chapter; reads sync to AniList,
+  Kitsu and MyAnimeList.
+- **Watches**: add, check, pause, edit, re-link, hold, live log, check runs.
+- **Jobs** and **Downloads**: the maintenance kinds (run, pause, settings) and the download queue.
+- **Health**: the findings with their fixes, dismiss, network checks.
+- **Logs**, **Accounts**, **Config**, and **Users** (users and API tokens) for admins.
+
+Users only see the actions their permissions allow (`serve.hide_unavailable = false` shows them
+all and lets the server refuse).
 
 #### Script
 
