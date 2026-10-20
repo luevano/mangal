@@ -85,6 +85,11 @@ type Env struct {
 	// with the provider's client, held until release, and lists its chapters (as the
 	// screens list them).
 	ProviderChapters func(ctx context.Context, provider, id, query, sel string) (c *libmangal.Client, manga mangadata.Manga, chapters []mangadata.Chapter, release func(), err error)
+	// ProviderManga is the provider's manga with the id (a search of title when the
+	// provider can't get one by id), found false when the provider doesn't have it.
+	ProviderManga func(ctx context.Context, provider, id, title string) (info libmangal.ProviderInfo, manga mangadata.MangaInfo, found bool, err error)
+	// Sleep waits d, an error when ctx is done first (the pauses between lookups).
+	Sleep func(ctx context.Context, d time.Duration) error
 	// LogDir is the log files' directory.
 	LogDir func() string
 	// Now is the clock.
@@ -158,6 +163,12 @@ func (e Env) withDefaults() (Env, error) {
 	}
 	if e.ProviderChapters == nil {
 		e.ProviderChapters = providerChapters
+	}
+	if e.ProviderManga == nil {
+		e.ProviderManga = providerManga
+	}
+	if e.Sleep == nil {
+		e.Sleep = sleep
 	}
 	if e.LogDir == nil {
 		e.LogDir = path.Logs

@@ -3,7 +3,6 @@ package base
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,7 +14,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/progress"
-	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/core"
 )
 
 var loadIDs atomic.Int64
@@ -234,7 +233,7 @@ func (t *tracker) wait(timeout time.Duration) bool {
 // MangaGone is the error for a manga the provider doesn't have (any more), matching
 // watch.ErrMangaNotFound.
 func MangaGone(title, provider, id string) error {
-	return fmt.Errorf("%w: %q isn't on %s any more, it may have been removed (manga id %s)", watch.ErrMangaNotFound, title, provider, id)
+	return core.MangaGone(title, provider, id)
 }
 
 // MangaError is err from getting the provider's manga's volumes or chapters, MangaGone

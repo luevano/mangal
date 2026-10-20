@@ -55,6 +55,11 @@ type Library interface {
 	Scan(ctx context.Context, opts ScanOptions) (ScanReport, error)
 	ScanManga(ctx context.Context, id int64) (MangaScan, error)
 	CheckIDs(ctx context.Context) ([]library.IDCheck, error)
+	// SourceURL is the web page of the library manga's source: the recorded one, else
+	// (or with refresh) looked up on its provider and recorded.
+	SourceURL(ctx context.Context, manga int64, provider, mangaID string, refresh bool) (string, error)
+	// LookupSourceURLs looks the urls of the library's sources up and records them.
+	LookupSourceURLs(ctx context.Context, opts SourceURLsOptions) (SourceURLsReport, error)
 }
 
 // MangasOptions are what Library.Mangas does besides listing.

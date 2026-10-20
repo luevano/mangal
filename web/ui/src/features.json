@@ -151,6 +151,10 @@
       ]
     },
     {
+      "name": "source urls",
+      "not_applicable": "not in the API yet (docs/core.md Progress)"
+    },
+    {
       "name": "get unavailable chapters elsewhere",
       "web": [
         "provider-manga"
