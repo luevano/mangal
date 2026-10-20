@@ -2,6 +2,8 @@ package base
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -10,7 +12,10 @@ import (
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/progress"
+	"github.com/luevano/mangal/v5/client/watch"
 )
 
 var loadIDs atomic.Int64
@@ -224,4 +229,20 @@ func (t *tracker) wait(timeout time.Duration) bool {
 	case <-time.After(timeout):
 		return false
 	}
+}
+
+// MangaGone is the error for a manga the provider doesn't have (any more), matching
+// watch.ErrMangaNotFound.
+func MangaGone(title, provider, id string) error {
+	return fmt.Errorf("%w: %q isn't on %s any more, it may have been removed (manga id %s)", watch.ErrMangaNotFound, title, provider, id)
+}
+
+// MangaError is err from getting the provider's manga's volumes or chapters, MangaGone
+// when the provider answered it doesn't have the manga (libmangal.ErrNotFound).
+func MangaError(err error, provider string, manga mangadata.Manga) error {
+	if errors.Is(err, libmangal.ErrNotFound) {
+		info := manga.Info()
+		return MangaGone(info.Title, provider, info.ID)
+	}
+	return err
 }

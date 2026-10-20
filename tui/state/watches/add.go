@@ -276,7 +276,7 @@ func findManga(ctx context.Context, c *libmangal.Client, id, title string) (mang
 		return nil, fmt.Errorf("look up %q on %s: %w", title, c.Info().Name, err)
 	}
 	if !found {
-		return nil, fmt.Errorf("%w: %q isn't on %s any more, it may have been removed (manga id %s)", watch.ErrMangaNotFound, title, c.Info().Name, id)
+		return nil, base.MangaGone(title, c.Info().Name, id)
 	}
 	return manga, nil
 }

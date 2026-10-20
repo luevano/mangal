@@ -90,7 +90,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 func (s *state) chaptersCmd(ctx context.Context, volume mangadata.Volume) tea.Cmd {
 	return base.LoadWithStatus(ctx, fmt.Sprintf("Searching chapters for volume %s", volume), func(ctx context.Context, _ func(string)) ([]mangadata.Chapter, error) {
-		return s.client.VolumeChaptersContext(ctx, volume)
+		list, err := s.client.VolumeChaptersContext(ctx, volume)
+		return list, base.MangaError(err, s.client.Info().Name, s.manga)
 	}, func(list []mangadata.Chapter) tea.Msg {
 		return chapters.New(s.client, s.manga, volume, list)
 	})

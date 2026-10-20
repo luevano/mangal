@@ -321,7 +321,7 @@ func (s *state) openCmd(ctx context.Context, i *item, note string) tea.Cmd {
 
 		vols, err := s.client.MangaVolumesContext(ctx, manga)
 		if err != nil {
-			return msg, fmt.Errorf("get the volumes of %q: %w", manga, err)
+			return msg, base.MangaError(fmt.Errorf("get the volumes of %q: %w", manga, err), s.client.Info().Name, manga)
 		}
 		msg.volumes = vols
 
@@ -339,7 +339,7 @@ func (s *state) openCmd(ctx context.Context, i *item, note string) tea.Cmd {
 			}
 			c, err := s.client.VolumeChaptersContext(ctx, v)
 			if err != nil {
-				return msg, fmt.Errorf("get the chapters of volume %s: %w", v, err)
+				return msg, base.MangaError(fmt.Errorf("get the chapters of volume %s: %w", v, err), s.client.Info().Name, manga)
 			}
 			msg.chapters = append(msg.chapters, c...)
 		}
