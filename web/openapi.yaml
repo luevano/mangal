@@ -2657,6 +2657,16 @@ components:
         downloaded:
           type: string
           format: date-time
+        title_provider:
+          type: string
+          description: the provider whose manga the chapter title is from, when not the download's (a fill or a retitle)
+        title_manga_id:
+          type: string
+          description: that provider's manga id
+        title_changed:
+          type: string
+          format: date-time
+          description: when the chapter got that title
     DownloadList:
       type: object
       required: [total, downloads]

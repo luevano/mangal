@@ -253,7 +253,16 @@ type Download struct {
 	Pages        int       `json:"pages"`
 	Path         string    `json:"path"`
 	Provider     string    `json:"provider"`
-	Volume       float32   `json:"volume"`
+
+	// TitleChanged when the chapter got that title
+	TitleChanged *time.Time `json:"title_changed,omitempty"`
+
+	// TitleMangaId that provider's manga id
+	TitleMangaId *string `json:"title_manga_id,omitempty"`
+
+	// TitleProvider the provider whose manga the chapter title is from, when not the download's (a fill or a retitle)
+	TitleProvider *string `json:"title_provider,omitempty"`
+	Volume        float32 `json:"volume"`
 }
 
 // DownloadList defines model for DownloadList.

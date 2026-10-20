@@ -181,6 +181,12 @@ func toAPIDownload(d storage.Download) apiv1.Download {
 	if d.ChapterURL != "" {
 		out.ChapterUrl = &d.ChapterURL
 	}
+	if d.TitleProvider != "" {
+		out.TitleProvider, out.TitleMangaId = &d.TitleProvider, &d.TitleMangaID
+	}
+	if !d.TitleChanged.IsZero() {
+		out.TitleChanged = &d.TitleChanged
+	}
 	return out
 }
 

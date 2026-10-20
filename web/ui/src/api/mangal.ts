@@ -1832,6 +1832,15 @@ export interface components {
             pages: number;
             /** Format: date-time */
             downloaded: string;
+            /** @description the provider whose manga the chapter title is from, when not the download's (a fill or a retitle) */
+            title_provider?: string;
+            /** @description that provider's manga id */
+            title_manga_id?: string;
+            /**
+             * Format: date-time
+             * @description when the chapter got that title
+             */
+            title_changed?: string;
         };
         DownloadList: {
             total: number;
