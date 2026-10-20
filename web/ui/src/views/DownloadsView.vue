@@ -13,7 +13,7 @@ import { crumbs } from '@/stores/crumbs'
 import { useStatus } from '@/stores/status'
 import { useJobs, activeStatuses, finishedStatuses } from '@/stores/jobs'
 
-crumbs(() => [{ title: 'Jobs', to: { name: 'jobs' } }, { title: 'Downloads' }])
+crumbs(() => [{ title: 'Downloads' }])
 const jobs = useJobs()
 const action = useAction()
 const st = useStatus()
