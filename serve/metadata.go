@@ -48,8 +48,8 @@ var metadataSites = []struct{ code, key, website, icon string }{
 	{string(lmmeta.IDCodeAnilist), "anilist", "https://anilist.co/", "https://anilist.co/img/icons/favicon-32x32.png"},
 	{string(lmmeta.IDCodeKitsu), "kitsu", "https://kitsu.app/", ""},
 	{string(lmmeta.IDCodeMyAnimeList), "myanimelist", "https://myanimelist.net/", "https://cdn.myanimelist.net/images/favicon.ico"},
-	// TODO: only an SVG icon (refused), so a 404 for now
-	{string(lmmeta.IDCodeMangaUpdates), "mangaupdates", "https://www.mangaupdates.com/", ""},
+	// its only <link rel="icon">, no raster one
+	{string(lmmeta.IDCodeMangaUpdates), "mangaupdates", "https://www.mangaupdates.com/", "https://www.mangaupdates.com/images/manga-updates.svg"},
 }
 
 // GetMetadataIcon implements apiv1.StrictServerInterface.

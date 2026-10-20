@@ -122,7 +122,7 @@ func TestImage(t *testing.T) {
 		if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "image/webp" || !bytes.Equal(body, data) {
 			t.Fatalf("status %d, type %q, %d bytes", resp.StatusCode, resp.Header.Get("Content-Type"), len(body))
 		}
-		if resp.Header.Get("X-Content-Type-Options") != "nosniff" || !strings.HasPrefix(resp.Header.Get("Content-Security-Policy"), "sandbox") {
+		if resp.Header.Get("X-Content-Type-Options") != "nosniff" || !strings.HasSuffix(resp.Header.Get("Content-Security-Policy"), "; sandbox") {
 			t.Errorf("headers %v", resp.Header)
 		}
 	}

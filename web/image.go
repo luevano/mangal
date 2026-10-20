@@ -43,7 +43,7 @@ func (s *Server) Image(ctx context.Context, rawURL, referer string) ([]byte, str
 	img, ok := s.images.get(rawURL)
 	if !ok {
 		var err error
-		img, err = s.fetchImage(ctx, rawURL, referer)
+		img, err = s.fetchImage(ctx, rawURL, referer, imageType)
 		if err != nil {
 			return nil, "", err
 		}
@@ -52,7 +52,13 @@ func (s *Server) Image(ctx context.Context, rawURL, referer string) ([]byte, str
 	return img.data, img.contentType, nil
 }
 
-func (s *Server) fetchImage(ctx context.Context, rawURL, referer string) (cachedImage, error) {
+// temporaryError is a fetch that may work later: no answer, a 5xx or a 429.
+type temporaryError struct{ error }
+
+func (e temporaryError) Unwrap() error { return e.error }
+
+// fetchImage gets the url, typed by typeOf from its Content-Type and content.
+func (s *Server) fetchImage(ctx context.Context, rawURL, referer string, typeOf func(string, []byte) (string, error)) (cachedImage, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return cachedImage{}, fmt.Errorf("get image: %w", err)
@@ -67,12 +73,16 @@ func (s *Server) fetchImage(ctx context.Context, rawURL, referer string) (cached
 		return cachedImage{}, fmt.Errorf("get image: %w: %w", err, ErrBadRequest)
 	}
 	if err != nil {
-		return cachedImage{}, fmt.Errorf("get image: %w", err)
+		return cachedImage{}, temporaryError{fmt.Errorf("get image: %w", err)}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return cachedImage{}, fmt.Errorf("get image: %s: %w", resp.Status, ErrUpstream)
+		err := fmt.Errorf("get image: %s: %w", resp.Status, ErrUpstream)
+		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+			err = temporaryError{err}
+		}
+		return cachedImage{}, err
 	}
 	if resp.ContentLength > maxImageSize {
 		return cachedImage{}, fmt.Errorf("get image: %d bytes, more than %d: %w", resp.ContentLength, maxImageSize, ErrUpstream)
@@ -80,13 +90,13 @@ func (s *Server) fetchImage(ctx context.Context, rawURL, referer string) (cached
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxImageSize+1))
 	if err != nil {
-		return cachedImage{}, fmt.Errorf("get image: %w", err)
+		return cachedImage{}, temporaryError{fmt.Errorf("get image: %w", err)}
 	}
 	if len(data) > maxImageSize {
 		return cachedImage{}, fmt.Errorf("get image: more than %d bytes: %w", maxImageSize, ErrUpstream)
 	}
 
-	contentType, err := imageType(resp.Header.Get("Content-Type"), data)
+	contentType, err := typeOf(resp.Header.Get("Content-Type"), data)
 	if err != nil {
 		return cachedImage{}, fmt.Errorf("get image: %w", err)
 	}
@@ -94,7 +104,7 @@ func (s *Server) fetchImage(ctx context.Context, rawURL, referer string) (cached
 }
 
 // rasterTypes are the image types the proxy passes: no SVG, which runs scripts when opened
-// from mangal's origin.
+// from mangal's origin (icons may be SVG, see iconType).
 var rasterTypes = map[string]bool{
 	"image/jpeg": true,
 	"image/png":  true,
@@ -120,13 +130,14 @@ func imageType(header string, data []byte) (string, error) {
 }
 
 // ImageHeaders keep a proxied image (any /api/ answer) from being anything but an image
-// in the browser.
+// in the browser: an SVG icon opened directly gets no scripts or requests, only its own
+// styles (raw.githubusercontent.com's policy).
 func ImageHeaders(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		if strings.HasPrefix(c.Request().URL.Path, "/api/") {
 			h := c.Response().Header()
 			h.Set("X-Content-Type-Options", "nosniff")
-			h.Set("Content-Security-Policy", "sandbox; default-src 'none'")
+			h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 		}
 		return next(c)
 	}
