@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -14,6 +15,8 @@ import (
 var libraryFillArgs = struct {
 	From     string
 	ID       string
+	Provider string
+	MangaID  string
 	Chapters string
 	Apply    bool
 	Selector string
@@ -24,32 +27,38 @@ func init() {
 	f := libraryFillCmd.Flags()
 	f.StringVar(&libraryFillArgs.From, "from", "", "Provider to get the chapters from")
 	f.StringVar(&libraryFillArgs.ID, "id", "", "The manga's id, instead of a title query")
+	f.StringVar(&libraryFillArgs.Provider, "provider", "", "Fill this provider's manga (--manga-id) instead of a library manga's source, in the library or not")
+	f.StringVar(&libraryFillArgs.MangaID, "manga-id", "", "The --provider's manga to fill")
 	f.StringVarP(&libraryFillArgs.Chapters, "chapters", "c", "", "Only these chapter numbers (12, 10-20, 30-)")
 	f.BoolVar(&libraryFillArgs.Apply, "apply", false, "Download them, instead of only listing what would happen")
 	f.StringVarP(&libraryFillArgs.Selector, "manga-selector", "m", "exact", "Manga selector of the search (first|last|exact|closest|<index>)")
 	_ = libraryFillCmd.MarkFlagRequired("from")
 	_ = libraryFillCmd.RegisterFlagCompletionFunc("from", completionProviderIDs)
+	_ = libraryFillCmd.RegisterFlagCompletionFunc("provider", completionProviderIDs)
+	libraryFillCmd.MarkFlagsRequiredTogether("provider", "manga-id")
 }
 
 var libraryFillCmd = &cobra.Command{
-	Use:   "fill <id> --from <provider> [title]",
+	Use:   "fill (<id> | --provider <provider> --manga-id <id>) --from <provider> [title]",
 	Short: "Get a library manga's unavailable chapters from another provider",
 	Long: `Get the chapters the library manga's current source (id from "mangal library ls") lists
 but can't download (unavailable: retired, external, ...) and its folder doesn't have, from
 another provider's manga: the --id, else the one the manga selector picks from a search of
-the title (the source's title without one). Chapters match by number; of several with one,
+the title (the source's title without one). With --provider and --manga-id, it's that
+provider's manga instead, in the library or not (its folder is where its downloads go).
+Chapters match by number; of several with one,
 the first available, as the provider lists them.
 
 They go into the library manga's folder with the source's titles (file name, ComicInfo.xml
 Title) and series metadata; their downloads stay recorded as the other provider's (its
-chapter URL is the ComicInfo.xml Web, a note says where they're from), and the folder's
+chapter URL is the ComicInfo.xml Web, its Notes have a "mangal:" line saying where they're from), and the folder's
 source doesn't change.
 
 Only lists what would happen unless --apply is set.`,
 	Example: `  mangal library fill 12 --from mango-mangapill
   mangal library fill 12 --from mango-mangapill --chapters 1-2 --apply
-  mangal library fill 12 --from mango-mangapill --id 2085/dark-gathering`,
-	Args: cobra.MinimumNArgs(1),
+  mangal library fill 12 --from mango-mangapill --id 2085/dark-gathering
+  mangal library fill --provider mango-mangadex --manga-id d64b0768-bebe-433c-b923-99870503c0a3 --from mango-mangapill`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		st := newStatus(cmd)
 		defer st.Done()
@@ -61,30 +70,37 @@ Only lists what would happen unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		id, err := parseMangaID(args[0])
-		if err != nil {
-			return err
+		req := core.FillReq{Provider: libraryFillArgs.Provider, MangaID: libraryFillArgs.MangaID}
+		if req.Provider == "" {
+			if len(args) == 0 {
+				return errors.New("give a library manga id, or --provider and --manga-id")
+			}
+			id, err := parseMangaID(args[0])
+			if err != nil {
+				return err
+			}
+			args = args[1:]
+			lm, err := c.Library.Manga(ctx, id)
+			if err != nil {
+				return err
+			}
+			if len(lm.Sources) == 0 {
+				return fmt.Errorf("library manga %d has no source", lm.ID)
+			}
+			src := lm.Sources[0]
+			req.Provider, req.MangaID, req.Query = src.Provider, src.MangaID, src.Title
 		}
 		var mangaID, query string
 		st.Print(func() {
-			mangaID, query, err = mangaQuery(cmd, "id", libraryFillArgs.ID, strings.Join(args[1:], " "))
+			mangaID, query, err = mangaQuery(cmd, "id", libraryFillArgs.ID, strings.Join(args, " "))
 		})
 		if err != nil {
 			return err
 		}
-		lm, err := c.Library.Manga(ctx, id)
-		if err != nil {
-			return err
-		}
-		if len(lm.Sources) == 0 {
-			return fmt.Errorf("library manga %d has no source", lm.ID)
-		}
-		src := lm.Sources[0]
 		ctx = core.WithProgress(ctx, st.Progress)
-		plan, err := c.PlanFill(ctx, core.FillReq{
-			Provider: src.Provider, MangaID: src.MangaID, Query: src.Title, Chapters: libraryFillArgs.Chapters,
-			From: core.RetitleFrom{Provider: libraryFillArgs.From, MangaID: mangaID, Query: query, Selector: libraryFillArgs.Selector},
-		})
+		req.Chapters = libraryFillArgs.Chapters
+		req.From = core.RetitleFrom{Provider: libraryFillArgs.From, MangaID: mangaID, Query: query, Selector: libraryFillArgs.Selector}
+		plan, err := c.PlanFill(ctx, req)
 		st.Done()
 		if err != nil {
 			return err
@@ -103,7 +119,7 @@ Only lists what would happen unless --apply is set.`,
 		}
 		// the job the TUI and serve queue, run here
 		manager := jobs.New(ctx)
-		id = manager.Add(plan.Job("cli")).ID
+		id := manager.Add(plan.Job("cli")).ID
 		var job jobs.Job
 		for {
 			changed := manager.Changed()
