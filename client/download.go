@@ -350,7 +350,7 @@ func recordIn(parent, dir string, home storage.Source, provider string, manga ma
 		}
 	}
 	info := chapter.Info()
-	return library.RecordFill(parent, dir, home, storage.Download{
+	dl := storage.Download{
 		Path:         down.Path(),
 		Provider:     provider,
 		MangaID:      manga.ID,
@@ -362,5 +362,10 @@ func recordIn(parent, dir string, home storage.Source, provider string, manga ma
 		Format:       format.String(),
 		Pages:        down.Pages,
 		Downloaded:   time.Now(),
-	})
+	}
+	// a fill: the title is home's
+	if home.Provider != provider || home.MangaID != manga.ID {
+		dl.TitleProvider, dl.TitleMangaID, dl.TitleChanged = home.Provider, home.MangaID, dl.Downloaded
+	}
+	return library.RecordFill(parent, dir, home, dl)
 }

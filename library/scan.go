@@ -2,6 +2,7 @@ package library
 
 import (
 	"archive/zip"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -154,11 +155,19 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 			res.Unrecognized = append(res.Unrecognized, f.path)
 			continue
 		}
-		err := s.Library.RecordDownload(m.Parent, m.Dir, storage.Download{
+		dl := storage.Download{
 			Path: f.path, Provider: provider, MangaID: mangaID, MangaTitle: m.Title,
 			Chapter: f.number, ChapterTitle: f.title, ChapterURL: f.url,
 			Format: f.format.String(), Pages: f.pages, Downloaded: f.modTime,
-		})
+		}
+		// its Notes line says where it's from (a fill: another provider's manga)
+		if o := f.origin; o.Provider != "" {
+			dl.Provider, dl.MangaID, dl.ChapterURL = o.Provider, o.MangaID, cmp.Or(o.ChapterURL, dl.ChapterURL)
+		}
+		if o := f.origin; o.TitleProvider != "" {
+			dl.TitleProvider, dl.TitleMangaID, dl.TitleChanged = o.TitleProvider, o.TitleMangaID, f.modTime
+		}
+		err := s.Library.RecordFill(m.Parent, m.Dir, storage.Source{Provider: provider, MangaID: mangaID, Title: m.Title}, dl)
 		if err != nil {
 			return res, err
 		}
@@ -319,6 +328,7 @@ type chapterFile struct {
 	title     string
 	series    string
 	url       string
+	origin    Origin
 	pages     int
 	modTime   time.Time
 }
@@ -446,6 +456,7 @@ func (s Scanner) readZip(f *chapterFile) {
 			f.number, f.hasNumber = info.Number, true
 		}
 		f.title, f.series, f.url = info.Title, info.Series, info.Web
+		f.origin, _ = ParseNotes(info.Notes)
 	}
 }
 

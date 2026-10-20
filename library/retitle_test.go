@@ -34,12 +34,28 @@ func TestSetComicInfoTitle(t *testing.T) {
 		// a nested Title isn't the book's
 		{"<ComicInfo><Pages><Title>x</Title></Pages></ComicInfo>", "<ComicInfo>\n  <Title>A &amp; B</Title><Pages><Title>x</Title></Pages></ComicInfo>"},
 	} {
-		got, err := setComicInfoTitle([]byte(c.in), "A & B")
+		got, err := setComicInfoElement([]byte(c.in), "Title", func(string) string { return "A & B" }, nil)
 		if err != nil || string(got) != c.want {
 			t.Errorf("%q:\n%s %v", c.in, got, err)
 		}
 	}
-	if _, err := setComicInfoTitle([]byte("not xml <"), "x"); err == nil {
+	if _, err := setComicInfoElement([]byte("not xml <"), "Title", func(string) string { return "x" }, nil); err == nil {
 		t.Error("no error for broken xml")
+	}
+}
+
+func TestSetComicInfoNotes(t *testing.T) {
+	o := Origin{Provider: "p", TitleProvider: "t", TitleMangaID: "1"}
+	set := func(notes string) string { return SetNotesLine(notes, o) }
+	for _, c := range []struct{ in, want string }{
+		{"<ComicInfo>\n  <Title>A</Title>\n  <Notes>by me &amp; you\n\nfooter</Notes>\n</ComicInfo>",
+			"<ComicInfo>\n  <Title>A</Title>\n  <Notes>mangal: provider=p title_provider=t title_manga_id=1&#xA;&#xA;by me &amp; you&#xA;&#xA;footer</Notes>\n</ComicInfo>"},
+		{"<ComicInfo>\n  <Title>A</Title>\n  <Summary>s</Summary>\n  <Year>1</Year>\n</ComicInfo>",
+			"<ComicInfo>\n  <Title>A</Title>\n  <Summary>s</Summary>\n  <Notes>mangal: provider=p title_provider=t title_manga_id=1</Notes>\n  <Year>1</Year>\n</ComicInfo>"},
+	} {
+		got, err := setComicInfoElement([]byte(c.in), "Notes", set, beforeNotes)
+		if err != nil || string(got) != c.want {
+			t.Errorf("%q:\n%s %v", c.in, got, err)
+		}
 	}
 }

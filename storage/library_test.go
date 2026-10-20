@@ -529,7 +529,8 @@ func TestRecordFill(t *testing.T) {
 	if err := library.RecordDownload("/lib", "Dark Gathering", Download{Path: "/lib/Dark Gathering/68.cbz", Provider: home.Provider, MangaID: home.MangaID, MangaTitle: home.Title, Chapter: 68, Format: "CBZ", Downloaded: time.Unix(100, 0)}); err != nil {
 		t.Fatal(err)
 	}
-	fill := Download{Path: "/lib/Dark Gathering/1.cbz", Provider: "mango-mangapill", MangaID: "mp", MangaTitle: "Dark Gathering", Chapter: 1, ChapterURL: "https://mangapill.com/1", Format: "CBZ", Downloaded: time.Unix(200, 0)}
+	fill := Download{Path: "/lib/Dark Gathering/1.cbz", Provider: "mango-mangapill", MangaID: "mp", MangaTitle: "Dark Gathering", Chapter: 1, ChapterURL: "https://mangapill.com/1", Format: "CBZ", Downloaded: time.Unix(200, 0),
+		TitleProvider: home.Provider, TitleMangaID: home.MangaID, TitleChanged: time.Unix(200, 0)}
 	if err := library.RecordFill("/lib", "Dark Gathering", home, fill); err != nil {
 		t.Fatal(err)
 	}
@@ -538,8 +539,17 @@ func TestRecordFill(t *testing.T) {
 		t.Errorf("sources %+v, want mangadex only", m.Sources)
 	}
 	downloads, _ := library.Downloads(m.ID)
-	if len(downloads) != 2 || downloads[0].Provider != "mango-mangapill" || downloads[0].MangaID != "mp" || downloads[0].ChapterURL != fill.ChapterURL {
+	if len(downloads) != 2 || downloads[0].Provider != "mango-mangapill" || downloads[0].MangaID != "mp" || downloads[0].ChapterURL != fill.ChapterURL ||
+		downloads[0].TitleProvider != home.Provider || downloads[0].TitleMangaID != "md" || !downloads[0].TitleChanged.Equal(time.Unix(200, 0)) ||
+		downloads[1].TitleProvider != "" || !downloads[1].TitleChanged.IsZero() {
 		t.Errorf("downloads %+v", downloads)
+	}
+	// a retitle records where the title is from
+	if err := library.Retitle(fill.Path, "/lib/Dark Gathering/1 Lie Low.cbz", "Lie Low", Source{Provider: "mango-comick", MangaID: "ck"}); err != nil {
+		t.Fatal(err)
+	}
+	if downloads, _ := library.Downloads(m.ID); downloads[0].ChapterTitle != "Lie Low" || downloads[0].TitleProvider != "mango-comick" || downloads[0].TitleMangaID != "ck" || !downloads[0].TitleChanged.After(time.Unix(200, 0)) {
+		t.Errorf("retitled %+v", downloads[0])
 	}
 	// a new folder gets home as its source
 	if err := library.RecordFill("/lib", "New", Source{Provider: "mango-mangadex", MangaID: "new", Title: "New"}, Download{Path: "/lib/New/1.cbz", Provider: "mango-mangapill", MangaID: "mp2", Chapter: 1, Format: "CBZ"}); err != nil {
@@ -547,5 +557,30 @@ func TestRecordFill(t *testing.T) {
 	}
 	if m, ok, _ := library.MangaBySource("mango-mangadex", "new"); !ok || m.Title != "New" || len(m.Sources) != 1 {
 		t.Errorf("new folder %+v", m)
+	}
+}
+
+// downloads from before migration 24 have no title source
+func TestMigrateDownloadTitles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FilenameData)
+	old, err := Open(path, dataMigrations[:23])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(`INSERT INTO library_mangas (id, title, parent, dir) VALUES (1, 'Berserk', '/lib', 'Berserk');
+INSERT INTO library_chapters (id, manga, number) VALUES (1, 1, 1);
+INSERT INTO downloads (path, chapter_id, provider, manga_id, manga_title, volume, chapter, chapter_title, chapter_url, format, pages, downloaded)
+VALUES ('/lib/Berserk/1.cbz', 1, 'p', 'berserk', 'Berserk', 0, 1, 'One', '', 'CBZ', 0, 100)`); err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+	data, err := OpenData(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	downloads, err := Library{DB: data}.Downloads(1)
+	if err != nil || len(downloads) != 1 || downloads[0].ChapterTitle != "One" || downloads[0].TitleProvider != "" || !downloads[0].TitleChanged.IsZero() {
+		t.Errorf("downloads %+v %v", downloads, err)
 	}
 }

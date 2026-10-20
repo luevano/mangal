@@ -36,8 +36,9 @@ this, unavailable and retired ones too; of several with a number (scanlation gro
 first whose title says more than the number ("Chapter 1").
 
 Each chapter file gets the name the chapter name template gives it with the new title, and a
-CBZ (or ZIP) with a ComicInfo.xml gets a new file with its Title changed, every other entry
-copied as is; the original goes to the trash. Its download and library chapter get the title.
+CBZ (or ZIP) with a ComicInfo.xml gets a new file with its Title and its Notes' "mangal:"
+line (where the title is from) changed, every other entry copied as is; the original goes to
+the trash. Its download and library chapter get the title, the download where it's from.
 
 Only lists what would happen unless --apply is set; "mangal library undo" undoes it.`,
 	Example: `  mangal library retitle 12

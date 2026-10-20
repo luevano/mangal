@@ -726,10 +726,12 @@ func (l Library) SetDownloadPath(from, to string) error {
 }
 
 // Retitle records the new title of a chapter file, moved from one path to another (the
-// same one when its name didn't change): its download's and its library chapter's.
-func (l Library) Retitle(from, to, title string) error {
+// same one when its name didn't change): its download's and its library chapter's, the
+// download's from the source's manga (src.Title unused).
+func (l Library) Retitle(from, to, title string, src Source) error {
 	err := l.DB.InTx(func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`UPDATE downloads SET path = ?, chapter_title = ? WHERE path = ?`, to, title, from); err != nil {
+		if _, err := tx.Exec(`UPDATE downloads SET path = ?, chapter_title = ?, title_provider = ?, title_manga_id = ?, title_changed = ?
+WHERE path = ?`, to, title, src.Provider, src.MangaID, time.Now().Unix(), from); err != nil {
 			return err
 		}
 		_, err := tx.Exec(`UPDATE library_chapters SET name = ? WHERE id = (SELECT chapter_id FROM downloads WHERE path = ?)`, title, to)

@@ -11,6 +11,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -45,13 +46,14 @@ func NewFill(ctx context.Context, c *libmangal.Client, manga mangadata.Manga, ch
 }
 
 // Chapter is src, From's chapter, as Manga's: the title (its file name and ComicInfo.xml
-// Title) and volume, Manga's series metadata with a ComicInfo.xml note saying where it's
-// from; its URL (ComicInfo.xml Web) and pages are src's.
+// Title) and volume, Manga's series metadata with a ComicInfo.xml Notes line saying where
+// it's from (library.Origin); its URL (ComicInfo.xml Web) and pages are src's.
 func (f Fill) Chapter(src mangadata.Chapter, title string, volume mangadata.VolumeInfo) mangadata.Chapter {
 	info := src.Info()
+	origin := library.Origin{Provider: f.From.ID, MangaID: src.Volume().Manga().Info().ID, ChapterURL: info.URL,
+		TitleProvider: f.Provider.ID, TitleMangaID: f.Manga.Info().ID}
 	info.Title = title
-	note := fmt.Sprintf("Downloaded from %s, with %s's title", f.From.Name, f.Provider.Name)
-	return fillChapter{src: src, info: info, volume: fillVolume{info: volume, manga: fillManga{Manga: f.Manga, note: note}}}
+	return fillChapter{src: src, info: info, volume: fillVolume{info: volume, manga: fillManga{Manga: f.Manga, origin: origin}}}
 }
 
 type fillChapter struct {
@@ -77,7 +79,7 @@ func (v fillVolume) Manga() mangadata.Manga     { return v.manga }
 // fillManga is the manga with its metadata noted (the ComicInfo.xml Notes).
 type fillManga struct {
 	mangadata.Manga
-	note string
+	origin library.Origin
 }
 
 func (m fillManga) Metadata() metadata.Metadata {
@@ -85,7 +87,7 @@ func (m fillManga) Metadata() metadata.Metadata {
 	if metadata.Validate(meta) != nil {
 		return meta
 	}
-	return notedMetadata{Metadata: meta, note: m.note}
+	return notedMetadata{Metadata: meta, origin: m.origin}
 }
 
 func (m fillManga) SetMetadata(meta metadata.Metadata) {
@@ -97,11 +99,11 @@ func (m fillManga) SetMetadata(meta metadata.Metadata) {
 
 type notedMetadata struct {
 	metadata.Metadata
-	note string
+	origin library.Origin
 }
 
 func (m notedMetadata) Notes() string {
-	return strings.TrimSpace(m.note + "\n\n" + m.Metadata.Notes())
+	return library.SetNotesLine(strings.TrimSpace(m.Metadata.Notes()), m.origin)
 }
 
 func (m notedMetadata) AgeRating() string {

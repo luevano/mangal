@@ -15,7 +15,10 @@ func TestMigrateHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := (Library{DB: old}).RecordDownload("/lib", "Berserk", Download{Path: "/lib/Berserk/1.cbz", Provider: "p", MangaID: "berserk", MangaTitle: "Berserk", Chapter: 1, Format: "CBZ"}); err != nil {
+	if _, err := old.Exec(`INSERT INTO library_mangas (id, title, parent, dir) VALUES (1, 'Berserk', '/lib', 'Berserk');
+INSERT INTO library_chapters (id, manga, number) VALUES (1, 1, 1);
+INSERT INTO downloads (path, chapter_id, provider, manga_id, manga_title, volume, chapter, chapter_title, chapter_url, format, pages, downloaded)
+VALUES ('/lib/Berserk/1.cbz', 1, 'p', 'berserk', 'Berserk', 0, 1, '', '', 'CBZ', 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
 	old.Close()

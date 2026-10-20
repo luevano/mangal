@@ -112,7 +112,7 @@ func TestDownloadFill(t *testing.T) {
 			comicInfo = string(b)
 		}
 	}
-	for _, want := range []string{"<Title>Lie Low</Title>", "<Web>https://mangapill.com/chapters/1</Web>", "Downloaded from Mangapill, with MangaDex&#39;s title", "<Series>Dark Gathering</Series>"} {
+	for _, want := range []string{"<Title>Lie Low</Title>", "<Web>https://mangapill.com/chapters/1</Web>", "<Notes>mangal: provider=mango-mangapill manga_id=mp chapter_url=https://mangapill.com/chapters/1 title_provider=mango-mangadex title_manga_id=md&#xA;", "<Series>Dark Gathering</Series>"} {
 		if !strings.Contains(comicInfo, want) {
 			t.Errorf("ComicInfo.xml without %q:\n%s", want, comicInfo)
 		}
@@ -134,7 +134,8 @@ func TestDownloadFill(t *testing.T) {
 	if err != nil || len(downloads) != 1 {
 		t.Fatalf("downloads %+v %v", downloads, err)
 	}
-	if d := downloads[0]; d.Provider != "mango-mangapill" || d.MangaID != "mp" || d.ChapterURL != src.info.URL || d.ChapterTitle != "Lie Low" {
+	if d := downloads[0]; d.Provider != "mango-mangapill" || d.MangaID != "mp" || d.ChapterURL != src.info.URL || d.ChapterTitle != "Lie Low" ||
+		d.TitleProvider != "mango-mangadex" || d.TitleMangaID != "md" || d.TitleChanged.IsZero() {
 		t.Errorf("download %+v", d)
 	}
 }

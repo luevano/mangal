@@ -355,3 +355,41 @@ func TestReadZipLogs(t *testing.T) {
 		t.Errorf("not logged: %+v", recent)
 	}
 }
+
+// a file nobody recorded gets where it's from out of its Notes line
+func TestScanReadsOrigin(t *testing.T) {
+	root := t.TempDir()
+	library := newLibrary(t)
+	folder := filepath.Join(root, "Dark Gathering")
+	writeMarker(t, folder, libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "md", Title: "Dark Gathering"}})
+	if err := library.RememberMangaDir(root, "Dark Gathering", libmangal.MangaDirInfo{Provider: "mango-mangadex", Manga: mangadata.MangaInfo{ID: "md", Title: "Dark Gathering"}}); err != nil {
+		t.Fatal(err)
+	}
+	o := Origin{Provider: "mango-mangapill", MangaID: "mp", ChapterURL: "https://mangapill.com/chapters/1", TitleProvider: "mango-mangadex", TitleMangaID: "md"}
+	path := filepath.Join(folder, "[0001.0] Lie Low.cbz")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	ci, _ := w.Create(metadata.FilenameComicInfoXML)
+	_, _ = ci.Write([]byte("<ComicInfo><Title>Lie Low</Title><Number>1</Number><Notes>" + o.NotesLine() + "&#xA;&#xA;other</Notes></ComicInfo>"))
+	_ = w.Close()
+	_ = f.Close()
+
+	m, _, _ := library.MangaByFolder(root, "Dark Gathering")
+	if _, err := (Scanner{FS: afero.NewOsFs(), Library: library}).ScanManga(m, root, false); err != nil {
+		t.Fatal(err)
+	}
+	downloads, _ := library.Downloads(m.ID)
+	if len(downloads) != 1 {
+		t.Fatalf("downloads %+v", downloads)
+	}
+	d := downloads[0]
+	if d.Provider != o.Provider || d.MangaID != o.MangaID || d.ChapterURL != o.ChapterURL || d.TitleProvider != o.TitleProvider || d.TitleMangaID != o.TitleMangaID || d.TitleChanged.IsZero() {
+		t.Errorf("download %+v", d)
+	}
+	if m, _, _ := library.MangaByID(m.ID); len(m.Sources) != 1 || m.Sources[0].Provider != "mango-mangadex" {
+		t.Errorf("sources %+v", m.Sources)
+	}
+}

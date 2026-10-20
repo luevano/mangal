@@ -73,19 +73,21 @@ type Retitle struct {
 
 // RetitlePlan is what retitling a library manga's chapters does.
 type RetitlePlan struct {
-	Manga    storage.Manga
+	Manga storage.Manga
+	// From is the provider's manga the titles are from.
+	From     storage.Source
 	Retitles []Retitle
 	// Unmatched are the downloads without a title for their number.
 	Unmatched []storage.Download
 }
 
-// PlanRetitle plans giving the manga's downloads the titles (by chapter number): those
-// whose title is another one.
-func (r Retitler) PlanRetitle(m storage.Manga, titles map[float32]string) (RetitlePlan, error) {
+// PlanRetitle plans giving the manga's downloads the titles (by chapter number) of the
+// provider's manga from: those whose title is another one.
+func (r Retitler) PlanRetitle(m storage.Manga, from storage.Source, titles map[float32]string) (RetitlePlan, error) {
 	if r.ChapterName == nil {
 		return RetitlePlan{}, errors.New("no chapter name template")
 	}
-	plan := RetitlePlan{Manga: m}
+	plan := RetitlePlan{Manga: m, From: from}
 	downloads, err := r.Library.Downloads(m.ID)
 	if err != nil {
 		return plan, err
@@ -183,7 +185,7 @@ func (r Retitler) ApplyRetitleContext(ctx context.Context, plan RetitlePlan, onD
 			return err
 		}
 		report(r.OnProgress, Progress{Phase: "retitling", Done: i + 1, Total: len(todo), Item: rt.Title})
-		err := r.retitle(ctx, batch, rt)
+		err := r.retitle(ctx, batch, rt, plan.From)
 		if onDone != nil {
 			onDone(i, err)
 		}
@@ -192,7 +194,7 @@ func (r Retitler) ApplyRetitleContext(ctx context.Context, plan RetitlePlan, onD
 }
 
 // retitle retitles one chapter, moving back what it moved when it fails.
-func (r Retitler) retitle(ctx context.Context, batch string, rt Retitle) error {
+func (r Retitler) retitle(ctx context.Context, batch string, rt Retitle, src storage.Source) error {
 	from := rt.Download.Path
 	var undo []func() error
 	fail := func(err error) error {
@@ -226,7 +228,9 @@ func (r Retitler) retitle(ctx context.Context, batch string, rt Retitle) error {
 		if err := mkdirAll(r.FS, r.Journal, filepath.Dir(staged), r.Modes.Dir); err != nil {
 			return err
 		}
-		if err := writeRetitledZip(r.FS, from, staged, rt.Title, r.Modes.File); err != nil {
+		dl := rt.Download
+		origin := Origin{Provider: dl.Provider, MangaID: dl.MangaID, ChapterURL: dl.ChapterURL, TitleProvider: src.Provider, TitleMangaID: src.MangaID}
+		if err := writeRetitledZip(r.FS, from, staged, rt.Title, origin, r.Modes.File); err != nil {
 			return errors.Join(err, removeIfExists(r.FS, staged))
 		}
 		trashed, err := freeName(r.FS, inTrash(r.Root, batch, from), false, nil)
@@ -244,7 +248,7 @@ func (r Retitler) retitle(ctx context.Context, batch string, rt Retitle) error {
 			return err
 		}
 	}
-	if err := r.Library.Retitle(from, rt.To, rt.Title); err != nil {
+	if err := r.Library.Retitle(from, rt.To, rt.Title, src); err != nil {
 		return fail(err)
 	}
 	return nil
@@ -280,8 +284,9 @@ func hasComicInfo(fsys afero.Fs, dl storage.Download) (bool, error) {
 }
 
 // writeRetitledZip writes the zip from to the new file to, its ComicInfo.xml's Title set
-// to title: the other entries are copied as they are, not recompressed.
-func writeRetitledZip(fsys afero.Fs, from, to, title string, mode os.FileMode) error {
+// to title and its Notes line to the origin's: the other entries are copied as they are,
+// not recompressed.
+func writeRetitledZip(fsys afero.Fs, from, to, title string, origin Origin, mode os.FileMode) error {
 	in, err := fsys.Open(from)
 	if err != nil {
 		return err
@@ -300,7 +305,7 @@ func writeRetitledZip(fsys afero.Fs, from, to, title string, mode os.FileMode) e
 		return err
 	}
 	zw := zip.NewWriter(out)
-	err = copyRetitled(zr, zw, title)
+	err = copyRetitled(zr, zw, title, origin)
 	if err == nil {
 		err = zw.Close()
 	}
@@ -313,7 +318,7 @@ func writeRetitledZip(fsys afero.Fs, from, to, title string, mode os.FileMode) e
 	return nil
 }
 
-func copyRetitled(zr *zip.Reader, zw *zip.Writer, title string) error {
+func copyRetitled(zr *zip.Reader, zw *zip.Writer, title string, origin Origin) error {
 	for _, f := range zr.File {
 		if f.Name != metadata.FilenameComicInfoXML {
 			if err := zw.Copy(f); err != nil {
@@ -330,7 +335,11 @@ func copyRetitled(zr *zip.Reader, zw *zip.Writer, title string) error {
 		if err != nil {
 			return err
 		}
-		if data, err = setComicInfoTitle(data, title); err != nil {
+		if data, err = setComicInfoElement(data, "Title", func(string) string { return title }, nil); err != nil {
+			return err
+		}
+		setNotes := func(notes string) string { return SetNotesLine(notes, origin) }
+		if data, err = setComicInfoElement(data, "Notes", setNotes, beforeNotes); err != nil {
 			return err
 		}
 		fh := f.FileHeader
@@ -346,17 +355,25 @@ func copyRetitled(zr *zip.Reader, zw *zip.Writer, title string) error {
 	return zw.SetComment(zr.Comment)
 }
 
-// setComicInfoTitle is the ComicInfo.xml with its Title set, the rest byte for byte (a
-// read and Marshal would drop what libmangal doesn't know or write).
-func setComicInfoTitle(data []byte, title string) ([]byte, error) {
-	var esc bytes.Buffer
-	if err := xml.EscapeText(&esc, []byte(title)); err != nil {
-		return nil, err
+// beforeNotes are the ComicInfo.xml schema's elements before Notes.
+var beforeNotes = []string{"Title", "Series", "Number", "Count", "Volume", "AlternateSeries", "AlternateNumber", "AlternateCount", "Summary"}
+
+// setComicInfoElement is the ComicInfo.xml with the text of its element name set to
+// set(its text), the rest byte for byte (a read and Marshal would drop what libmangal
+// doesn't know or write): a missing element is added after the last of after there is,
+// else first.
+func setComicInfoElement(data []byte, name string, set func(string) string, after []string) ([]byte, error) {
+	read := func(err error) error { return fmt.Errorf("read %s: %w", metadata.FilenameComicInfoXML, err) }
+	elem := func(text string) ([]byte, error) {
+		var b bytes.Buffer
+		fmt.Fprintf(&b, "<%s>", name)
+		err := xml.EscapeText(&b, []byte(set(text)))
+		fmt.Fprintf(&b, "</%s>", name)
+		return b.Bytes(), err
 	}
-	elem := "<Title>" + esc.String() + "</Title>"
 	d := xml.NewDecoder(bytes.NewReader(data))
 	depth := 0
-	rootEnd := int64(-1)
+	rootEnd, afterEnd := int64(-1), int64(-1)
 	for {
 		start := d.InputOffset()
 		tok, err := d.RawToken()
@@ -364,7 +381,7 @@ func setComicInfoTitle(data []byte, title string) ([]byte, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", metadata.FilenameComicInfoXML, err)
+			return nil, read(err)
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
@@ -372,22 +389,36 @@ func setComicInfoTitle(data []byte, title string) ([]byte, error) {
 			if depth == 1 {
 				rootEnd = d.InputOffset()
 			}
-			if depth != 2 || t.Name.Local != "Title" {
+			if depth != 2 {
 				continue
 			}
+			var text strings.Builder
 			for depth > 1 {
 				tok, err := d.RawToken()
 				if err != nil {
-					return nil, fmt.Errorf("read %s: %w", metadata.FilenameComicInfoXML, err)
+					return nil, read(err)
 				}
-				switch tok.(type) {
+				switch tok := tok.(type) {
 				case xml.StartElement:
 					depth++
 				case xml.EndElement:
 					depth--
+				case xml.CharData:
+					if depth == 2 {
+						text.Write(tok)
+					}
 				}
 			}
-			return slices.Concat(data[:start], []byte(elem), data[d.InputOffset():]), nil
+			switch {
+			case t.Name.Local == name:
+				e, err := elem(text.String())
+				if err != nil {
+					return nil, err
+				}
+				return slices.Concat(data[:start], e, data[d.InputOffset():]), nil
+			case slices.Contains(after, t.Name.Local):
+				afterEnd = d.InputOffset()
+			}
 		case xml.EndElement:
 			depth--
 		}
@@ -395,6 +426,14 @@ func setComicInfoTitle(data []byte, title string) ([]byte, error) {
 	if rootEnd < 0 {
 		return nil, fmt.Errorf("%s has no root element", metadata.FilenameComicInfoXML)
 	}
-	// Title is the schema's first element, indented as libmangal writes it
-	return slices.Concat(data[:rootEnd], []byte("\n  "+elem), data[rootEnd:]), nil
+	at := rootEnd
+	if afterEnd >= 0 {
+		at = afterEnd
+	}
+	e, err := elem("")
+	if err != nil {
+		return nil, err
+	}
+	// indented as libmangal writes it
+	return slices.Concat(data[:at], []byte("\n  "), e, data[at:]), nil
 }

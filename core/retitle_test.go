@@ -84,7 +84,7 @@ func TestRetitle(t *testing.T) {
 	writeCBZ(t, ch1, testComicInfo)
 	writeCBZ(t, ch2, "")
 
-	req := RetitleReq{Manga: m.ID, Provider: libmangal.ProviderInfo{ID: "mango-mangadex"}, From: mangadata.MangaInfo{Title: "Dark Gathering"},
+	req := RetitleReq{Manga: m.ID, Provider: libmangal.ProviderInfo{ID: "mango-mangadex"}, From: mangadata.MangaInfo{ID: "md", Title: "Dark Gathering"},
 		Titles: map[float32]string{1: "The Beginning", 2: "Tom & <Jerry>", 4: "Not downloaded"}}
 	p, err := c.Changes.Plan(ctx, req)
 	if err != nil {
@@ -111,7 +111,9 @@ no title for chapters 3`
 	}
 	// the new file: the title changed, the rest as it was
 	zr, files := readZip(t, new1)
-	if wantCI := strings.Replace(testComicInfo, "<Title>Chapter 1</Title>", "<Title>The Beginning</Title>", 1); files["ComicInfo.xml"] != wantCI {
+	wantCI := strings.Replace(testComicInfo, "<Title>Chapter 1</Title>", "<Title>The Beginning</Title>", 1)
+	wantCI = strings.Replace(wantCI, "<Notes>", "<Notes>mangal: provider=p manga_id=dg title_provider=mango-mangadex title_manga_id=md&#xA;&#xA;", 1)
+	if files["ComicInfo.xml"] != wantCI {
 		t.Errorf("ComicInfo.xml:\n%s", files["ComicInfo.xml"])
 	}
 	if files["0001.jpg"] != "page one" || zr.File[0].Name != "0001.jpg" || zr.File[0].Method != zip.Store || zr.Comment != "a comment" || len(zr.File) != 2 {
@@ -127,7 +129,8 @@ no title for chapters 3`
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dls[0].Path != new1 || dls[0].ChapterTitle != "The Beginning" || dls[1].Path != new2 || dls[2].ChapterTitle != "" {
+	if dls[0].Path != new1 || dls[0].ChapterTitle != "The Beginning" || dls[1].Path != new2 || dls[2].ChapterTitle != "" ||
+		dls[0].TitleProvider != "mango-mangadex" || dls[0].TitleMangaID != "md" || dls[0].TitleChanged.IsZero() || dls[2].TitleProvider != "" {
 		t.Errorf("downloads %+v", dls)
 	}
 	var name string
@@ -145,7 +148,7 @@ no title for chapters 3`
 	if _, files := readZip(t, ch1); files["ComicInfo.xml"] != testComicInfo {
 		t.Error("the original changed")
 	}
-	if dls, _ := c.env.Storage.Library().Downloads(m.ID); dls[0].Path != ch1 || dls[0].ChapterTitle != "" {
+	if dls, _ := c.env.Storage.Library().Downloads(m.ID); dls[0].Path != ch1 || dls[0].ChapterTitle != "" || dls[0].TitleProvider != "" || !dls[0].TitleChanged.IsZero() {
 		t.Errorf("downloads after undo %+v", dls)
 	}
 }

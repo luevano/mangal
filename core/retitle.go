@@ -11,6 +11,7 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/storage"
 )
 
 // KindRetitle is giving a library manga's chapters another provider's titles.
@@ -104,7 +105,7 @@ func (r RetitleReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 		return nil, err
 	}
 	rt := library.Retitler{Files: files, Loaders: loaders, ChapterName: c.env.ChapterName}
-	rp, err := rt.PlanRetitle(m, r.Titles)
+	rp, err := rt.PlanRetitle(m, storage.Source{Provider: r.Provider.ID, MangaID: r.From.ID, Title: r.From.Title}, r.Titles)
 	if err != nil {
 		return nil, err
 	}
