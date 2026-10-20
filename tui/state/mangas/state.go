@@ -73,6 +73,7 @@ type resultsMsg struct {
 // openedMsg is a manga ready to be shown: its metadata (nil if none was searched or
 // found) and its volumes.
 type openedMsg struct {
+	client  *libmangal.Client
 	item    *item
 	meta    lmmeta.Metadata
 	notice  string
@@ -202,7 +203,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		s.markWatched()
 		return nil
 	case openedMsg:
-		return s.onOpened(msg)
+		return onOpened(msg)
 	case search.SearchMsg:
 		return tea.Batch(s.Screen.Update(msg), s.searchCmd(ctx, string(msg)))
 	case search.SearchCancelMsg:
@@ -298,9 +299,14 @@ func (s *state) searchCmd(ctx context.Context, query string) tea.Cmd {
 	}))
 }
 
-// openCmd searches the manga's metadata (download.metadata.search) and its volumes, or
-// right away the chapters (tui.expand_*).
+// openCmd opens the manga (openCmd).
 func (s *state) openCmd(ctx context.Context, i *item, note string) tea.Cmd {
+	return openCmd(ctx, s.client, i, note)
+}
+
+// openCmd searches the manga's metadata (download.metadata.search) and its volumes, or
+// right away the chapters (tui.expand_*), with the client of its provider.
+func openCmd(ctx context.Context, c *libmangal.Client, i *item, note string) tea.Cmd {
 	manga := i.manga
 	// the metadata is read here, it's only changed in Update
 	searchMeta := config.Download.Metadata.Search.Get() && !hasMetadata(manga.Metadata())
@@ -311,17 +317,17 @@ func (s *state) openCmd(ctx context.Context, i *item, note string) tea.Cmd {
 		label = fmt.Sprintf("Searching metadata and volumes for %q", manga)
 	}
 	return base.LoadWithStatus(ctx, label, func(ctx context.Context, status func(string)) (openedMsg, error) {
-		msg := openedMsg{item: i, notice: note}
+		msg := openedMsg{client: c, item: i, notice: note}
 		if searchMeta {
 			var notice string
-			msg.meta, notice = s.searchMetadata(ctx, manga)
+			msg.meta, notice = searchMetadata(ctx, c, manga)
 			msg.notice = joinNotice(msg.notice, notice)
 			status(fmt.Sprintf("Searching volumes for %q", manga))
 		}
 
-		vols, err := s.client.MangaVolumesContext(ctx, manga)
+		vols, err := c.MangaVolumesContext(ctx, manga)
 		if err != nil {
-			return msg, base.MangaError(fmt.Errorf("get the volumes of %q: %w", manga, err), s.client.Info().Name, manga)
+			return msg, base.MangaError(fmt.Errorf("get the volumes of %q: %w", manga, err), c.Info().Name, manga)
 		}
 		msg.volumes = vols
 
@@ -337,11 +343,11 @@ func (s *state) openCmd(ctx context.Context, i *item, note string) tea.Cmd {
 			if len(expand) > 1 {
 				status(fmt.Sprintf("Searching chapters: volume %d/%d", n+1, len(expand)))
 			}
-			c, err := s.client.VolumeChaptersContext(ctx, v)
+			chapters, err := c.VolumeChaptersContext(ctx, v)
 			if err != nil {
-				return msg, base.MangaError(fmt.Errorf("get the chapters of volume %s: %w", v, err), s.client.Info().Name, manga)
+				return msg, base.MangaError(fmt.Errorf("get the chapters of volume %s: %w", v, err), c.Info().Name, manga)
 			}
-			msg.chapters = append(msg.chapters, c...)
+			msg.chapters = append(msg.chapters, chapters...)
 		}
 		return msg, nil
 	}, func(msg openedMsg) tea.Msg { return msg })
@@ -349,8 +355,8 @@ func (s *state) openCmd(ctx context.Context, i *item, note string) tea.Cmd {
 
 // searchMetadata is the manga's default metadata binding, else it finds the manga on Anilist,
 // or Kitsu. Without a match the manga still opens, a strict download then says what to do.
-func (s *state) searchMetadata(ctx context.Context, manga mangadata.Manga) (lmmeta.Metadata, string) {
-	meta, err := client.SearchMetadata(ctx, s.client, manga)
+func searchMetadata(ctx context.Context, c *libmangal.Client, manga mangadata.Manga) (lmmeta.Metadata, string) {
+	meta, err := client.SearchMetadata(ctx, c, manga)
 	switch {
 	case err != nil:
 		log.Warn("search metadata for %q: %s", manga, err)
@@ -367,7 +373,7 @@ func (s *state) searchMetadata(ctx context.Context, manga mangadata.Manga) (lmme
 	return meta, ""
 }
 
-func (s *state) onOpened(msg openedMsg) tea.Cmd {
+func onOpened(msg openedMsg) tea.Cmd {
 	manga := msg.item.manga
 	if msg.meta != nil {
 		manga.SetMetadata(msg.meta)
@@ -376,9 +382,9 @@ func (s *state) onOpened(msg openedMsg) tea.Cmd {
 
 	var next base.State
 	if msg.expanded != "" {
-		next = chapters.New(s.client, manga, msg.volume, msg.chapters)
+		next = chapters.New(msg.client, manga, msg.volume, msg.chapters)
 	} else {
-		next = volumes.New(s.client, manga, msg.volumes)
+		next = volumes.New(msg.client, manga, msg.volumes)
 	}
 
 	cmds := []tea.Cmd{func() tea.Msg { return next }}

@@ -4,6 +4,7 @@ import (
 	"github.com/luevano/mangal/v5/tui/util"
 
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/tui/base"
 )
 
@@ -169,5 +171,112 @@ func TestKeys(t *testing.T) {
 		if len(keys) != 0 {
 			t.Errorf("%s: %v", name, keys)
 		}
+	}
+}
+
+func TestProviderChecks(t *testing.T) {
+	fakes(t)
+	var picked []string
+	pickFn := func(infos []libmangal.ProviderInfo) tea.Cmd {
+		picked = nil
+		for _, i := range infos {
+			picked = append(picked, i.ID)
+		}
+		return nil
+	}
+	// every one but the excluded, ticked
+	p := NewProviderChecks("b", nil, pickFn)
+	p.Resize(base.Size{Width: 80, Height: 20})
+	run(p, p.Init(context.Background()))
+	if v := p.View(); strings.Contains(v, "Beta") || !strings.Contains(v, "Alpha") {
+		t.Errorf("view:\n%s", v)
+	}
+	run(p, p.Update(context.Background(), keyMsg("enter")))
+	if strings.Join(picked, ",") != "a,c" {
+		t.Errorf("picked %q", picked)
+	}
+	// space unticks
+	run(p, p.Update(context.Background(), keyMsg("space")))
+	run(p, p.Update(context.Background(), keyMsg("enter")))
+	if strings.Join(picked, ",") != "c" {
+		t.Errorf("picked %q", picked)
+	}
+
+	// the last ones ticked
+	p = NewProviderChecks("b", []string{"a"}, pickFn)
+	run(p, p.Init(context.Background()))
+	run(p, p.Update(context.Background(), keyMsg("enter")))
+	if strings.Join(picked, ",") != "a" {
+		t.Errorf("picked %q", picked)
+	}
+	if keys := base.KeyCollisions(p.Keys(), p.List.KeyMap.Browsing()...); len(keys) != 0 {
+		t.Errorf("keys %v", keys)
+	}
+	if bad := base.KeyInconsistencies(p.Keys()); len(bad) != 0 {
+		t.Errorf("keys %v", bad)
+	}
+}
+
+func TestMulti(t *testing.T) {
+	results := make(chan core.SearchResult, 3)
+	var req core.SearchReq
+	old := Search
+	t.Cleanup(func() { Search = old; close(results) })
+	Search = func(_ context.Context, r core.SearchReq) <-chan core.SearchResult {
+		req = r
+		return results
+	}
+	var picked string
+	s := NewMulti(MultiOptions{
+		Title: "Fill", Query: "frieren", Action: "get its chapters",
+		Providers: []libmangal.ProviderInfo{{ID: "a", Name: "Alpha"}, {ID: "b", Name: "Beta"}, {ID: "c", Name: "Gamma"}},
+		Pick: func(_ context.Context, provider string, m mangadata.Manga) tea.Cmd {
+			picked = provider + "/" + m.Info().ID
+			return nil
+		},
+	})
+	s.Resize(base.Size{Width: 80, Height: 40})
+	ctx := context.Background()
+	cmd := s.Init(ctx)
+	if strings.Join(req.Providers, ",") != "a,b,c" || req.Query != "frieren" {
+		t.Errorf("req %+v", req)
+	}
+	// every section searching right away
+	if v := s.View(); strings.Count(v, "searching…") != 3 {
+		t.Errorf("view:\n%s", v)
+	}
+	// they fill in as they come, a never answers
+	results <- core.SearchResult{Provider: "b", Mangas: []mangadata.Manga{manga("b-1")}}
+	results <- core.SearchResult{Provider: "c", Err: errors.New("down")}
+	got := 0
+	for msgs := base.Drain(cmd); len(msgs) != 0; {
+		msg := msgs[0]
+		msgs = msgs[1:]
+		if _, ok := msg.(multiResultMsg); ok {
+			got++
+			msgs = append(msgs, base.Drain(s.Update(ctx, msg))...)
+		}
+	}
+	v := s.View()
+	if got != 2 || strings.Count(v, "searching…") != 1 || !strings.Contains(v, "Manga b-1") || !strings.Contains(v, "1 manga") || !strings.Contains(v, "down") {
+		t.Errorf("%d results, view:\n%s", got, v)
+	}
+	// enter on a section does nothing, on a manga picks it
+	run(s, s.Update(ctx, keyMsg("enter")))
+	if picked != "" {
+		t.Errorf("picked %q on a section", picked)
+	}
+	for range 4 {
+		if _, ok := s.List.SelectedItem().(*MultiItem); ok {
+			break
+		}
+		s.Update(ctx, keyMsg("down"))
+	}
+	run(s, s.Update(ctx, keyMsg("enter")))
+	if picked != "b/b-1" {
+		t.Errorf("picked %q", picked)
+	}
+	if keys := base.KeyCollisions(s.Keys(), s.List.KeyMap.Browsing()...); len(keys) != 0 {
+		t.Errorf("keys %v", keys)
 	}
 }

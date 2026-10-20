@@ -30,6 +30,7 @@ type state struct {
 	info,
 	closeAll,
 	byID,
+	toggle,
 	mirrors key.Binding
 }
 
@@ -57,6 +58,7 @@ func New(loaders []libmangal.ProviderLoader) base.State {
 		closeAll: base.KeyCloseAll,
 		mirrors:  base.KeyMirrors,
 		byID:     base.KeyByID,
+		toggle:   base.KeyToggle,
 	}
 	s.Screen = list.NewScreen(list.New(2, 1, "provider", "providers", loaders, s.newItem), s.keyMap)
 	return s
@@ -68,8 +70,8 @@ func (s *state) newItem(loader libmangal.ProviderLoader) _list.DefaultItem {
 
 func (s *state) keyMap() help.KeyMap {
 	return util.KeyMap{
-		Short: []key.Binding{s.confirm, s.info},
-		Full:  [][]key.Binding{{s.confirm, s.byID, s.info, s.mirrors, s.closeAll}},
+		Short: []key.Binding{s.confirm, s.toggle, s.info},
+		Full:  [][]key.Binding{{s.confirm, s.toggle, s.byID, s.info, s.mirrors, s.closeAll}},
 	}
 }
 
@@ -137,6 +139,12 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			break
 		}
 		switch {
+		case key.Matches(msg, s.toggle):
+			i.checked = !i.checked
+			return nil
+		case key.Matches(msg, s.confirm) && len(s.checked()) != 0:
+			providers := s.checked()
+			return func() tea.Msg { return mangas.NewMulti(providers) }
 		case key.Matches(msg, s.confirm), key.Matches(msg, s.byID):
 			if base.Busy(ctx) {
 				return nil
@@ -163,6 +171,17 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 	}
 	return s.List.Update(msg)
+}
+
+// checked are the providers ticked to search them at once.
+func (s *state) checked() []libmangal.ProviderInfo {
+	var infos []libmangal.ProviderInfo
+	for _, i := range s.List.Items() {
+		if i := i.(*item); i.checked {
+			infos = append(infos, i.loader.Info())
+		}
+	}
+	return infos
 }
 
 // loadCmd opens the provider: its client is held while its screens are shown (the mangas

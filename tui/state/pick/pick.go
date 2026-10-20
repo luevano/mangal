@@ -5,6 +5,7 @@ package pick
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/help"
@@ -16,6 +17,7 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/model/search"
@@ -246,23 +248,36 @@ var _ base.State = (*Providers)(nil)
 type providerItem struct {
 	info    libmangal.ProviderInfo
 	current bool
+	// checked is ticked to search it (NewProviderChecks)
+	checked bool
 }
 
 func (i *providerItem) FilterValue() string { return i.info.ID + " " + i.info.Name }
 func (i *providerItem) Title() string {
+	title := i.info.Name
 	if i.current {
-		return i.info.Name + " (current)"
+		title += " (current)"
 	}
-	return i.info.Name
+	if i.checked {
+		title += " " + icon.Mark.Colored()
+	}
+	return title
 }
 func (i *providerItem) Description() string { return i.info.ID }
 
-// Providers picks an installed provider.
+// Providers picks an installed provider, or ticks several (NewProviderChecks).
 type Providers struct {
 	list.Screen
 	current string
 	pick    func(provider string) tea.Cmd
 	choose  key.Binding
+
+	// checks is the check mode's: the providers ticked first (all but exclude when nil),
+	// pickChecked what enter does with the ticked ones
+	checks      []string
+	exclude     string
+	pickChecked func([]libmangal.ProviderInfo) tea.Cmd
+	toggle      key.Binding
 }
 
 type providersMsg []libmangal.ProviderInfo
@@ -280,12 +295,29 @@ func NewProviders(current string, pick func(provider string) tea.Cmd) *Providers
 	return s
 }
 
+// NewProviderChecks ticks the providers to search (space), enter gives pick the ticked
+// ones. checked are ticked first (every one but exclude when nil); exclude isn't listed.
+func NewProviderChecks(exclude string, checked []string, pick func([]libmangal.ProviderInfo) tea.Cmd) *Providers {
+	s := NewProviders("", nil)
+	s.exclude, s.checks, s.pickChecked = exclude, checked, pick
+	s.choose, s.toggle = util.Bind("search the ticked", "enter"), base.KeyToggle
+	return s
+}
+
 // Keys are the picker's own keys, without the list's.
 func (s *Providers) Keys() help.KeyMap {
+	if s.pickChecked != nil {
+		return util.KeyMap{Short: []key.Binding{s.choose, s.toggle}}
+	}
 	return util.KeyMap{Short: []key.Binding{s.choose}}
 }
 
-func (s *Providers) Title() base.Title { return base.Title{Text: "Provider"} }
+func (s *Providers) Title() base.Title {
+	if s.pickChecked != nil {
+		return base.Title{Text: "Providers to search"}
+	}
+	return base.Title{Text: "Provider"}
+}
 
 func (s *Providers) Init(ctx context.Context) tea.Cmd {
 	return base.Load(ctx, "Loading the providers", func(context.Context) (providersMsg, error) {
@@ -297,14 +329,18 @@ func (s *Providers) Init(ctx context.Context) tea.Cmd {
 func (s *Providers) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case providersMsg:
-		items := make([]_list.Item, len(msg))
+		var items []_list.Item
 		index := 0
-		for i, info := range msg {
-			current := info.Matches(s.current)
-			if current {
-				index = i
+		for _, info := range msg {
+			if s.exclude != "" && info.Matches(s.exclude) {
+				continue
 			}
-			items[i] = &providerItem{info: info, current: current}
+			current := s.current != "" && info.Matches(s.current)
+			if current {
+				index = len(items)
+			}
+			checked := s.pickChecked != nil && (s.checks == nil || slices.ContainsFunc(s.checks, info.Matches))
+			items = append(items, &providerItem{info: info, current: current, checked: checked})
 		}
 		cmd := s.List.SetItems(items)
 		s.List.Select(index)
@@ -313,7 +349,24 @@ func (s *Providers) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if s.List.Filtering() {
 			break
 		}
-		if i, ok := s.List.SelectedItem().(*providerItem); ok && key.Matches(msg, s.choose) {
+		i, ok := s.List.SelectedItem().(*providerItem)
+		switch {
+		case !ok:
+		case s.pickChecked != nil && key.Matches(msg, s.toggle):
+			i.checked = !i.checked
+			return nil
+		case s.pickChecked != nil && key.Matches(msg, s.choose):
+			var checked []libmangal.ProviderInfo
+			for _, it := range s.List.Items() {
+				if it := it.(*providerItem); it.checked {
+					checked = append(checked, it.info)
+				}
+			}
+			if len(checked) == 0 {
+				return base.Notify(s.toggle.Help().Key + " ticks a provider")
+			}
+			return s.pickChecked(checked)
+		case key.Matches(msg, s.choose):
 			return s.pick(i.info.ID)
 		}
 	}

@@ -22,6 +22,8 @@ type item struct {
 	// loadTime is when this screen loaded the provider's client
 	loadTime  time.Time
 	extraInfo *bool
+	// checked is ticked to search it with the others ticked
+	checked bool
 }
 
 func (i *item) ItemKey() string { return i.loader.Info().ID }
@@ -35,6 +37,11 @@ func (i *item) Title() string {
 	title.WriteString(i.FilterValue())
 	if info := i.loader.Info(); len(info.History) != 0 {
 		title.WriteString(style.Normal.Secondary.Render(" (formerly " + formerly(info) + ")"))
+	}
+
+	if i.checked {
+		title.WriteString(" ")
+		title.WriteString(icon.Mark.Colored())
 	}
 
 	if i.isLoaded() {
