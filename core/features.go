@@ -77,7 +77,7 @@ var Features = []Feature{
 	{Name: "mirrors", Web: []string{"providers"}, API: []string{"setProviderMirror"}, CLI: []string{"providers ls", "config set"}, TUI: "alt+m (providers)", TUIKey: "alt+m",
 		NotApplicable: map[Mode]string{ModeScript: cliEnough}},
 	{Name: "search and browse", Web: []string{"search", "provider-manga"}, API: []string{"searchProvider", "getProviderManga", "listProviderChapters", "proxyImage"}, CLI: []string{"inline json"}, TUI: "s (mangas)", TUIKey: "s", Script: "client.search_mangas"},
-	{Name: "multi-provider search", Web: []string{"search", "provider-manga"}, API: []string{"searchProvider"}, CLI: []string{"search", "library fill"}, TUI: "space, enter (providers); alt+g (chapters)", TUIKey: "space",
+	{Name: "multi-provider search", Web: []string{"multi-search", "provider-manga"}, API: []string{"searchProvider"}, CLI: []string{"search", "library fill"}, TUI: "space, enter (providers); alt+g (chapters)", TUIKey: "space",
 		NotApplicable: map[Mode]string{ModeScript: "a script searches each provider itself (client.search_mangas)"}},
 	{Name: "download", Web: []string{"provider-manga", "jobs"}, API: []string{"startDownload", "listJobs", "getJob", "cancelJob", "retryJob", "removeJob", "clearJobQueue"}, CLI: []string{"inline download"}, TUI: "d (chapters)", TUIKey: "d", Script: "client.download_chapter"},
 	{Name: "read", Web: []string{"read-library", "read-online"}, API: []string{"listChapterPages", "getChapterPage", "getChapterFile", "listProviderPages", "getProviderPage", "recordRead", "getReaderPosition", "putReaderPosition"}, TUI: "r (chapters)", TUIKey: "r",

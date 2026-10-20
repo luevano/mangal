@@ -46,6 +46,7 @@ function search(id: string) {
 <template>
   <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
     <h4 class="me-auto mb-0">Providers</h4>
+    <RouterLink class="btn btn-sm btn-outline-primary" :to="{ name: 'multi-search' }" data-test="multi-search"><i class="bi bi-search me-1" />Search several</RouterLink>
     <button class="btn btn-sm btn-outline-primary" :disabled="action.busy.value" title="git pull of each installed provider (installing one is mangal providers add)" data-test="update-providers" @click="updateAll">
       <span v-if="action.busy.value" class="spinner-border spinner-border-sm me-1" />Update providers
     </button>

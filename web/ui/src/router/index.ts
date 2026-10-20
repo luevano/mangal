@@ -27,6 +27,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/jobs', name: 'jobs', component: () => import('@/views/JobsView.vue') },
   { path: '/logs', name: 'logs', component: () => import('@/views/LogsView.vue') },
   { path: '/providers', name: 'providers', component: () => import('@/views/ProvidersView.vue') },
+  { path: '/search', name: 'multi-search', component: () => import('@/views/SearchView.vue') },
   { path: '/providers/:provider/search', name: 'search', component: () => import('@/views/SearchView.vue') },
   { path: '/providers/:provider/manga/:manga', name: 'provider-manga', component: () => import('@/views/ProviderMangaView.vue') },
   { path: '/accounts', name: 'accounts', component: () => import('@/views/AccountsView.vue') },

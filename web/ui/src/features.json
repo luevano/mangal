@@ -49,7 +49,7 @@
     {
       "name": "multi-provider search",
       "web": [
-        "search",
+        "multi-search",
         "provider-manga"
       ],
       "api": [

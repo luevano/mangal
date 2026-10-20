@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import client, { ok } from '@/api/client'
 import { imageURL } from '@/api/urls'
 import LoadState from '@/components/LoadState.vue'
+import MultiSearch from '@/components/MultiSearch.vue'
 import PagerNav from '@/components/PagerNav.vue'
 import { usePager } from '@/composables/usePager'
 import { useLoad } from '@/composables/useLoad'
@@ -11,28 +12,32 @@ import { crumbs } from '@/stores/crumbs'
 
 const route = useRoute()
 const router = useRouter()
+// several providers at once (the multi-search route), else the route's provider
+const multi = computed(() => route.name === 'multi-search')
 const provider = computed(() => String(route.params.provider))
 const q = computed(() => String(route.query.q ?? ''))
 const input = ref(q.value)
 // covers that failed to load show the placeholder
 const broken = reactive(new Set<string>())
 
-crumbs(() => [{ title: 'Providers', to: { name: 'providers' } }, { title: provider.value }, { title: q.value ? `“${q.value}”` : 'Search' }])
+crumbs(() => [{ title: 'Providers', to: { name: 'providers' } }, ...(multi.value ? [] : [{ title: provider.value }]), { title: q.value ? `“${q.value}”` : 'Search' }])
 
 const { data, loading, error } = useLoad(
-  () => (q.value ? ok(client.GET('/v1/providers/{provider}/search', { params: { path: { provider: provider.value }, query: { q: q.value } } })) : Promise.resolve([])),
+  () => (q.value && !multi.value ? ok(client.GET('/v1/providers/{provider}/search', { params: { path: { provider: provider.value }, query: { q: q.value } } })) : Promise.resolve([])),
   [provider, q]
 )
 const pager = usePager(data, 60)
 function submit() {
   router.replace({ query: { q: input.value } })
 }
-function open(id: string) {
-  router.push({ name: 'provider-manga', params: { provider: provider.value, manga: id } })
+function open(id: string, p = provider.value) {
+  router.push({ name: 'provider-manga', params: { provider: p, manga: id } })
 }
 </script>
 
 <template>
+  <MultiSearch v-if="multi" storage-key="mangal.search.providers" :query="q" @search="(s) => router.replace({ query: { q: s } })" @pick="(p, m) => open(m.id, p)" />
+  <template v-else>
   <form class="input-group mb-3" style="max-width: 32rem" @submit.prevent="submit">
     <input v-model="input" class="form-control" placeholder="search" data-test="search-input" />
     <button class="btn btn-primary" type="submit">Search</button>
@@ -52,4 +57,5 @@ function open(id: string) {
     </div>
   </div>
   <PagerNav v-model="pager.offset.value" :total="pager.total.value" :size="pager.size" />
+  </template>
 </template>
