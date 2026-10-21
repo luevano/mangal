@@ -394,11 +394,15 @@ func (k *localKinds) healthProviders(jk *JobKind, settings config.ProviderSettin
 	return nil
 }
 
-// kindDefaults are the kind's prebuilt per-provider settings.
+// kindDefaults are the kind's per-provider settings when the config doesn't set them.
 func kindDefaults(kind jobs.Kind) config.ProviderSettings {
 	switch kind {
-	case jobs.KindSourceCheck, jobs.KindSourceURLs, jobs.KindHealth:
-		return config.MaintenanceDefaults()
+	case jobs.KindSourceCheck:
+		return config.Jobs.Sources.Providers.Default
+	case jobs.KindSourceURLs:
+		return config.Jobs.URLs.Providers.Default
+	case jobs.KindHealth:
+		return config.Jobs.Health.Providers.Default
 	}
 	return config.ProviderSettings{}
 }
@@ -650,15 +654,16 @@ func (k *localKinds) Set(ctx context.Context, kind jobs.Kind, s JobSettings) (Jo
 			return jk, invalid("%s has no per-provider settings", jk.Title)
 		}
 		defaults := kindDefaults(kind)
+		settings = maps.Clone(settings)
 		for id, v := range s.Providers {
 			if v = strings.TrimSpace(v); v == "" {
 				v = cmp.Or(defaults[id], config.ProviderOn)
 			}
 			settings[id] = v
 		}
-		// the prebuilt defaults stay out of the file
+		// the file's table replaces the defaults: it keeps those that differ from on
 		for id, v := range settings {
-			if v == cmp.Or(defaults[id], config.ProviderOn) {
+			if v == config.ProviderOn {
 				delete(settings, id)
 			}
 		}

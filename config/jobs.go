@@ -47,16 +47,15 @@ func validateCron(s string) error {
 	return err
 }
 
-// providersEntry is a table of provider id = on, off or an interval checked by valid,
-// the prebuilt defaults kept for the providers the file doesn't name (they aren't the
-// key's default: the file would list them as values).
+// providersEntry is a table of provider id = on, off or an interval checked by valid; a
+// table in the file replaces the defaults, a provider it doesn't name is on.
 func providersEntry(key string, defaults ProviderSettings, valid func(string) error, description string) *entry[map[string]any, ProviderSettings] {
 	return reg(entry[map[string]any, ProviderSettings]{
 		Key:         key,
-		Default:     ProviderSettings{},
+		Default:     defaults,
 		Description: description,
 		Unmarshal: func(raw map[string]any) (ProviderSettings, error) {
-			out := maps.Clone(defaults)
+			out := make(ProviderSettings, len(raw))
 			for id, v := range raw {
 				s, ok := v.(string)
 				if !ok {

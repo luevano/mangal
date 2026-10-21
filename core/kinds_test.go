@@ -121,8 +121,8 @@ func TestJobKinds(t *testing.T) {
 		t.Errorf("urls providers %+v", urls.Providers)
 	}
 
-	// a provider's own interval
-	setConfig(t, config.Jobs.URLs.Providers.Key, map[string]any{"mango-mangadex": "24h"})
+	// a provider's own interval (the file's table replaces the defaults: MangaPlus stays listed)
+	setConfig(t, config.Jobs.URLs.Providers.Key, map[string]any{"mango-mangadex": "24h", "mango-mangaplus": "off"})
 	if urls, _ = kinds.Get(ctx, jobs.KindSourceURLs); !urls.Next.Equal(started.Add(24 * time.Hour)) {
 		t.Errorf("override: next %s", urls.Next)
 	}

@@ -14,9 +14,9 @@ func TestProviderSettings(t *testing.T) {
 		t.Errorf("watch checks: MangaPlus off by default: %v", p)
 	}
 	writeConfig(t, "[jobs.sources.providers]\nmango-mangadex = '336h'\n\n[jobs.urls.providers]\nmango-mangaplus = 'On'\n")
-	// another process wrote it: Fresh reads it, the defaults stay for the rest
+	// another process wrote it: Fresh reads it, the file's table replaces the defaults
 	p = Jobs.Sources.Providers.Fresh()
-	if p.On("mango-mangaplus") || p.Override("mango-mangadex") != "336h" || p.Override("mango-mangaplus") != "" {
+	if !p.On("mango-mangaplus") || p.Override("mango-mangadex") != "336h" || p.Override("mango-mangaplus") != "" {
 		t.Errorf("fresh: %v", p)
 	}
 	if p := Jobs.URLs.Providers.Fresh(); !p.On("mango-mangaplus") {

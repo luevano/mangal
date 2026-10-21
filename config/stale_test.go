@@ -26,7 +26,9 @@ func TestWriteListsCommentedDefaults(t *testing.T) {
 	if err := file.ReadInConfig(); err != nil {
 		t.Fatal(err)
 	}
-	if keys := file.AllKeys(); len(keys) != 0 {
+	// a table can't be a comment: a non-empty one is written as values
+	tables := []string{"jobs.health.providers.mango-mangaplus", "jobs.sources.providers.mango-mangaplus", "jobs.urls.providers.mango-mangaplus"}
+	if keys := file.AllKeys(); !slices.Equal(slices.Sorted(slices.Values(keys)), tables) {
 		t.Errorf("defaults written as values: %v", keys)
 	}
 	// every non-map key is listed
