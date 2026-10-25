@@ -75,6 +75,10 @@ onUnmounted(() => clearInterval(timer))
     <AppNav />
     <main class="container-fluid py-3">
       <div v-if="st.error" class="alert alert-danger py-2">The server doesn't answer: {{ st.error }}</div>
+      <div v-if="st.status?.restart_needed?.length" class="alert alert-warning py-2" data-test="restart-needed">
+        Restart needed: {{ st.status.restart_needed.join(', ') }} changed since mangal serve started; it keeps using the old
+        {{ st.status.restart_needed.length === 1 ? 'value' : 'values' }} until it restarts.
+      </div>
       <AppCrumbs />
       <RouterView />
     </main>
