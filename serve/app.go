@@ -10,8 +10,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/netutil"
 	"github.com/luevano/mangal/v5/client/watch"
@@ -88,7 +90,7 @@ type apiRouteKey struct{}
 func (a *API) NewApp(opts AppOptions) (*echo.Echo, error) {
 	e := echo.NewWithConfig(echo.Config{JSONSerializer: strictJSON{}})
 	e.HTTPErrorHandler = a.errorHandler
-	e.Pre(echo.WrapMiddleware(web.Guard(opts.Guard)))
+	e.Pre(a.logRequests(), echo.WrapMiddleware(web.Guard(opts.Guard)))
 	e.Use(a.authenticate, jsonBodies, web.ImageHeaders)
 
 	strict := apiv1.NewStrictHandler(a, []apiv1.StrictMiddlewareFunc{a.checkScope})
@@ -340,10 +342,12 @@ func writeAPIError(c *echo.Context, err error) {
 	status, body := errorBody(err)
 	r := c.Request()
 	switch {
+	case web.RequestLogged(r):
+		// its line has the error
 	case errors.Is(err, context.Canceled):
-		log.Debug("serve: %s %s: %s", r.Method, r.URL.Path, err)
+		log.Debug("serve: %s %s: %s", r.Method, r.URL.EscapedPath(), err)
 	case status >= http.StatusInternalServerError && status != http.StatusServiceUnavailable:
-		log.Error("serve: %s %s: %s", r.Method, r.URL.Path, err)
+		log.Error("serve: %s %s: %s", r.Method, r.URL.EscapedPath(), err)
 	}
 	if wait, limited := netutil.RetryAfterOf(err); limited {
 		web.SetRetryAfter(c, wait)
@@ -431,4 +435,56 @@ func statusCode(status int) string {
 		return CodeInvalid
 	}
 	return strings.ToLower(strings.ReplaceAll(http.StatusText(status), " ", "_"))
+}
+
+// logRequests logs a line per request when it ends (an event stream too): method, path,
+// status, duration, who and from where, why it failed. Never the query, the headers or a
+// body. The API and OPDS are info; the web UI's files and the images are debug; a refused
+// or failed request is warn (4xx) or error (5xx).
+func (a *API) logRequests() echo.MiddlewareFunc {
+	return middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		HandleError: true,
+		LogLatency:  true,
+		LogStatus:   true,
+		BeforeNextFunc: func(c *echo.Context) {
+			r := c.Request()
+			c.SetRequest(r.WithContext(web.WithRefusal(r.Context(), new(string))))
+		},
+		LogValuesFunc: func(c *echo.Context, v middleware.RequestLoggerValues) error {
+			r := c.Request()
+			path := r.URL.EscapedPath()
+			level := log.LevelInfo
+			switch {
+			case errors.Is(v.Error, context.Canceled),
+				// the web UI asking whether it's logged in
+				v.Status == http.StatusUnauthorized && path == "/api/v1/auth/me":
+			case v.Status >= http.StatusInternalServerError:
+				level = log.LevelError
+			case v.Status >= http.StatusBadRequest:
+				level = log.LevelWarn
+			case !strings.HasPrefix(path, "/api/") && !isOPDS(path),
+				strings.HasPrefix(c.Response().Header().Get("Content-Type"), "image/"):
+				level = log.LevelDebug
+			}
+			if !log.Enabled(level) {
+				return nil
+			}
+			line := fmt.Sprintf("%s %s %d %s", r.Method, path, v.Status, v.Latency.Round(time.Millisecond))
+			if id, ok := identityOf(r.Context()); ok && id.Kind != KindNone {
+				line += " by " + id.Kind
+				if id.Kind != KindLocal {
+					line += " " + id.Name
+				}
+			}
+			line += " from " + a.Auth.clientIP(r)
+			switch why := web.Refused(r); {
+			case why != "":
+				line += ": " + why
+			case v.Error != nil:
+				line += ": " + v.Error.Error()
+			}
+			log.Logf(level, "%s", line)
+			return nil
+		},
+	})
 }

@@ -49,7 +49,7 @@ func APIError(c *echo.Context, err error) {
 		status = http.StatusBadGateway
 	case errors.Is(err, context.Canceled):
 		// the client left or the server is stopping
-		log.Debug("web: %s %s: %s", c.Request().Method, c.Request().URL, err)
+		log.Debug("web: %s %s: %s", c.Request().Method, c.Request().URL.EscapedPath(), err)
 		status = http.StatusServiceUnavailable
 	}
 
@@ -58,10 +58,12 @@ func APIError(c *echo.Context, err error) {
 		message = httpErr.Message
 	}
 	switch {
+	case RequestLogged(c.Request()):
+		// its line has the error
 	case status == http.StatusBadGateway:
-		log.Warn("web: %s %s: %s", c.Request().Method, c.Request().URL, err)
+		log.Warn("web: %s %s: %s", c.Request().Method, c.Request().URL.EscapedPath(), err)
 	case status >= http.StatusInternalServerError && status != http.StatusServiceUnavailable:
-		log.Error("web: %s %s: %s", c.Request().Method, c.Request().URL, err)
+		log.Error("web: %s %s: %s", c.Request().Method, c.Request().URL.EscapedPath(), err)
 	}
 
 	if err := c.JSON(status, errorBody{Code: int32(status), Message: message}); err != nil {

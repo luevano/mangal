@@ -831,7 +831,8 @@ func TestCLIWhileServing(t *testing.T) {
 	}
 }
 
-// TestRefusedLogged: refused requests are logged at debug level, without the token.
+// TestRefusedLogged: refused requests are logged at warn level by the request log, with
+// why, without the token.
 func TestRefusedLogged(t *testing.T) {
 	log.Init(log.Options{Level: log.LevelDebug})
 	t.Cleanup(func() { log.Init(log.Options{Level: log.LevelInfo}) })
@@ -839,11 +840,11 @@ func TestRefusedLogged(t *testing.T) {
 	h := s.handler(t)
 	for _, tc := range []struct {
 		method, path, host, origin, contentType, auth string
-		want                                          string
+		want, why                                     string
 	}{
-		{"POST", "/api/check", "127.0.0.1:6977", "https://evil.example", "application/json", "Bearer s3cret", `refused POST /api/check from 192.0.2.1:1234: cross-origin request (Origin "https://evil.example")`},
-		{"GET", "/api/watches", "127.0.0.1:6977", "", "", "Bearer nope", "refused GET /api/watches from 192.0.2.1:1234: wrong API token"},
-		{"POST", "/api/check", "127.0.0.1:6977", "", "text/plain", "Bearer s3cret", `refused POST /api/check from 192.0.2.1:1234: content type "text/plain", not JSON`},
+		{"POST", "/api/check", "127.0.0.1:6977", "https://evil.example", "application/json", "Bearer s3cret", "POST /api/check 403 ", `from 192.0.2.1: cross-origin request (Origin "https://evil.example")`},
+		{"GET", "/api/watches", "127.0.0.1:6977", "", "", "Bearer nope", "GET /api/watches 401 ", "from 192.0.2.1: wrong API token"},
+		{"POST", "/api/check", "127.0.0.1:6977", "", "text/plain", "Bearer s3cret", "POST /api/check 415 ", `from 192.0.2.1: content type "text/plain", not JSON`},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`))
 		req.RemoteAddr = "192.0.2.1:1234"
@@ -863,8 +864,8 @@ func TestRefusedLogged(t *testing.T) {
 			t.Fatalf("%s %s: nothing logged", tc.method, tc.path)
 		}
 		last := recent[len(recent)-1]
-		if last.Level != log.LevelDebug || last.Message != tc.want {
-			t.Errorf("%s %s: logged %s %q, want %q", tc.method, tc.path, last.Level, last.Message, tc.want)
+		if last.Level != log.LevelWarn || !strings.HasPrefix(last.Message, tc.want) || !strings.HasSuffix(last.Message, tc.why) {
+			t.Errorf("%s %s: logged %s %q, want %q...%q", tc.method, tc.path, last.Level, last.Message, tc.want, tc.why)
 		}
 		if strings.Contains(last.Message, "s3cret") || strings.Contains(last.Message, "nope") {
 			t.Errorf("token logged: %q", last.Message)
