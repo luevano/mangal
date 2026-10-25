@@ -55,7 +55,7 @@ func TestV1ConfigAdmin(t *testing.T) {
 		return out
 	}
 
-	hidden := []string{"serve.auth", "download.path", "download.mode_file_decimal", "log.level", "data.path", "providers.mirrors"}
+	hidden := []string{"serve.auth", "download.path", "download.mode_file_decimal", "log.level", "data.path", "providers.headless.flaresolverr_url"}
 	for name, call := range map[string]func(string, string, string, any) int{"admin": asAdmin, "local": func(m, p, b string, o any) int { return s.call(t, m, p, b, o) }} {
 		var all []apiv1.ConfigEntry
 		if code := call("GET", "/api/v1/config", "", &all); code != http.StatusOK {

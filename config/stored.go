@@ -126,8 +126,25 @@ var (
 func applyLocked() {
 	m := cloneMap(fileSettings)
 	for _, key := range slices.Sorted(maps.Keys(stored)) {
-		if raw, ok := storedRawLocked(key); ok {
+		if raw, ok := storedRawLocked(key); ok && !IsAlias(key) {
 			setNested(m, strings.Split(key, "."), raw)
+		}
+	}
+	for _, key := range slices.Sorted(maps.Keys(aliasTables)) {
+		raw, ok := storedRawLocked(key)
+		if !ok {
+			continue
+		}
+		setNested(m, strings.Split(key, "."), raw)
+		// a table row not split yet is its providers' settings too
+		table, _ := raw.(map[string]any)
+		for id, v := range table {
+			k := providerKey(id, aliasTables[key])
+			if f, err := lookup(k); err == nil {
+				if r, err := f.toRaw(v); err == nil {
+					setNested(m, strings.Split(k, "."), r)
+				}
+			}
 		}
 	}
 	vmu.Lock()
@@ -140,6 +157,9 @@ func applyLocked() {
 // storedRawLocked is the key's valid value in the database, lmu held. Keys that aren't
 // registered (a provider not loaded yet) have none.
 func storedRawLocked(key string) (any, bool) {
+	if setting, ok := aliasTables[key]; ok {
+		return aliasRawLocked(key, setting)
+	}
 	text, ok := stored[key]
 	if !ok {
 		return nil, false
@@ -289,6 +309,12 @@ func writeStored(key string, value any, who string) error {
 	lmu.Unlock()
 	if s == nil {
 		return fmt.Errorf("write config key %q: %w", key, ErrNoStore)
+	}
+	if IsAlias(key) {
+		return writeAlias(s, key, value, who)
+	}
+	if err := splitRow(s, key, who); err != nil {
+		return err
 	}
 	if err := s.Set(key, text, IsSecret(key), who); err != nil {
 		return fmt.Errorf("write config key %q: %w", key, err)

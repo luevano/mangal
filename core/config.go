@@ -142,7 +142,7 @@ func configEntry(key string) (ConfigEntry, error) {
 
 func (localConfig) List(context.Context) ([]ConfigEntry, error) {
 	LoadProviderSettings()
-	keys := config.Keys()
+	keys := config.ListedKeys()
 	entries := make([]ConfigEntry, 0, len(keys))
 	for _, key := range keys {
 		e, err := configEntry(key)
@@ -279,6 +279,15 @@ func (localConfig) Import(ctx context.Context, changes []config.ImportChange) (i
 	}
 	values := make(map[string]*string, len(changes))
 	for _, c := range changes {
+		if config.IsAlias(c.Key) {
+			// an old per-provider table: each provider's settings
+			rows, err := config.AliasRows(c.Key, c.New)
+			if err != nil {
+				return 0, invalid("%s", err)
+			}
+			maps.Copy(values, rows)
+			continue
+		}
 		text, err := config.StoredText(c.Key, c.New)
 		if err != nil {
 			return 0, invalid("%s", err)

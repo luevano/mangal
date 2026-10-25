@@ -95,7 +95,7 @@ type mapEditor struct {
 
 // New is the config window, filtered to filter if not empty.
 func New(filter string) base.State {
-	keys := mconfig.Keys()
+	keys := mconfig.ListedKeys()
 	l := list.New(2, 0, "key", "keys", sortedItems(keys), func(i item) _list.DefaultItem { return i })
 	input := huhform.Text("", "", "", nil)
 	s := &state{
@@ -118,7 +118,7 @@ func New(filter string) base.State {
 // searching.
 func (s *state) rows() []_list.Item {
 	var rows []_list.Item
-	for _, section := range sectionItems(mconfig.Keys()) {
+	for _, section := range sectionItems(mconfig.ListedKeys()) {
 		if !s.searching {
 			section.expanded = s.expanded[section.name]
 			rows = append(rows, section)
@@ -178,7 +178,7 @@ func (s *state) search() tea.Cmd {
 
 // toggleAll expands every section, or collapses them all when they all are.
 func (s *state) toggleAll() tea.Cmd {
-	sections := sectionItems(mconfig.Keys())
+	sections := sectionItems(mconfig.ListedKeys())
 	all := true
 	for _, section := range sections {
 		all = all && s.expanded[section.name]
@@ -222,7 +222,7 @@ func (s *state) Subtitle() string {
 	if s.searching {
 		return s.list.Subtitle() + ", every section"
 	}
-	return fmt.Sprintf("%d keys: %s and the database", len(mconfig.Keys()), mconfig.Path)
+	return fmt.Sprintf("%d keys: %s and the database", len(mconfig.ListedKeys()), mconfig.Path)
 }
 
 func (s *state) Status() string { return s.list.Status() }

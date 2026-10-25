@@ -24,7 +24,50 @@ func ImportSettings(ctx context.Context) (notice string, err error) {
 	if err != nil {
 		return "", err
 	}
-	return importSettings(ctx, Ops{Storage: storage.Storage{Data: s.DB}}, s)
+	ops := Ops{Storage: storage.Storage{Data: s.DB}}
+	notice, err = importSettings(ctx, ops, s)
+	if err != nil {
+		return "", err
+	}
+	split, err := splitSettings(ctx, ops, s)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(notice + " " + split), nil
+}
+
+// splitSettings moves the per-provider tables left in the database (jobs.*.providers,
+// providers.mirrors) into each provider's own settings, as an operation `mangal library
+// undo` reverts (the next start then moves them again). The notice says so, empty when
+// there was nothing to move.
+func splitSettings(ctx context.Context, ops Ops, s storage.Settings) (string, error) {
+	values, _, err := s.All()
+	if err != nil {
+		return "", err
+	}
+	set, drop := config.SplitAliases(values)
+	if len(drop) == 0 {
+		return "", nil
+	}
+	changes := make(map[string]*string, len(set)+len(drop))
+	for key, v := range set {
+		changes[key] = new(v)
+	}
+	for _, key := range drop {
+		changes[key] = nil
+	}
+	summary := fmt.Sprintf("move %s into each provider's settings", strings.Join(drop, ", "))
+	if _, err := ops.Run(ctx, "settings", summary, func(library.Journal) error {
+		return s.Apply(changes, func(string) bool { return false }, "mangal: each provider's settings")
+	}); err != nil {
+		return "", fmt.Errorf("move the provider tables: %w", err)
+	}
+	if err := config.UseStore(s); err != nil {
+		return "", err
+	}
+	log.Info("moved the settings %s into each provider's settings", strings.Join(drop, ", "))
+	return fmt.Sprintf("Moved %s into each provider's settings (providers.<id>.job_check, job_sources, job_urls, job_health, mirror); the old keys still work. \"mangal library undo\" reverts it.",
+		strings.Join(drop, ", ")), nil
 }
 
 func importSettings(ctx context.Context, ops Ops, s storage.Settings) (string, error) {
@@ -35,6 +78,12 @@ func importSettings(ctx context.Context, ops Ops, s storage.Settings) (string, e
 	for _, why := range skipped {
 		log.Warn("settings import: left out %s", why)
 	}
+	// the old per-provider tables go to each provider's settings
+	set, drop := config.SplitAliases(values)
+	for _, key := range drop {
+		delete(values, key)
+	}
+	maps.Copy(values, set)
 	imported := false
 	var err error
 	if len(values) == 0 {

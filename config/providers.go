@@ -35,6 +35,9 @@ func ProvidersRegistered() bool {
 type providerField struct {
 	provider string
 	setting  libmangal.ProviderSetting
+	// mangal declares it (aliases.go), check validates its value further
+	mangal bool
+	check  func(string) error
 }
 
 func (p *providerField) description() string {
@@ -77,6 +80,14 @@ func (p *providerField) toRaw(a any) (any, error) {
 	if err := p.setting.Check(text); err != nil {
 		return nil, err
 	}
+	if p.check != nil {
+		if err := p.check(text); err != nil {
+			return nil, err
+		}
+		if l := strings.ToLower(text); l == ProviderOn || l == ProviderOff {
+			text = l
+		}
+	}
 	return p.typed(text)
 }
 
@@ -117,6 +128,13 @@ func RegisterProviders(infos []libmangal.ProviderInfo) {
 				continue
 			}
 			registered[key] = &providerField{provider: info.ID, setting: s}
+		}
+		for _, f := range mangalSettings(info) {
+			key := providerKey(info.ID, f.setting.Key)
+			if _, declared := registered[key]; declared {
+				log.Warn("config: provider %s's setting %q is left out, it's mangal's %s", info.ID, f.setting.Key, key)
+			}
+			registered[key] = f
 		}
 	}
 	pmu.Lock()

@@ -36,7 +36,7 @@ func TestProviderSection(t *testing.T) {
 		{Key: "quality", Name: "Quality", Kind: libmangal.SettingString, Default: "high"},
 	}}})
 	var names []string
-	for _, section := range sectionItems(mconfig.Keys()) {
+	for _, section := range sectionItems(mconfig.ListedKeys()) {
 		names = append(names, section.name)
 	}
 	at := slices.Index(names, "providers.mango-x")

@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"github.com/luevano/libmangal"
 	"maps"
 	"os"
 	"path/filepath"
@@ -41,12 +42,16 @@ var stored = map[string]string{
 }
 
 // memStore is the data database's settings in memory.
-type memStore struct{ values map[string]string }
+type memStore struct {
+	values map[string]string
+	rev    int64
+}
 
-func (m *memStore) All() (map[string]string, int64, error) { return maps.Clone(m.values), 0, nil }
-func (m *memStore) Revision() (int64, error)               { return 0, nil }
+func (m *memStore) All() (map[string]string, int64, error) { return maps.Clone(m.values), m.rev, nil }
+func (m *memStore) Revision() (int64, error)               { return m.rev, nil }
 func (m *memStore) Imported() (bool, error)                { return true, nil }
 func (m *memStore) Set(key string, value *string, _ bool, _ string) error {
+	m.rev++
 	if value == nil {
 		delete(m.values, key)
 	} else {
@@ -203,60 +208,38 @@ func TestReset(t *testing.T) {
 	}
 }
 
+// TestMirrors: a provider's website is its own setting in its section; the old table's
+// row counts until it's written, then goes.
 func TestMirrors(t *testing.T) {
-	s, path, reloads, db := newTestDB(t, "providers.mirrors")
-	press(s, "enter")
-	if s.mode != mapping {
-		t.Fatal("not mapping")
+	_, path, reloads, db := newTestDB(t, "icons")
+	mconfig.RegisterProviders([]libmangal.ProviderInfo{{ID: "mango-a", Name: "A", Website: "https://a.example/", Mirrors: []string{"https://b.example/", "https://c.example/"}}})
+	db.values["providers.mirrors"] = `{"mango-a":"https://b.example/"}`
+	if err := mconfig.UseStore(db); err != nil {
+		t.Fatal(err)
 	}
-	press(s, "n")
-	s.input.SetValue("mango-b")
-	press(s, "enter")
-	s.input.SetValue("not a url")
-	press(s, "enter")
-	if s.err == "" {
-		t.Error("invalid url accepted")
+	if got, _ := mconfig.Get("providers.mango-a.mirror"); got != "https://b.example/" {
+		t.Fatalf("from the old table: %v", got)
 	}
-	s.input.SetValue("https://b.example/")
-	press(s, "enter")
-	if s.err != "" || s.maps.inputting {
-		t.Fatalf("not added: %q", s.err)
+	s := New("providers.mango-a.mirror").(*state)
+	s.reload = func() { *reloads++ }
+	s.Resize(base.Size{Width: 100, Height: 30})
+	if got, _ := s.selected(); got != "providers.mango-a.mirror" {
+		t.Fatalf("selected %q", got)
 	}
-	if got, want := db.values["providers.mirrors"], `{"mango-a":"https://a.example/","mango-b":"https://b.example/"}`; got != want || read(t, path) != file {
+	press(s, "enter")
+	if got, want := db.values["providers.mango-a.mirror"], `"https://c.example/"`; got != want || read(t, path) != file {
 		t.Errorf("stored %s, want %s", got, want)
 	}
-
-	// the cursor is on mango-b, remove mango-a: d asks first (MT-B1)
-	press(s, "k", "d")
-	if !s.Confirm.Active() || len(mconfig.Providers.Mirrors.Get()) != 2 {
-		t.Fatal("d removed without asking")
+	if _, ok := db.values["providers.mirrors"]; ok || mconfig.Providers.Mirrors.Get()["mango-a"] != "https://c.example/" {
+		t.Errorf("the table %v, stored %v", mconfig.Providers.Mirrors.Get(), db.values)
 	}
-	yes := s.Update(context.Background(), util.KeyPress("d"))
-	if yes == nil {
-		t.Fatal("d didn't confirm")
-	}
-	s.Update(context.Background(), yes())
-	if got := mconfig.Providers.Mirrors.Get(); len(got) != 1 || got["mango-b"] == "" {
-		t.Errorf("mirrors %v", got)
-	}
-	if strings.Contains(db.values["providers.mirrors"], "mango-a") {
-		t.Error("not removed from the database")
-	}
-	if *reloads != 2 {
+	if *reloads != 1 {
 		t.Errorf("%d reloads", *reloads)
 	}
-	press(s, "esc")
-	if s.mode != browsing {
-		t.Error("esc didn't close the entries")
-	}
-
-	press(s, "backspace")
-	if len(mconfig.Providers.Mirrors.Get()) != 1 {
-		t.Error("reset without confirmation")
-	}
-	press(s, "backspace")
-	if v, ok := db.values["providers.mirrors"]; len(mconfig.Providers.Mirrors.Get()) != 0 || ok {
-		t.Errorf("not reset: %v, stored %q", mconfig.Providers.Mirrors.Get(), v)
+	// the website itself is the default: nothing stored
+	press(s, "enter")
+	if _, ok := db.values["providers.mango-a.mirror"]; ok || len(mconfig.Providers.Mirrors.Get()) != 0 {
+		t.Errorf("not back to the website: %v", db.values)
 	}
 }
 
@@ -277,7 +260,7 @@ func TestSecretMasked(t *testing.T) {
 func TestEveryKeyListed(t *testing.T) {
 	s, _, _ := newTest(t, "icons")
 	s.Filter("")
-	if got, want := len(s.list.Items()), len(mconfig.Keys()); got != want {
+	if got, want := len(s.list.Items()), len(mconfig.ListedKeys()); got != want {
 		t.Errorf("%d items, %d keys", got, want)
 	}
 	first, _ := s.list.Items()[0].(item)
@@ -314,17 +297,17 @@ func TestSectionsExpand(t *testing.T) {
 		t.Errorf("expanded download: %v", rows)
 	}
 	press(s, "enter")
-	if got := len(visible(s)); got != len(sectionItems(mconfig.Keys())) {
+	if got := len(visible(s)); got != len(sectionItems(mconfig.ListedKeys())) {
 		t.Errorf("collapsed again: %d rows", got)
 	}
 
 	// E expands every section, again collapses them all
 	press(s, "E")
-	if got := len(visible(s)); got != len(sectionItems(mconfig.Keys()))+len(mconfig.Keys()) {
+	if got := len(visible(s)); got != len(sectionItems(mconfig.ListedKeys()))+len(mconfig.ListedKeys()) {
 		t.Errorf("expanded all: %d rows", got)
 	}
 	press(s, "E")
-	if got := len(visible(s)); got != len(sectionItems(mconfig.Keys())) {
+	if got := len(visible(s)); got != len(sectionItems(mconfig.ListedKeys())) {
 		t.Errorf("collapsed all: %d rows", got)
 	}
 }
@@ -333,7 +316,7 @@ func TestSearchCollapsedSections(t *testing.T) {
 	s, _, _ := newTest(t, "")
 	// / lists every key, the collapsed sections' too (the list filters them as typed)
 	press(s, "/")
-	if !s.searching || len(s.list.Items()) != len(mconfig.Keys()) {
+	if !s.searching || len(s.list.Items()) != len(mconfig.ListedKeys()) {
 		t.Fatalf("searching %t, %d rows", s.searching, len(s.list.Items()))
 	}
 	press(s, "esc")
@@ -385,7 +368,7 @@ func TestSecretInDatabaseNoFileWarning(t *testing.T) {
 
 func TestEverySectionListed(t *testing.T) {
 	mconfig.Reset()
-	for _, s := range sectionItems(mconfig.Keys()) {
+	for _, s := range sectionItems(mconfig.ListedKeys()) {
 		if !slices.Contains(sections, s.name) {
 			t.Errorf("section %q missing from sections", s.name)
 		}

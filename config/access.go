@@ -40,7 +40,7 @@ func IsRisky(key string) bool {
 	pmu.RLock()
 	defer pmu.RUnlock()
 	f, ok := providerFields[key]
-	return ok && f.setting.Kind == libmangal.SettingPath
+	return ok && (f.setting.Kind == libmangal.SettingPath || f.mangal && f.setting.Key == "mirror")
 }
 
 // startupPrefixes are read once when mangal starts: where the databases are, the log, the
@@ -160,7 +160,7 @@ func resetStarted() {
 // out: a file to edit and load again with ImportPlan.
 func Export() ([]byte, error) {
 	m := map[string]any{}
-	for _, key := range Keys() {
+	for _, key := range ListedKeys() {
 		if StoredIn(key) != StoredDB || IsSecret(key) {
 			continue
 		}

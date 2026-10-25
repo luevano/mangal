@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -384,8 +385,13 @@ func TestMirrors(t *testing.T) {
 	if err := SetMirror("mango-mangakakalot", ""); err != nil {
 		t.Fatal(err)
 	}
-	if got := m.values["providers.mirrors"]; got != `{"mango-manganato":"https://www.nelomanga.net/"}` {
-		t.Errorf("want only the manganato mirror: %s", got)
+	// stored as each provider's setting, the old table row gone
+	want := map[string]string{"providers.mango-manganato.mirror": `"https://www.nelomanga.net/"`}
+	if !maps.Equal(m.values, want) {
+		t.Errorf("want only the manganato mirror: %v", m.values)
+	}
+	if got := Providers.Mirrors.Get(); len(got) != 1 || got["mango-manganato"] != "https://www.nelomanga.net/" {
+		t.Errorf("the table: %v", got)
 	}
 
 	if err := Set(Providers.Mirrors.Key, map[string]any{"mango-x": "not a url"}); err == nil {
