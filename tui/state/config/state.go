@@ -367,7 +367,7 @@ func (s *state) set(key string, value any) (cmd tea.Cmd, ok bool) {
 	if err := s.write(key, raw); err != nil {
 		s.err = "set for this run but not saved: " + err.Error()
 		notice = key + " set"
-	} else if mode, readable := mconfig.ReadableByOthers(); readable && mconfig.IsSecret(key) {
+	} else if mode, readable := mconfig.ReadableByOthers(); readable && mconfig.IsSecret(key) && mconfig.StoredIn(key) == mconfig.StoredFile {
 		notice = fmt.Sprintf("%s saved, but others can read the config file (mode %o): chmod 600 it", key, mode)
 		warn = true
 	}

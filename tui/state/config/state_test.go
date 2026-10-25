@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -28,19 +29,40 @@ func TestMain(m *testing.M) {
 const file = `# my config
 icons = 'ascii' # plain
 
-[download.metadata]
-# keep it strict
-strict = true
-
-[providers]
-parallelism = 15 # default
-
-[providers.mirrors]
-mango-a = 'https://a.example/'
+[tui]
+# keep it skipped
+skip_home = true
 `
+
+// stored are the database keys the tests start with
+var stored = map[string]string{
+	"providers.parallelism": "15",
+	"providers.mirrors":     `{"mango-a":"https://a.example/"}`,
+}
+
+// memStore is the data database's settings in memory.
+type memStore struct{ values map[string]string }
+
+func (m *memStore) All() (map[string]string, int64, error) { return maps.Clone(m.values), 0, nil }
+func (m *memStore) Revision() (int64, error)               { return 0, nil }
+func (m *memStore) Imported() (bool, error)                { return true, nil }
+func (m *memStore) Set(key string, value *string, _ bool, _ string) error {
+	if value == nil {
+		delete(m.values, key)
+	} else {
+		m.values[key] = *value
+	}
+	return nil
+}
 
 // newTest loads file and opens the window on key, reloads counts the provider reloads.
 func newTest(t *testing.T, key string) (s *state, path string, reloads *int) {
+	s, path, reloads, _ = newTestDB(t, key)
+	return s, path, reloads
+}
+
+// newTestDB is newTest with the database keys' store.
+func newTestDB(t *testing.T, key string) (s *state, path string, reloads *int, db *memStore) {
 	t.Helper()
 	path = filepath.Join(t.TempDir(), "mangal.toml")
 	if err := os.WriteFile(path, []byte(file), 0o644); err != nil {
@@ -50,6 +72,10 @@ func newTest(t *testing.T, key string) (s *state, path string, reloads *int) {
 	if err := mconfig.Load(path); err != nil {
 		t.Fatal(err)
 	}
+	db = &memStore{values: maps.Clone(stored)}
+	if err := mconfig.UseStore(db); err != nil {
+		t.Fatal(err)
+	}
 	reloads = new(int)
 	s = New(key).(*state)
 	s.reload = func() { *reloads++ }
@@ -57,7 +83,7 @@ func newTest(t *testing.T, key string) (s *state, path string, reloads *int) {
 	if got, _ := s.selected(); got != key {
 		t.Fatalf("selected %q, want %q", got, key)
 	}
-	return s, path, reloads
+	return s, path, reloads, db
 }
 
 func read(t *testing.T, path string) string {
@@ -87,16 +113,16 @@ func press(s *state, keys ...string) {
 }
 
 func TestToggleBoolKeepsComments(t *testing.T) {
-	s, path, reloads := newTest(t, "download.metadata.strict")
+	s, path, reloads := newTest(t, "tui.skip_home")
 	press(s, "enter")
-	if mconfig.Download.Metadata.Strict.Get() {
+	if mconfig.TUI.SkipHome.Get() {
 		t.Error("not set in memory")
 	}
-	if got, want := read(t, path), strings.Replace(file, "strict = true", "strict = false", 1); got != want {
+	if got, want := read(t, path), strings.Replace(file, "skip_home = true", "skip_home = false", 1); got != want {
 		t.Errorf("file:\n%s\nwant:\n%s", got, want)
 	}
 	if *reloads != 0 {
-		t.Error("providers reloaded for a download key")
+		t.Error("providers reloaded for a tui key")
 	}
 	if s.err != "" {
 		t.Error(s.err)
@@ -104,7 +130,7 @@ func TestToggleBoolKeepsComments(t *testing.T) {
 }
 
 func TestInvalidIntNotWritten(t *testing.T) {
-	s, path, _ := newTest(t, "providers.parallelism")
+	s, path, _, db := newTestDB(t, "providers.parallelism")
 	press(s, "enter")
 	if s.mode != editing || !s.Inputting() {
 		t.Fatal("no input")
@@ -119,7 +145,7 @@ func TestInvalidIntNotWritten(t *testing.T) {
 	if !strings.Contains(s.err, "255") {
 		t.Errorf("out of range: %q", s.err)
 	}
-	if read(t, path) != file {
+	if read(t, path) != file || db.values["providers.parallelism"] != "15" {
 		t.Error("invalid value written")
 	}
 	if mconfig.Providers.Parallelism.Get() != 15 {
@@ -131,9 +157,9 @@ func TestInvalidIntNotWritten(t *testing.T) {
 	if s.mode != browsing || s.err != "" {
 		t.Fatalf("not saved: %q", s.err)
 	}
-	// the default is commented out, the line's comment stays
-	if !strings.Contains(read(t, path), "# parallelism = 4 # default") {
-		t.Errorf("file:\n%s", read(t, path))
+	// the default isn't stored: the key follows it
+	if v, ok := db.values["providers.parallelism"]; ok || read(t, path) != file {
+		t.Errorf("stored %q, file:\n%s", v, read(t, path))
 	}
 
 	press(s, "enter", "esc")
@@ -166,19 +192,19 @@ func TestProviderKeyReloads(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
-	s, path, _ := newTest(t, "download.metadata.strict")
+	s, path, _ := newTest(t, "tui.skip_home")
 	press(s, "enter")
-	if mconfig.Download.Metadata.Strict.Get() {
+	if mconfig.TUI.SkipHome.Get() {
 		t.Fatal("not toggled")
 	}
 	press(s, "backspace")
-	if !mconfig.Download.Metadata.Strict.Get() || !strings.Contains(read(t, path), "strict = true") {
+	if !mconfig.TUI.SkipHome.Get() || strings.Contains(read(t, path), "skip_home = false") {
 		t.Error("not reset")
 	}
 }
 
 func TestMirrors(t *testing.T) {
-	s, path, reloads := newTest(t, "providers.mirrors")
+	s, path, reloads, db := newTestDB(t, "providers.mirrors")
 	press(s, "enter")
 	if s.mode != mapping {
 		t.Fatal("not mapping")
@@ -196,9 +222,8 @@ func TestMirrors(t *testing.T) {
 	if s.err != "" || s.maps.inputting {
 		t.Fatalf("not added: %q", s.err)
 	}
-	want := strings.Replace(file, "mango-a = 'https://a.example/'\n", "mango-a = 'https://a.example/'\nmango-b = 'https://b.example/'\n", 1)
-	if got := read(t, path); got != want {
-		t.Errorf("file:\n%s\nwant:\n%s", got, want)
+	if got, want := db.values["providers.mirrors"], `{"mango-a":"https://a.example/","mango-b":"https://b.example/"}`; got != want || read(t, path) != file {
+		t.Errorf("stored %s, want %s", got, want)
 	}
 
 	// the cursor is on mango-b, remove mango-a: d asks first (MT-B1)
@@ -214,8 +239,8 @@ func TestMirrors(t *testing.T) {
 	if got := mconfig.Providers.Mirrors.Get(); len(got) != 1 || got["mango-b"] == "" {
 		t.Errorf("mirrors %v", got)
 	}
-	if strings.Contains(read(t, path), "mango-a") {
-		t.Error("not removed from the file")
+	if strings.Contains(db.values["providers.mirrors"], "mango-a") {
+		t.Error("not removed from the database")
 	}
 	if *reloads != 2 {
 		t.Errorf("%d reloads", *reloads)
@@ -230,8 +255,8 @@ func TestMirrors(t *testing.T) {
 		t.Error("reset without confirmation")
 	}
 	press(s, "backspace")
-	if len(mconfig.Providers.Mirrors.Get()) != 0 || strings.Contains(read(t, path), "mango-b") {
-		t.Error("not reset")
+	if v, ok := db.values["providers.mirrors"]; len(mconfig.Providers.Mirrors.Get()) != 0 || ok {
+		t.Errorf("not reset: %v, stored %q", mconfig.Providers.Mirrors.Get(), v)
 	}
 }
 
@@ -342,9 +367,10 @@ func TestKeys(t *testing.T) {
 	}
 }
 
-// a secret saved to a config file others can read warns, as config set does
-func TestSecretReadableWarns(t *testing.T) {
-	s, _, _ := newTest(t, "notification.discord.webhook_url")
+// a secret is saved in the database: the config file's mode doesn't matter (config set
+// warns only for a secret in the file)
+func TestSecretInDatabaseNoFileWarning(t *testing.T) {
+	s, _, _, db := newTestDB(t, "notification.discord.webhook_url")
 	press(s, "enter")
 	s.input.SetValue("https://discord.com/api/webhooks/1/tok")
 	cmd := s.Update(context.Background(), util.KeyPress("enter"))
@@ -352,8 +378,8 @@ func TestSecretReadableWarns(t *testing.T) {
 		t.Fatal("not saved")
 	}
 	msg, ok := cmd().(base.NotificationMsg)
-	if !ok || !msg.Warning || !strings.Contains(msg.Message, "chmod 600") {
-		t.Errorf("no warning: %#v", cmd())
+	if !ok || msg.Warning || strings.Contains(msg.Message, "chmod") || db.values["notification.discord.webhook_url"] == "" {
+		t.Errorf("notice %#v, stored %q", cmd(), db.values["notification.discord.webhook_url"])
 	}
 }
 
