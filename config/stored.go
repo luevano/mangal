@@ -280,7 +280,7 @@ func MovedSecret(key string) bool {
 
 // writeStored writes a database key: its default unsets it (it follows the default).
 func writeStored(key string, value any, who string) error {
-	raw, err := Parse(key, value)
+	text, err := StoredText(key, value)
 	if err != nil {
 		return err
 	}
@@ -289,14 +289,6 @@ func writeStored(key string, value any, who string) error {
 	lmu.Unlock()
 	if s == nil {
 		return fmt.Errorf("write config key %q: %w", key, ErrNoStore)
-	}
-	var text *string
-	if !isStoredDefault(key, raw) {
-		data, err := json.Marshal(raw)
-		if err != nil {
-			return fmt.Errorf("write config key %q: %w", key, err)
-		}
-		text = new(string(data))
 	}
 	if err := s.Set(key, text, IsSecret(key), who); err != nil {
 		return fmt.Errorf("write config key %q: %w", key, err)

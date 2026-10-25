@@ -254,3 +254,23 @@ func (s Settings) History(key string, limit int) ([]SettingChange, error) {
 	}
 	return changes, nil
 }
+
+// Apply stores the values (nil unsets), recording who, as an operation's own writes: an
+// undo of the operation isn't refused because of them.
+func (s Settings) Apply(values map[string]*string, secret func(string) bool, who string) error {
+	return s.set(values, secret, who, false)
+}
+
+// Change is the history's change id, ok false when there's none.
+func (s Settings) Change(id int64) (c SettingChange, ok bool, err error) {
+	var at int64
+	err = s.DB.QueryRow(`SELECT id, key, old, new, who, at FROM settings_history WHERE id = ?`, id).Scan(&c.ID, &c.Key, &c.Old, &c.New, &c.Who, &at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c, false, nil
+	}
+	if err != nil {
+		return c, false, fmt.Errorf("settings change %d: %w", id, err)
+	}
+	c.At = time.Unix(at, 0)
+	return c, true, nil
+}

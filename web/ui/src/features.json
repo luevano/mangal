@@ -415,6 +415,16 @@
       ]
     },
     {
+      "name": "config history",
+      "web": [
+        "config"
+      ],
+      "api": [
+        "listConfigHistory",
+        "undoConfigChange"
+      ]
+    },
+    {
       "name": "logs",
       "web": [
         "logs"

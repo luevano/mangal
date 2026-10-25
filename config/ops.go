@@ -92,6 +92,7 @@ func Reset() {
 	lmu.Lock()
 	fileSettings, movedInFile, store, stored, storeRev, imported, badStored = map[string]any{}, map[string]any{}, nil, map[string]string{}, 0, false, map[string]string{}
 	lmu.Unlock()
+	resetStarted()
 	emu.Lock()
 	envFiles, envErrs, clashed, warnedEnv = map[string]string{}, map[string]error{}, map[string][]string{}, map[string]bool{}
 	emu.Unlock()
@@ -361,6 +362,7 @@ func Load(path string) error {
 	fileSettings, movedInFile = settings, moved
 	applyLocked()
 	lmu.Unlock()
+	noteStarted(settings)
 	readEnvFiles(Keys())
 	return nil
 }
@@ -477,6 +479,14 @@ func WriteKeyBy(key string, value any, who string) error {
 		return fmt.Errorf("write config key %q: %w", key, err)
 	}
 	viperSet(key, raw)
+	// SourceOf says file (or default) from now on
+	lmu.Lock()
+	if isDefault(key, raw) {
+		deleteNested(fileSettings, strings.Split(key, "."))
+	} else {
+		setNested(fileSettings, strings.Split(key, "."), raw)
+	}
+	lmu.Unlock()
 	return nil
 }
 

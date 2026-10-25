@@ -3,11 +3,14 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/theme/style"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/spf13/cobra"
 )
 
@@ -44,9 +47,12 @@ var configInfoCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		type configEntry struct {
-			Value       any    `json:"value"`
-			Default     any    `json:"default"`
-			Description string `json:"description"`
+			Value       any           `json:"value"`
+			Default     any           `json:"default"`
+			Description string        `json:"description"`
+			Stored      string        `json:"stored"`
+			Source      config.Source `json:"source"`
+			Applies     string        `json:"applies"`
 		}
 
 		entries, err := core.NewConfig().List(ctxOf(cmd))
@@ -57,7 +63,7 @@ var configInfoCmd = &cobra.Command{
 		configEntries := map[string]configEntry{}
 		for i, e := range entries {
 			keys[i] = e.Key
-			configEntries[e.Key] = configEntry{Value: e.Value, Default: e.Default, Description: e.Description}
+			configEntries[e.Key] = configEntry{Value: e.Value, Default: e.Default, Description: e.Description, Stored: e.Stored, Source: e.Source, Applies: e.Applies}
 		}
 
 		if configInfoArgs.JSON {
@@ -91,6 +97,10 @@ var configInfoCmd = &cobra.Command{
 			fmt.Fprintf(w, "  %s %s\n",
 				style.Normal.Viewport.Render("Default:"),
 				style.Normal.Secondary.Render(fmt.Sprintf("%v", entry.Default)),
+			)
+			fmt.Fprintf(w, "  %s %s\n",
+				style.Normal.Viewport.Render("Stored:"),
+				style.Normal.Secondary.Render(storedText(entry.Stored)+", the value comes from "+sourceText(entry.Source)+", "+appliesText(entry.Applies)),
 			)
 		}
 		return nil
@@ -235,9 +245,207 @@ providers' settings, providers.<id>.<key>).`,
 		if e.Source.Kind == "env" {
 			cmd.PrintErrf("notice: %s overrides it in this process\n", e.Source.Name)
 		}
+		if e.Applies == "restart" {
+			cmd.PrintErrf("notice: %s is read when mangal starts: a running mangal serve or TUI keeps the old value until it restarts\n", key)
+		}
 		if mode, readable := config.ReadableByOthers(); readable && e.Secret && e.Stored == string(config.StoredFile) {
 			cmd.PrintErrf("warning: %s holds secrets but others can read it (mode %o): chmod 600 it\n", config.Path, mode)
 		}
+		return nil
+	},
+}
+
+func storedText(stored string) string {
+	if stored == string(config.StoredDB) {
+		return "in the database (shared by every mangal using it)"
+	}
+	return "in mangal.toml (this machine)"
+}
+
+func sourceText(src config.Source) string {
+	switch src.Kind {
+	case "flag":
+		return "the flag " + src.Name
+	case "env":
+		return "the environment variable " + src.Name
+	case "run":
+		return "this run"
+	case "file":
+		return "mangal.toml"
+	case "db":
+		return "the database"
+	}
+	return "the default"
+}
+
+func appliesText(applies string) string {
+	switch applies {
+	case "restart":
+		return "a change applies when mangal restarts"
+	case "reload":
+		return "a change applies when the providers load again"
+	}
+	return "a change applies at once"
+}
+
+var configHistoryArgs = struct {
+	Limit int
+	JSON  bool
+}{}
+
+func init() {
+	configCmd.AddCommand(configHistoryCmd)
+	f := configHistoryCmd.Flags()
+	f.IntVarP(&configHistoryArgs.Limit, "limit", "n", 50, "At most this many changes, 0 for all")
+	f.BoolVarP(&configHistoryArgs.JSON, "json", "j", false, "JSON output")
+}
+
+var configHistoryCmd = &cobra.Command{
+	Use:   "history [key]",
+	Short: "List the changes of the settings stored in the database",
+	Long: `List the changes of the settings stored in the database (every key, or the one given),
+newest first: when, who, the key, the old and the new value (secrets masked, "default" when
+unset). "mangal config undo <id>" sets a change's key back. The keys in mangal.toml have no
+history.`,
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completionConfigKeys,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		key := ""
+		if len(args) == 1 {
+			key = args[0]
+		}
+		changes, err := core.NewConfig().History(ctxOf(cmd), key, configHistoryArgs.Limit)
+		if err != nil {
+			return err
+		}
+		if configHistoryArgs.JSON {
+			data, err := json.Marshal(changes)
+			if err != nil {
+				return err
+			}
+			cmd.Println(string(data))
+			return nil
+		}
+		if len(changes) == 0 {
+			cmd.Println("no changes")
+			return nil
+		}
+		for _, c := range changes {
+			cmd.Printf("%d  %s  %s  %s: %s -> %s\n", c.ID, c.At.Format("2006-01-02 15:04"), c.Who, c.Key, changeValue(c.Old), changeValue(c.New))
+		}
+		return nil
+	},
+}
+
+func changeValue(v *string) string {
+	if v == nil {
+		return "default"
+	}
+	return *v
+}
+
+func init() {
+	configCmd.AddCommand(configUndoCmd)
+}
+
+var configUndoCmd = &cobra.Command{
+	Use:   "undo id",
+	Short: "Set a setting back to its value before a change",
+	Long: `Set the key of the change (its id in "mangal config history") back to its old value. It's
+recorded as a change of its own, so it can be undone too. Refused when the key changed after
+it (undo the later change first) and for secrets (their history doesn't keep the value).`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("%q isn't a change id", args[0])
+		}
+		e, err := core.NewConfig().Undo(ctxOf(cmd), id)
+		if err != nil {
+			return err
+		}
+		successf(cmd, "set %q back to %v", e.Key, e.Value)
+		return nil
+	},
+}
+
+var configExportArgs = struct {
+	File string
+}{}
+
+func init() {
+	configCmd.AddCommand(configExportCmd)
+	configExportCmd.Flags().StringVarP(&configExportArgs.File, "file", "f", "", "Write to this file instead of the standard output")
+}
+
+var configExportCmd = &cobra.Command{
+	Use:   "export",
+	Short: "Write the settings stored in the database as TOML",
+	Long: `Write every setting stored in the database (the providers' too) with its value as TOML,
+secrets left out: edit it and load it with "mangal config import". The keys in mangal.toml
+aren't in it, the file itself is their copy.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		data, err := core.NewConfig().Export(ctxOf(cmd))
+		if err != nil {
+			return err
+		}
+		if configExportArgs.File == "" {
+			_, err := cmd.OutOrStdout().Write(data)
+			return err
+		}
+		if err := os.WriteFile(configExportArgs.File, data, 0o600); err != nil {
+			return err
+		}
+		successf(cmd, "wrote the settings to %s", configExportArgs.File)
+		return nil
+	},
+}
+
+var configImportArgs = struct {
+	Apply bool
+}{}
+
+func init() {
+	configCmd.AddCommand(configImportCmd)
+	configImportCmd.Flags().BoolVar(&configImportArgs.Apply, "apply", false, "Change the settings, instead of only listing the changes")
+}
+
+var configImportCmd = &cobra.Command{
+	Use:   "import file",
+	Short: "Load settings into the database from a TOML file",
+	Long: `Load the settings of a TOML file (as "mangal config export" writes it; keys left out stay
+as they are) into the database. Lists what would change; --apply changes it, as one
+operation that "mangal library undo" reverts. Keys of mangal.toml, unknown keys and invalid
+values are errors, nothing changes then.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		data, err := os.ReadFile(args[0])
+		if err != nil {
+			return err
+		}
+		cfg := core.NewConfig()
+		changes, err := cfg.ImportPlan(ctxOf(cmd), data)
+		if err != nil {
+			return err
+		}
+		if len(changes) == 0 {
+			successf(cmd, "nothing to change, the settings already are as in %s", args[0])
+			return nil
+		}
+		verb := map[bool]string{false: "would set", true: "set"}[configImportArgs.Apply]
+		for _, c := range changes {
+			cmd.Printf("%s %s: %v -> %v\n", verb, c.Key, config.Masked(c.Key, c.Old), config.Masked(c.Key, c.New))
+		}
+		if !configImportArgs.Apply {
+			cmd.Println("run with --apply to change the settings")
+			return nil
+		}
+		id, err := cfg.Import(ctxOf(cmd), changes)
+		if err != nil {
+			return err
+		}
+		successf(cmd, "imported %s (operation %d, mangal library undo reverts it)", stringutil.Quantify(len(changes), "setting", "settings"), id)
 		return nil
 	},
 }
