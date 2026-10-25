@@ -116,8 +116,6 @@ type configProviders struct {
 	Mirrors     *entry[map[string]any, map[string]string]
 	Private     configProvidersPrivate
 	Filter      configProvidersFilter
-	MangaDex    configProvidersMangaDex
-	MangaPlus   configProvidersMangaPlus
 }
 
 type configCache struct {
@@ -142,24 +140,6 @@ type configProvidersFilter struct {
 	AvoidDuplicateChapters  *entry[bool, bool]
 	ShowUnavailableChapters *entry[bool, bool]
 	ShowRetiredChapters     *entry[bool, bool]
-}
-
-type configProvidersMangaPlus struct {
-	Quality         *entry[string, string]
-	OSVersion       *entry[string, string]
-	AppVersion      *entry[string, string]
-	AndroidID       *entry[string, string]
-	API             *entry[string, string]
-	Viewer          *entry[string, string]
-	RequestInterval *entry[string, string]
-	FreeSecret      *entry[string, string]
-	SecretFile      *entry[string, string]
-}
-
-type configProvidersMangaDex struct {
-	DataSaver     *entry[bool, bool]
-	ExcludeGroups *entry[string, []string]
-	PreferGroups  *entry[string, []string]
 }
 
 type configNotification struct {

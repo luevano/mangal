@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/luevano/libmangal"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/provider/loader"
 )
@@ -25,7 +26,16 @@ func Load(filters ...loader.FilterOption) (loaders []libmangal.ProviderLoader, p
 	}
 	loaders = append(loaders, luaLoaders...)
 
-	return dedupe(loaders, problems)
+	loaders, problems, err = dedupe(loaders, problems)
+	if err == nil {
+		infos := make([]libmangal.ProviderInfo, len(loaders))
+		for i, l := range loaders {
+			infos[i] = l.Info()
+		}
+		// their settings are keys (providers.<id>.<key>) before any of them loads
+		config.RegisterProviders(infos)
+	}
+	return loaders, problems, err
 }
 
 // dedupe drops a loader whose id, or an old id of its history, an earlier one has

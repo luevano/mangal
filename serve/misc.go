@@ -395,7 +395,7 @@ func (a *API) ListConfig(ctx context.Context, _ apiv1.ListConfigRequestObject) (
 // runs providers from, which addresses the providers may reach.
 var adminConfigKeys = []string{"providers.allow_private_addresses", "providers.private_allowlist", "data.path", "providers.path", "cache.path"}
 
-// SetConfig implements apiv1.StrictServerInterface: writes the key to the config file.
+// SetConfig implements apiv1.StrictServerInterface: writes the key where it's stored.
 // Secrets and the serve.* keys (its own security) aren't set over HTTP, adminConfigKeys
 // only by an admin.
 func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObject) (apiv1.SetConfigResponseObject, error) {
@@ -416,7 +416,11 @@ func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObjec
 	if body.Value == nil {
 		return nil, badRequest("value is needed")
 	}
-	e, err := core.NewConfig().Set(ctx, key, body.Value)
+	who := "api"
+	if id, ok := identityOf(ctx); ok {
+		who += ": " + id.String()
+	}
+	e, err := core.NewConfig().Set(core.WithWho(ctx, who), key, body.Value)
 	if errors.Is(err, core.ErrInvalid) {
 		return nil, badRequest("%w", err)
 	}

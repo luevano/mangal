@@ -14,6 +14,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/web"
 	"github.com/spf13/cobra"
 )
@@ -41,7 +42,7 @@ var apiCmd = &cobra.Command{
 	Short: "Call the serve API",
 	Long: `Call the API of the running mangal serve of this config (found with its discovery file,
 which has its key: every permission), or of --server with an API token in MANGAL_API_TOKEN
-("mangal token add <name> --scope read" on the server makes one; it also
+(or in the file MANGAL_API_TOKEN_FILE names) ("mangal token add <name> --scope read" on the server makes one; it also
 overrides the key). PATH is relative to
 /api/v1 unless it starts with /api/. The answer is pretty-printed; an error answer exits
 non-zero. Changes plan first: POST without ?apply=1 answers the plan and its hash, then
@@ -79,7 +80,11 @@ the same with ?apply=1 and "expect": "<hash>" applies it.`,
 		if err != nil {
 			return err
 		}
-		token := cmp.Or(os.Getenv("MANGAL_API_TOKEN"), key)
+		envToken, err := config.EnvSecret("MANGAL_API_TOKEN")
+		if err != nil {
+			return err
+		}
+		token := cmp.Or(envToken, key)
 		req, err := http.NewRequestWithContext(cmd.Context(), method, server+apiPath(path), bytes.NewReader(body))
 		if err != nil {
 			return err

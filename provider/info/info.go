@@ -83,6 +83,27 @@ type file struct {
 	History     []alias  `toml:"history,omitempty"`
 	// RateLimits only apply to Lua providers.
 	RateLimits []RateLimit `toml:"rate_limits,omitempty"`
+	// Settings and Traits only apply to Lua providers: the [[settings]] the script reads
+	// (sdk.settings.get), and how mangal treats the provider.
+	Settings []setting `toml:"settings,omitempty"`
+	Traits   traits    `toml:"traits,omitzero"`
+}
+
+// setting is a libmangal.ProviderSetting in mangal.toml.
+type setting struct {
+	Key         string   `toml:"key"`
+	Name        string   `toml:"name,omitempty"`
+	Description string   `toml:"description,omitempty"`
+	Kind        string   `toml:"kind"`
+	Default     string   `toml:"default,omitempty"`
+	Values      []string `toml:"values,omitempty"`
+	Warning     string   `toml:"warning,omitempty"`
+}
+
+// traits are libmangal.ProviderTraits in mangal.toml.
+type traits struct {
+	PartialChapters bool `toml:"partial_chapters,omitempty"`
+	AvoidUnattended bool `toml:"avoid_unattended,omitempty"`
 }
 
 type alias struct {
@@ -122,8 +143,24 @@ func New(r io.Reader) (Info, error) {
 	for _, a := range f.History {
 		info.History = append(info.History, libmangal.ProviderAlias(a))
 	}
+	keys := map[string]bool{}
+	for _, s := range f.Settings {
+		setting := libmangal.ProviderSetting{Key: s.Key, Name: s.Name, Description: s.Description, Kind: libmangal.SettingKind(s.Kind), Default: s.Default, Values: s.Values, Warning: s.Warning}
+		if err := setting.Validate(); err != nil {
+			return Info{}, fmt.Errorf("settings: %w", err)
+		}
+		if keys[s.Key] {
+			return Info{}, fmt.Errorf("settings: duplicate setting %q", s.Key)
+		}
+		keys[s.Key] = true
+		info.Settings = append(info.Settings, setting)
+	}
+	info.Traits = libmangal.ProviderTraits(f.Traits)
 	if len(info.RateLimits) > 0 && info.Type != TypeLua {
 		return Info{}, errors.New("rate_limits only apply to lua providers")
+	}
+	if (len(info.Settings) > 0 || info.Traits != libmangal.ProviderTraits{}) && info.Type != TypeLua {
+		return Info{}, errors.New("settings and traits only apply to lua providers")
 	}
 	if _, err := info.LuaRateLimits(); err != nil {
 		return Info{}, err
@@ -147,6 +184,10 @@ func (i Info) Encode(w io.Writer) error {
 	for _, a := range i.History {
 		f.History = append(f.History, alias(a))
 	}
+	for _, s := range i.Settings {
+		f.Settings = append(f.Settings, setting{Key: s.Key, Name: s.Name, Description: s.Description, Kind: string(s.Kind), Default: s.Default, Values: s.Values, Warning: s.Warning})
+	}
+	f.Traits = traits(i.Traits)
 	return toml.NewEncoder(w).Encode(f)
 }
 

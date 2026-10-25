@@ -2,11 +2,11 @@ package config
 
 import (
 	"fmt"
-	"maps"
 	"math/rand/v2"
 	"strings"
 	"time"
 
+	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cron"
 	"github.com/spf13/viper"
@@ -25,6 +25,29 @@ type ProviderSettings map[string]string
 
 // On is false when the provider is off for the kind.
 func (p ProviderSettings) On(provider string) bool { return p[provider] != ProviderOff }
+
+// Unattended is On for a maintenance job (source checks, addresses, network health): a
+// provider the table doesn't name is off when it avoids unattended requests
+// (libmangal.ProviderTraits.AvoidUnattended, MangaPlus: a lockout risk).
+func (p ProviderSettings) Unattended(loaders []libmangal.ProviderLoader, provider string) bool {
+	if v, ok := p[provider]; ok {
+		return v != ProviderOff
+	}
+	l, _, ok := libmangal.FindLoader(loaders, provider)
+	return !ok || !l.Info().Traits.AvoidUnattended
+}
+
+// UnattendedDefaults are a maintenance job's values of the providers the table doesn't
+// name: off for those that avoid unattended requests.
+func UnattendedDefaults(loaders []libmangal.ProviderLoader) ProviderSettings {
+	p := ProviderSettings{}
+	for _, l := range loaders {
+		if l.Info().Traits.AvoidUnattended {
+			p[l.Info().ID] = ProviderOff
+		}
+	}
+	return p
+}
 
 // Override is the provider's own interval (schedule), empty for the kind's.
 func (p ProviderSettings) Override(provider string) string {
@@ -48,7 +71,7 @@ func validateCron(s string) error {
 }
 
 // providersEntry is a table of provider id = on, off or an interval checked by valid; a
-// table in the file replaces the defaults, a provider it doesn't name is on.
+// provider it doesn't name is on (for the maintenance jobs: see Unattended).
 func providersEntry(key string, defaults ProviderSettings, valid func(string) error, description string) *entry[map[string]any, ProviderSettings] {
 	return reg(entry[map[string]any, ProviderSettings]{
 		Key:         key,
@@ -91,9 +114,14 @@ func providersEntry(key string, defaults ProviderSettings, valid func(string) er
 }
 
 // Fresh is Get with the config file read again when it sets the key (and the environment
-// doesn't): a long-running mangal (serve) sees what another process wrote.
+// doesn't), or the database's settings when they changed: a long-running mangal (serve)
+// sees what another process wrote.
 func (e *entry[Raw, Value]) Fresh() Value {
 	if _, env := EnvVar(e.Key); env {
+		return e.Get()
+	}
+	if StoredIn(e.Key) == StoredDB {
+		refreshStore()
 		return e.Get()
 	}
 	file := viper.New()
@@ -109,14 +137,6 @@ func (e *entry[Raw, Value]) Fresh() Value {
 	return value
 }
 
-// mangaPlusOff is MangaPlus off: the maintenance jobs don't ask it unless turned on
-// (a paid device secret risks a lockout).
-var mangaPlusOff = ProviderSettings{"mango-mangaplus": ProviderOff}
-
-// MaintenanceDefaults are the prebuilt per-provider settings of the maintenance jobs
-// (source checks, source addresses, network health).
-func MaintenanceDefaults() ProviderSettings { return maps.Clone(mangaPlusOff) }
-
 var Jobs = configJobs{
 	Check: configJobsCheck{
 		Enabled: boolEntry("jobs.check.enabled", true,
@@ -127,20 +147,20 @@ var Jobs = configJobs{
 	Sources: configJobsSources{
 		Enabled: boolEntry("jobs.sources.enabled", true,
 			"Whether `mangal serve` checks that the library sources are still on their providers (health L11) every health.source_check_interval."),
-		Providers: providersEntry("jobs.sources.providers", mangaPlusOff, validateDuration,
-			"Source checks per provider id: off (never asked, `mangal health --network` included), on, or its own interval (a Go duration, e.g. mango-mangadex = \"336h\"). MangaPlus is off unless set on."),
+		Providers: providersEntry("jobs.sources.providers", ProviderSettings{}, validateDuration,
+			"Source checks per provider id: off (never asked, `mangal health --network` included), on, or its own interval (a Go duration, e.g. mango-mangadex = \"336h\"). A provider that avoids unattended requests (MangaPlus: a lockout risk) is off unless set on."),
 	},
 	URLs: configJobsURLs{
 		Enabled: boolEntry("jobs.urls.enabled", true,
 			"Whether `mangal serve` looks up the web pages of the library sources without one (as `mangal library urls`) every jobs.urls.interval."),
 		Interval: durationEntry("jobs.urls.interval", "168h",
 			"How often `mangal serve` looks up the sources without a web page (only those, each at most once per interval), 168h a week. Read on each run.", false),
-		Providers: providersEntry("jobs.urls.providers", mangaPlusOff, validateDuration,
-			"Source address lookups per provider id: off (never asked, `mangal library urls` included), on, or its own interval (a Go duration). MangaPlus is off unless set on."),
+		Providers: providersEntry("jobs.urls.providers", ProviderSettings{}, validateDuration,
+			"Source address lookups per provider id: off (never asked, `mangal library urls` included), on, or its own interval (a Go duration). A provider that avoids unattended requests (MangaPlus: a lockout risk) is off unless set on."),
 	},
 	Health: configJobsHealth{
-		Providers: providersEntry("jobs.health.providers", mangaPlusOff, validateDuration,
-			"Network health checks (A2, a probe of each provider) per provider id: off (not asked) or on. MangaPlus is off unless set on."),
+		Providers: providersEntry("jobs.health.providers", ProviderSettings{}, validateDuration,
+			"Network health checks (A2, a probe of each provider) per provider id: off (not asked) or on. A provider that avoids unattended requests (MangaPlus: a lockout risk) is off unless set on."),
 	},
 	DelayMin: durationEntry("jobs.delay_min", "1s",
 		"Shortest pause between two requests to the same provider in the maintenance jobs (source checks, source addresses): a random one between this and jobs.delay_max, so the site doesn't see a beat.", false),

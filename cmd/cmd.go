@@ -134,7 +134,32 @@ func configFlag(args []string) string {
 	path := fs.String("config", "", "")
 	fs.BoolP("help", "h", false, "")
 	_ = fs.Parse(args)
+	if *path == "" {
+		return os.Getenv(globalEnv["config"])
+	}
 	return *path
+}
+
+// globalEnv are the variables of the global flags that aren't config keys (the flags
+// that are have their key's, see configKeyFlag). The flags of one command (--apply,
+// --yes, --json, --query, ...) have none on purpose: MANGAL_APPLY in a profile would turn
+// every plan into an action (docs/settings-db.md, question 8).
+var globalEnv = map[string]string{"config": "MANGAL_CONFIG", "debug": "MANGAL_DEBUG", "verbose": "MANGAL_VERBOSE"}
+
+// applyGlobalEnv sets the global flags not given from their variables.
+func applyGlobalEnv(fs *pflag.FlagSet) error {
+	for name, env := range globalEnv {
+		f := fs.Lookup(name)
+		if f == nil || f.Changed {
+			continue
+		}
+		if v, ok := os.LookupEnv(env); ok {
+			if err := f.Value.Set(v); err != nil {
+				return fmt.Errorf("%s: %w", env, err)
+			}
+		}
+	}
+	return nil
 }
 
 func startup(cmd *cobra.Command) string {
@@ -164,8 +189,15 @@ func setup(cmd *cobra.Command, _ []string) error {
 	if loadErr != nil {
 		return loadErr
 	}
+	if err := applyGlobalEnv(cmd.Flags()); err != nil {
+		return err
+	}
 	if err := bindFlags(cmd.Flags()); err != nil {
 		return err
+	}
+	config.Who = cmd.CommandPath()
+	if !cmd.HasParent() {
+		config.Who = "tui"
 	}
 	for _, key := range config.Unsupported() {
 		hint := ""
@@ -176,6 +208,13 @@ func setup(cmd *cobra.Command, _ []string) error {
 	}
 	for _, key := range config.Retired() {
 		cmd.PrintErrf("warning: config key %q is no longer used (%s), mangal config clean drops it\n", key, config.RetiredReason(key))
+	}
+	for _, env := range config.UnknownEnv() {
+		hint := ""
+		if env.Suggestion != "" {
+			hint = fmt.Sprintf(" (did you mean %s?)", env.Suggestion)
+		}
+		cmd.PrintErrf("warning: environment variable %s sets no config key%s\n", env.Key, hint)
 	}
 	if err := config.Validate(); err != nil && level != startupConfig {
 		return err
@@ -200,11 +239,19 @@ func setup(cmd *cobra.Command, _ []string) error {
 	})
 	icon.SetType(config.Icons.Get())
 
+	// the database keys are read from the data database: the commands that work without
+	// the storage only warn when it can't be opened
+	imported, err := openStorage(cmd)
 	if level == startupConfig || level == startupNoStorage {
+		if err != nil {
+			cmd.PrintErrf("warning: %s, the settings stored in the database aren't read\n", err)
+		} else if imported != "" {
+			cmd.PrintErrf("notice: %s\n", imported)
+		}
 		return nil
 	}
-	if err := cache.Open(); err != nil {
-		return fmt.Errorf("open storage: %w", err)
+	if err != nil {
+		return err
 	}
 	// the TUI shows them itself
 	if !cmd.HasParent() {
@@ -216,6 +263,25 @@ func setup(cmd *cobra.Command, _ []string) error {
 		}
 	}
 	return nil
+}
+
+// openStorage opens the databases and copies mangal.toml's moved keys into the data
+// database the first time (client.ImportSettings): imported says so, it's in the notices
+// with the one about the moved keys left in the file.
+func openStorage(cmd *cobra.Command) (imported string, err error) {
+	if err := cache.Open(); err != nil {
+		return "", fmt.Errorf("open storage: %w", err)
+	}
+	imported, err = client.ImportSettings(cmd.Context())
+	if err != nil {
+		return "", err
+	}
+	for _, n := range []string{imported, client.MovedNotice()} {
+		if n != "" {
+			cache.AddNotice(n)
+		}
+	}
+	return imported, nil
 }
 
 // noFileCompletion makes the arguments of the commands without a completion complete

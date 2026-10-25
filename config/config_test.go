@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 )
 
 func TestMain(m *testing.M) {
@@ -30,8 +28,7 @@ func TestMain(m *testing.M) {
 // reset starts from the defaults, with the config file (absent) in a temp dir.
 func reset(t *testing.T) {
 	t.Helper()
-	viper.Reset()
-	setup()
+	Reset()
 	dir = t.TempDir()
 	Path = filepath.Join(dir, filename)
 	unsupported = nil
@@ -194,7 +191,6 @@ func TestParse(t *testing.T) {
 		"providers.parallelism":            "0",
 		"download.format":                  "bad",
 		"icons":                            "x",
-		"providers.mangaplus.quality":      "max",
 		"notification.discord.webhook_url": "https://example.com",
 		"download.path":                    "",
 	} {
@@ -253,25 +249,25 @@ func TestWriteKeyOnlyWritesThatKey(t *testing.T) {
 	}
 	t.Setenv("MANGAL_DOWNLOAD_PATH", "/env/path")
 
-	if err := WriteKey(Providers.MangaPlus.FreeSecret.Key, "free-secret"); err != nil {
+	if err := WriteKey(Serve.TLSKey.Key, "/tls.key"); err != nil {
 		t.Fatal(err)
 	}
-	if err := Download.Format.Write(libmangal.FormatCBZ); err != nil {
+	if err := Read.Format.Write(libmangal.FormatCBZ); err != nil {
 		t.Fatal(err)
 	}
 
 	file := readConfig(t)
-	for _, want := range []string{"free_secret = 'free-secret'", "format = 'CBZ'", "search = true"} {
+	for _, want := range []string{"tls_key = '/tls.key'", "format = 'CBZ'", "search = true"} {
 		if !strings.Contains(file, want) {
 			t.Errorf("no %q in:\n%s", want, file)
 		}
 	}
-	for _, unwanted := range []string{"viewer", "/env/path"} {
+	for _, unwanted := range []string{"tls_cert", "/env/path"} {
 		if strings.Contains(file, unwanted) {
 			t.Errorf("%q written:\n%s", unwanted, file)
 		}
 	}
-	if got := Download.Format.Get(); got != libmangal.FormatCBZ {
+	if got := Read.Format.Get(); got != libmangal.FormatCBZ {
 		t.Errorf("format not set: %s", got)
 	}
 	if err := WriteKey(Providers.Parallelism.Key, "300"); err == nil {
@@ -281,7 +277,7 @@ func TestWriteKeyOnlyWritesThatKey(t *testing.T) {
 
 func TestWriteKeyDoesNotCreateConfig(t *testing.T) {
 	reset(t)
-	if err := WriteKey(Providers.MangaPlus.FreeSecret.Key, "free-secret"); !errors.Is(err, ErrNoFile) {
+	if err := WriteKey(Icons.Key, "nerd"); !errors.Is(err, ErrNoFile) {
 		t.Errorf("got %v, want ErrNoFile", err)
 	}
 	if _, err := os.Stat(Path); err == nil {
@@ -362,25 +358,22 @@ func TestMasked(t *testing.T) {
 func TestWrite(t *testing.T) {
 	reset(t)
 	Path = filepath.Join(dir, "sub", filename)
-	t.Setenv("MANGAL_DOWNLOAD_PATH", "/env/path")
+	t.Setenv("MANGAL_SERVE_HOST", "env.host")
 	if err := Write(); err != nil {
 		t.Fatal(err)
 	}
 	file := readConfig(t)
-	if strings.Contains(file, "/env/path") {
+	if strings.Contains(file, "env.host") {
 		t.Errorf("env value written:\n%s", file)
 	}
-	if !strings.Contains(file, "parallelism = 4") {
+	if !strings.Contains(file, "port = 6977") {
 		t.Errorf("defaults not written:\n%s", file)
 	}
 }
 
 func TestMirrors(t *testing.T) {
 	reset(t)
-	writeConfig(t, "[providers.mirrors]\nmango-mangakakalot = 'https://www.mangakakalove.com/'\n")
-	if err := Load(Path); err != nil {
-		t.Fatal(err)
-	}
+	m := useMem(t, map[string]string{"providers.mirrors": `{"mango-mangakakalot":"https://www.mangakakalove.com/"}`})
 	if got := Providers.Mirrors.Get()["mango-mangakakalot"]; got != "https://www.mangakakalove.com/" {
 		t.Fatalf("got %q", got)
 	}
@@ -391,8 +384,8 @@ func TestMirrors(t *testing.T) {
 	if err := SetMirror("mango-mangakakalot", ""); err != nil {
 		t.Fatal(err)
 	}
-	if file := readConfig(t); !strings.Contains(file, "mango-manganato = 'https://www.nelomanga.net/'") || strings.Contains(file, "mangakakalove") {
-		t.Errorf("want only the manganato mirror:\n%s", file)
+	if got := m.values["providers.mirrors"]; got != `{"mango-manganato":"https://www.nelomanga.net/"}` {
+		t.Errorf("want only the manganato mirror: %s", got)
 	}
 
 	if err := Set(Providers.Mirrors.Key, map[string]any{"mango-x": "not a url"}); err == nil {
@@ -416,10 +409,7 @@ func TestKitsuKeys(t *testing.T) {
 	if !Metadata.Kitsu.Enabled.Get() || Read.History.Kitsu.Get() || ReadOptions().SaveKitsu {
 		t.Fatal("kitsu defaults: enabled, no sync")
 	}
-	writeConfig(t, "[read.history]\nkitsu = true\n")
-	if err := Load(Path); err != nil {
-		t.Fatal(err)
-	}
+	useMem(t, map[string]string{"read.history.kitsu": "true"})
 	if !ReadOptions().SaveKitsu {
 		t.Error("read.history.kitsu doesn't sync")
 	}
@@ -446,9 +436,6 @@ func TestKindsAndValues(t *testing.T) {
 	if got := Values(Icons.Key); len(got) != 2 {
 		t.Errorf("icons values %v", got)
 	}
-	if got := Values(Providers.MangaPlus.Quality.Key); len(got) != 3 {
-		t.Errorf("quality values %v", got)
-	}
 	if got := Values(Download.Path.Key); got != nil {
 		t.Errorf("path values %v", got)
 	}
@@ -456,18 +443,18 @@ func TestKindsAndValues(t *testing.T) {
 
 func TestFileValueIgnoresEnv(t *testing.T) {
 	reset(t)
-	writeConfig(t, "[download]\npath = '/from/file'\n")
+	writeConfig(t, "[serve]\ntls_cert = '/from/file'\n")
 	if err := Load(Path); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(envName(Download.Path.Key), "/from/env")
-	if got, _ := Get(Download.Path.Key); got != "/from/env" {
+	t.Setenv(envName(Serve.TLSCert.Key), "/from/env")
+	if got, _ := Get(Serve.TLSCert.Key); got != "/from/env" {
 		t.Fatalf("Get %v, the env should win", got)
 	}
-	if got, err := FileValue(Download.Path.Key); err != nil || got != "/from/file" {
+	if got, err := FileValue(Serve.TLSCert.Key); err != nil || got != "/from/file" {
 		t.Errorf("FileValue %v, %v", got, err)
 	}
-	if got, err := FileValue(Download.Format.Key); err != nil || got != "PDF" {
+	if got, err := FileValue(Read.Format.Key); err != nil || got != "PDF" {
 		t.Errorf("default %v, %v", got, err)
 	}
 }
@@ -486,7 +473,7 @@ func TestWriteKeepsComments(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(data)
-	for _, want := range []string{"# my settings\n", "icons = 'nerd' # nerd font\n", "skip_if_exists = true"} {
+	for _, want := range []string{"# my settings\n", "icons = 'nerd' # nerd font\n", "# port = 6977"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("no %q in:\n%s", want, got)
 		}
@@ -552,29 +539,5 @@ func TestSizeEntry(t *testing.T) {
 		if back, err := parseSize(formatSize(n)); err != nil || back != n {
 			t.Errorf("parseSize(formatSize(%d)) = %d, %v", n, back, err)
 		}
-	}
-}
-
-func TestMangaDexGroups(t *testing.T) {
-	reset(t)
-	if got := Providers.MangaDex.ExcludeGroups.Get(); len(got) != 0 {
-		t.Fatalf("default %q", got)
-	}
-	writeConfig(t, "[providers.mangadex]\nexclude_groups = 'Group A, , 0d8e2a7c-1111-2222-3333-444455556666 '\n")
-	if err := Load(Path); err != nil {
-		t.Fatal(err)
-	}
-	if got := Providers.MangaDex.ExcludeGroups.Get(); !slices.Equal(got, []string{"Group A", "0d8e2a7c-1111-2222-3333-444455556666"}) {
-		t.Errorf("exclude_groups %q", got)
-	}
-	t.Setenv("MANGAL_PROVIDERS_MANGADEX_PREFER_GROUPS", "B,A")
-	if got := Providers.MangaDex.PreferGroups.Get(); !slices.Equal(got, []string{"B", "A"}) {
-		t.Errorf("prefer_groups %q", got)
-	}
-	if err := Providers.MangaDex.PreferGroups.Write([]string{"C", "D"}); err != nil {
-		t.Fatal(err)
-	}
-	if file := readConfig(t); !strings.Contains(file, "prefer_groups = 'C, D'") {
-		t.Errorf("written:\n%s", file)
 	}
 }

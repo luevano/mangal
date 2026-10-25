@@ -194,3 +194,49 @@ rate_limits = [
 		}
 	}
 }
+
+func TestNewSettings(t *testing.T) {
+	toml := `
+type = "lua"
+id = "x"
+
+[traits]
+partial_chapters = true
+
+[[settings]]
+key = "quality"
+kind = "enum"
+values = ["low", "high"]
+default = "high"
+warning = "slow"
+
+[[settings]]
+key = "token"
+kind = "secret"
+`
+	got, err := New(strings.NewReader(toml))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Settings) != 2 || got.Settings[0].Kind != libmangal.SettingEnum || got.Settings[0].Warning != "slow" || !got.Traits.PartialChapters || got.Traits.AvoidUnattended {
+		t.Errorf("settings %+v traits %+v", got.Settings, got.Traits)
+	}
+	var sb strings.Builder
+	if err := got.Encode(&sb); err != nil {
+		t.Fatal(err)
+	}
+	again, err := New(strings.NewReader(sb.String()))
+	if err != nil || !reflect.DeepEqual(again, got) {
+		t.Errorf("round trip %+v %v:\n%s", again, err, sb.String())
+	}
+	for _, bad := range []string{
+		"type = \"lua\"\nid = \"x\"\n[[settings]]\nkey = \"Bad\"\nkind = \"string\"\n",
+		"type = \"lua\"\nid = \"x\"\n[[settings]]\nkey = \"a\"\nkind = \"color\"\n",
+		"type = \"lua\"\nid = \"x\"\n[[settings]]\nkey = \"a\"\nkind = \"string\"\n[[settings]]\nkey = \"a\"\nkind = \"string\"\n",
+		"type = \"bundle\"\nid = \"x\"\n[traits]\npartial_chapters = true\n",
+	} {
+		if _, err := New(strings.NewReader(bad)); err == nil {
+			t.Errorf("no error for\n%s", bad)
+		}
+	}
+}

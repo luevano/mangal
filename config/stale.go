@@ -51,6 +51,12 @@ type Stale struct {
 	// Defaults are keys set to their default, they become commented defaults (they follow
 	// mangal's default from then on).
 	Defaults []string
+	// Moved are keys stored in the database now, their entries are ignored: dropped once
+	// the database has them (MovedKept until then).
+	Moved     []MovedKey
+	MovedKept bool
+	// movedLeaves are the file's entries of the moved tables, by table.
+	movedLeaves map[string][]string
 }
 
 // UnknownKey is a key of the file that isn't registered, Suggestion the closest one.
@@ -67,7 +73,7 @@ type RetiredKey struct {
 
 // Empty is true when there's nothing to clean.
 func (s Stale) Empty() bool {
-	return len(s.Unknown) == 0 && len(s.Retired) == 0 && len(s.Defaults) == 0
+	return len(s.Unknown) == 0 && len(s.Retired) == 0 && len(s.Defaults) == 0 && (len(s.Moved) == 0 || s.MovedKept)
 }
 
 // StaleKeys reads the config file (not the environment or flags) for what config clean
@@ -83,7 +89,24 @@ func StaleKeys() (Stale, error) {
 		}
 		return s, fmt.Errorf("read config %q: %w", Path, err)
 	}
+	moved := map[string]any{}
+	for _, key := range movedKeys() {
+		if file.IsSet(key) {
+			moved[key] = nil
+			s.Moved = append(s.Moved, MovedKey{Key: key, NewKey: newName(key)})
+		}
+	}
+	s.MovedKept = len(s.Moved) != 0 && !Imported()
+	s.movedLeaves = map[string][]string{}
 	for _, key := range file.AllKeys() {
+		if underMoved(key, moved) {
+			for m := range moved {
+				if strings.HasPrefix(key, m+".") {
+					s.movedLeaves[m] = append(s.movedLeaves[m], key)
+				}
+			}
+			continue
+		}
 		if reason, ok := retired[key]; ok {
 			s.Retired = append(s.Retired, RetiredKey{Key: key, Reason: reason})
 			continue
@@ -102,10 +125,12 @@ func StaleKeys() (Stale, error) {
 	slices.SortFunc(s.Unknown, func(a, b UnknownKey) int { return strings.Compare(a.Key, b.Key) })
 	slices.SortFunc(s.Retired, func(a, b RetiredKey) int { return strings.Compare(a.Key, b.Key) })
 	slices.Sort(s.Defaults)
+	slices.SortFunc(s.Moved, func(a, b MovedKey) int { return strings.Compare(a.Key, b.Key) })
 	return s, nil
 }
 
-// Clean drops the unknown and retired keys of s from the config file and comments its
+// Clean drops the unknown, retired and moved (once imported) keys of s from the config
+// file and comments its
 // defaults out, keeping the rest of the file (comments included). The file is copied to
 // backup first (mangal.toml.<time>.bak next to it, never overwritten).
 func Clean(s Stale) (backup string, err error) {
@@ -136,6 +161,15 @@ func Clean(s Stale) (backup string, err error) {
 			return "", fmt.Errorf("clean config: drop %s: %w (edit it by hand)", key, err)
 		}
 		edited = next
+	}
+	if !s.MovedKept {
+		for _, m := range s.Moved {
+			next, err := removeMoved(edited, m.Key, s.movedLeaves[m.Key])
+			if err != nil {
+				return "", fmt.Errorf("clean config: drop %s: %w (edit it by hand)", m.Key, err)
+			}
+			edited = next
+		}
 	}
 	for _, key := range s.Defaults {
 		next, err := defaultTOML(edited, key, fields[key].defaultRaw())
@@ -176,4 +210,23 @@ func backupPath(now time.Time) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no free backup name for %s", Path)
+}
+
+// removeMoved drops a moved key: its entry, or a table's entries (leaves).
+func removeMoved(data []byte, key string, leaves []string) ([]byte, error) {
+	next, err := removeTOMLKey(data, key)
+	if err == nil && !bytes.Equal(next, data) {
+		return next, checkTOMLRemoved(data, next, key)
+	}
+	for _, leaf := range leaves {
+		next, err := removeTOMLKey(data, leaf)
+		if err == nil {
+			err = checkTOMLRemoved(data, next, leaf)
+		}
+		if err != nil {
+			return nil, err
+		}
+		data = next
+	}
+	return data, nil
 }

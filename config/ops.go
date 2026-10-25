@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
-	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -66,10 +65,10 @@ func setup() {
 	viper.SetFs(afs.Afero.Fs)
 	viper.SetConfigType("toml")
 
-	// Accept environment variables, all uppercase with "MANGAL_" prefix and "_" for ".",
-	// e.g. MANGAL_DOWNLOAD_PATH for download.path
+	// Accept environment variables, all uppercase with "MANGAL_" prefix and "_" for "."
+	// and "-", e.g. MANGAL_DOWNLOAD_PATH for download.path (env.go)
 	viper.SetEnvPrefix(meta.AppName) // uppercased automatically
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.SetEnvKeyReplacer(envReplacer)
 	viper.AutomaticEnv()
 
 	for key, f := range fields {
@@ -84,14 +83,36 @@ func Reset() {
 	vmu.Unlock()
 	setup()
 	unsupported, retiredSet = nil, nil
+	vmu.Lock()
+	runSet, flags = map[string]bool{}, map[string]*pflag.Flag{}
+	vmu.Unlock()
+	pmu.Lock()
+	providerFields, providersRegistered = map[string]*providerField{}, false
+	pmu.Unlock()
+	lmu.Lock()
+	fileSettings, movedInFile, store, stored, storeRev, imported, badStored = map[string]any{}, map[string]any{}, nil, map[string]string{}, 0, false, map[string]string{}
+	lmu.Unlock()
+	emu.Lock()
+	envFiles, envErrs, clashed, warnedEnv = map[string]string{}, map[string]error{}, map[string][]string{}, map[string]bool{}
+	emu.Unlock()
 }
 
+// runSet are the keys Set for this run, flags the flags bound to keys; guarded by vmu.
+var (
+	runSet = map[string]bool{}
+	flags  = map[string]*pflag.Flag{}
+)
+
 func lookup(key string) (field, error) {
-	f, ok := fields[key]
-	if !ok {
-		return nil, unknownKeyError(key)
+	if f, ok := fields[key]; ok {
+		return f, nil
 	}
-	return f, nil
+	pmu.RLock()
+	defer pmu.RUnlock()
+	if f, ok := providerFields[key]; ok {
+		return f, nil
+	}
+	return nil, unknownKeyError(key)
 }
 
 // Get returns the value of the key as stored in the file (e.g. a format as a string).
@@ -138,7 +159,7 @@ const (
 
 // KindOf the key, KindString for unknown keys.
 func KindOf(key string) Kind {
-	if f, ok := fields[key]; ok {
+	if f, err := lookup(key); err == nil {
 		return f.kind()
 	}
 	return KindString
@@ -146,26 +167,22 @@ func KindOf(key string) Kind {
 
 // Values are the accepted values of an enum key, nil for the others.
 func Values(key string) []string {
-	if f, ok := fields[key]; ok {
+	if f, err := lookup(key); err == nil {
 		return f.values()
 	}
 	return nil
 }
 
-// EnvVar is the environment variable of the key, set if it has a value from it (which
-// wins over the file).
-func EnvVar(key string) (name string, set bool) {
-	name = envName(key)
-	_, set = os.LookupEnv(name)
-	return name, set
-}
-
-// FileValue is the key's value in the config file (or its default), ignoring the
-// environment and flags that may override it for this run.
+// FileValue is the key's stored value, read again (or its default): in the config file,
+// or the database for a database key; ignoring the environment and flags that may
+// override it for this run.
 func FileValue(key string) (any, error) {
 	f, err := lookup(key)
 	if err != nil {
 		return nil, err
+	}
+	if StoredIn(key) == StoredDB {
+		return storedValue(key, f), nil
 	}
 	file := viper.New()
 	file.SetFs(afs.Afero.Fs)
@@ -185,8 +202,8 @@ func FileValue(key string) (any, error) {
 
 // IsSecret is true for keys that hold secrets (tokens, webhooks).
 func IsSecret(key string) bool {
-	f, ok := fields[key]
-	return ok && f.secret()
+	f, err := lookup(key)
+	return err == nil && f.secret()
 }
 
 // Masked is the value as shown to the user: "••••••" for a set secret (config get still
@@ -205,7 +222,10 @@ func Set(key string, value any) error {
 	if err != nil {
 		return err
 	}
-	viperSet(key, raw)
+	vmu.Lock()
+	defer vmu.Unlock()
+	viper.Set(key, raw)
+	runSet[key] = true
 	return nil
 }
 
@@ -230,6 +250,7 @@ func BindPFlag(key string, flag *pflag.Flag) error {
 	}
 	vmu.Lock()
 	err := viper.BindPFlag(key, flag)
+	flags[key] = flag
 	vmu.Unlock()
 	if err != nil {
 		return fmt.Errorf("bind flag %q to config key %q: %w", flag.Name, key, err)
@@ -239,13 +260,13 @@ func BindPFlag(key string, flag *pflag.Flag) error {
 
 // Exists if there is a registered key.
 func Exists(key string) bool {
-	_, found := fields[key]
-	return found
+	_, err := lookup(key)
+	return err == nil
 }
 
-// Keys returns all the registered keys, sorted.
+// Keys returns all the registered keys (the providers' settings included), sorted.
 func Keys() []string {
-	return slices.Sorted(maps.Keys(fields))
+	return slices.Sorted(slices.Values(append(slices.Collect(maps.Keys(fields)), providerKeys()...)))
 }
 
 // retired keys were removed from mangal, with why; old config files still have them,
@@ -292,13 +313,9 @@ func RetiredReason(key string) string {
 	return retired[key]
 }
 
-// envName is the environment variable of the key.
-func envName(key string) string {
-	return strings.ToUpper(meta.AppName + "_" + strings.ReplaceAll(key, ".", "_"))
-}
-
 // Load reads the config file at path. An empty path is the default location, which
-// doesn't need to exist; an explicit path does.
+// doesn't need to exist; an explicit path does. The moved keys (stored in the database
+// now) are ignored, see MovedInFile.
 //
 // The values aren't validated here: Validate does it once the flags are parsed.
 func Load(path string) error {
@@ -308,28 +325,54 @@ func Load(path string) error {
 	}
 	Path = path
 
-	vmu.Lock()
-	viper.SetConfigFile(path)
-	err := viper.ReadInConfig()
-	keys := viper.AllKeys()
-	vmu.Unlock()
-	if err != nil {
+	file := viper.New()
+	file.SetFs(afs.Afero.Fs)
+	file.SetConfigFile(path)
+	file.SetConfigType("toml")
+	if err := file.ReadInConfig(); err != nil {
 		if explicit || !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("read config %q: %w", path, err)
 		}
 	}
+	settings := file.AllSettings()
+	moved := map[string]any{}
+	for _, key := range movedKeys() {
+		if file.IsSet(key) {
+			moved[key] = file.Get(key)
+			deleteNested(settings, strings.Split(key, "."))
+		}
+	}
 
 	unsupported, retiredSet = nil, nil
-	for _, key := range keys {
+	for _, key := range file.AllKeys() {
 		if _, ok := retired[key]; ok {
 			retiredSet = append(retiredSet, key)
-		} else if !Exists(key) && !underMap(key) {
+		} else if !Exists(key) && !underMap(key) && !underMoved(key, moved) {
 			unsupported = append(unsupported, key)
 		}
 	}
 	slices.Sort(unsupported)
 	slices.Sort(retiredSet)
+
+	vmu.Lock()
+	viper.SetConfigFile(path)
+	vmu.Unlock()
+	lmu.Lock()
+	fileSettings, movedInFile = settings, moved
+	applyLocked()
+	lmu.Unlock()
+	readEnvFiles(Keys())
 	return nil
+}
+
+// underMoved is true for a moved key or an entry of a moved table.
+func underMoved(key string, moved map[string]any) bool {
+	for m := range moved {
+		if key == m || strings.HasPrefix(key, m+".") {
+			return true
+		}
+	}
+	return false
 }
 
 // defaultPath is the config file in the config dir, or the one in the home dir if only that
@@ -361,12 +404,19 @@ func underMap(key string) bool {
 func Validate() error {
 	var errs []error
 	for _, key := range Keys() {
-		if _, err := fields[key].toRaw(viperGet(key)); err != nil {
-			if _, ok := os.LookupEnv(envName(key)); ok {
-				err = fmt.Errorf("from %s: %w", envName(key), err)
+		f, err := lookup(key)
+		if err != nil {
+			continue
+		}
+		if _, err := f.toRaw(viperGet(key)); err != nil {
+			if name, ok := EnvVar(key); ok {
+				err = fmt.Errorf("from %s: %w", name, err)
 			}
 			errs = append(errs, fmt.Errorf("%s: %w", key, err))
 		}
+	}
+	if err := errEnv(Keys()); err != nil {
+		errs = append(errs, err)
 	}
 	if len(errs) != 0 {
 		return fmt.Errorf("invalid config: %w", errors.Join(errs...))
@@ -374,14 +424,25 @@ func Validate() error {
 	return nil
 }
 
-// WriteKey sets the key and writes only that key to the existing config file: its value
+// WriteKey is WriteKeyBy with Who.
+func WriteKey(key string, value any) error {
+	return WriteKeyBy(key, value, Who)
+}
+
+// WriteKeyBy writes the key where it's stored. A database key is saved there (who in its
+// history; its default unsets it), the config file isn't touched.
+//
+// A file key is set and written alone to the existing config file: its value
 // is edited in place (or added to its table), the rest of the file is kept as it is,
 // comments included. The default value is written as a commented default ("# key =
 // value"): the key follows mangal's default from then on. Errors if there's no config
 // file, it's never created here (see CreateFile).
 //
 // Unlike Write, runtime values (e.g. from flags) and missing defaults aren't written.
-func WriteKey(key string, value any) error {
+func WriteKeyBy(key string, value any, who string) error {
+	if StoredIn(key) == StoredDB {
+		return writeStored(key, value, who)
+	}
 	raw, err := Parse(key, value)
 	if err != nil {
 		return err
@@ -508,10 +569,11 @@ func CreateFile() error {
 	return nil
 }
 
-// Write writes every key to the config file: the file's values, and the keys it doesn't
-// have as commented defaults ("# key = value", still the default: they follow mangal's)
-// so the file lists every key. Values from the environment or flags aren't written,
-// retired keys are dropped. The file is edited in place (comments and order stay), and
+// Write writes every file key to the config file: the file's values, and the keys it
+// doesn't have as commented defaults ("# key = value", still the default: they follow
+// mangal's) so the file lists every key it may hold. Values from the environment or flags
+// aren't written, retired keys are dropped; moved keys (stored in the database) aren't
+// added, their old entries are left alone (config clean drops them). The file is edited in place (comments and order stay), and
 // created if there's none.
 func Write() error {
 	if !isTOML() {
@@ -551,7 +613,7 @@ func writeInPlace(data []byte) ([]byte, error) {
 			return nil, err
 		}
 	}
-	for _, key := range Keys() {
+	for _, key := range fileKeys() {
 		if file.IsSet(key) {
 			continue
 		}
@@ -580,10 +642,21 @@ func writeInPlace(data []byte) ([]byte, error) {
 	return data, nil
 }
 
+// fileKeys are mangal's keys stored in the config file, sorted.
+func fileKeys() []string {
+	var keys []string
+	for _, key := range slices.Sorted(maps.Keys(fields)) {
+		if StoredIn(key) == StoredFile {
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
 // isDefault is true when raw is the key's default, written as a commented default.
 func isDefault(key string, raw any) bool {
-	f, ok := fields[key]
-	if !ok || f.isMap() {
+	f, err := lookup(key)
+	if err != nil || f.isMap() {
 		return false
 	}
 	def := f.defaultRaw()
@@ -612,7 +685,7 @@ func rewrite() error {
 			return writeFile(edited)
 		}
 	}
-	for _, key := range Keys() {
+	for _, key := range fileKeys() {
 		if !file.IsSet(key) {
 			setNested(settings, strings.Split(key, "."), fields[key].defaultRaw())
 		}

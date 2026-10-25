@@ -213,39 +213,36 @@ func TestEditTOMLCantEdit(t *testing.T) {
 
 func TestWriteKeyKeepsComments(t *testing.T) {
 	reset(t)
-	writeConfig(t, commented)
+	doc := commented + "\n[tui]\n# mine\nskip_home = true # yes\n"
+	writeConfig(t, doc)
 	if err := Load(Path); err != nil {
 		t.Fatal(err)
 	}
-	if err := Download.Metadata.Strict.Write(false); err != nil {
+	if err := TUI.SkipHome.Write(false); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetMirror("mango-a", ""); err != nil {
-		t.Fatal(err)
-	}
-	want := strings.Replace(commented, "strict = true", "strict = false", 1)
-	want = strings.Replace(want, "mango-a = \"https://a.example/\"\n", "", 1)
+	want := strings.Replace(doc, "skip_home = true", "skip_home = false", 1)
 	if got := readConfig(t); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
-	if Download.Metadata.Strict.Get() {
+	if TUI.SkipHome.Get() {
 		t.Error("not set")
 	}
 }
 
 func TestWriteKeyFallsBack(t *testing.T) {
 	reset(t)
-	writeConfig(t, "# gone\n[providers]\nmirrors = { a = 'https://a/' }\n")
+	writeConfig(t, "# gone\nserve = { port = 7000 }\n")
 	if err := Load(Path); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetMirror("b", "https://b/"); err != nil {
+	if err := WriteKey(Serve.Host.Key, "0.0.0.0"); err != nil {
 		t.Fatal(err)
 	}
-	if got := Providers.Mirrors.Get(); got["a"] != "https://a/" || got["b"] != "https://b/" {
-		t.Errorf("mirrors %v", got)
+	if Serve.Port.Get() != 7000 || Serve.Host.Get() != "0.0.0.0" {
+		t.Errorf("serve %d %s", Serve.Port.Get(), Serve.Host.Get())
 	}
-	if file := readConfig(t); !strings.Contains(file, "https://b/") {
+	if file := readConfig(t); !strings.Contains(file, "0.0.0.0") {
 		t.Errorf("file:\n%s", file)
 	}
 }

@@ -104,12 +104,13 @@ func init() {
 var configWriteCmd = &cobra.Command{
 	Use:   "write",
 	Short: "Write configuration to disk",
-	Long: `Write every config key to the config file: its values stay, the keys it doesn't have
-are listed as commented defaults ("# key = value": still the default, they follow mangal's;
+	Long: `Write every config key kept in the config file to it: its values stay, the keys it doesn't
+have are listed as commented defaults ("# key = value": still the default, they follow mangal's;
 set one with "mangal config set" or uncomment it). Values from environment variables or flags
 aren't written. The file is edited in place: its comments and order stay, retired keys are
-dropped. "mangal config clean" drops the unknown keys and comments out values that are the
-default.`,
+dropped; the keys stored in the database now aren't added and their old entries are left
+alone. "mangal config clean" drops the unknown and moved keys and comments out values that
+are the default.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := config.Write(); err != nil {
@@ -132,8 +133,9 @@ func init() {
 var configCleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "Drop stale keys from the config file",
-	Long: `Drop the keys mangal doesn't know (removed ones, typos: the closest key is suggested) and
-the retired ones from the config file, and comment out the values that are the default
+	Long: `Drop the keys mangal doesn't know (removed ones, typos: the closest key is suggested), the
+retired ones and the ones stored in the database now (once they were copied there) from the
+config file, and comment out the values that are the default
 ("# key = value", so they follow mangal's default). The rest of the file stays as it is,
 comments included; a copy is saved next to it first (mangal.toml.<time>.bak).
 
@@ -144,7 +146,7 @@ Only lists the changes unless --apply is set.`,
 		if err != nil {
 			return err
 		}
-		if stale.Empty() {
+		if stale.Empty() && len(stale.Moved) == 0 {
 			successf(cmd, "nothing to clean in %s", config.Path)
 			return nil
 		}
@@ -158,6 +160,17 @@ Only lists the changes unless --apply is set.`,
 		}
 		for _, k := range stale.Retired {
 			cmd.Printf("%sdrop %s (no longer used: %s)\n", verb, k.Key, k.Reason)
+		}
+		for _, k := range stale.Moved {
+			where := "stored in the database now"
+			if k.NewKey != k.Key {
+				where += " as " + k.NewKey
+			}
+			if stale.MovedKept {
+				cmd.Printf("keep %s (%s, but not copied there yet: the next mangal run that opens the database does it)\n", k.Key, where)
+			} else {
+				cmd.Printf("%sdrop %s (%s, the entry isn't used)\n", verb, k.Key, where)
+			}
 		}
 		if n := len(stale.Defaults); n > 0 {
 			cmd.Printf("%scomment out %d %s set to the default, they follow mangal's default: %s\n", verb, n,
@@ -186,6 +199,10 @@ var configGetCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completionConfigKeys,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if !config.Exists(args[0]) {
+			// a provider's setting
+			core.LoadProviderSettings()
+		}
 		value, err := config.Get(args[0])
 		if err != nil {
 			return err
@@ -202,8 +219,10 @@ func init() {
 var configSetCmd = &cobra.Command{
 	Use:   "set key value",
 	Short: "Sets value to the config key",
-	Long: `Set the value of the config key in the config file (created if there's none). Only that
-key changes, the rest of the file (comments, order) stays as it is.`,
+	Long: `Set the value of the config key where it's stored: the config file (created if there's
+none; only that key changes, the rest of the file, comments and order, stays as it is) or
+the data database (the settings that are the same for every mangal using it, and the
+providers' settings, providers.<id>.<key>).`,
 	Args:              cobra.ExactArgs(2),
 	ValidArgsFunction: completionConfigKeys,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -213,7 +232,10 @@ key changes, the rest of the file (comments, order) stays as it is.`,
 			return err
 		}
 		successf(cmd, "set %q to %v", key, config.Masked(key, value))
-		if mode, readable := config.ReadableByOthers(); readable && e.Secret {
+		if e.Source.Kind == "env" {
+			cmd.PrintErrf("notice: %s overrides it in this process\n", e.Source.Name)
+		}
+		if mode, readable := config.ReadableByOthers(); readable && e.Secret && e.Stored == string(config.StoredFile) {
 			cmd.PrintErrf("warning: %s holds secrets but others can read it (mode %o): chmod 600 it\n", config.Path, mode)
 		}
 		return nil

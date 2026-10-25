@@ -16,7 +16,7 @@ func TestWriteListsCommentedDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := readConfig(t)
-	for _, want := range []string{"[serve]\n", "# web = true\n", "# parallelism = 4\n", "[notification.discord]\n"} {
+	for _, want := range []string{"[serve]\n", "# web = true\n", "# port = 6977\n", "[log]\n"} {
 		if !strings.Contains(first, want) {
 			t.Errorf("no %q in:\n%s", want, first)
 		}
@@ -26,20 +26,18 @@ func TestWriteListsCommentedDefaults(t *testing.T) {
 	if err := file.ReadInConfig(); err != nil {
 		t.Fatal(err)
 	}
-	// a table can't be a comment: a non-empty one is written as values
-	tables := []string{"jobs.health.providers.mango-mangaplus", "jobs.sources.providers.mango-mangaplus", "jobs.urls.providers.mango-mangaplus"}
-	if keys := file.AllKeys(); !slices.Equal(slices.Sorted(slices.Values(keys)), tables) {
+	if keys := file.AllKeys(); len(keys) != 0 {
 		t.Errorf("defaults written as values: %v", keys)
 	}
-	// every non-map key is listed
+	// every non-map file key is listed, no database key
 	for _, key := range Keys() {
-		if fields[key].isMap() {
-			continue
-		}
 		leaf := key[strings.LastIndexByte(key, '.')+1:]
-		if !strings.Contains(first, "# "+leaf+" = ") {
+		if listed := strings.Contains(first, "# "+leaf+" = "); StoredIn(key) == StoredFile && !fields[key].isMap() && !listed {
 			t.Errorf("%s not listed", key)
 		}
+	}
+	if strings.Contains(first, "[download") || strings.Contains(first, "[watch") {
+		t.Errorf("database keys listed:\n%s", first)
 	}
 	if err := Load(Path); err != nil {
 		t.Fatal(err)
@@ -58,12 +56,12 @@ func TestWriteListsCommentedDefaults(t *testing.T) {
 func TestWriteRefreshesCommentedDefaults(t *testing.T) {
 	reset(t)
 	// an old default, a retired key's comment, and a multi-line string that looks like one
-	writeConfig(t, "[providers]\n# parallelism = 9\n\n[library]\n# path = ''\n\n[download]\npath = '''\n# format = 'x'\n'''\n")
+	writeConfig(t, "[serve]\n# port = 9\n\n[library]\n# path = ''\n\n[download]\npath = '''\n# format = 'x'\n'''\n")
 	if err := Write(); err != nil {
 		t.Fatal(err)
 	}
 	got := readConfig(t)
-	if !strings.Contains(got, "[providers]\n# parallelism = 4\n") || strings.Contains(got, "parallelism = 9") {
+	if !strings.Contains(got, "[serve]\n# port = 6977\n") || strings.Contains(got, "port = 9\n") {
 		t.Errorf("old default not refreshed:\n%s", got)
 	}
 	if strings.Contains(got, "[library]") {
@@ -76,27 +74,27 @@ func TestWriteRefreshesCommentedDefaults(t *testing.T) {
 
 func TestWriteKeyCommentedDefaults(t *testing.T) {
 	reset(t)
-	writeConfig(t, "[providers]\n# parallelism = 4\nmangadex.language = 'en'\n\n[serve]\nweb = true # web too\n")
-	if err := WriteKey(Providers.Parallelism.Key, "8"); err != nil {
+	writeConfig(t, "[serve]\n# port = 6977\nhost = 'h'\nweb = true # web too\n")
+	if err := WriteKey(Serve.Port.Key, "8000"); err != nil {
 		t.Fatal(err)
 	}
-	if got := readConfig(t); !strings.HasPrefix(got, "[providers]\nparallelism = 8\nmangadex.language = 'en'\n") {
+	if got := readConfig(t); !strings.HasPrefix(got, "[serve]\nport = 8000\nhost = 'h'\n") {
 		t.Errorf("commented default not set in place:\n%s", got)
 	}
 	// back to the default: commented again
-	if err := WriteKey(Providers.Parallelism.Key, "4"); err != nil {
+	if err := WriteKey(Serve.Port.Key, "6977"); err != nil {
 		t.Fatal(err)
 	}
 	if err := WriteKey(Serve.Web.Key, true); err != nil {
 		t.Fatal(err)
 	}
 	got := readConfig(t)
-	for _, want := range []string{"[providers]\n# parallelism = 4\n", "# web = true # web too\n"} {
+	for _, want := range []string{"[serve]\n# port = 6977\n", "# web = true # web too\n"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("no %q in:\n%s", want, got)
 		}
 	}
-	if Providers.Parallelism.Get() != 4 || !Serve.Web.Get() {
+	if Serve.Port.Get() != 6977 || !Serve.Web.Get() {
 		t.Error("values not set")
 	}
 }

@@ -481,39 +481,6 @@ var Providers = configProviders{
 		ShowRetiredChapters: boolEntry("providers.filter.show_retired_chapters", false,
 			"Also list chapters the source took down (MangaDex), shown as unavailable \"retired\" and never downloaded."),
 	},
-	MangaDex: configProvidersMangaDex{
-		DataSaver: boolEntry("providers.mangadex.data_saver", false, `Use MangaDex "data-saver" option for chapter pages.`),
-		ExcludeGroups: listEntry("providers.mangadex.exclude_groups",
-			`Scanlation groups whose MangaDex chapters are left out, comma separated: names (any case) or group ids (a name with a comma needs the id), e.g. "Group A, 0d8e2a7c-...".`),
-		PreferGroups: listEntry("providers.mangadex.prefer_groups",
-			`Scanlation groups to take a MangaDex chapter from when there are several of the same number (providers.filter.avoid_duplicate_chapters), first listed first, comma separated names (any case) or group ids. Without one of them, the group with the most chapters in the volume.`),
-	},
-	MangaPlus: configProvidersMangaPlus{
-		Quality: oneOfEntry("providers.mangaplus.quality", "super_high",
-			`MangaPlus page image quality, one of "low", "high" or "super_high".`, "low", "high", "super_high"),
-		OSVersion:  stringEntry("providers.mangaplus.os_version", "36", "The OS Version used for the MangaPlus API calls."),
-		AppVersion: stringEntry("providers.mangaplus.app_version", "265", "The App Version used for the MangaPlus API calls."),
-		AndroidID: reg(entry[string, string]{
-			Key:         "providers.mangaplus.android_id",
-			Description: "The Android ID used for the MangaPlus API calls. If empty will be randomly generated.",
-			Secret:      true,
-		}),
-		API: oneOfEntry("providers.mangaplus.api", "app",
-			`MangaPlus api: "app" (the official app's, with the secret_file device or a registered free one), "web" (the website's, no device or secret: only what the website shows, e.g. a series' first and latest chapters; 1 request/s) or "auto" (web when there's no secret_file and no free device saved yet).`, "app", "web", "auto"),
-		Viewer: oneOfEntry("providers.mangaplus.viewer", "app",
-			`MangaPlus chapter viewer, "app" (same as the official app, needed for subscription images) or "legacy" (deprecated, old endpoint).`, "app", "legacy"),
-		RequestInterval: durationEntry("providers.mangaplus.request_interval", "500ms",
-			`Minimum time between MangaPlus API requests, a duration string such as "500ms" or "1s". Warning: lowering or removing it ("0s") risks getting the device locked out for 10+ minutes.`,
-			false),
-		FreeSecret: reg(entry[string, string]{
-			Key:         "providers.mangaplus.free_secret",
-			Description: "Device secret of a free MangaPlus device. mangal saves the one it registers with the logins (auth.keyring) and uses that one; this key is only read when none is saved yet (it's then saved there). Only used when there's no secret_file.",
-			Secret:      true,
-		}),
-		SecretFile: pathEntry("providers.mangaplus.secret_file", "",
-			"Path to a file with the device secret from the official MangaPlus app, for subscription chapters. If empty a new device is registered (free chapters only).",
-			false),
-	},
 }
 
 var Auth = configAuth{
@@ -564,12 +531,8 @@ var Watch = configWatch{
 		"What watch checks notify (Discord): new chapters, errors, both or none.", "new", "errors", "both", "none"),
 	CoverageMin: intEntry("watch.coverage_min", 50, 0, 100,
 		"A check suggests another provider (health W15) when the provider lacks the library's latest chapter and has under this percent of the chapters the library has (it lost them), or none at or below the library's last (only newer ones, or none at all). A provider that still lists the library's latest chapter is enough however few it keeps. Such a watch only downloads the new chapters that continue the library's without a gap. 0 only checks the second case."),
-	CoverageExempt: func() *entry[string, []string] {
-		e := listEntry("watch.coverage_exempt",
-			"Providers whose watches are never suggested another provider for their chapters (see watch.coverage_min), comma separated: sites that only ever list some chapters, as MangaPlus (the first and latest few).")
-		e.Default = []string{"mango-mangaplus"}
-		return e
-	}(),
+	CoverageExempt: listEntry("watch.coverage_exempt",
+		"Providers whose watches are never suggested another provider for their chapters (see watch.coverage_min), comma separated. The providers that say they only ever list some chapters (MangaPlus: the first and latest few) are always exempt."),
 }
 
 var Serve = configServe{

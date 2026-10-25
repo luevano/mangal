@@ -132,6 +132,7 @@ func LuaOptions(dir string, filters ...FilterOption) luaprovider.Options {
 		Filter:       c.Filter,
 		FlareSolverr: flareSolverr(),
 		Debug:        debugLog(),
+		Settings:     config.ProviderValues,
 	}
 }
 

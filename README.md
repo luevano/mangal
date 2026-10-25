@@ -100,13 +100,15 @@ In the TUI `?` shows the keys of each screen and `,` opens the config window fro
 
 ### Config
 
-Mangal comes with sensible defaults that can be changed in the config file, with environment variables (`MANGAL_` and the key in upper case with `_` for `.`, e.g. `MANGAL_DOWNLOAD_PATH`) or with some command flags. By default no config is written to disk, to write the default config to disk run:
+Mangal comes with sensible defaults. What drives mangal on this machine (paths, logging, `mangal serve`'s address and security, the TUI's look, the reader) is set in the config file; what mangal does with the library, providers, metadata, watches, jobs and notifications is stored in mangal's data database, so every mangal sharing it (TUI, CLI, `mangal serve`) does the same; the providers' own settings (MangaDex's groups, MangaPlus' quality, a Lua provider's `[[settings]]`) are stored there too, as `providers.<id>.<key>`. `mangal config` reads and changes both. Any key can also come from an environment variable (`MANGAL_` and the key in upper case with `_` for `.` and `-`, e.g. `MANGAL_DOWNLOAD_PATH`, `MANGAL_PROVIDERS_MANGO_MANGAPLUS_QUALITY`; a secret also from a file, `MANGAL_<KEY>_FILE`, the safer way) or from some command flags: a flag wins over the variable, which wins over the stored value. `MANGAL_CONFIG`, `MANGAL_DEBUG` and `MANGAL_VERBOSE` are the `--config`, `--debug` and `--verbose` flags. By default no config is written to disk, to write the default config to disk run:
 
 ```sh
 mangal config write
 ```
 
-It will be written to `$XDG_CONFIG_HOME/mangal/mangal.toml`, every key the file doesn't set listed as a commented default (`# port = 6977`): still the default, it follows mangal's when that changes. Keys mangal doesn't know (removed ones, typos) or no longer uses get a warning; `mangal config clean` lists them and the values that are the default, `--apply` drops the stale keys and comments the defaults out (a copy of the file is kept).
+It will be written to `$XDG_CONFIG_HOME/mangal/mangal.toml`, every key the file holds and doesn't set listed as a commented default (`# port = 6977`): still the default, it follows mangal's when that changes. Keys mangal doesn't know (removed ones, typos) or no longer uses get a warning; `mangal config clean` lists them and the values that are the default, `--apply` drops the stale keys and comments the defaults out (a copy of the file is kept).
+
+An older config file's keys that are stored in the database now are copied there the first time mangal runs (`mangal library undo` reverts it); after that their entries in the file aren't used (a notice says so) and `mangal config clean --apply` drops them.
 
 Then, the config can be set by modifying the file itself, from the TUI's config window (`,` on any screen, changes apply right away), or by running:
 
@@ -120,7 +122,7 @@ For example:
 mangal config set download.path $HOME/downloads_test
 ```
 
-Secrets aren't config: the Anilist, Kitsu and MyAnimeList logins, their API clients (the MyAnimeList one with `mangal myanimelist client`, the Anilist one is kept from the last login), the MangaPlus secret and the Discord webhook (`mangal notify webhook`) are saved in mangal's data (or the OS keyring with `auth.keyring`), as are the `mangal serve` users and API tokens. The `notification.discord.webhook_url` and `providers.mangaplus.secret_file` keys are only used when none is saved; a `metadata.myanimelist.client_id` left in an old config is moved to mangal's data once.
+Secrets aren't config: the Anilist, Kitsu and MyAnimeList logins, their API clients (the MyAnimeList one with `mangal myanimelist client`, the Anilist one is kept from the last login), the MangaPlus secret and the Discord webhook (`mangal notify webhook`) are saved in mangal's data (or the OS keyring with `auth.keyring`), as are the `mangal serve` users and API tokens. The `notification.discord.webhook_url` and `providers.mango-mangaplus.secret_file` keys are only used when none is saved; a `metadata.myanimelist.client_id` left in an old config is moved to mangal's data once.
 
 ### Providers
 

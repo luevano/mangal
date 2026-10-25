@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/luevano/libmangal"
 
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/storage/legacy"
@@ -46,6 +48,14 @@ func Notices() []string {
 	return notices
 }
 
+// AddNotice adds a message to Notices, from what runs right after opening the storage
+// (the settings import).
+func AddNotice(notice string) {
+	if !slices.Contains(notices, notice) {
+		notices = append(notices, notice)
+	}
+}
+
 // Storage is mangal's databases, opened once per process.
 func Storage() (storage.Storage, error) {
 	openOnce.Do(func() {
@@ -72,8 +82,17 @@ func Storage() (storage.Storage, error) {
 		if notice := moveServeTokens(dataDB); notice != "" {
 			notices = append(notices, notice)
 		}
+		if err := config.UseStore(st.Settings(keyring)); err != nil {
+			notices = append(notices, fmt.Sprintf("Couldn't read the settings from the database, the defaults are used: %s", err))
+		}
 	})
 	return st, openErr
+}
+
+// Settings are the settings stored in the data database (secrets with the logins).
+func Settings() (storage.Settings, error) {
+	s, err := Storage()
+	return s.Settings(keyring), err
 }
 
 // Library is the library index.
