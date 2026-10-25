@@ -67,6 +67,7 @@ func NewBrowser(out io.Writer) (*Server, error) {
 		return nil, err
 	}
 	for _, p := range problems {
+		log.Warn("skipped %s", p)
 		fmt.Fprintf(out, "warning: skipped %s\n", p)
 	}
 	return &Server{
@@ -153,10 +154,36 @@ func forwardedHost(proxies []*net.IPNet, next http.Handler) http.Handler {
 	})
 }
 
+type refusalKey struct{}
+
+// WithRefusal has LogRefused put a request's reason in *reason (for the request log's
+// line) instead of logging it.
+func WithRefusal(ctx context.Context, reason *string) context.Context {
+	return context.WithValue(ctx, refusalKey{}, reason)
+}
+
+// RequestLogged is true when a request log has the request (WithRefusal): it says the errors.
+func RequestLogged(r *http.Request) bool {
+	_, ok := r.Context().Value(refusalKey{}).(*string)
+	return ok
+}
+
+// Refused is why LogRefused refused the request (WithRefusal), empty if it didn't.
+func Refused(r *http.Request) string {
+	if p, ok := r.Context().Value(refusalKey{}).(*string); ok {
+		return *p
+	}
+	return ""
+}
+
 // LogRefused logs a refused request at debug level: method, path, client and why, never
-// the query or the headers' secrets.
+// the query or the headers' secrets; with WithRefusal the request log says why instead.
 func LogRefused(r *http.Request, reason string) {
-	log.Debug("refused %s %s from %s: %s", r.Method, r.URL.Path, r.RemoteAddr, reason)
+	if p, ok := r.Context().Value(refusalKey{}).(*string); ok {
+		*p = reason
+		return
+	}
+	log.Debug("refused %s %s from %s: %s", r.Method, r.URL.EscapedPath(), r.RemoteAddr, reason)
 }
 
 // checkHost refuses requests for another host when serving on a loopback address, so a

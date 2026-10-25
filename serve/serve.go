@@ -52,7 +52,8 @@ const lockName = watch.ServeLock
 // is taken over; a server of this host that doesn't run anymore loses it at once.
 const lockStale = watch.ServeLockStale
 
-// logger logs to the log file and out.
+// logger logs through package log (the file, the recent lines and, while serving, the
+// journal: SetOutput) and to out, which the tests read.
 type logger struct {
 	out io.Writer
 	mu  *sync.Mutex
@@ -86,13 +87,15 @@ func (l logger) Errorf(format string, a ...any) {
 
 // Run serves until ctx is cancelled (SIGTERM, ctrl+c): the running checks are cancelled
 // (the chapter being downloaded finished or dropped) and recorded, then the server stops.
-// It logs to out and the log file.
+// It logs to out and the log file: the same lines, at log.level.
 func Run(ctx context.Context, args Args, out io.Writer) error {
+	log.SetOutput(out)
+	defer log.SetOutput(nil)
 	// stopped by the caller, a lost lock or a failed server
 	parent := ctx
 	ctx, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
-	lg := newLogger(out)
+	lg := newLogger(nil)
 	svc, err := watch.New(notify.Watches())
 	if err != nil {
 		return err
@@ -126,7 +129,8 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		return err
 	}
 
-	browser, err := web.NewBrowser(out)
+	// its warnings are logged, so out has them already
+	browser, err := web.NewBrowser(io.Discard)
 	if err != nil {
 		return err
 	}
@@ -179,6 +183,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	}
 	listen += " (" + auth.describe() + ")"
 	lg.Infof("mangal serve %s on %s%s, data %s (pid %d)", meta.Version, listen, extra, dataDB, os.Getpid())
+	lg.Infof("logging at %s level (log.level) to %s", strings.ToLower(log.Lowest().String()), cmp.Or(log.Dir(), "no file"))
 
 	sched.Gate = api.checkGate
 	schedDone := make(chan struct{})

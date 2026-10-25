@@ -159,6 +159,13 @@ func Current() string {
 	return file.Name()
 }
 
+// Lowest is the lowest level logged.
+func Lowest() Level {
+	mu.Lock()
+	defer mu.Unlock()
+	return options.Level
+}
+
 // Enabled: Whether lines of level are logged.
 func Enabled(level Level) bool {
 	mu.Lock()
@@ -170,6 +177,9 @@ func Debug(format string, a ...any) { logf(LevelDebug, format, a...) }
 func Info(format string, a ...any)  { logf(LevelInfo, format, a...) }
 func Warn(format string, a ...any)  { logf(LevelWarn, format, a...) }
 func Error(format string, a ...any) { logf(LevelError, format, a...) }
+
+// Logf logs at level.
+func Logf(level Level, format string, a ...any) { logf(level, format, a...) }
 
 func logf(level Level, format string, a ...any) {
 	msg := strings.TrimRight(fmt.Sprintf(format, a...), "\n")
