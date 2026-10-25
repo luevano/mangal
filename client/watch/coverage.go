@@ -12,9 +12,12 @@ import (
 
 // Coverage is what the provider (the numbers it lists) misses of the library's chapters
 // (have), "" when it has enough: none at or below the library's last (it only has newer
-// ones, or none), or under min (0-1) of the library's chapters (it lost most of them, or
-// only lists the latest few). Either way the manga may need another provider. Nothing for
-// a library without chapters.
+// ones, or none), or under min (0-1) of the library's chapters (it lost most of them).
+// Either way the manga may need another provider. A provider that still lists the
+// library's latest chapter (its last whole-numbered one, or a newer extra) is enough
+// however few it keeps: a site with only the latest chapters still continues the
+// library's, and the library's own gaps are the gap checks'. Nothing for a library
+// without chapters.
 func Coverage(listed []float32, have map[float32]bool, min float64) string {
 	if len(have) == 0 {
 		return ""
@@ -31,9 +34,19 @@ func Coverage(listed []float32, have map[float32]bool, min float64) string {
 	if listed[0] > last {
 		return fmt.Sprintf("the provider only has chapters after the library's (%s, provider %s)", library, span(listed))
 	}
+	top := last
+	for _, n := range slices.Backward(lib) {
+		if n == float32(math.Floor(float64(n))) {
+			top = n
+			break
+		}
+	}
 	common := 0
 	for _, n := range listed {
 		if have[n] {
+			if n >= top {
+				return ""
+			}
 			common++
 		}
 	}

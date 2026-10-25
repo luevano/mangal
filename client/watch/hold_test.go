@@ -27,6 +27,13 @@ func TestCoverage(t *testing.T) {
 		}
 		return ns
 	}
+	upFrom := func(from, to int) []float32 {
+		var ns []float32
+		for i := from; i <= to; i++ {
+			ns = append(ns, float32(i))
+		}
+		return ns
+	}
 	for _, tt := range []struct {
 		name   string
 		listed []float32
@@ -38,7 +45,17 @@ func TestCoverage(t *testing.T) {
 		{"none listed", nil, lib(upTo(20)...), "the provider lists no chapters (library 1-20 (20))"},
 		{"only after the library's", []float32{60, 61, 62, 63}, lib(upTo(20)...), "the provider only has chapters after the library's (library 1-20 (20), provider 60-63 (4))"},
 		{"continues it but lost the rest", []float32{21, 22}, lib(upTo(20)...), "the provider only has chapters after the library's (library 1-20 (20), provider 21-22 (2))"},
-		{"the latest few", []float32{18, 19, 20, 21, 22, 23}, lib(upTo(20)...), "the provider has 3 of the library's 20 chapters (library 1-20 (20), provider 18-23 (6))"},
+		// a site that keeps only the latest: it continues the library's
+		{"the latest few", []float32{18, 19, 20, 21, 22, 23}, lib(upTo(20)...), ""},
+		{"only the library's last", []float32{20}, lib(upTo(20)...), ""},
+		{"the last and a newer one", []float32{20, 21}, lib(upTo(20)...), ""},
+		{"dark gathering", upFrom(68, 84), lib(slices.Concat(upTo(84), []float32{10.5, 22.5, 35.5, 47.5, 59.5, 66.5, 80.5})...), ""},
+		{"an extra after the last whole one", []float32{18, 19, 20}, lib(slices.Concat(upTo(20), []float32{20.5})...), ""},
+		{"the extra itself", []float32{20.5, 21}, lib(slices.Concat(upTo(20), []float32{20.5})...), ""},
+		// gaps below the provider's first are G1/G2's, not another provider's
+		{"library gaps below it", []float32{18, 19, 20}, lib(1, 2, 5, 18, 19, 20), ""},
+		{"the latest few but not the last", []float32{16, 17, 18, 19}, lib(upTo(20)...), "the provider has 4 of the library's 20 chapters (library 1-20 (20), provider 16-19 (4))"},
+		{"extras only up to the last", []float32{18.5, 20.5}, lib(upTo(20)...), "the provider has 0 of the library's 20 chapters (library 1-20 (20), provider 18.5-20.5 (2))"},
 		{"lost most", upTo(5), lib(upTo(20)...), "the provider has 5 of the library's 20 chapters (library 1-20 (20), provider 1-5 (5))"},
 		{"half is enough", upTo(10), lib(upTo(20)...), ""},
 	} {
@@ -115,7 +132,18 @@ func TestCheckCoverage(t *testing.T) {
 		t.Errorf("watch %+v", got)
 	}
 
-	// it gets the chapters again: the suggestion goes
+	// it keeps only the latest, the library has the rest: the saved suggestion goes
+	src.chs["kingdom"] = m.chapters(10, 11, 12)
+	e.now = e.now.Add(time.Minute)
+	report, _ = e.svc.Check(ctx, []int64{w.ID}, CheckOptions{})
+	if r := report.Results[0]; r.Coverage != "" || len(r.Chapters) != 0 {
+		t.Errorf("latest only %+v", r)
+	}
+	if got, _ := e.svc.Get(ctx, w.ID); got.Coverage != "" {
+		t.Errorf("latest only: coverage kept %q", got.Coverage)
+	}
+
+	// it gets the chapters again: no suggestion
 	src.chs["kingdom"] = m.chapters(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
 	e.now = e.now.Add(time.Minute)
 	report, _ = e.svc.Check(ctx, []int64{w.ID}, CheckOptions{})
