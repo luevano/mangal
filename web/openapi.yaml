@@ -1867,6 +1867,7 @@ paths:
   /v1/config:
     get:
       summary: The config, secrets masked
+      description: Every key but the risky ones for whoever isn't an admin (every permission).
       operationId: listConfig
       tags: [v1, config]
       x-mangal-scope: read
@@ -1881,12 +1882,70 @@ paths:
                   $ref: '#/components/schemas/ConfigEntry'
         default:
           $ref: '#/components/responses/Error'
+  /v1/config/history:
+    get:
+      summary: The changes of the settings stored in the database, newest first
+      description: The risky keys' changes only for an admin. The keys in mangal.toml have no history.
+      operationId: listConfigHistory
+      tags: [v1, config]
+      x-mangal-scope: read
+      parameters:
+        - name: key
+          in: query
+          description: only this key's changes
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: at most this many (0 or none for all)
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: the changes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConfigChange'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/config/history/{id}/undo:
+    post:
+      summary: Set a change's key back to its old value
+      description: |
+        Recorded as a change of its own. 400 when the key changed after it or it's a
+        secret's; 404 for a risky key's change unless an admin.
+      operationId: undoConfigChange
+      tags: [v1, config]
+      x-mangal-scope: write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: the key as it is now
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigEntry'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/config/{key}:
     put:
-      summary: Set a key in the config file (not secrets)
+      summary: Set a key where it's stored (mangal.toml or the database; not secrets)
       description: |
-        `applies` says when the server uses it: now (the watch.* keys, from the next
-        scheduler cycle) or restart. Secret keys aren't set over HTTP (403).
+        `applies` says when the server uses it: now, reload (the providers load again)
+        or restart (then the status's restart_needed lists it until serve restarts).
+        Secret keys aren't set over HTTP (403). The risky keys (risky in the listing:
+        serve.*, auth.*, the private address guard, paths, FlareSolverr, mirrors) only
+        by an admin; for anyone else they don't exist (404), as in the listing. The jobs.*
+        keys need an admin too.
       operationId: setConfig
       tags: [v1, config]
       x-mangal-scope: write
@@ -2672,6 +2731,11 @@ components:
           type: integer
           format: uint64
           description: the seq of the last event, where a new events subscriber starts (since)
+        restart_needed:
+          type: array
+          description: the config keys changed since the server started that it reads only at start (the risky ones only for an admin)
+          items:
+            type: string
     ProviderStatus:
       type: object
       x-go-type: watch.ProviderStatus
@@ -3955,7 +4019,7 @@ components:
           description: why it isn't in the read history
     ConfigEntry:
       type: object
-      required: [key, value, default, description, secret, applies]
+      required: [key, value, default, description, secret, applies, stored, source]
       properties:
         key:
           type: string
@@ -3972,7 +4036,63 @@ components:
           description: the environment variable that sets it, when it does now (it wins over the file)
         applies:
           type: string
-          description: when a change applies in the server, now or restart
+          enum: [now, reload, restart]
+          description: when a change applies in the server, now, when the providers load again (reload) or restart
+        stored:
+          type: string
+          enum: [file, db]
+          description: where the value is stored, mangal.toml of the server (file) or the database (db)
+        source:
+          $ref: '#/components/schemas/ConfigSource'
+        provider:
+          type: string
+          description: the provider of a provider's setting (providers.<id>.<key>)
+        restart:
+          type: boolean
+          description: the stored value changed since the server started, it uses the old one until it restarts
+        risky:
+          type: boolean
+          description: weakens access when changed, only an admin sees it
+        kind:
+          type: string
+          enum: [string, bool, int, map]
+          description: the value's type
+        values:
+          type: array
+          description: an enum's accepted values
+          items:
+            type: string
+    ConfigSource:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [run, flag, env, file, db, default]
+          description: where the server's value comes from
+        name:
+          type: string
+          description: the flag or environment variable
+    ConfigChange:
+      type: object
+      required: [id, key, who, at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        key:
+          type: string
+        old:
+          type: string
+          description: the old value as stored (JSON), none when it was the default; masked for a secret
+        new:
+          type: string
+          description: the new value as stored (JSON), none for the default; masked for a secret
+        who:
+          type: string
+        at:
+          type: string
+          format: date-time
     ConfigSetRequest:
       type: object
       required: [value]

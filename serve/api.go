@@ -228,6 +228,9 @@ func (a *API) GetStatus(ctx context.Context, _ apiv1.GetStatusRequestObject) (ap
 	if a.Events != nil {
 		resp.EventSeq = new(a.Events.Seq())
 	}
+	if keys := restartNeeded(ctx); len(keys) > 0 {
+		resp.RestartNeeded = &keys
+	}
 	return resp, nil
 }
 

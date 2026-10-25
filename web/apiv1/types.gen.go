@@ -12,6 +12,99 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 )
 
+// Defines values for ConfigEntryApplies.
+const (
+	Now     ConfigEntryApplies = "now"
+	Reload  ConfigEntryApplies = "reload"
+	Restart ConfigEntryApplies = "restart"
+)
+
+// Valid indicates whether the value is a known member of the ConfigEntryApplies enum.
+func (e ConfigEntryApplies) Valid() bool {
+	switch e {
+	case Now:
+		return true
+	case Reload:
+		return true
+	case Restart:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConfigEntryKind.
+const (
+	Bool   ConfigEntryKind = "bool"
+	Int    ConfigEntryKind = "int"
+	Map    ConfigEntryKind = "map"
+	String ConfigEntryKind = "string"
+)
+
+// Valid indicates whether the value is a known member of the ConfigEntryKind enum.
+func (e ConfigEntryKind) Valid() bool {
+	switch e {
+	case Bool:
+		return true
+	case Int:
+		return true
+	case Map:
+		return true
+	case String:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConfigEntryStored.
+const (
+	ConfigEntryStoredDb   ConfigEntryStored = "db"
+	ConfigEntryStoredFile ConfigEntryStored = "file"
+)
+
+// Valid indicates whether the value is a known member of the ConfigEntryStored enum.
+func (e ConfigEntryStored) Valid() bool {
+	switch e {
+	case ConfigEntryStoredDb:
+		return true
+	case ConfigEntryStoredFile:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConfigSourceKind.
+const (
+	ConfigSourceKindDb      ConfigSourceKind = "db"
+	ConfigSourceKindDefault ConfigSourceKind = "default"
+	ConfigSourceKindEnv     ConfigSourceKind = "env"
+	ConfigSourceKindFile    ConfigSourceKind = "file"
+	ConfigSourceKindFlag    ConfigSourceKind = "flag"
+	ConfigSourceKindRun     ConfigSourceKind = "run"
+)
+
+// Valid indicates whether the value is a known member of the ConfigSourceKind enum.
+func (e ConfigSourceKind) Valid() bool {
+	switch e {
+	case ConfigSourceKindDb:
+		return true
+	case ConfigSourceKindDefault:
+		return true
+	case ConfigSourceKindEnv:
+		return true
+	case ConfigSourceKindFile:
+		return true
+	case ConfigSourceKindFlag:
+		return true
+	case ConfigSourceKindRun:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MeKind.
 const (
 	MeKindLocal MeKind = "local"
@@ -180,29 +273,83 @@ type ClearJobsRequest struct {
 	Provider *string `json:"provider,omitempty"`
 }
 
+// ConfigChange defines model for ConfigChange.
+type ConfigChange struct {
+	At  time.Time `json:"at"`
+	Id  int64     `json:"id"`
+	Key string    `json:"key"`
+
+	// New the new value as stored (JSON), none for the default; masked for a secret
+	New *string `json:"new,omitempty"`
+
+	// Old the old value as stored (JSON), none when it was the default; masked for a secret
+	Old *string `json:"old,omitempty"`
+	Who string  `json:"who"`
+}
+
 // ConfigEntry defines model for ConfigEntry.
 type ConfigEntry struct {
-	// Applies when a change applies in the server, now or restart
-	Applies string `json:"applies"`
+	// Applies when a change applies in the server, now, when the providers load again (reload) or restart
+	Applies ConfigEntryApplies `json:"applies"`
 
 	// Default the default value
 	Default     interface{} `json:"default"`
 	Description string      `json:"description"`
 
 	// Env the environment variable that sets it, when it does now (it wins over the file)
-	Env    *string `json:"env,omitempty"`
-	Key    string  `json:"key"`
-	Secret bool    `json:"secret"`
+	Env *string `json:"env,omitempty"`
+	Key string  `json:"key"`
+
+	// Kind the value's type
+	Kind *ConfigEntryKind `json:"kind,omitempty"`
+
+	// Provider the provider of a provider's setting (providers.<id>.<key>)
+	Provider *string `json:"provider,omitempty"`
+
+	// Restart the stored value changed since the server started, it uses the old one until it restarts
+	Restart *bool `json:"restart,omitempty"`
+
+	// Risky weakens access when changed, only an admin sees it
+	Risky  *bool        `json:"risky,omitempty"`
+	Secret bool         `json:"secret"`
+	Source ConfigSource `json:"source"`
+
+	// Stored where the value is stored, mangal.toml of the server (file) or the database (db)
+	Stored ConfigEntryStored `json:"stored"`
 
 	// Value the value (masked for a secret)
 	Value interface{} `json:"value"`
+
+	// Values an enum's accepted values
+	Values *[]string `json:"values,omitempty"`
 }
+
+// ConfigEntryApplies when a change applies in the server, now, when the providers load again (reload) or restart
+type ConfigEntryApplies string
+
+// ConfigEntryKind the value's type
+type ConfigEntryKind string
+
+// ConfigEntryStored where the value is stored, mangal.toml of the server (file) or the database (db)
+type ConfigEntryStored string
 
 // ConfigSetRequest defines model for ConfigSetRequest.
 type ConfigSetRequest struct {
 	// Value the value, as the config file has it (a string, number, bool or list)
 	Value interface{} `json:"value"`
 }
+
+// ConfigSource defines model for ConfigSource.
+type ConfigSource struct {
+	// Kind where the server's value comes from
+	Kind ConfigSourceKind `json:"kind"`
+
+	// Name the flag or environment variable
+	Name *string `json:"name,omitempty"`
+}
+
+// ConfigSourceKind where the server's value comes from
+type ConfigSourceKind string
 
 // Count defines model for Count.
 type Count struct {
@@ -1084,8 +1231,11 @@ type Status struct {
 	Features  []string          `json:"features"`
 	NextCheck *time.Time        `json:"next_check,omitempty"`
 	Providers *[]ProviderStatus `json:"providers,omitempty"`
-	Run       *int64            `json:"run,omitempty"`
-	Runs      *[]int64          `json:"runs,omitempty"`
+
+	// RestartNeeded the config keys changed since the server started that it reads only at start (the risky ones only for an admin)
+	RestartNeeded *[]string `json:"restart_needed,omitempty"`
+	Run           *int64    `json:"run,omitempty"`
+	Runs          *[]int64  `json:"runs,omitempty"`
 
 	// Scopes the scopes of this request
 	Scopes  []string   `json:"scopes"`
@@ -1235,6 +1385,15 @@ type ListBindingsParams struct {
 type SetBindingParams struct {
 	// Apply apply the change (needs `expect`, the hash of the plan confirmed), else only plan it
 	Apply *ApplyParam `form:"apply,omitempty" json:"apply,omitempty"`
+}
+
+// ListConfigHistoryParams defines parameters for ListConfigHistory.
+type ListConfigHistoryParams struct {
+	// Key only this key's changes
+	Key *string `form:"key,omitempty" json:"key,omitempty"`
+
+	// Limit at most this many (0 or none for all)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetEventsParams defines parameters for GetEvents.

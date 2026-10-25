@@ -1482,10 +1482,54 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The config, secrets masked */
+        /**
+         * The config, secrets masked
+         * @description Every key but the risky ones for whoever isn't an admin (every permission).
+         */
         get: operations["listConfig"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/config/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The changes of the settings stored in the database, newest first
+         * @description The risky keys' changes only for an admin. The keys in mangal.toml have no history.
+         */
+        get: operations["listConfigHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/config/history/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a change's key back to its old value
+         * @description Recorded as a change of its own. 400 when the key changed after it or it's a
+         *     secret's; 404 for a risky key's change unless an admin.
+         */
+        post: operations["undoConfigChange"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1501,9 +1545,13 @@ export interface paths {
         };
         get?: never;
         /**
-         * Set a key in the config file (not secrets)
-         * @description `applies` says when the server uses it: now (the watch.* keys, from the next
-         *     scheduler cycle) or restart. Secret keys aren't set over HTTP (403).
+         * Set a key where it's stored (mangal.toml or the database; not secrets)
+         * @description `applies` says when the server uses it: now, reload (the providers load again)
+         *     or restart (then the status's restart_needed lists it until serve restarts).
+         *     Secret keys aren't set over HTTP (403). The risky keys (risky in the listing:
+         *     serve.*, auth.*, the private address guard, paths, FlareSolverr, mirrors) only
+         *     by an admin; for anyone else they don't exist (404), as in the listing. The jobs.*
+         *     keys need an admin too.
          */
         put: operations["setConfig"];
         post?: never;
@@ -1896,6 +1944,8 @@ export interface components {
              * @description the seq of the last event, where a new events subscriber starts (since)
              */
             event_seq?: number;
+            /** @description the config keys changed since the server started that it reads only at start (the risky ones only for an admin) */
+            restart_needed?: string[];
         };
         ProviderStatus: {
             provider?: string;
@@ -2582,8 +2632,51 @@ export interface components {
             secret: boolean;
             /** @description the environment variable that sets it, when it does now (it wins over the file) */
             env?: string;
-            /** @description when a change applies in the server, now or restart */
-            applies: string;
+            /**
+             * @description when a change applies in the server, now, when the providers load again (reload) or restart
+             * @enum {string}
+             */
+            applies: "now" | "reload" | "restart";
+            /**
+             * @description where the value is stored, mangal.toml of the server (file) or the database (db)
+             * @enum {string}
+             */
+            stored: "file" | "db";
+            source: components["schemas"]["ConfigSource"];
+            /** @description the provider of a provider's setting (providers.<id>.<key>) */
+            provider?: string;
+            /** @description the stored value changed since the server started, it uses the old one until it restarts */
+            restart?: boolean;
+            /** @description weakens access when changed, only an admin sees it */
+            risky?: boolean;
+            /**
+             * @description the value's type
+             * @enum {string}
+             */
+            kind?: "string" | "bool" | "int" | "map";
+            /** @description an enum's accepted values */
+            values?: string[];
+        };
+        ConfigSource: {
+            /**
+             * @description where the server's value comes from
+             * @enum {string}
+             */
+            kind: "run" | "flag" | "env" | "file" | "db" | "default";
+            /** @description the flag or environment variable */
+            name?: string;
+        };
+        ConfigChange: {
+            /** Format: int64 */
+            id: number;
+            key: string;
+            /** @description the old value as stored (JSON), none when it was the default; masked for a secret */
+            old?: string;
+            /** @description the new value as stored (JSON), none for the default; masked for a secret */
+            new?: string;
+            who: string;
+            /** Format: date-time */
+            at: string;
         };
         ConfigSetRequest: {
             /** @description the value, as the config file has it (a string, number, bool or list) */
@@ -4983,6 +5076,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigEntry"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listConfigHistory: {
+        parameters: {
+            query?: {
+                /** @description only this key's changes */
+                key?: string;
+                /** @description at most this many (0 or none for all) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the changes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigChange"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    undoConfigChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the key as it is now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigEntry"];
                 };
             };
             default: components["responses"]["Error"];

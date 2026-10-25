@@ -361,21 +361,43 @@ func (a *API) ListHistory(ctx context.Context, request apiv1.ListHistoryRequestO
 	return apiv1.ListHistory200JSONResponse{Total: len(list), Reads: page(list, p.Limit, p.Offset)}, nil
 }
 
-// applies is when a change of the key applies in the server: the watch.* keys are re-read
-// every cycle, the rest at the next start.
-func applies(key string) string {
-	if slices.Contains(watchKeys, key) {
-		return "now"
-	}
-	return "restart"
-}
-
 func toAPIConfig(e core.ConfigEntry) apiv1.ConfigEntry {
-	out := apiv1.ConfigEntry{Key: e.Key, Value: e.Value, Default: e.Default, Description: e.Description, Secret: e.Secret, Applies: applies(e.Key)}
+	out := apiv1.ConfigEntry{Key: e.Key, Value: e.Value, Default: e.Default, Description: e.Description, Secret: e.Secret,
+		Applies: apiv1.ConfigEntryApplies(e.Applies), Stored: apiv1.ConfigEntryStored(e.Stored),
+		Source: apiv1.ConfigSource{Kind: apiv1.ConfigSourceKind(e.Source.Kind)}}
 	if e.Env != "" {
 		out.Env = &e.Env
 	}
+	if e.Source.Name != "" {
+		out.Source.Name = &e.Source.Name
+	}
+	if e.Provider != "" {
+		out.Provider = &e.Provider
+	}
+	if e.Restart {
+		out.Restart = new(true)
+	}
+	if e.Risky {
+		out.Risky = new(true)
+	}
+	if e.Kind != "" {
+		out.Kind = new(apiv1.ConfigEntryKind(e.Kind))
+	}
+	if len(e.Values) > 0 {
+		out.Values = &e.Values
+	}
 	return out
+}
+
+// seesRisky is true for an admin: the risky keys (config.IsRisky) don't exist for anyone
+// else, not even listed.
+func seesRisky(ctx context.Context) bool {
+	id, ok := identityOf(ctx)
+	return ok && id.admin()
+}
+
+func noConfigKey(key string) error {
+	return newAPIError(http.StatusNotFound, "not_found", "no config key %q", key)
 }
 
 // ListConfig implements apiv1.StrictServerInterface.
@@ -384,30 +406,51 @@ func (a *API) ListConfig(ctx context.Context, _ apiv1.ListConfigRequestObject) (
 	if err != nil {
 		return nil, err
 	}
+	admin := seesRisky(ctx)
 	out := apiv1.ListConfig200JSONResponse{}
 	for _, e := range entries {
+		if e.Risky && !admin {
+			continue
+		}
 		out = append(out, toAPIConfig(e))
 	}
 	return out, nil
 }
 
-// adminConfigKeys are set over HTTP only by an admin: where mangal keeps its data and
-// runs providers from, which addresses the providers may reach.
-var adminConfigKeys = []string{"providers.allow_private_addresses", "providers.private_allowlist", "data.path", "providers.path", "cache.path"}
+// restartNeeded is config.RestartNeeded as the request may see it.
+func restartNeeded(ctx context.Context) []string {
+	keys := config.RestartNeeded()
+	if seesRisky(ctx) {
+		return keys
+	}
+	return slices.DeleteFunc(keys, config.IsRisky)
+}
+
+// configWho is who changes the config through the API, in the settings' history.
+func configWho(ctx context.Context) string {
+	who := "api"
+	if id, ok := identityOf(ctx); ok {
+		who += ": " + id.String()
+	}
+	return who
+}
 
 // SetConfig implements apiv1.StrictServerInterface: writes the key where it's stored.
-// Secrets and the serve.* keys (its own security) aren't set over HTTP, adminConfigKeys
-// only by an admin.
+// Secrets aren't set over HTTP; the risky keys only by an admin (anyone else gets a 404,
+// as for an unknown key), the jobs' settings too.
 func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObject) (apiv1.SetConfigResponseObject, error) {
 	key := request.Key
 	if !config.Exists(key) {
-		return nil, newAPIError(http.StatusNotFound, "not_found", "no config key %q", key)
+		core.LoadProviderSettings()
 	}
-	if config.IsSecret(key) || strings.HasPrefix(key, "serve.") {
-		return nil, newAPIError(http.StatusForbidden, CodeForbidden, "%s isn't set over HTTP (mangal config set, or the config file)", key)
+	if !config.Exists(key) || config.IsRisky(key) && !seesRisky(ctx) {
+		return nil, noConfigKey(key)
+	}
+	if config.IsSecret(key) {
+		return nil, newAPIError(http.StatusForbidden, CodeForbidden, "%s isn't set over HTTP (mangal config set, or the accounts)", key)
 	}
 	// the jobs' settings are an admin's, as through PUT /v1/jobs/kinds/{kind}/settings
-	if slices.Contains(adminConfigKeys, key) || strings.HasPrefix(key, "jobs.") {
+	if strings.HasPrefix(key, "jobs.") {
 		if err := needAdmin(ctx); err != nil {
 			return nil, err
 		}
@@ -416,19 +459,64 @@ func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObjec
 	if body.Value == nil {
 		return nil, badRequest("value is needed")
 	}
-	who := "api"
-	if id, ok := identityOf(ctx); ok {
-		who += ": " + id.String()
-	}
-	e, err := core.NewConfig().Set(core.WithWho(ctx, who), key, body.Value)
+	e, err := core.NewConfig().Set(core.WithWho(ctx, configWho(ctx)), key, body.Value)
 	if errors.Is(err, core.ErrInvalid) {
 		return nil, badRequest("%w", err)
 	}
 	if err != nil {
 		return nil, err
 	}
-	a.Log.Infof("config %s = %v set through the API (applies: %s)", key, e.Value, applies(key))
+	a.Log.Infof("config %s = %v set through the API (applies: %s)", key, e.Value, e.Applies)
 	return apiv1.SetConfig200JSONResponse(toAPIConfig(e)), nil
+}
+
+// ListConfigHistory implements apiv1.StrictServerInterface.
+func (a *API) ListConfigHistory(ctx context.Context, request apiv1.ListConfigHistoryRequestObject) (apiv1.ListConfigHistoryResponseObject, error) {
+	key := deref(request.Params.Key)
+	admin := seesRisky(ctx)
+	if key != "" && config.IsRisky(key) && !admin {
+		return apiv1.ListConfigHistory200JSONResponse{}, nil
+	}
+	changes, err := core.NewConfig().History(ctx, key, deref(request.Params.Limit))
+	if err != nil {
+		return nil, err
+	}
+	out := apiv1.ListConfigHistory200JSONResponse{}
+	for _, c := range changes {
+		if !admin && config.IsRisky(c.Key) {
+			continue
+		}
+		out = append(out, apiv1.ConfigChange{Id: c.ID, Key: c.Key, Old: c.Old, New: c.New, Who: c.Who, At: c.At})
+	}
+	return out, nil
+}
+
+// UndoConfigChange implements apiv1.StrictServerInterface.
+func (a *API) UndoConfigChange(ctx context.Context, request apiv1.UndoConfigChangeRequestObject) (apiv1.UndoConfigChangeResponseObject, error) {
+	cfg := core.NewConfig()
+	// the change's key decides who may undo it, as for SetConfig
+	changes, err := cfg.History(ctx, "", 0)
+	if err != nil {
+		return nil, err
+	}
+	i := slices.IndexFunc(changes, func(c core.ConfigChange) bool { return c.ID == request.Id })
+	if i < 0 || config.IsRisky(changes[i].Key) && !seesRisky(ctx) {
+		return nil, newAPIError(http.StatusNotFound, "not_found", "no settings change %d", request.Id)
+	}
+	if strings.HasPrefix(changes[i].Key, "jobs.") {
+		if err := needAdmin(ctx); err != nil {
+			return nil, err
+		}
+	}
+	e, err := cfg.Undo(core.WithWho(ctx, configWho(ctx)), request.Id)
+	if errors.Is(err, core.ErrInvalid) {
+		return nil, badRequest("%w", err)
+	}
+	if err != nil {
+		return nil, err
+	}
+	a.Log.Infof("config %s set back to %v through the API (undo of change %d)", e.Key, e.Value, request.Id)
+	return apiv1.UndoConfigChange200JSONResponse(toAPIConfig(e)), nil
 }
 
 // ListAccounts implements apiv1.StrictServerInterface.
