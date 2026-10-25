@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -290,7 +291,7 @@ func writeStored(key string, value any, who string) error {
 		return fmt.Errorf("write config key %q: %w", key, ErrNoStore)
 	}
 	var text *string
-	if !isDefault(key, raw) {
+	if !isStoredDefault(key, raw) {
 		data, err := json.Marshal(raw)
 		if err != nil {
 			return fmt.Errorf("write config key %q: %w", key, err)
@@ -302,6 +303,24 @@ func writeStored(key string, value any, who string) error {
 	}
 	refreshStore()
 	return nil
+}
+
+// isStoredDefault is isDefault for a database key, maps too: an empty map is an empty
+// default (the file keeps maps as tables, so isDefault never says so for them).
+func isStoredDefault(key string, raw any) bool {
+	if isDefault(key, raw) {
+		return true
+	}
+	f, err := lookup(key)
+	if err != nil || !f.isMap() {
+		return false
+	}
+	def := f.defaultRaw()
+	if reflect.DeepEqual(raw, def) {
+		return true
+	}
+	a, b := reflect.ValueOf(raw), reflect.ValueOf(def)
+	return a.Kind() == reflect.Map && b.Kind() == reflect.Map && a.Len() == 0 && b.Len() == 0
 }
 
 // storedValue is the database key's stored value (read again), or its default.
