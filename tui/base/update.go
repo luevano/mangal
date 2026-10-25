@@ -3,7 +3,6 @@ package base
 import (
 	"context"
 	"errors"
-	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -43,7 +42,7 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		m.viewportConfigKey = msg.ConfigKey
 		return cmd
 	case viewport.NotificationMsg:
-		return m.notify(msg.Message, m.notificationDefaultDuration)
+		return m.notify(msg.Message, levelInfo, 0)
 	case viewport.BackMsg:
 		return m.hideViewport()
 	case BackMsg:
@@ -92,12 +91,13 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		}
 		return m.update(msg.msg)
 	case NotificationMsg:
-		return m.notify(msg.Message, m.notificationDefaultDuration)
+		return m.notify(msg.Message, msg.level(), 0)
 	case NotificationWithDurationMsg:
-		return m.notify(msg.Message, msg.Duration)
+		return m.notify(msg.Message, msg.level(), msg.Duration)
 	case notificationTimeoutMsg:
 		if msg.id == m.notificationID {
 			m.notification = ""
+			m.notificationsHidden = 0
 		}
 		return nil
 	case error:
@@ -105,6 +105,7 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		log.Error("%s", msg)
+		m.remember(levelError, msg.Error())
 		show := ShowViewportMsg{Title: "Error", Content: util.ErrorTree(msg), Color: color.Error, ConfigKey: configKeyOf(msg)}
 		return func() tea.Msg { return show }
 	}
@@ -149,6 +150,8 @@ func (m *model) updateKey(msg tea.KeyPressMsg) tea.Cmd {
 			return Viewport("Logs", log.Lines(), color.Viewport)
 		}
 		return m.pushState(NewLogs())
+	case key.Matches(msg, m.keyMap.notifications):
+		return m.showNotifications()
 	case key.Matches(msg, m.keyMap.windows):
 		m.openSwitcher()
 		return nil
@@ -172,6 +175,7 @@ func (m *model) updateKeybinds() {
 	m.keyMap.config.SetEnabled(NewConfigWindow != nil && !m.standalone && !m.inViewport && !inputting && !inConfig)
 	m.keyMap.configFix.SetEnabled(NewConfigWindow != nil && !m.standalone && m.inViewport && m.viewportConfigKey != "")
 	m.keyMap.windows.SetEnabled(!m.standalone && !m.inViewport && !inputting)
+	m.keyMap.notifications.SetEnabled(!m.inViewport && !inputting)
 	m.keyMap.downloads.SetEnabled(NewDownloads != nil && !m.standalone && !m.inViewport && !inputting)
 }
 
@@ -309,16 +313,6 @@ func (m *model) loadingLabel() string {
 		return ""
 	}
 	return m.loads[len(m.loads)-1].label
-}
-
-// notify will show a message to the right of the title and status.
-func (m *model) notify(message string, duration time.Duration) tea.Cmd {
-	m.notification = message
-	m.notificationID++
-	id := m.notificationID
-	return tea.Tick(duration, func(time.Time) tea.Msg {
-		return notificationTimeoutMsg{id: id}
-	})
 }
 
 func (m *model) showViewport(msg ShowViewportMsg) tea.Cmd {

@@ -7,7 +7,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -379,7 +378,7 @@ func (s *state) set(key string, value any) (cmd tea.Cmd, ok bool) {
 		icon.SetType(mconfig.Icons.Get())
 	}
 	if warn {
-		return base.NotifyWithDuration(notice, 10*time.Second), true
+		return base.NotifyWarning(notice), true
 	}
 	return base.Notify(notice), true
 }

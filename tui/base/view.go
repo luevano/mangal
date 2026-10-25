@@ -86,7 +86,7 @@ func (m *model) viewHeader() string {
 
 	if m.notification != "" {
 		width := m.size.Width - lipgloss.Width(header.String())
-		header.WriteString(m.styles.notification.MaxWidth(width).Render(m.notification))
+		header.WriteString(m.styles.notification.MaxWidth(width).Render(m.notificationHeader()))
 	}
 
 	if m.inViewport {

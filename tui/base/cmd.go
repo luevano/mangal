@@ -20,14 +20,21 @@ func BackToHome() tea.Msg {
 	return BackToHomeMsg{}
 }
 
-// Notify sends a notification with the default time.Duration.
+// Notify sends a notification, shown for the time it takes to read it.
 func Notify(message string) tea.Cmd {
 	return func() tea.Msg {
 		return NotificationMsg{Message: message}
 	}
 }
 
-// NotifyWithDuration sends a notification with the given time.Duration.
+// NotifyWarning sends a warning notification, shown longer than Notify's.
+func NotifyWarning(message string) tea.Cmd {
+	return func() tea.Msg {
+		return NotificationMsg{Message: message, Warning: true}
+	}
+}
+
+// NotifyWithDuration sends a notification shown at least for duration.
 func NotifyWithDuration(message string, duration time.Duration) tea.Cmd {
 	return func() tea.Msg {
 		return NotificationWithDurationMsg{

@@ -65,7 +65,7 @@ func (m *model) listenActivity() tea.Cmd {
 func (m *model) onActivity(msg tea.Msg) tea.Cmd {
 	var notice tea.Cmd
 	if n, ok := msg.(Noticer); ok && n.Notice() != "" {
-		notice = m.notify(n.Notice(), noticeDuration)
+		notice = m.notify(n.Notice(), levelInfo, noticeDuration)
 	}
 	return tea.Batch(m.listenActivity(), notice, m.state.Update(m.ctx, msg))
 }

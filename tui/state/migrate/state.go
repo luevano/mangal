@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -76,9 +75,9 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 	case migratedMsg:
 		if msg.relink > 0 {
-			return tea.Sequence(base.Back, base.NotifyWithDuration(fmt.Sprintf(
+			return tea.Sequence(base.Back, base.NotifyWarning(fmt.Sprintf(
 				"Migrated. %d watches need a re-link (the site may use other ids): %s, then %s lists them, %s re-links one", msg.relink,
-				base.KeyWatches.Help().Key, base.KeyNeedsRelink.Help().Key, base.KeyRelink.Help().Key), 10*time.Second))
+				base.KeyWatches.Help().Key, base.KeyNeedsRelink.Help().Key, base.KeyRelink.Help().Key)))
 		}
 		return tea.Sequence(base.Back, base.Notify("Migrated, folders keep their names (mangal library rename renames them)"))
 	case tea.KeyPressMsg:

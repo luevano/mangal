@@ -351,8 +351,8 @@ func TestSecretReadableWarns(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("not saved")
 	}
-	msg, ok := cmd().(base.NotificationWithDurationMsg)
-	if !ok || !strings.Contains(msg.Message, "chmod 600") {
+	msg, ok := cmd().(base.NotificationMsg)
+	if !ok || !msg.Warning || !strings.Contains(msg.Message, "chmod 600") {
 		t.Errorf("no warning: %#v", cmd())
 	}
 }

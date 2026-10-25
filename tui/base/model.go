@@ -61,9 +61,11 @@ type model struct {
 	// loads are the running loads, the last one is shown
 	loads []loadStartMsg
 
-	notification                string
-	notificationID              int
-	notificationDefaultDuration time.Duration
+	notification   string
+	notificationID int
+	// notificationsHidden were replaced while shown
+	notificationsHidden int
+	notifications       []notification
 
 	inViewport bool
 	// viewportConfigKey is the config key of the error shown in the viewport
@@ -78,17 +80,16 @@ func newModel(ctx context.Context, state State, standalone bool, notices []strin
 	)
 
 	m := &model{
-		state:                       state,
-		viewport:                    viewport.New(),
-		history:                     &history{},
-		work:                        &tracker{},
-		standalone:                  standalone,
-		styles:                      _styles,
-		keyMap:                      newKeyMap(),
-		help:                        mhelp.New(),
-		spinner:                     _spinner,
-		notificationDefaultDuration: time.Second,
-		notices:                     notices,
+		state:      state,
+		viewport:   viewport.New(),
+		history:    &history{},
+		work:       &tracker{},
+		standalone: standalone,
+		styles:     _styles,
+		keyMap:     newKeyMap(),
+		help:       mhelp.New(),
+		spinner:    _spinner,
+		notices:    notices,
 	}
 	if !standalone {
 		m.activity = CurrentActivity

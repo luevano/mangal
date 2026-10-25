@@ -14,6 +14,15 @@ type BackToHomeMsg struct{}
 
 type NotificationMsg struct {
 	Message string
+	// Warning shows it longer, as a warning in the history
+	Warning bool
+}
+
+func (n NotificationMsg) level() string {
+	if n.Warning {
+		return levelWarning
+	}
+	return levelInfo
 }
 
 type NotificationWithDurationMsg struct {
