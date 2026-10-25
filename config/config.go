@@ -563,7 +563,7 @@ var Watch = configWatch{
 	Notify: oneOfEntry("watch.notify", "both",
 		"What watch checks notify (Discord): new chapters, errors, both or none.", "new", "errors", "both", "none"),
 	CoverageMin: intEntry("watch.coverage_min", 50, 0, 100,
-		"A check suggests another provider (health W15) when the provider has under this percent of the chapters the library has (it lost them, or only lists the latest few), or none at or below the library's last (only newer ones, or none at all). Such a watch only downloads the new chapters that continue the library's without a gap. 0 only checks the second case."),
+		"A check suggests another provider (health W15) when the provider lacks the library's latest chapter and has under this percent of the chapters the library has (it lost them), or none at or below the library's last (only newer ones, or none at all). A provider that still lists the library's latest chapter is enough however few it keeps. Such a watch only downloads the new chapters that continue the library's without a gap. 0 only checks the second case."),
 	CoverageExempt: func() *entry[string, []string] {
 		e := listEntry("watch.coverage_exempt",
 			"Providers whose watches are never suggested another provider for their chapters (see watch.coverage_min), comma separated: sites that only ever list some chapters, as MangaPlus (the first and latest few).")
