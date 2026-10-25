@@ -32,6 +32,9 @@ type AccountEntry struct {
 	Err error
 	// Discord is the Discord webhook row (notifications).
 	Discord bool
+	// Secret is true when mangal saves a secret for the account (`mangal accounts`, the
+	// TUI): mangoprovider's accounts take it from mangal's loader options.
+	Secret bool
 }
 
 type cachedAccount struct {
@@ -60,9 +63,11 @@ func Accounts(ctx context.Context, refresh bool) ([]AccountEntry, error) {
 	if err != nil {
 		entries = append(entries, AccountEntry{Service: "Lua providers", Checked: time.Now(), Err: err})
 	}
-	for _, l := range append(loaders, lua...) {
+	for i, l := range append(loaders, lua...) {
 		if a, ok := l.(interface{ HasAccount() bool }); ok && a.HasAccount() {
-			entries = append(entries, providerAccount(ctx, accounts, l, refresh))
+			entry := providerAccount(ctx, accounts, l, refresh)
+			entry.Secret = i < len(loaders)
+			entries = append(entries, entry)
 		}
 	}
 	return append(entries, DiscordAccount()), nil
@@ -81,14 +86,14 @@ func AccountsCached(ctx context.Context) ([]AccountEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, l := range append(mango, lua...) {
+	for i, l := range append(mango, lua...) {
 		a, ok := l.(interface{ HasAccount() bool })
 		if !ok || !a.HasAccount() {
 			continue
 		}
 		info := l.Info()
 		account, checked, found, err := CachedAccount(info.ID)
-		entry := AccountEntry{Account: account, Provider: info.ID, Checked: checked, Err: err}
+		entry := AccountEntry{Account: account, Provider: info.ID, Checked: checked, Err: err, Secret: i < len(mango)}
 		if !found {
 			entry.Account = libmangal.Account{Service: info.Name, Status: "not checked"}
 		}

@@ -30,7 +30,7 @@ func loaded() *state {
 	s := New(false).(*state)
 	s.Update(context.Background(), loadedMsg{
 		{Service: "Anilist", User: "nick", Status: "logged in", URL: "https://anilist.co/user/nick", Metadata: metadata.IDSourceAnilist, Checked: time.Now()},
-		{Service: "MangaPlus", Status: "free device", Details: []string{"no secret"}, Provider: mangaPlusID, Checked: time.Now().Add(-2 * time.Hour)},
+		{Service: "MangaPlus", Status: "free device", Details: []string{"no secret"}, Provider: "mango-mangaplus", Secret: true, Checked: time.Now().Add(-2 * time.Hour)},
 		{Service: "Discord", Status: "not set", Discord: true, Checked: time.Now()},
 		{Service: "Other", Provider: "mango-other", Error: errTest.Error(), Checked: time.Now()},
 	})

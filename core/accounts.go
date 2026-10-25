@@ -34,6 +34,8 @@ type Account struct {
 	Error string `json:"error,omitempty"`
 	// Discord is the Discord webhook's row (notifications).
 	Discord bool `json:"discord,omitempty"`
+	// Secret is true when a secret can be saved for the provider's account.
+	Secret bool `json:"secret,omitempty"`
 }
 
 // NewAccounts are mangal's accounts, without the rest of the services.
@@ -61,7 +63,7 @@ func (localAccounts) List(ctx context.Context, opts AccountsOptions) ([]Account,
 
 // AccountOf is the entry's account.
 func AccountOf(e client.AccountEntry) Account {
-	a := Account{Account: e.Account, Provider: e.Provider, Metadata: e.Metadata, Checked: e.Checked, Discord: e.Discord}
+	a := Account{Account: e.Account, Provider: e.Provider, Metadata: e.Metadata, Checked: e.Checked, Discord: e.Discord, Secret: e.Secret}
 	if e.Err != nil {
 		a.Error = e.Err.Error()
 	}

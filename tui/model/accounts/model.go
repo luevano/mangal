@@ -30,8 +30,6 @@ import (
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
-const mangaPlusID = "mango-mangaplus"
-
 var _ base.State = (*state)(nil)
 
 type state struct {
@@ -215,9 +213,9 @@ func (s *state) login() tea.Cmd {
 		return func() tea.Msg { return kitsu.New() }
 	case entry.Metadata == metadata.IDSourceMyAnimeList:
 		return func() tea.Msg { return myanimelist.New() }
-	case entry.Provider == mangaPlusID:
+	case entry.Secret:
 		s.inputting, s.discord = true, false
-		return s.openSecret("MangaPlus secret")
+		return s.openSecret(entry.Service + " secret")
 	case entry.Discord:
 		s.inputting, s.discord = true, true
 		return s.openSecret("Discord webhook")
