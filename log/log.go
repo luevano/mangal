@@ -5,6 +5,7 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -85,9 +86,21 @@ var (
 	againAt            time.Time
 	maintenance        sync.WaitGroup
 
+	// out also gets every line (mangal serve's stderr, the journal), see SetOutput
+	out io.Writer
+
 	// now is swapped in tests
 	now = time.Now
 )
+
+// SetOutput also writes every line logged from now on to w (nil for none), without the
+// time (journald adds it): "warning: ", "error: " and "debug: " prefix the other levels.
+// The file and the recent lines still get them, so the file has all w shows. Init keeps it.
+func SetOutput(w io.Writer) {
+	mu.Lock()
+	defer mu.Unlock()
+	out = w
+}
 
 // Init sets where and what to log. The file is created on the first line, in Dir (0700),
 // as <period>.log (0600), see Options; a line of the next period goes to that period's file
@@ -173,7 +186,12 @@ func logf(level Level, format string, a ...any) {
 	if f := openFile(now); f != nil {
 		fmt.Fprintf(f, "%s %-5s %s\n", now.Format("2006-01-02T15:04:05.000"), level, msg)
 	}
+	if out != nil {
+		fmt.Fprintln(out, outPrefix[level]+msg)
+	}
 }
+
+var outPrefix = map[Level]string{LevelDebug: "debug: ", LevelWarn: "warning: ", LevelError: "error: "}
 
 // openFile returns the file to write a line of now to: the one of now's period, the next
 // segment when it's full. Called with mu held.

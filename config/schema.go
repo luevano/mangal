@@ -192,6 +192,7 @@ type configWatch struct {
 }
 
 type configLog struct {
+	Level        *entry[string, string]
 	Rotate       *entry[string, string]
 	MaxSize      *entry[string, int64]
 	KeepDays     *entry[int64, int]

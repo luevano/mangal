@@ -167,3 +167,32 @@ func TestFilePerDay(t *testing.T) {
 		t.Errorf("files %v, want %v", names, want)
 	}
 }
+
+func TestSetOutput(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "logs")
+	reset(t, Options{Dir: dir, Level: LevelInfo})
+	var sb strings.Builder
+	SetOutput(&sb)
+	t.Cleanup(func() { SetOutput(nil) })
+
+	Debug("hidden")
+	Info("started")
+	Warn("careful")
+	Error("broken")
+	SetOutput(nil)
+	Info("not out")
+
+	if want := "started\nwarning: careful\nerror: broken\n"; sb.String() != want {
+		t.Errorf("out %q, want %q", sb.String(), want)
+	}
+	Close()
+	data, err := os.ReadFile(filepath.Join(dir, time.Now().Format(time.DateOnly)+".log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"INFO  started", "WARN  careful", "ERROR broken", "INFO  not out"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("no %q in the file:\n%s", want, data)
+		}
+	}
+}

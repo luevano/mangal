@@ -611,6 +611,9 @@ var Health = configHealth{
 }
 
 var Log = configLog{
+	Level: oneOfEntry("log.level", "info",
+		"Lowest level logged (debug, info, warn, error), to the log files, the TUI's logs and `mangal serve`'s output (the journal), which all show the same lines. debug adds the providers' per-page lines and serve's requests for the web UI's files and images; --debug sets it for one run.",
+		"debug", "info", "warn", "error"),
 	Rotate: oneOfEntry("log.rotate", "daily",
 		"How often a new log file starts (in $XDG_STATE_HOME/mangal/logs, named after its period: 2026-10-13T15.log, 2026-10-13.log, 2026-W42.log, 2026-10.log); a long `mangal serve` moves to the next one by itself. Every mangal process (serve, CLI, TUI) appends to the same files.",
 		"hourly", "daily", "weekly", "monthly"),

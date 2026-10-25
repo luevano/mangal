@@ -181,7 +181,8 @@ func setup(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	logLevel := log.LevelInfo
+	// validated by the config, Info otherwise
+	logLevel, _ := log.ParseLevel(config.Log.Level.Get())
 	if rootArgs.Debug {
 		logLevel = log.LevelDebug
 	}
