@@ -44,8 +44,15 @@ type item struct {
 	prefix string
 }
 
-func (i item) section() string {
-	section, _, _ := strings.Cut(i.key, ".")
+func (i item) section() string { return sectionOf(i.key) }
+
+// sectionOf is the key's section: its first part, or providers.<id> for a provider's
+// setting.
+func sectionOf(key string) string {
+	if id := mconfig.ProviderOf(key); id != "" {
+		return "providers." + id
+	}
+	section, _, _ := strings.Cut(key, ".")
 	return section
 }
 
@@ -111,7 +118,12 @@ func (i sectionItem) Title() string {
 }
 
 // Description implements list.DefaultItem.
-func (i sectionItem) Description() string { return summaries[i.name] }
+func (i sectionItem) Description() string {
+	if id, ok := strings.CutPrefix(i.name, "providers."); ok {
+		return "the settings of the provider " + id + ", stored in the database"
+	}
+	return summaries[i.name]
+}
 
 // sectionItems are the sections in order, with their keys.
 func sectionItems(keys []string) []sectionItem {
@@ -133,13 +145,18 @@ func sortedItems(keys []string) []item {
 		items[n] = item{key: key}
 	}
 	rank := func(i item) int {
-		if r := slices.Index(sections, i.section()); r >= 0 {
+		// a provider's section after the providers'
+		top, _, _ := strings.Cut(i.section(), ".")
+		if r := slices.Index(sections, top); r >= 0 {
 			return r
 		}
 		return len(sections)
 	}
 	slices.SortStableFunc(items, func(a, b item) int {
 		if d := rank(a) - rank(b); d != 0 {
+			return d
+		}
+		if d := strings.Compare(a.section(), b.section()); d != 0 {
 			return d
 		}
 		return strings.Compare(a.key, b.key)

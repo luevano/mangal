@@ -17,7 +17,9 @@ type keyMap struct {
 	remove,
 	up,
 	down,
-	close key.Binding
+	close,
+	history,
+	undo key.Binding
 }
 
 func newKeyMap() keyMap {
@@ -33,5 +35,7 @@ func newKeyMap() keyMap {
 		up:        base.KeyUp,
 		down:      base.KeyDown,
 		close:     util.Bind("done", "esc"),
+		history:   base.KeySettingsHistory,
+		undo:      base.KeyUndo,
 	}
 }

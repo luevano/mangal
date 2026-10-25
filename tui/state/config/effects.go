@@ -1,6 +1,10 @@
 package config
 
-import "strings"
+import (
+	"strings"
+
+	mconfig "github.com/luevano/mangal/v5/config"
+)
 
 // effect is when a change of a key applies, most apply at once: they're read when used.
 type effect int
@@ -23,20 +27,18 @@ var effects = []struct {
 	effect effect
 }{
 	{"icons", applyIcons},
-	{"providers.", applyReload},
-	{"metadata.", applyReload},
-	{"download.user_agent", applyReload},
-	{"download.mode_dir_decimal", applyReload},
-	{"download.mode_file_decimal", applyReload},
-	{"cache.", applyRestart},
-	{"data.", applyRestart},
-	{"auth.keyring", applyRestart},
 	{"tui.skip_home", applyRestart},
 	{"tui.chapter.", applyNewScreens},
 	{"cli.", applyCLI},
 }
 
 func effectOf(key string) effect {
+	switch mconfig.Applies(key) {
+	case "restart":
+		return applyRestart
+	case "reload":
+		return applyReload
+	}
 	for _, e := range effects {
 		if key == e.key || (strings.HasSuffix(e.key, ".") && strings.HasPrefix(key, e.key)) {
 			return e.effect

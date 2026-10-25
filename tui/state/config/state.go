@@ -13,7 +13,9 @@ import (
 	_list "charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	mconfig "github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -34,6 +36,8 @@ const (
 	editing
 	// the entries of a map key
 	mapping
+	// the settings' history
+	historying
 )
 
 // detailsHeight is the lines under the list: the selected key's description, hint and
@@ -68,6 +72,16 @@ type state struct {
 	// write saves the change to the config file, reload marks the loaded providers stale
 	write  func(key string, raw any) error
 	reload func()
+	// cfg has the settings' history and its undo
+	cfg     core.Config
+	history historyView
+}
+
+// historyView is the settings' history: every key's, or one's.
+type historyView struct {
+	key     string
+	changes []core.ConfigChange
+	cursor  int
 }
 
 // mapEditor edits the entries of a map key.
@@ -93,6 +107,7 @@ func New(filter string) base.State {
 		Host:     confirm.NewHost(40, color.Warning),
 		write:    writeKey,
 		reload:   base.ReloadProviders,
+		cfg:      core.NewConfig(),
 	}
 	s.showRows()
 	s.Filter(filter)
@@ -139,7 +154,10 @@ func (s *state) showRows() tea.Cmd {
 	cmd := s.list.SetItems(s.rows())
 	// SetItems enables it again
 	s.list.KeyMap.Reverse.SetEnabled(false)
-	section, _, _ := strings.Cut(strings.TrimPrefix(selected, "section:"), ".")
+	section, isSection := strings.CutPrefix(selected, "section:")
+	if !isSection {
+		section = sectionOf(selected)
+	}
 	for n, row := range s.list.Items() {
 		if id := rowID(row); id == selected || (id == "section:"+section && !s.expanded[section]) {
 			s.list.Select(n)
@@ -204,7 +222,7 @@ func (s *state) Subtitle() string {
 	if s.searching {
 		return s.list.Subtitle() + ", every section"
 	}
-	return fmt.Sprintf("%d keys in %s", len(mconfig.Keys()), mconfig.Path)
+	return fmt.Sprintf("%d keys: %s and the database", len(mconfig.Keys()), mconfig.Path)
 }
 
 func (s *state) Status() string { return s.list.Status() }
@@ -228,8 +246,10 @@ func (s *state) keyMap() help.KeyMap {
 			return util.KeyMap{Short: []key.Binding{s.keys.save, s.keys.cancel}}
 		}
 		return util.KeyMap{Short: []key.Binding{s.keys.add, s.keys.editEntry, s.keys.remove, s.keys.up, s.keys.down, s.keys.close}}
+	case historying:
+		return util.KeyMap{Short: []key.Binding{s.keys.undo, s.keys.up, s.keys.down, s.keys.close}}
 	}
-	return base.CombinedKeyMap(util.KeyMap{Short: []key.Binding{s.keys.change, s.keys.reset, s.keys.expandAll}}, s.list.KeyMap)
+	return base.CombinedKeyMap(util.KeyMap{Short: []key.Binding{s.keys.change, s.keys.reset, s.keys.expandAll, s.keys.history}}, s.list.KeyMap)
 }
 
 func (s *state) Resize(size base.Size) tea.Cmd {
@@ -250,7 +270,7 @@ func (s *state) selected() (string, bool) {
 // removeEntryMsg is the removal of a map entry, confirmed.
 type removeEntryMsg struct{ key, id string }
 
-func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
+func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	if cmd, ok := s.Answer(msg); ok {
 		return cmd
 	}
@@ -262,8 +282,14 @@ func (s *state) Update(_ context.Context, msg tea.Msg) tea.Cmd {
 		return s.updateEditing(msg)
 	case mapping:
 		return s.updateMapping(msg)
+	case historying:
+		return s.updateHistory(ctx, msg)
 	}
 	if msg, ok := msg.(tea.KeyPressMsg); ok && !s.list.Filtering() {
+		if key.Matches(msg, s.keys.history) {
+			k, _ := s.selected()
+			return s.openHistory(ctx, k)
+		}
 		if section, ok := s.list.SelectedItem().(sectionItem); ok && key.Matches(msg, s.keys.change) {
 			s.expanded[section.name] = !s.expanded[section.name]
 			return s.showRows()
@@ -377,10 +403,102 @@ func (s *state) set(key string, value any) (cmd tea.Cmd, ok bool) {
 	case applyIcons:
 		icon.SetType(mconfig.Icons.Get())
 	}
+	if mconfig.Applies(key) == "restart" && s.err == "" {
+		notice, warn = key+" saved: mangal reads it when it starts, restart mangal (and a running mangal serve) to use it", true
+	}
 	if warn {
 		return base.NotifyWarning(notice), true
 	}
 	return base.Notify(notice), true
+}
+
+// openHistory lists the changes of key, every key's when "".
+func (s *state) openHistory(ctx context.Context, key string) tea.Cmd {
+	changes, err := s.cfg.History(ctx, key, 200)
+	if err != nil {
+		s.err = err.Error()
+		return nil
+	}
+	s.err = ""
+	s.mode = historying
+	s.history = historyView{key: key, changes: changes, cursor: min(s.history.cursor, max(0, len(changes)-1))}
+	return nil
+}
+
+func (s *state) updateHistory(ctx context.Context, msg tea.Msg) tea.Cmd {
+	keyMsg, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return nil
+	}
+	h := &s.history
+	switch {
+	case key.Matches(keyMsg, s.keys.close):
+		s.mode = browsing
+		s.err = ""
+	case key.Matches(keyMsg, s.keys.up):
+		if len(h.changes) > 0 {
+			h.cursor = (h.cursor - 1 + len(h.changes)) % len(h.changes)
+		}
+	case key.Matches(keyMsg, s.keys.down):
+		if len(h.changes) > 0 {
+			h.cursor = (h.cursor + 1) % len(h.changes)
+		}
+	case key.Matches(keyMsg, s.keys.undo):
+		if len(h.changes) == 0 {
+			return nil
+		}
+		c := h.changes[h.cursor]
+		e, err := s.cfg.Undo(ctx, c.ID)
+		if err != nil {
+			s.err = err.Error()
+			return nil
+		}
+		// a value set earlier in this run would hide the stored one
+		if raw, err := mconfig.FileValue(e.Key); err == nil {
+			_ = mconfig.Set(e.Key, raw)
+		}
+		if effectOf(e.Key) == applyReload {
+			s.reload()
+		}
+		h.cursor = 0
+		cmd := s.openHistory(ctx, h.key)
+		return tea.Batch(cmd, base.Notify(fmt.Sprintf("%s set back to %v (undo of change %d)", e.Key, e.Value, c.ID)))
+	}
+	return nil
+}
+
+func (s *state) viewHistory() string {
+	h := s.history
+	title := "Settings history"
+	if h.key != "" {
+		title += ": " + h.key
+	}
+	lines := []string{style.Bold.Accent.Render(title), ""}
+	if len(h.changes) == 0 {
+		lines = append(lines, style.Normal.Secondary.Render("no changes (the keys in mangal.toml have no history)"))
+	}
+	value := func(v *string) string {
+		if v == nil {
+			return "default"
+		}
+		return ansi.Truncate(*v, maxValueWidth, "…")
+	}
+	height := max(3, s.size.Height-4)
+	first := max(0, min(h.cursor-height/2, len(h.changes)-height))
+	for n := first; n < min(len(h.changes), first+height); n++ {
+		c := h.changes[n]
+		cursor := "  "
+		line := fmt.Sprintf("%s  %s: %s → %s  (%s)", c.At.Format("2006-01-02 15:04"), c.Key, value(c.Old), value(c.New), c.Who)
+		if n == h.cursor {
+			cursor = style.Bold.Accent.Render(icon.Item.Raw()) + " "
+			line = style.Bold.Base.Render(line)
+		}
+		lines = append(lines, cursor+line)
+	}
+	if s.err != "" {
+		lines = append(lines, "", style.Normal.Error.Width(max(20, s.size.Width)).Render(s.err))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // errorText is the error without the key, shown next to it.
@@ -521,8 +639,11 @@ func (s *state) syncIDs() {
 
 func (s *state) View() string {
 	return s.Host.View(func() string {
-		if s.mode == mapping {
+		switch s.mode {
+		case mapping:
 			return s.viewMap()
+		case historying:
+			return s.viewHistory()
 		}
 		return lipgloss.JoinVertical(lipgloss.Left, s.list.View(), s.viewDetails())
 	})
@@ -554,8 +675,13 @@ func (s *state) viewDetails() string {
 	if hint := effectOf(key).hint(); hint != "" {
 		extra = append(extra, hint)
 	}
-	if name, set := mconfig.EnvVar(key); set {
-		extra = append(extra, style.Normal.Warning.Render(name+" overrides the file"))
+	extra = append(extra, storedLabel(key))
+	switch src := mconfig.SourceOf(key); src.Kind {
+	case "env", "flag":
+		extra = append(extra, style.Normal.Warning.Render(src.Name+" overrides the stored value"))
+	}
+	if slices.Contains(mconfig.RestartNeeded(), key) {
+		extra = append(extra, style.Normal.Warning.Render("changed since mangal started: restart it to use the new value"))
 	}
 	if len(extra) > 0 {
 		lines = append(lines, style.Normal.Secondary.Width(width).Render(strings.Join(extra, " · ")))
@@ -596,4 +722,12 @@ func (s *state) viewMap() string {
 		lines = append(lines, "", lipgloss.NewStyle().Foreground(color.Error).Width(max(20, s.size.Width)).Render(s.err))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// storedLabel says where the key is stored.
+func storedLabel(key string) string {
+	if mconfig.StoredIn(key) == mconfig.StoredDB {
+		return "stored in the database (shared)"
+	}
+	return "stored in mangal.toml (this machine)"
 }

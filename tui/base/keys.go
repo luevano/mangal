@@ -94,6 +94,7 @@ var (
 	KeyRuns            = util.Bind("every check run", "V")
 	KeyProviderHistory = util.Bind("provider history", "alt+h")
 	KeyReadHistory     = util.Bind("read history", "alt+h")
+	KeySettingsHistory = util.Bind("settings history", "alt+h")
 	KeyClearAll        = util.Bind("clear all", "backspace")
 	KeyNextProvider    = util.Bind("next provider", "tab")
 	KeyPickProvider    = util.Bind("provider", "tab")
@@ -169,7 +170,7 @@ var keyConcepts = map[string][]string{
 	// clear
 	"backspace": {"close all", "unselect all", "reset to default", "clear its queue", "clear all"},
 	// the past: a provider's checks, the chapters read
-	"alt+h": {"provider history", "read history"},
+	"alt+h": {"provider history", "read history", "settings history"},
 	"space": {"toggle", "change", "on/off"},
 	"tab":   {"next provider", "provider", "next", "level"},
 	"n":     {"new login", "add"},
@@ -201,7 +202,7 @@ func Keys() (old, newer []key.Binding) {
 		KeyProviderHistory, KeyNextProvider, KeyPickProvider, KeyNext, KeyGroupByProvider, KeyNeedsRelink,
 		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel, KeyNarrow,
 		KeyLogFiles, KeyPrevPeriod, KeyNextPeriod, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
-		KeyRename, KeyChapterFiles, KeyFallback, KeyReadHistory, KeyClearAll, KeyByID, KeyRetitle, KeyFill,
+		KeyRename, KeyChapterFiles, KeyFallback, KeyReadHistory, KeySettingsHistory, KeyClearAll, KeyByID, KeyRetitle, KeyFill,
 		KeyJobs, KeyRunAll, KeyRunMissing,
 	}
 }

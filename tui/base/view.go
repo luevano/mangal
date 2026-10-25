@@ -6,6 +6,8 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/util"
 
 	"charm.land/lipgloss/v2"
@@ -105,6 +107,12 @@ func (m *model) viewHeader() string {
 		}
 		header.WriteString(m.styles.loading.message.Render(activity))
 	}
+	if restart := restartNotice(); restart != "" {
+		if label != "" || m.activityStatus() != "" {
+			header.WriteString("  ")
+		}
+		header.WriteString(style.Normal.Warning.Render(restart))
+	}
 
 	header.WriteString(newline)
 	if subtitle := m.state.Subtitle(); subtitle != "" {
@@ -153,4 +161,14 @@ func (m *model) viewFooter() string {
 		return m.styles.footer.Render(m.help.View(CombinedKeyMap(m.viewport.KeyMap, m.keyMap)))
 	}
 	return m.styles.footer.Render(m.help.View(CombinedKeyMap(m.state.KeyMap(), m.keyMap)))
+}
+
+// restartNotice says which settings changed since mangal started that it reads only then,
+// until it restarts; "" for none.
+func restartNotice() string {
+	keys := config.RestartNeeded()
+	if len(keys) == 0 {
+		return ""
+	}
+	return "restart needed: " + strings.Join(keys, ", ") + " changed"
 }
