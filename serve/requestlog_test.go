@@ -62,6 +62,9 @@ func TestRequestLog(t *testing.T) {
 	if line = logged("GET", "/", "", "", http.StatusOK); line != "" {
 		t.Errorf("static file logged at info: %q", line)
 	}
+	if line = logged("GET", "/api/v1/status", "", "Bearer r3ad", http.StatusOK); line != "" {
+		t.Errorf("polled read logged at info: %q", line)
+	}
 
 	log.Init(log.Options{Level: log.LevelDebug})
 	t.Cleanup(func() { log.Init(log.Options{Level: log.LevelInfo}) })

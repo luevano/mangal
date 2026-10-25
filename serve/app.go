@@ -437,10 +437,19 @@ func statusCode(status int) string {
 	return strings.ToLower(strings.ReplaceAll(http.StatusText(status), " ", "_"))
 }
 
+// polledPaths are the reads the web UI and the TUI repeat every few seconds; a successful one
+// is debug so they don't fill the log.
+var polledPaths = map[string]bool{
+	"/api/v1/status":  true,
+	"/api/v1/auth/me": true,
+	"/api/status":     true,
+	"/api/watches":    true,
+}
+
 // logRequests logs a line per request when it ends (an event stream too): method, path,
 // status, duration, who and from where, why it failed. Never the query, the headers or a
-// body. The API and OPDS are info; the web UI's files and the images are debug; a refused
-// or failed request is warn (4xx) or error (5xx).
+// body. The API and OPDS are info; the web UI's files, the images and the polled reads are
+// debug; a refused or failed request is warn (4xx) or error (5xx).
 func (a *API) logRequests() echo.MiddlewareFunc {
 	return middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		HandleError: true,
@@ -463,7 +472,8 @@ func (a *API) logRequests() echo.MiddlewareFunc {
 			case v.Status >= http.StatusBadRequest:
 				level = log.LevelWarn
 			case !strings.HasPrefix(path, "/api/") && !isOPDS(path),
-				strings.HasPrefix(c.Response().Header().Get("Content-Type"), "image/"):
+				strings.HasPrefix(c.Response().Header().Get("Content-Type"), "image/"),
+				r.Method == http.MethodGet && polledPaths[path]:
 				level = log.LevelDebug
 			}
 			if !log.Enabled(level) {
