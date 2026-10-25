@@ -196,7 +196,8 @@ func TestJobKinds(t *testing.T) {
 	if _, err := kinds.Set(ctx, jobs.KindSourceCheck, JobSettings{Providers: map[string]string{"mango-mangaplus": "", "mango-mangapill": ""}}); err != nil {
 		t.Fatal(err)
 	}
-	if p := config.Jobs.Sources.Providers.Get(); p.On("mango-mangaplus") || !p.On("mango-mangapill") {
+	loaders, _ := c.env.Loaders()
+	if p := config.Jobs.Sources.Providers.Get(); p.Unattended(loaders, "mango-mangaplus") || !p.Unattended(loaders, "mango-mangapill") || len(p) != 0 {
 		t.Errorf("reset %v", p)
 	}
 	if _, err := kinds.Set(ctx, jobs.KindScan, JobSettings{Enabled: new(false)}); !errors.Is(err, ErrInvalid) {

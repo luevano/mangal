@@ -194,7 +194,7 @@ func (l *localLibrary) LookupSourceURLs(ctx context.Context, opts SourceURLsOpti
 		skip := ""
 		if _, _, ok := libmangal.FindLoader(loaders, p); !ok {
 			skip = "not installed"
-		} else if !settings.On(p) {
+		} else if !settings.Unattended(loaders, p) {
 			skip = "turned off in jobs.urls.providers"
 		}
 		if skip != "" {

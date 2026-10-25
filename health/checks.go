@@ -297,7 +297,7 @@ func checkCoverage(s *snapshot) []Finding {
 	}
 	for _, m := range s.mangas {
 		r, ok := s.chapters[m.ID]
-		if !ok || !r.forNew || r.err != nil || m.NewProvider != "" || slices.Contains(s.coverageExempt, s.providerInfo(r.provider).ID) {
+		if !ok || !r.forNew || r.err != nil || m.NewProvider != "" || slices.Contains(s.coverageExempt, s.providerInfo(r.provider).ID) || s.providerInfo(r.provider).Traits.PartialChapters {
 			continue
 		}
 		have := map[float32]bool{}

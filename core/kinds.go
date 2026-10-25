@@ -361,7 +361,11 @@ func noNext(jk JobKind, since time.Time) string {
 
 // provider is the kind's JobProvider of the provider.
 func provider(loaders []libmangal.ProviderLoader, settings, defaults config.ProviderSettings, id string) JobProvider {
-	p := JobProvider{Provider: id, Name: id, On: settings.On(id), Interval: settings.Override(id), Default: defaults[id]}
+	v, set := settings[id]
+	if !set {
+		v = defaults[id]
+	}
+	p := JobProvider{Provider: id, Name: id, On: v != config.ProviderOff, Interval: settings.Override(id), Default: defaults[id]}
 	if l, _, ok := libmangal.FindLoader(loaders, id); ok {
 		p.Name = l.Info().Name
 	}
@@ -390,19 +394,16 @@ func (k *localKinds) healthProviders(jk *JobKind, settings config.ProviderSettin
 	if err != nil {
 		return err
 	}
-	jk.Providers = providersOf(loaders, settings, kindDefaults(jk.Kind))
+	jk.Providers = providersOf(loaders, settings, kindDefaults(jk.Kind, loaders))
 	return nil
 }
 
-// kindDefaults are the kind's per-provider settings when the config doesn't set them.
-func kindDefaults(kind jobs.Kind) config.ProviderSettings {
+// kindDefaults are the kind's per-provider settings when the config doesn't set them:
+// the maintenance jobs leave out the providers that avoid unattended requests.
+func kindDefaults(kind jobs.Kind, loaders []libmangal.ProviderLoader) config.ProviderSettings {
 	switch kind {
-	case jobs.KindSourceCheck:
-		return config.Jobs.Sources.Providers.Default
-	case jobs.KindSourceURLs:
-		return config.Jobs.URLs.Providers.Default
-	case jobs.KindHealth:
-		return config.Jobs.Health.Providers.Default
+	case jobs.KindSourceCheck, jobs.KindSourceURLs, jobs.KindHealth:
+		return config.UnattendedDefaults(loaders)
 	}
 	return config.ProviderSettings{}
 }
@@ -508,7 +509,7 @@ func (k *localKinds) sources(kind jobs.Kind, all bool, settings config.ProviderS
 			return
 		}
 		l, _, ok := libmangal.FindLoader(loaders, s.Provider)
-		if !ok || !settings.On(l.Info().ID) {
+		if !ok || !settings.Unattended(loaders, l.Info().ID) {
 			return
 		}
 		out = append(out, source{manga: m.ID, title: cmp.Or(s.Title, m.Title), provider: l.Info().ID, mangaID: s.MangaID})
@@ -552,7 +553,7 @@ func (k *localKinds) sourcesState(jk *JobKind, st kindState, settings config.Pro
 	for _, s := range list {
 		extra = append(extra, s.provider)
 	}
-	jk.Providers = providersOf(loaders, settings, kindDefaults(jk.Kind), extra...)
+	jk.Providers = providersOf(loaders, settings, kindDefaults(jk.Kind, loaders), extra...)
 	byProvider := map[string]*JobProvider{}
 	for i := range jk.Providers {
 		byProvider[jk.Providers[i].Provider] = &jk.Providers[i]
@@ -653,7 +654,11 @@ func (k *localKinds) Set(ctx context.Context, kind jobs.Kind, s JobSettings) (Jo
 		if key == "" {
 			return jk, invalid("%s has no per-provider settings", jk.Title)
 		}
-		defaults := kindDefaults(kind)
+		loaders, err := k.core.env.Loaders()
+		if err != nil {
+			return jk, err
+		}
+		defaults := kindDefaults(kind, loaders)
 		settings = maps.Clone(settings)
 		for id, v := range s.Providers {
 			if v = strings.TrimSpace(v); v == "" {
@@ -661,9 +666,9 @@ func (k *localKinds) Set(ctx context.Context, kind jobs.Kind, s JobSettings) (Jo
 			}
 			settings[id] = v
 		}
-		// the file's table replaces the defaults: it keeps those that differ from on
+		// the table keeps those that differ from their default
 		for id, v := range settings {
-			if v == config.ProviderOn {
+			if v == cmp.Or(defaults[id], config.ProviderOn) {
 				delete(settings, id)
 			}
 		}

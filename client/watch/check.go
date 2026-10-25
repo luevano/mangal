@@ -594,7 +594,7 @@ func (s *Service) checkOne(ctx context.Context, src Source, w storage.Watch, gap
 	}
 	picked, unavailable, skipped := Pick(chapters, have, highest(have), w.From, gaps, retry, skip)
 	r.Unavailable, r.Skipped, r.listed = unavailable, skipped, true
-	if last := highest(have); last != nil && !slices.Contains(s.Options.CoverageExempt, src.Info().ID) {
+	if last := highest(have); last != nil && !slices.Contains(s.Options.CoverageExempt, src.Info().ID) && !src.Info().Traits.PartialChapters {
 		listed := make([]float32, len(chapters))
 		for i, ch := range chapters {
 			listed[i] = ch.Info().Number

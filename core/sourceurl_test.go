@@ -47,7 +47,10 @@ func urlCore(t *testing.T, providers ...string) (*Core, *urlSite) {
 	c.env.Loaders = func() ([]libmangal.ProviderLoader, error) {
 		var loaders []libmangal.ProviderLoader
 		for _, p := range providers {
-			loaders = append(loaders, infoLoader{libmangal.ProviderInfo{ID: p, Name: p, Version: "1.0.0"}})
+			info := libmangal.ProviderInfo{ID: p, Name: p, Version: "1.0.0"}
+			// as mangoprovider's
+			info.Traits.AvoidUnattended = p == "mango-mangaplus"
+			loaders = append(loaders, infoLoader{info})
 		}
 		return loaders, nil
 	}

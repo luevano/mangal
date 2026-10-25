@@ -151,7 +151,7 @@ func listChapters(ctx context.Context, provider string, mangas []ProviderManga, 
 // accounts cache (no request).
 func probeProvider(ctx context.Context, loaders []libmangal.ProviderLoader, provider string, m ProviderManga) Probe {
 	var p Probe
-	if !config.Jobs.Health.Providers.Fresh().On(provider) {
+	if !config.Jobs.Health.Providers.Fresh().Unattended(loaders, provider) {
 		p.Skipped = "turned off in jobs.health.providers"
 		return p
 	}
@@ -209,7 +209,7 @@ func probeProvider(ctx context.Context, loaders []libmangal.ProviderLoader, prov
 // client (its throttle applies), one at a time with a pause between them (jobs.delay_min
 // to jobs.delay_max), their cached answers dropped first as A2's.
 func lookupMangas(ctx context.Context, loaders []libmangal.ProviderLoader, provider string, ids []string, done func(int, bool, error)) error {
-	if !config.Jobs.Sources.Providers.Fresh().On(provider) {
+	if !config.Jobs.Sources.Providers.Fresh().Unattended(loaders, provider) {
 		return errors.New("not asked: turned off in jobs.sources.providers")
 	}
 	c, _, release, err := client.HoldByID(ctx, provider)
