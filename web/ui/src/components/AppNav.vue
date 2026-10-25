@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import StatusBadge from './StatusBadge.vue'
+import NotificationBell from './NotificationBell.vue'
 import { useStatus } from '@/stores/status'
 
 const open = ref(false)
@@ -39,6 +40,7 @@ const shown = computed(() => (st.allows('GET /v1/users') ? [...links, { name: 'u
             </RouterLink>
           </li>
         </ul>
+        <NotificationBell />
         <StatusBadge />
       </div>
     </div>

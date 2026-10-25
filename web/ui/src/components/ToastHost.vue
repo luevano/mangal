@@ -11,6 +11,8 @@ const t = useToasts()
       class="toast show align-items-center border-0"
       :class="`text-bg-${toast.kind}`"
       role="status"
+      @mouseenter="t.pause(toast.id)"
+      @mouseleave="t.resume(toast.id)"
     >
       <div class="d-flex">
         <div class="toast-body">{{ toast.text }}</div>
