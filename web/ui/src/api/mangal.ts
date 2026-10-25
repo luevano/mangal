@@ -1126,7 +1126,7 @@ export interface paths {
         get?: never;
         /**
          * Set the provider's preferred website (providers.mirrors)
-         * @description Its website or one of its mirrors; empty or the website itself goes back to the default. The mirror that last worked is forgotten and the providers loaded again.
+         * @description Its website or one of its mirrors; empty or the website itself goes back to the default. The mirror that last worked is forgotten and the providers loaded again. Needs every permission (an admin), whatever its x-mangal-scope says.
          */
         put: operations["setProviderMirror"];
         post?: never;
@@ -1484,7 +1484,7 @@ export interface paths {
         };
         /**
          * The config, secrets masked
-         * @description Every key but the risky ones for whoever isn't an admin (every permission).
+         * @description Every key but the risky ones for whoever isn't an admin (every permission); only an admin changes them.
          */
         get: operations["listConfig"];
         put?: never;
@@ -1527,7 +1527,7 @@ export interface paths {
         /**
          * Set a change's key back to its old value
          * @description Recorded as a change of its own. 400 when the key changed after it or it's a
-         *     secret's; 404 for a risky key's change unless an admin.
+         *     secret's. Needs every permission (an admin), whatever its x-mangal-scope says.
          */
         post: operations["undoConfigChange"];
         delete?: never;
@@ -1548,10 +1548,8 @@ export interface paths {
          * Set a key where it's stored (mangal.toml or the database; not secrets)
          * @description `applies` says when the server uses it: now, reload (the providers load again)
          *     or restart (then the status's restart_needed lists it until serve restarts).
-         *     Secret keys aren't set over HTTP (403). The risky keys (risky in the listing:
-         *     serve.*, auth.*, the private address guard, paths, FlareSolverr, mirrors) only
-         *     by an admin; for anyone else they don't exist (404), as in the listing. The jobs.*
-         *     keys need an admin too.
+         *     Secret keys aren't set over HTTP (403). Every key is a server-wide setting:
+         *     Needs every permission (an admin), whatever its x-mangal-scope says.
          */
         put: operations["setConfig"];
         post?: never;
@@ -2647,7 +2645,7 @@ export interface components {
             provider?: string;
             /** @description the stored value changed since the server started, it uses the old one until it restarts */
             restart?: boolean;
-            /** @description weakens access when changed, only an admin sees it */
+            /** @description a path, network, security, log or secret key: only an admin sees it */
             risky?: boolean;
             /**
              * @description the value's type

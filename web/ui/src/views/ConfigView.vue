@@ -51,10 +51,10 @@ function text(e: ConfigEntry): string {
       : JSON.stringify(e.value)
 }
 
+// only an admin changes the settings, everyone else sees them read only
 const canSet = computed(() => st.allows('PUT /v1/config/{key}'))
 function editable(e: ConfigEntry): boolean {
-  if (e.secret || !canSet.value) return false
-  return !e.key.startsWith('jobs.') || st.canAdmin()
+  return !e.secret && canSet.value
 }
 
 // an enum's value as listed (the file may have it in another case)
@@ -150,7 +150,8 @@ async function undo(c: ConfigChange) {
   <p class="small text-secondary">
     Every setting of the server: <b>mangal.toml</b> ones are this server's machine,
     <b>database</b> ones are shared by every mangal using its data. Secrets are masked and set from
-    the accounts or <code>mangal config set</code>. Some settings are only shown to an admin.
+    the accounts or <code>mangal config set</code>. Only an admin changes them and sees the paths,
+    network, security and log settings.
   </p>
   <input
     v-model="filter"

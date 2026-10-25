@@ -243,7 +243,7 @@ func (a *API) need(scope string) echo.MiddlewareFunc {
 }
 
 // checkScope refuses an operation the request's scopes don't allow: its x-mangal-scope,
-// read for a plan (x-mangal-plan without apply).
+// read for a plan (x-mangal-plan without apply), every permission for x-mangal-admin.
 func (a *API) checkScope(f apiv1.StrictHandlerFunc, operationID string) apiv1.StrictHandlerFunc {
 	op, ok := web.OperationByID(operationID)
 	scope := ScopeWrite
@@ -262,6 +262,12 @@ func (a *API) checkScope(f apiv1.StrictHandlerFunc, operationID string) apiv1.St
 		}
 		if err := scopeError(c.Request(), need); err != nil {
 			return nil, err
+		}
+		if op.Admin && (!op.Plan || need != ScopeRead) {
+			if err := needAdmin(c.Request().Context()); err != nil {
+				web.LogRefused(c.Request(), err.Error())
+				return nil, err
+			}
 		}
 		return f(c, request)
 	}

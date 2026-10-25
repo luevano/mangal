@@ -18,21 +18,23 @@ import (
 	"github.com/spf13/viper"
 )
 
-// riskyKeys and riskyPrefixes weaken access when changed: the server's own security, the
-// guard that keeps the providers off the LAN and what reaches past it, where mangal keeps
-// its data and runs providers from. Over HTTP only an admin sees and changes them.
+// riskyKeys and riskyPrefixes weaken access when changed or tell what the server is: its own
+// security, the guard that keeps the providers off the LAN and what reaches past it, where
+// mangal keeps its data, downloads and runs providers from, the files' permissions, the log.
+// Over HTTP only an admin sees them; every other key is seen with read, changed by an admin.
 var (
-	riskyPrefixes = []string{"serve.", "auth."}
+	riskyPrefixes = []string{"serve.", "auth.", "log."}
 	riskyKeys     = []string{
 		"providers.allow_private_addresses", "providers.private_allowlist", "providers.headless.flaresolverr_url",
 		"providers.mirrors", "data.path", "cache.path", "providers.path",
+		"download.path", "download.mode_dir_decimal", "download.mode_file_decimal",
 	}
 )
 
-// IsRisky is true for a key only an admin may see or change over HTTP; a provider's path
-// setting too (it reads a file of the server).
+// IsRisky is true for a key only an admin may see over HTTP: the keys above, the secrets and
+// a provider's path settings (they read a file of the server).
 func IsRisky(key string) bool {
-	if slices.Contains(riskyKeys, key) || slices.ContainsFunc(riskyPrefixes, func(p string) bool { return strings.HasPrefix(key, p) }) {
+	if slices.Contains(riskyKeys, key) || slices.ContainsFunc(riskyPrefixes, func(p string) bool { return strings.HasPrefix(key, p) }) || IsSecret(key) {
 		return true
 	}
 	pmu.RLock()

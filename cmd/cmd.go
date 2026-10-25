@@ -142,8 +142,8 @@ func configFlag(args []string) string {
 
 // globalEnv are the variables of the global flags that aren't config keys (the flags
 // that are have their key's, see configKeyFlag). The flags of one command (--apply,
-// --yes, --json, --query, ...) have none on purpose: MANGAL_APPLY in a profile would turn
-// every plan into an action (docs/settings-db.md, question 8).
+// --yes, --json, --query, ...) never get one: variables set how the app behaves, not single
+// actions, and MANGAL_APPLY in a profile would turn every plan into an action.
 var globalEnv = map[string]string{"config": "MANGAL_CONFIG", "debug": "MANGAL_DEBUG", "verbose": "MANGAL_VERBOSE"}
 
 // applyGlobalEnv sets the global flags not given from their variables.

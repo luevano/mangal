@@ -309,7 +309,7 @@ type ConfigEntry struct {
 	// Restart the stored value changed since the server started, it uses the old one until it restarts
 	Restart *bool `json:"restart,omitempty"`
 
-	// Risky weakens access when changed, only an admin sees it
+	// Risky a path, network, security, log or secret key: only an admin sees it
 	Risky  *bool        `json:"risky,omitempty"`
 	Secret bool         `json:"secret"`
 	Source ConfigSource `json:"source"`

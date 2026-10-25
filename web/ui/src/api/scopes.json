@@ -62,7 +62,7 @@
   "POST /v1/auth/login": "public",
   "POST /v1/auth/logout": "public",
   "POST /v1/check": "watch",
-  "POST /v1/config/history/{id}/undo": "write",
+  "POST /v1/config/history/{id}/undo": "admin",
   "POST /v1/downloads": "write",
   "POST /v1/health/dismiss": "write",
   "POST /v1/health/fix": "write",
@@ -99,8 +99,8 @@
   "POST /v1/watches/{id}/hold": "watch",
   "POST /v1/watches/{id}/relink": "watch",
   "PUT /v1/bindings": "write",
-  "PUT /v1/config/{key}": "write",
+  "PUT /v1/config/{key}": "admin",
   "PUT /v1/jobs/kinds/{kind}/settings": "admin",
-  "PUT /v1/providers/{provider}/mirror": "write",
+  "PUT /v1/providers/{provider}/mirror": "admin",
   "PUT /v1/reader/position": "progress"
 }

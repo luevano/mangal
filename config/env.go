@@ -19,8 +19,8 @@ import (
 // flag. A secret's also comes from a file, MANGAL_<KEY>_FILE (docs/settings-db.md
 // "Precedence and environment variables").
 
-// secretPlainEnv: a secret also takes its plain variable, not only _FILE (David's
-// question 9, pending; false makes secrets _FILE-only).
+// secretPlainEnv: a secret also takes its plain variable, not only _FILE (David,
+// 2026-10-25); _FILE is the recommended, safer way.
 const secretPlainEnv = true
 
 // envName is the environment variable of the key.

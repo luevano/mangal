@@ -53,6 +53,13 @@ const history: ConfigChange[] = [
   }
 ]
 
+const admin: Me = {
+  name: 'a',
+  kind: 'user',
+  scopes: ['read', 'watch', 'progress', 'write'],
+  admin: true,
+  hide_unavailable: true
+}
 const writer: Me = {
   name: 'w',
   kind: 'user',
@@ -113,20 +120,26 @@ describe('ConfigView', () => {
     expect(w.find('[data-test="key-download.skip_if_exists"]').text()).toContain('database')
   })
 
-  it('edits for a writer, read only for a reader', async () => {
-    const { w, sent } = await render(writer)
+  it('edits for an admin, read only for a writer and a reader', async () => {
+    const { w, sent } = await render(admin)
     await w.find('[data-test="edit-download.skip_if_exists"]').trigger('change')
     await flushPromises()
     const put = sent.find((s) => s.method === 'PUT')
     expect(put?.url).toContain('/v1/config/download.skip_if_exists')
     expect(put?.body).toEqual({ value: false })
 
-    const r = await render(reader)
-    expect(r.w.find('[data-test="edit-download.skip_if_exists"]').exists()).toBe(false)
+    for (const me of [writer, reader]) {
+      const r = await render(me)
+      expect(r.w.find('[data-test="key-download.skip_if_exists"]').text()).toContain('true')
+      expect(r.w.find('[data-test^="edit-"]').exists()).toBe(false)
+      expect(r.w.find('select').exists()).toBe(false)
+      expect(r.w.text()).not.toContain('reset to default')
+      expect(r.w.find('[data-test=history] button').exists()).toBe(false)
+    }
   })
 
   it('undoes a change from the history', async () => {
-    const { w, sent } = await render(writer)
+    const { w, sent } = await render(admin)
     const button = w.find('[data-test=history] button')
     expect(button.exists()).toBe(true)
     await button.trigger('click')

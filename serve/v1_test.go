@@ -112,12 +112,12 @@ func TestV1ReadEndpoints(t *testing.T) {
 	if code := s.call(t, "PUT", "/api/v1/config/nope", `{"value":1}`, &e); code != http.StatusNotFound {
 		t.Errorf("unknown key: %d %+v", code, e)
 	}
-	// where the data is and what the providers reach: an admin's, for anyone else they don't exist
+	// every setting is an admin's to change, a writer is refused before the key is looked up
 	addUser(t, s, "writer", "a long password", ScopeRead, ScopeWrite)
 	h := s.handler(t)
 	auth := "Basic " + base64.StdEncoding.EncodeToString([]byte("writer:a long password"))
 	for _, key := range []string{"providers.allow_private_addresses", "providers.private_allowlist", "data.path", "providers.path", "cache.path", "serve.auth", "providers.headless.flaresolverr_url", "providers.mirrors"} {
-		if rec := do(h, "PUT", "/api/v1/config/"+key, `{"value":"true"}`, "127.0.0.1:1", auth, nil); rec.Code != http.StatusNotFound {
+		if rec := do(h, "PUT", "/api/v1/config/"+key, `{"value":"true"}`, "127.0.0.1:1", auth, nil); rec.Code != http.StatusForbidden {
 			t.Errorf("%s by a writer: %d %s", key, rec.Code, rec.Body)
 		}
 	}

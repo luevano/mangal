@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"strings"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -436,8 +435,7 @@ func configWho(ctx context.Context) string {
 }
 
 // SetConfig implements apiv1.StrictServerInterface: writes the key where it's stored.
-// Secrets aren't set over HTTP; the risky keys only by an admin (anyone else gets a 404,
-// as for an unknown key), the jobs' settings too.
+// Only an admin (x-mangal-admin); secrets aren't set over HTTP.
 func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObject) (apiv1.SetConfigResponseObject, error) {
 	key := request.Key
 	if !config.Exists(key) {
@@ -448,12 +446,6 @@ func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObjec
 	}
 	if config.IsSecret(key) {
 		return nil, newAPIError(http.StatusForbidden, CodeForbidden, "%s isn't set over HTTP (mangal config set, or the accounts)", key)
-	}
-	// the jobs' settings are an admin's, as through PUT /v1/jobs/kinds/{kind}/settings
-	if strings.HasPrefix(key, "jobs.") {
-		if err := needAdmin(ctx); err != nil {
-			return nil, err
-		}
 	}
 	body := deref(request.Body)
 	if body.Value == nil {
@@ -494,7 +486,7 @@ func (a *API) ListConfigHistory(ctx context.Context, request apiv1.ListConfigHis
 // UndoConfigChange implements apiv1.StrictServerInterface.
 func (a *API) UndoConfigChange(ctx context.Context, request apiv1.UndoConfigChangeRequestObject) (apiv1.UndoConfigChangeResponseObject, error) {
 	cfg := core.NewConfig()
-	// the change's key decides who may undo it, as for SetConfig
+	// a risky key's change doesn't exist for anyone else (only an admin gets here anyway)
 	changes, err := cfg.History(ctx, "", 0)
 	if err != nil {
 		return nil, err
@@ -502,11 +494,6 @@ func (a *API) UndoConfigChange(ctx context.Context, request apiv1.UndoConfigChan
 	i := slices.IndexFunc(changes, func(c core.ConfigChange) bool { return c.ID == request.Id })
 	if i < 0 || config.IsRisky(changes[i].Key) && !seesRisky(ctx) {
 		return nil, newAPIError(http.StatusNotFound, "not_found", "no settings change %d", request.Id)
-	}
-	if strings.HasPrefix(changes[i].Key, "jobs.") {
-		if err := needAdmin(ctx); err != nil {
-			return nil, err
-		}
 	}
 	e, err := cfg.Undo(core.WithWho(ctx, configWho(ctx)), request.Id)
 	if errors.Is(err, core.ErrInvalid) {
