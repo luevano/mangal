@@ -3,12 +3,15 @@ package log
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	sdjournal "github.com/coreos/go-systemd/v22/journal"
 )
 
 func reset(t *testing.T, opts Options) {
@@ -194,5 +197,37 @@ func TestSetOutput(t *testing.T) {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("no %q in the file:\n%s", want, data)
 		}
+	}
+}
+
+// TestJournalOutput: on stderr connected to the journal each line carries its priority
+// (every line of a message), not the text prefixes.
+func TestJournalOutput(t *testing.T) {
+	reset(t, Options{Level: LevelDebug})
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr := os.Stderr
+	os.Stderr = w
+	journalStream = func() bool { return true }
+	t.Cleanup(func() {
+		os.Stderr = stderr
+		journalStream = func() bool { ok, _ := sdjournal.StderrIsJournalStream(); return ok }
+		SetOutput(nil)
+	})
+	SetOutput(os.Stderr)
+	Debug("looking")
+	Info("started")
+	Warn("careful\nhere")
+	Error("broken")
+	SetOutput(nil)
+	w.Close()
+	got, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "<7>looking\n<6>started\n<4>careful\n<4>here\n<3>broken\n"; string(got) != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }

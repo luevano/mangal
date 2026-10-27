@@ -374,7 +374,9 @@ curl -N -H "Authorization: Bearer $TOKEN" 127.0.0.1:6977/api/events             
 ```
 
 As a systemd service: [`mangal.service`](mangal.service) (copy it to `/etc/systemd/system/`, set
-`User` and the mangal path, `systemctl enable --now mangal`; logs in `journalctl -u mangal`).
+`User` and the mangal path, `systemctl enable --now mangal`; logs in `journalctl -u mangal`, each
+line with its level: `journalctl -u mangal -p warning` shows only the warnings and errors; the
+same lines, with their time and level, are in the log files, `mangal logs`).
 
 One server per config: a second instance (e.g. other mangas into another directory) uses another
 config file with its own `data.path`, `download.path` (and `cache.path`) and `serve.port`, and

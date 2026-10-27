@@ -15,6 +15,7 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.9
+	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/disgoorg/disgo v0.19.6
 	github.com/dustin/go-humanize v1.1.0
 	github.com/getkin/kin-openapi v0.151.0
