@@ -449,7 +449,8 @@ func TestWatchUpdate(t *testing.T) {
 // reads and reader positions before are the server's own.
 func TestMigratePermsAndReads(t *testing.T) {
 	path := filepath.Join(t.TempDir(), FilenameData)
-	n := len(dataMigrations) - 2 // before migratePerms and historyUsers
+	// before migratePerms (and historyUsers after it)
+	n := slices.IndexFunc(dataMigrations, func(m Migration) bool { return fmt.Sprintf("%p", m) == fmt.Sprintf("%p", Migration(migratePerms)) })
 	old, err := Open(path, dataMigrations[:n])
 	if err != nil {
 		t.Fatal(err)

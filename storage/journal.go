@@ -53,6 +53,8 @@ const journalInterfered = `ALTER TABLE journal ADD COLUMN interfered TEXT NOT NU
 var keptTables = []string{
 	TableTitleBindings, TableAuthTokens, TableAuthHistory, TableSearchHistory,
 	"locks", "journal", "journal_steps", "health_ignores", "serve_users", "serve_sessions",
+	// counters that only go up: a restore moves them on (the triggers), never back
+	"revisions",
 }
 
 // unfingerprinted are the tables (all columns: nil) and columns that are restored but
@@ -63,6 +65,7 @@ var keptTables = []string{
 var unfingerprinted = map[string][]string{
 	"library_mangas": {"status", "status_updated", "hold", "new_provider"},
 	"link_picks":     nil,
+	"revisions":      nil,
 }
 
 // StepKind is what a journal step did.
