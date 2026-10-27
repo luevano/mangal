@@ -347,7 +347,11 @@ paths:
         events come first, after `since` or Last-Event-ID. A subscriber too far behind is
         disconnected (it reconnects from its last seq). GET /api/events stays the watch
         events only, as watch.LiveEvent (watch.Remote). The health topic needs manage, the
-        log admin: left out for who hasn't.
+        log admin: left out for who hasn't. library, history, settings and watches send a
+        "changed" event when another process (the CLI, the TUI, a watch check) or this server
+        changed them: reload what shows them. A stream ends when its login does (logout, a new
+        password, the user or token removed) or its permissions change, and every 15 minutes
+        (connect again with Last-Event-ID: nothing is missed); 20 open per user or token (429).
       operationId: getEvents
       tags: [v1, meta]
       x-mangal-scope: read
@@ -357,7 +361,7 @@ paths:
           description: comma separated, every topic when empty
           schema:
             type: string
-            example: watch,job,op,health,log
+            example: watch,job,op,health,log,library,history,settings,watches
         - name: since
           in: query
           description: the seq of the last event seen

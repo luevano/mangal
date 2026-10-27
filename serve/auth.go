@@ -141,21 +141,17 @@ type Auth struct {
 	// HTTPS ones (TLS, or X-Forwarded-Proto https).
 	SecureCookie bool
 
-	mu       sync.Mutex
-	tokens   []cache.ServeTokenEntry
-	tokensAt time.Time
-	users    map[string]cachedUser
-	basic    map[string]cachedBasic
-	limits   *limiter
+	// the users and tokens as read, kept until they change (Forget: the database watcher
+	// or a change here)
+	mu     sync.Mutex
+	tokens []cache.ServeTokenEntry
+	read   bool
+	users  map[string]storage.User
+	basic  map[string]cachedBasic
+	limits *limiter
 
 	extractOnce sync.Once
 	extract     echo.IPExtractor
-}
-
-// cachedUser is a user as read at, re-read after usersEvery (another process changed it).
-type cachedUser struct {
-	user storage.User
-	at   time.Time
 }
 
 // cachedBasic is a basic auth password that matched the user's generation, so a reader
@@ -165,14 +161,8 @@ type cachedBasic struct {
 	until      time.Time
 }
 
-const (
-	// tokensEvery and usersEvery are how long the tokens and users are kept before they're
-	// read again.
-	tokensEvery = 5 * time.Second
-	usersEvery  = 5 * time.Second
-	// basicFor is how long a basic auth password is believed without hashing it again.
-	basicFor = 10 * time.Minute
-)
+// basicFor is how long a basic auth password is believed without hashing it again.
+const basicFor = 10 * time.Minute
 
 func (a *Auth) apiTokens() ([]cache.ServeTokenEntry, error) {
 	a.mu.Lock()
@@ -180,12 +170,12 @@ func (a *Auth) apiTokens() ([]cache.ServeTokenEntry, error) {
 	if a.Tokens == nil {
 		return nil, nil
 	}
-	if a.tokensAt.IsZero() || time.Since(a.tokensAt) > tokensEvery {
+	if !a.read {
 		tokens, err := a.Tokens()
 		if err != nil {
 			return nil, err
 		}
-		a.tokens, a.tokensAt = tokens, time.Now()
+		a.tokens, a.read = tokens, true
 	}
 	return a.tokens, nil
 }
@@ -199,8 +189,8 @@ func (a *Auth) user(name string) (storage.User, error) {
 	a.mu.Lock()
 	c, ok := a.users[key]
 	a.mu.Unlock()
-	if ok && time.Since(c.at) < usersEvery {
-		return c.user, nil
+	if ok {
+		return c, nil
 	}
 	u, err := a.Users.Get(name)
 	if err != nil {
@@ -209,25 +199,19 @@ func (a *Auth) user(name string) (storage.User, error) {
 	}
 	a.mu.Lock()
 	if a.users == nil {
-		a.users = map[string]cachedUser{}
+		a.users = map[string]storage.User{}
 	}
-	a.users[key] = cachedUser{user: u, at: time.Now()}
+	a.users[key] = u
 	a.mu.Unlock()
 	return u, nil
 }
 
-// forget drops the cached user (changed here: it applies at once).
-func (a *Auth) forget(name string) {
+// Forget drops the users and tokens read: they changed (the database watcher, or a
+// change through this server).
+func (a *Auth) Forget() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	delete(a.users, strings.ToLower(name))
-}
-
-// forgetTokens drops the cached API tokens.
-func (a *Auth) forgetTokens() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.tokensAt = time.Time{}
+	a.users, a.tokens, a.read = nil, nil, false
 }
 
 // errUnauthorized is a request that isn't logged in (or a wrong password or token).

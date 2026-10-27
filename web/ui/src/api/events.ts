@@ -1,6 +1,6 @@
 import type { Event } from './schemas'
 
-export type Topic = 'watch' | 'job' | 'op' | 'health' | 'log'
+export type Topic = 'watch' | 'job' | 'op' | 'health' | 'log' | 'library' | 'history' | 'settings' | 'watches'
 export type Listener = (e: Event) => void
 export type StreamState = 'idle' | 'connecting' | 'open' | 'retrying' | 'refused'
 

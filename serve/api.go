@@ -3,11 +3,9 @@ package serve
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/luevano/mangal/v5/log"
-	"io"
 	"maps"
 	"net/http"
 	"slices"
@@ -22,6 +20,7 @@ import (
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/luevano/mangal/v5/web"
 	"github.com/luevano/mangal/v5/web/apiv1"
@@ -106,13 +105,16 @@ type API struct {
 
 	healthJobs healthJobs
 	summary    healthSummary
-	trackers   trackerLogins
-	kindsOnce  sync.Once
-	jobKinds   core.JobKinds
-	wakeKinds  waker
-	online     onlinePages
-	coreOnce   sync.Mutex
-	core       *core.Core
+	streams    streams
+	// dbWatch tells what changed in the data database (watchDB), nil without
+	dbWatch   *core.DBWatcher
+	trackers  trackerLogins
+	kindsOnce sync.Once
+	jobKinds  core.JobKinds
+	wakeKinds waker
+	online    onlinePages
+	coreOnce  sync.Mutex
+	core      *core.Core
 
 	// ctx is the server's, the checks asked through the API run until it's cancelled
 	ctx    context.Context
@@ -597,47 +599,17 @@ func (a *API) legacyEvents(c *echo.Context) error {
 		// the server restarted since: everything is new
 		since = 0
 	}
-	events, err := m.Subscribe(r.Context())
+	ctx, done, err := a.streams.add(r.Context(), r)
 	if err != nil {
 		return err
 	}
-	w := c.Response()
-	rc := http.NewResponseController(w)
-	startStream(w)
-	if _, err := io.WriteString(w, ": mangal serve events\n\n"); err != nil {
-		return nil
+	defer done()
+	events, err := m.Subscribe(ctx)
+	if err != nil {
+		return err
 	}
-	_ = rc.Flush()
-	ping := time.NewTicker(eventsPing)
-	defer ping.Stop()
-	for {
-		select {
-		case <-r.Context().Done():
-			return nil
-		case <-ping.C:
-			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
-				return nil
-			}
-		case e, ok := <-events:
-			if !ok {
-				// too far behind: the client reconnects from its last event
-				return nil
-			}
-			if e.Seq <= since {
-				continue
-			}
-			b, err := json.Marshal(e)
-			if err != nil {
-				return nil
-			}
-			if _, err := fmt.Fprintf(w, "id: %d\ndata: %s\n\n", e.Seq, b); err != nil {
-				return nil
-			}
-		}
-		if err := rc.Flush(); err != nil {
-			return nil
-		}
-	}
+	writeStream(ctx, r, c.Response(), events, func(e watch.LiveEvent) (uint64, bool) { return e.Seq, e.Seq > since })
+	return nil
 }
 
 // startStream starts an event stream answer.
@@ -662,4 +634,16 @@ func parseDuration(s string) (time.Duration, error) {
 		return 0, fmt.Errorf("%q isn't a duration (e.g. 7d, 12h)", s)
 	}
 	return d, nil
+}
+
+// watchDB runs the data database's watcher until ctx ends: the logins and the "changed"
+// events follow every process's changes (dbChanged).
+func (a *API) watchDB(ctx context.Context) {
+	st, err := cache.Storage()
+	if err != nil {
+		log.Warn("watch the database: %s", err)
+		return
+	}
+	a.dbWatch = core.NewDBWatcher(st.Data)
+	go a.dbWatch.Run(ctx, a.dbChanged)
 }

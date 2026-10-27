@@ -108,7 +108,7 @@ func (a *API) UpdateUser(ctx context.Context, request apiv1.UpdateUserRequestObj
 			return nil, err
 		}
 		name = *b.Name
-		a.Auth.forget(name)
+		a.authChanged()
 	}
 	if deref(b.Local) {
 		if err := client.UseLocalUser(ctx, name); err != nil {
@@ -116,7 +116,7 @@ func (a *API) UpdateUser(ctx context.Context, request apiv1.UpdateUserRequestObj
 		}
 		log.Info("mangal on this machine is %q now (asked through the API)", name)
 	}
-	a.Auth.forget(request.Name)
+	a.authChanged()
 	return apiv1.UpdateUser204Response{}, nil
 }
 
@@ -128,7 +128,7 @@ func (a *API) RemoveUser(ctx context.Context, request apiv1.RemoveUserRequestObj
 	if err := a.users().Remove(ctx, request.Name); err != nil {
 		return nil, err
 	}
-	a.Auth.forget(request.Name)
+	a.authChanged()
 	return apiv1.RemoveUser204Response{}, nil
 }
 
@@ -140,7 +140,7 @@ func (a *API) EndUserLogins(ctx context.Context, request apiv1.EndUserLoginsRequ
 	if err := a.users().EndLogins(ctx, request.Name); err != nil {
 		return nil, err
 	}
-	a.Auth.forget(request.Name)
+	a.authChanged()
 	return apiv1.EndUserLogins204Response{}, nil
 }
 
@@ -203,7 +203,7 @@ func (a *API) AddToken(ctx context.Context, request apiv1.AddTokenRequestObject)
 	if err != nil {
 		return nil, err
 	}
-	a.Auth.forgetTokens()
+	a.authChanged()
 	return apiv1.AddToken201JSONResponse{Token: tokenOut(t), Secret: secret}, nil
 }
 
@@ -221,7 +221,7 @@ func (a *API) RemoveToken(ctx context.Context, request apiv1.RemoveTokenRequestO
 	if err := a.users().RemoveToken(ctx, request.Name); err != nil {
 		return nil, err
 	}
-	a.Auth.forgetTokens()
+	a.authChanged()
 	return apiv1.RemoveToken204Response{}, nil
 }
 

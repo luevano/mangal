@@ -290,6 +290,8 @@ func (a *API) Logout(ctx context.Context, _ apiv1.LogoutRequestObject) (apiv1.Lo
 		if err := a.Auth.Sessions.Destroy(ctx); err != nil {
 			return nil, err
 		}
+		// this session's event streams end
+		a.streams.recheck(a.Auth)
 	}
 	return logoutResponse{cookie: a.Auth.sessionCookieOf(r, "", time.Time{}, false)}, nil
 }

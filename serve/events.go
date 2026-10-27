@@ -2,9 +2,7 @@ package serve
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -15,6 +13,7 @@ import (
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
@@ -25,10 +24,38 @@ const (
 	TopicOp     = "op"
 	TopicHealth = "health"
 	TopicLog    = "log"
+	// a "changed" event when the data database's library, read history, settings or
+	// watches changed, in any process (the database watcher): what shows them reloads
+	TopicLibrary  = "library"
+	TopicHistory  = "history"
+	TopicSettings = "settings"
+	TopicWatches  = "watches"
 )
 
 // Topics are every topic.
-var Topics = []string{TopicWatch, TopicJob, TopicOp, TopicHealth, TopicLog}
+var Topics = []string{TopicWatch, TopicJob, TopicOp, TopicHealth, TopicLog, TopicLibrary, TopicHistory, TopicSettings, TopicWatches}
+
+// dbTopics are the events of the database's revisions (storage.Rev*).
+var dbTopics = map[string]string{
+	storage.RevLibrary: TopicLibrary, storage.RevJournal: TopicLibrary, storage.RevHistory: TopicHistory,
+	storage.RevSettings: TopicSettings, storage.RevWatches: TopicWatches,
+}
+
+// dbChanged applies what changed in the data database (core.DBWatcher): the logins, and
+// a "changed" event for the rest.
+func (a *API) dbChanged(topics []string) {
+	published := map[string]bool{}
+	for _, t := range topics {
+		if t == storage.RevAuth {
+			a.authChanged()
+			continue
+		}
+		if topic, ok := dbTopics[t]; ok && a.Events != nil && !published[topic] {
+			published[topic] = true
+			a.Events.Publish(topic, "changed", "", nil)
+		}
+	}
+}
 
 // Event is an event of /api/v1/events.
 type Event struct {
@@ -219,6 +246,8 @@ func toAPILog(e log.Entry) apiv1.LogEntry {
 // eventStream is the answer of GET /api/v1/events.
 type eventStream struct {
 	ctx    context.Context
+	r      *http.Request
+	done   func()
 	events <-chan Event
 }
 
@@ -256,42 +285,18 @@ func (a *API) GetEvents(ctx context.Context, request apiv1.GetEventsRequestObjec
 	if a.Events == nil {
 		return nil, newAPIError(http.StatusServiceUnavailable, CodeUnavailable, "no events here")
 	}
-	return eventStream{ctx: ctx, events: a.Events.Subscribe(ctx, topics, since)}, nil
+	r, _ := ctx.Value(requestKey{}).(*http.Request)
+	sctx, done, err := a.streams.add(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	return eventStream{ctx: sctx, r: r, done: done, events: a.Events.Subscribe(sctx, topics, since)}, nil
 }
 
 func (s eventStream) VisitGetEventsResponse(w http.ResponseWriter) error {
-	rc := http.NewResponseController(w)
-	startStream(w)
-	if _, err := io.WriteString(w, ": mangal serve events\n\n"); err != nil {
-		return nil
-	}
-	_ = rc.Flush()
-	ping := time.NewTicker(eventsPing)
-	defer ping.Stop()
-	for {
-		select {
-		case <-s.ctx.Done():
-			return nil
-		case <-ping.C:
-			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
-				return nil
-			}
-		case e, ok := <-s.events:
-			if !ok {
-				return nil
-			}
-			b, err := json.Marshal(e)
-			if err != nil {
-				return nil
-			}
-			if _, err := fmt.Fprintf(w, "id: %d\ndata: %s\n\n", e.Seq, b); err != nil {
-				return nil
-			}
-		}
-		if err := rc.Flush(); err != nil {
-			return nil
-		}
-	}
+	defer s.done()
+	writeStream(s.ctx, s.r, w, s.events, func(e Event) (uint64, bool) { return e.Seq, true })
+	return nil
 }
 
 type lastEventIDKey struct{}

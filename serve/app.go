@@ -97,7 +97,12 @@ func (a *API) NewApp(opts AppOptions) (*echo.Echo, error) {
 	apiRoute := func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			c.Set("apiRoute", true)
-			return next(c)
+			err := next(c)
+			// this server's own changes: the watcher doesn't see them by itself
+			if m := c.Request().Method; m != http.MethodGet && m != http.MethodHead {
+				a.dbWatch.Poke()
+			}
+			return err
 		}
 	}
 	apiv1.RegisterHandlersWithOptions(apiGroup{e, apiRoute}, strict, apiv1.RegisterHandlersOptions{BaseURL: "/api"})
@@ -458,6 +463,9 @@ func (a *API) logRequests() echo.MiddlewareFunc {
 			path := r.URL.EscapedPath()
 			level := log.LevelInfo
 			switch {
+			case web.Refused(r) == errStreamRenewed.Error():
+				// an event stream ended to be connected again, every 15 minutes per tab
+				level = log.LevelDebug
 			case errors.Is(v.Error, context.Canceled),
 				// the web UI asking whether it's logged in
 				v.Status == http.StatusUnauthorized && path == "/api/v1/auth/me":

@@ -128,6 +128,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		Events:  events,
 		ctx:     ctx,
 	}
+	api.watchDB(ctx)
 	app, err := api.NewApp(AppOptions{Web: args.Web, Guard: auth.guard(listener.Addr())})
 	if err != nil {
 		return err

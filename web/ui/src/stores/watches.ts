@@ -47,7 +47,11 @@ export const useWatches = defineStore('watches', () => {
 
   let off: (() => void) | undefined
   function listen() {
-    off ??= useEvents().on('watch', apply)
+    if (off) return
+    const events = useEvents()
+    // another process (the CLI, the TUI) changed the watches: reload them
+    const offs = [events.on('watch', apply), events.on('watches', reloadSoon)]
+    off = () => offs.forEach((o) => o())
   }
 
   return { list, error, loaded, live, runsVersion, load, apply, listen, reloadSoon }

@@ -300,7 +300,11 @@ export interface paths {
          *     events come first, after `since` or Last-Event-ID. A subscriber too far behind is
          *     disconnected (it reconnects from its last seq). GET /api/events stays the watch
          *     events only, as watch.LiveEvent (watch.Remote). The health topic needs manage, the
-         *     log admin: left out for who hasn't.
+         *     log admin: left out for who hasn't. library, history, settings and watches send a
+         *     "changed" event when another process (the CLI, the TUI, a watch check) or this server
+         *     changed them: reload what shows them. A stream ends when its login does (logout, a new
+         *     password, the user or token removed) or its permissions change, and every 15 minutes
+         *     (connect again with Last-Event-ID: nothing is missed); 20 open per user or token (429).
          */
         get: operations["getEvents"];
         put?: never;

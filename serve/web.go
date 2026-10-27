@@ -73,6 +73,7 @@ func RunWeb(ctx context.Context, args Args, openIt bool, out io.Writer) error {
 		Events:  events,
 		ctx:     ctx,
 	}
+	api.watchDB(ctx)
 	app, err := api.NewApp(AppOptions{Web: true, Guard: auth.guard(listener.Addr())})
 	if err != nil {
 		return err
