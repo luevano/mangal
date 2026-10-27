@@ -364,6 +364,11 @@ func (s *listState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return s.tick(next)
 		}
 		return tea.Batch(s.reload(ctx, ""), s.tick(next))
+	case base.DBChangedMsg:
+		if msg.Has(storage.RevWatches) {
+			return s.reload(ctx, "")
+		}
+		return nil
 	case base.RestoredMsg:
 		s.gen++
 		s.spinning = false

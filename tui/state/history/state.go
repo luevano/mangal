@@ -119,6 +119,11 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return s.List.SetItemsKeep(msg)
 	case base.RestoredMsg:
 		return s.reload(ctx)
+	case base.DBChangedMsg:
+		if msg.Has(storage.RevHistory) {
+			return s.reload(ctx)
+		}
+		return nil
 	case plannedMsg:
 		return s.ask(msg.plan)
 	case clearMsg:

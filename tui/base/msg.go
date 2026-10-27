@@ -2,6 +2,7 @@ package base
 
 import (
 	"image/color"
+	"slices"
 
 	"time"
 )
@@ -32,6 +33,17 @@ type NotificationWithDurationMsg struct {
 
 type notificationTimeoutMsg struct {
 	id int
+}
+
+// DBChangedMsg says what another process (the CLI, a serve, a watch check) changed in the
+// data database: its topics (storage.Rev*). The shown State reloads what it shows of them.
+type DBChangedMsg struct {
+	Topics []string
+}
+
+// Has is true when one of the topics changed.
+func (m DBChangedMsg) Has(topics ...string) bool {
+	return slices.ContainsFunc(m.Topics, func(t string) bool { return slices.Contains(topics, t) })
 }
 
 // RestoredMsg is sent when the State is shown again: going back to it, or a push of the

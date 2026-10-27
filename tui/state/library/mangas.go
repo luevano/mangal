@@ -260,6 +260,11 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return tea.Batch(cmd, base.Notify("Nothing to merge any more"))
 		}
 		return cmd
+	case base.DBChangedMsg:
+		if msg.Has(storage.RevLibrary, storage.RevJournal) {
+			return s.reload(ctx)
+		}
+		return nil
 	case base.RestoredMsg:
 		// a merge asked for (health): its keep in the duplicates
 		if r, ok := msg.Request.(*mangasState); ok && r.pendingMerge != 0 {

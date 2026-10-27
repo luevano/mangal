@@ -6,6 +6,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 // shutdownTimeout is how long quitting waits for the background work to stop.
@@ -25,7 +27,14 @@ func RunStandalone(ctx context.Context, state State) error {
 }
 
 func run(ctx context.Context, m *model) error {
-	_, err := tea.NewProgram(m, tea.WithContext(ctx)).Run()
+	p := tea.NewProgram(m, tea.WithContext(ctx))
+	// other processes' changes reach the shown State (DBChangedMsg)
+	if st, err := cache.Storage(); err == nil {
+		wctx, stop := context.WithCancel(ctx)
+		defer stop()
+		go core.NewDBWatcher(st.Data).Run(wctx, func(topics []string) { p.Send(DBChangedMsg{Topics: topics}) })
+	}
+	_, err := p.Run()
 	m.shutdown(shutdownTimeout)
 	// killed by ctrl+c from outside (the signal cancels ctx): nothing to report
 	if errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil {
