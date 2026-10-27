@@ -200,24 +200,30 @@ func setup(cmd *cobra.Command, _ []string) error {
 	if !cmd.HasParent() {
 		config.Who = "tui"
 	}
+	// told once the log is open (it's configured by the same config)
+	var warnings []string
 	for _, key := range config.Unsupported() {
 		hint := ""
 		if s := config.Suggest(key); s != "" {
 			hint = fmt.Sprintf(" (did you mean %q?)", s)
 		}
-		cmd.PrintErrf("warning: config key %q is not supported%s, mangal config clean drops it\n", key, hint)
+		warnings = append(warnings, fmt.Sprintf("config key %q is not supported%s, mangal config clean drops it", key, hint))
 	}
 	for _, key := range config.Retired() {
-		cmd.PrintErrf("warning: config key %q is no longer used (%s), mangal config clean drops it\n", key, config.RetiredReason(key))
+		warnings = append(warnings, fmt.Sprintf("config key %q is no longer used (%s), mangal config clean drops it", key, config.RetiredReason(key)))
 	}
 	for _, env := range config.UnknownEnv() {
 		hint := ""
 		if env.Suggestion != "" {
 			hint = fmt.Sprintf(" (did you mean %s?)", env.Suggestion)
 		}
-		cmd.PrintErrf("warning: environment variable %s sets no config key%s\n", env.Key, hint)
+		warnings = append(warnings, fmt.Sprintf("environment variable %s sets no config key%s", env.Key, hint))
 	}
 	if err := config.Validate(); err != nil && level != startupConfig {
+		// no log without a valid config: they may say why
+		for _, w := range warnings {
+			cmd.PrintErrf("warning: %s\n", w)
+		}
 		return err
 	}
 
@@ -239,6 +245,17 @@ func setup(cmd *cobra.Command, _ []string) error {
 		Compress:     config.Log.Compress.Get(),
 	})
 	icon.SetType(config.Icons.Get())
+	// serve's journal is its stderr: the same lines as the log file from here on, the
+	// database upgrades and migrations below included (serve.Run keeps it)
+	if cmd == serveCmd {
+		log.SetOutput(cmd.ErrOrStderr())
+	}
+	for _, w := range warnings {
+		log.Warn("%s", w)
+		if cmd != serveCmd {
+			cmd.PrintErrf("warning: %s\n", w)
+		}
+	}
 
 	// the database keys are read from the data database: the commands that work without
 	// the storage only warn when it can't be opened
@@ -254,12 +271,13 @@ func setup(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	// the TUI shows them itself
-	if !cmd.HasParent() {
-		return nil
-	}
 	for _, notice := range append(cache.Notices(), anilist.LoginNotice()) {
-		if notice != "" {
+		if notice == "" {
+			continue
+		}
+		// in the log file too; serve's log is its stderr already, the TUI shows them itself
+		log.Info("notice: %s", notice)
+		if cmd.HasParent() && cmd != serveCmd {
 			cmd.PrintErrf("notice: %s\n", notice)
 		}
 	}

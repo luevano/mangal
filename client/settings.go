@@ -65,7 +65,6 @@ func splitSettings(ctx context.Context, ops Ops, s storage.Settings) (string, er
 	if err := config.UseStore(s); err != nil {
 		return "", err
 	}
-	log.Info("moved the settings %s into each provider's settings", strings.Join(drop, ", "))
 	return fmt.Sprintf("Moved %s into each provider's settings (providers.<id>.job_check, job_sources, job_urls, job_health, mirror); the old keys still work. \"mangal library undo\" reverts it.",
 		strings.Join(drop, ", ")), nil
 }
@@ -107,7 +106,6 @@ func importSettings(ctx context.Context, ops Ops, s storage.Settings) (string, e
 		return "", nil
 	}
 	keys := slices.Sorted(maps.Keys(values))
-	log.Info("copied the settings %s from mangal.toml to the database", strings.Join(keys, ", "))
 	return fmt.Sprintf("Copied %s from mangal.toml to the database, they're read from there now: %s. \"mangal library undo\" reverts it.",
 		stringutil.Quantify(len(keys), "setting", "settings"), strings.Join(keys, ", ")), nil
 }
