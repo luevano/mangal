@@ -1133,7 +1133,7 @@ type ReadRequest struct {
 	MangaTitle   *string `json:"manga_title,omitempty"`
 	Provider     *string `json:"provider,omitempty"`
 
-	// Sync set the progress on the metadata sources (default true)
+	// Sync set the progress on the metadata sources (default true; only for an admin, the accounts are the server's)
 	Sync   *bool    `json:"sync,omitempty"`
 	Volume *float32 `json:"volume,omitempty"`
 }
@@ -1311,7 +1311,10 @@ type User struct {
 	Created   time.Time  `json:"created"`
 	LastLogin *time.Time `json:"last_login,omitempty"`
 	Name      string     `json:"name"`
-	Perms     []string   `json:"perms"`
+
+	// Password false for a user only mangal on the server's machine is (they can't log in)
+	Password bool     `json:"password"`
+	Perms    []string `json:"perms"`
 
 	// Role the role the permissions match ("reader", "downloader + tokens", ...), else custom
 	Role string `json:"role"`
@@ -1319,6 +1322,8 @@ type User struct {
 
 // UserChange defines model for UserChange.
 type UserChange struct {
+	// Name a new name (their history, tokens and auth.user follow)
+	Name     *string   `json:"name,omitempty"`
 	Password *string   `json:"password,omitempty"`
 	Perms    *[]string `json:"perms,omitempty"`
 

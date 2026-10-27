@@ -34,7 +34,7 @@ func TestLibraryRead(t *testing.T) {
 	if err != nil || len(list.Mangas) != 2 || !list.IsMissing(b.ID) || list.IsMissing(a.ID) {
 		t.Fatalf("%+v %v", list, err)
 	}
-	if err := c.env.Storage.History().Record(storage.Read{Provider: "p", MangaID: "a", MangaTitle: "A", Chapter: 2}); err != nil {
+	if err := c.env.Storage.History().Of(storage.DefaultUser).Record(storage.Read{Provider: "p", MangaID: "a", MangaTitle: "A", Chapter: 2}); err != nil {
 		t.Fatal(err)
 	}
 	files, err := c.Library.ChapterFiles(ctx, ChapterFilesReq{Provider: libmangal.ProviderInfo{ID: "p"}, MangaID: "a"})

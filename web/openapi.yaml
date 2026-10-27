@@ -171,7 +171,7 @@ paths:
         schema:
           type: string
     patch:
-      summary: Change a user's password or permissions (their logins end)
+      summary: Rename a user, change their password or permissions (their logins end)
       description: |
         The last admin stays admin (409).
       operationId: updateUser
@@ -2393,7 +2393,7 @@ components:
           type: boolean
     User:
       type: object
-      required: [name, perms, role, admin, created]
+      required: [name, perms, role, password, admin, created]
       properties:
         name:
           type: string
@@ -2404,6 +2404,9 @@ components:
         role:
           type: string
           description: the role the permissions match ("reader", "downloader + tokens", ...), else custom
+        password:
+          type: boolean
+          description: false for a user only mangal on the server's machine is (they can't log in)
         admin:
           type: boolean
           description: has the admin permission (manages the users, tokens, settings)
@@ -2431,6 +2434,9 @@ components:
     UserChange:
       type: object
       properties:
+        name:
+          type: string
+          description: a new name (their history, tokens and auth.user follow)
         password:
           type: string
         role:

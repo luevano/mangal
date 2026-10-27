@@ -312,3 +312,89 @@ func MigratePerms(old []string) []string {
 	}
 	return slices.DeleteFunc(all, func(s string) bool { return !slices.Contains(perms, s) })
 }
+
+// DefaultUser is the user made when there's none: every user's data is someone's.
+const DefaultUser = "mangal"
+
+// EnsureOne adds DefaultUser, an admin without a password (only mangal on this machine is
+// them), when there are no users; made says it did.
+func (u Users) EnsureOne() (made bool, err error) {
+	err = u.DB.InTx(func(tx *sql.Tx) error {
+		var n int
+		if err := tx.QueryRow(`SELECT count(*) FROM serve_users`).Scan(&n); err != nil || n > 0 {
+			return err
+		}
+		all := MigratePerms([]string{"read", "watch", "progress", "write"})
+		_, err := tx.Exec(`INSERT INTO serve_users (name, hash, perms, created) VALUES (?, '', ?, ?)`,
+			DefaultUser, strings.Join(all, ","), time.Now().Unix())
+		made = err == nil
+		return err
+	})
+	if err != nil {
+		return false, fmt.Errorf("add the user %q: %w", DefaultUser, err)
+	}
+	return made, nil
+}
+
+// Rename renames the user with their reads and reader positions; their sessions end.
+func (u Users) Rename(old, name string) error {
+	return u.DB.InTx(func(tx *sql.Tx) error {
+		var exact string
+		if err := tx.QueryRow(`SELECT name FROM serve_users WHERE name = ?`, old).Scan(&exact); errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("user %q: %w", old, ErrUserNotFound)
+		} else if err != nil {
+			return err
+		}
+		// another user with the name (names are case-insensitive: "David" to "david" is fine)
+		var taken int
+		if err := tx.QueryRow(`SELECT count(*) FROM serve_users WHERE name = ? AND name != ? COLLATE BINARY`, name, exact).Scan(&taken); err != nil {
+			return err
+		}
+		if taken > 0 {
+			return fmt.Errorf("rename user %q to %q: %w", old, name, ErrUserExists)
+		}
+		if err := updateUser(tx, exact, `name = ?`, name); err != nil {
+			return err
+		}
+		for _, table := range []string{"reads", "reader_positions"} {
+			if _, err := tx.Exec(`UPDATE `+table+` SET user = ? WHERE user = ?`, name, exact); err != nil {
+				return fmt.Errorf("rename user %q: %w", old, err)
+			}
+		}
+		return nil
+	})
+}
+
+// FirstAdmin is the admin added first, empty when there's none.
+func (u Users) FirstAdmin() (string, error) {
+	var name string
+	err := u.DB.QueryRow(`SELECT name FROM serve_users WHERE ',' || perms || ',' LIKE '%,admin,%' ORDER BY created, rowid LIMIT 1`).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return name, err
+}
+
+// ClaimHistory gives the reads and reader positions of nobody (before 5.28 they were the
+// server's) to the user, and is how many. A chapter the user has already keeps theirs.
+func (u Users) ClaimHistory(user string) (int64, error) {
+	var n int64
+	err := u.DB.InTx(func(tx *sql.Tx) error {
+		for _, table := range []string{"reads", "reader_positions"} {
+			res, err := tx.Exec(`UPDATE OR IGNORE `+table+` SET user = ? WHERE user = ''`, user)
+			if err != nil {
+				return err
+			}
+			m, _ := res.RowsAffected()
+			n += m
+			if _, err := tx.Exec(`DELETE FROM ` + table + ` WHERE user = ''`); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("give the history to %q: %w", user, err)
+	}
+	return n, nil
+}

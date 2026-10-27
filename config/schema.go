@@ -8,6 +8,7 @@ import (
 
 type configAuth struct {
 	Keyring *entry[bool, bool]
+	User    *entry[string, string]
 }
 
 type configCLI struct {

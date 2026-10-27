@@ -1,6 +1,9 @@
 package cache
 
-import "github.com/luevano/mangal/v5/storage"
+import (
+	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/storage"
+)
 
 const CacheDBNameMangal = storage.OwnerMangal
 
@@ -31,24 +34,102 @@ func set(dbName, bucketName, key string, v any) error {
 	return store.Set(key, v)
 }
 
+// searchKeys are the search history's keys, each user's own (userKey).
+var searchKeys = []string{MangasSearchHistory, AnilistSearchHistory, FillProviders}
+
+// userKey is the local user's key of a search history ("david/mangas").
+func userKey(key string) (string, error) {
+	user, err := LocalUser()
+	return user + "/" + key, err
+}
+
+func getMine(key string, v any) (bool, error) {
+	k, err := userKey(key)
+	if err != nil {
+		return false, err
+	}
+	return get(CacheDBNameMangal, BucketNameSearchHistory, k, v)
+}
+
+func setMine(key string, v any) error {
+	k, err := userKey(key)
+	if err != nil {
+		return err
+	}
+	return set(CacheDBNameMangal, BucketNameSearchHistory, k, v)
+}
+
+// LocalUser is the user mangal on this machine is without a login (auth.user, else the
+// first admin, else storage.DefaultUser).
+func LocalUser() (string, error) {
+	if user := config.Auth.User.Get(); user != "" {
+		return user, nil
+	}
+	st, err := Storage()
+	if err != nil {
+		return "", err
+	}
+	admin, err := st.Users().FirstAdmin()
+	if err != nil || admin == "" {
+		return storage.DefaultUser, err
+	}
+	return admin, nil
+}
+
+// ClaimSearchHistory moves the search history of before 5.28 (nobody's) to the user's, and
+// the user's to another name (a rename) with from set.
+func ClaimSearchHistory(from, user string) error {
+	store, err := CacheStore(CacheDBNameMangal, BucketNameSearchHistory)
+	if err != nil {
+		return err
+	}
+	for _, key := range searchKeys {
+		old := key
+		if from != "" {
+			old = from + "/" + key
+		}
+		var v any
+		switch key {
+		case FillProviders:
+			v = new([]string)
+		default:
+			v = new(Records)
+		}
+		found, err := store.Get(old, v)
+		if err != nil || !found {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		if err := store.Set(user+"/"+key, v); err != nil {
+			return err
+		}
+		if err := store.Delete(old); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // SetMangasSearchHistory will store the manga search history records to the cache.
 func SetMangasSearchHistory(records Records) error {
-	return set(CacheDBNameMangal, BucketNameSearchHistory, MangasSearchHistory, records)
+	return setMine(MangasSearchHistory, records)
 }
 
 // GetMangasSearchHistory will populate the given records from the manga search history cache.
 func GetMangasSearchHistory(records *Records) (bool, error) {
-	return get(CacheDBNameMangal, BucketNameSearchHistory, MangasSearchHistory, records)
+	return getMine(MangasSearchHistory, records)
 }
 
 // SetAnilistSearchHistory will store the manga search history records to the cache.
 func SetAnilistSearchHistory(records Records) error {
-	return set(CacheDBNameMangal, BucketNameSearchHistory, AnilistSearchHistory, records)
+	return setMine(AnilistSearchHistory, records)
 }
 
 // GetAnilistSearchHistory will populate the given records from the manga search history cache.
 func GetAnilistSearchHistory(records *Records) (bool, error) {
-	return get(CacheDBNameMangal, BucketNameSearchHistory, AnilistSearchHistory, records)
+	return getMine(AnilistSearchHistory, records)
 }
 
 // FillProviders is the key of the providers a fill searched last (the TUI's choice).
@@ -56,10 +137,10 @@ const FillProviders = "fill-providers"
 
 // SetFillProviders stores the provider ids a fill searched.
 func SetFillProviders(ids []string) error {
-	return set(CacheDBNameMangal, BucketNameSearchHistory, FillProviders, ids)
+	return setMine(FillProviders, ids)
 }
 
 // GetFillProviders reads the provider ids a fill searched last, false when there are none.
 func GetFillProviders(ids *[]string) (bool, error) {
-	return get(CacheDBNameMangal, BucketNameSearchHistory, FillProviders, ids)
+	return getMine(FillProviders, ids)
 }

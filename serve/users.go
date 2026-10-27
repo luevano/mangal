@@ -33,7 +33,7 @@ func needAdmin(ctx context.Context) error {
 }
 
 func userOut(u core.User) apiv1.User {
-	out := apiv1.User{Name: u.Name, Perms: u.Perms, Role: u.Role, Admin: u.Admin, Created: u.Created}
+	out := apiv1.User{Name: u.Name, Perms: u.Perms, Role: u.Role, Password: u.Password, Admin: u.Admin, Created: u.Created}
 	if !u.LastLogin.IsZero() {
 		out.LastLogin = &u.LastLogin
 	}
@@ -79,8 +79,8 @@ func (a *API) UpdateUser(ctx context.Context, request apiv1.UpdateUserRequestObj
 		return nil, err
 	}
 	b := request.Body
-	if b.Password == nil && b.Perms == nil && b.Role == nil {
-		return nil, badRequest("nothing to change (password, role, perms)")
+	if b.Password == nil && b.Perms == nil && b.Role == nil && b.Name == nil {
+		return nil, badRequest("nothing to change (name, password, role, perms)")
 	}
 	if b.Perms != nil || b.Role != nil {
 		perms, err := core.WithRole(deref(b.Role), deref(b.Perms))
@@ -95,6 +95,12 @@ func (a *API) UpdateUser(ctx context.Context, request apiv1.UpdateUserRequestObj
 		if err := a.users().SetPassword(ctx, request.Name, *b.Password); err != nil {
 			return nil, err
 		}
+	}
+	if b.Name != nil {
+		if err := a.users().Rename(ctx, request.Name, *b.Name); err != nil {
+			return nil, err
+		}
+		a.Auth.forget(*b.Name)
 	}
 	a.Auth.forget(request.Name)
 	return apiv1.UpdateUser204Response{}, nil
@@ -136,6 +142,9 @@ func tokenOut(t core.Token) apiv1.Token {
 // is the server's), else its user's (the tokens permission: only their own).
 func tokenOwner(ctx context.Context) string {
 	id, _ := identityOf(ctx)
+	if id.admin() {
+		return ""
+	}
 	return id.user()
 }
 

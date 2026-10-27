@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	cc "github.com/ivanpirog/coloredcobra"
@@ -276,7 +277,11 @@ func openStorage(cmd *cobra.Command) (imported string, err error) {
 	if err != nil {
 		return "", err
 	}
-	for _, n := range []string{imported, client.MovedNotice()} {
+	users, err := client.EnsureUsers()
+	if err != nil {
+		return "", err
+	}
+	for _, n := range []string{imported, client.MovedNotice(), strings.TrimSpace(users)} {
 		if n != "" {
 			cache.AddNotice(n)
 		}

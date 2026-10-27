@@ -33,7 +33,7 @@ func TestClear(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { data.Close() })
-	history := storage.History{DB: data}
+	history := storage.History{DB: data, User: storage.DefaultUser}
 	for _, r := range []storage.Read{{Provider: "p", MangaID: "a", MangaTitle: "A", Chapter: 1}, {Provider: "p", MangaID: "a", MangaTitle: "A", Chapter: 2}, {Provider: "q", MangaID: "b", MangaTitle: "B", Chapter: 1}} {
 		if err := history.Record(r); err != nil {
 			t.Fatal(err)

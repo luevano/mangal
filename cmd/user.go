@@ -24,7 +24,9 @@ password) for OPDS readers. They're kept in the data db (passwords as argon2id h
 each with a role (reader, downloader, manager, admin) or their own set of permissions:
 "mangal user roles --all" says what each allows. A running server sees changes within
 seconds; a new password or new permissions end the user's logins. No server needs to run:
-they're changed in the data db of this config.`,
+they're changed in the data db of this config. There's always one: "mangal", an admin
+without a password, is made when there's none (mangal on this machine is a user too, see
+auth.user); a user without a password can't log in, "mangal user passwd" gives one.`,
 	Args: cobra.NoArgs,
 }
 
@@ -131,6 +133,23 @@ var userPermsCmd = &cobra.Command{
 }
 
 func init() {
+	userCmd.AddCommand(userRenameCmd)
+}
+
+var userRenameCmd = &cobra.Command{
+	Use:   "rename <name> <new name>",
+	Short: "Rename a user, with their history, tokens and auth.user (their logins end)",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := core.NewUsers().Rename(ctxOf(cmd), args[0], args[1]); err != nil {
+			return err
+		}
+		successf(cmd, "renamed the user %q to %q", args[0], args[1])
+		return nil
+	},
+}
+
+func init() {
 	userCmd.AddCommand(userLogoutCmd)
 }
 
@@ -185,7 +204,10 @@ var userLsCmd = &cobra.Command{
 		}
 		for _, u := range list {
 			last := "never logged in"
-			if !u.LastLogin.IsZero() {
+			switch {
+			case !u.Password:
+				last = "no password: only mangal on this machine"
+			case !u.LastLogin.IsZero():
 				last = "last login " + u.LastLogin.Format(time.DateTime)
 			}
 			cmd.Printf("%s  %s: %s  (%s)\n", u.Name, u.Role, strings.Join(u.Perms, ", "), last)

@@ -181,7 +181,10 @@ async function copySecret() {
       <thead><tr><th>Name</th><th>Role</th><th class="d-none d-md-table-cell">Last login</th><th /></tr></thead>
       <tbody>
         <tr v-for="u in users.data.value" :key="u.name">
-          <td>{{ u.name }}<span v-if="u.name === st.me?.name" class="badge text-bg-secondary ms-1">you</span></td>
+          <td>
+            {{ u.name }}<span v-if="u.name === st.me?.name" class="badge text-bg-secondary ms-1">you</span>
+            <span v-if="!u.password" class="badge text-bg-warning ms-1" title="Only mangal on the server's machine is this user: no login until it gets a password">no password</span>
+          </td>
           <td><span class="badge text-bg-light" :title="u.perms.join(', ')">{{ u.role }}</span></td>
           <td class="d-none d-md-table-cell small">{{ u.last_login ? ago(u.last_login) : 'never' }}</td>
           <td class="text-end text-nowrap">

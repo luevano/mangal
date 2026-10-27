@@ -154,8 +154,12 @@ func (a *Auth) checkPassword(r *http.Request, name, password string) (storage.Us
 		return storage.User{}, err
 	}
 	hash := u.Hash
-	if err != nil {
+	if err != nil || hash == "" {
+		// no such user, or one without a password (only mangal on this machine is them)
 		hash = dummyHash()
+		if err == nil {
+			err = storage.ErrUserNotFound
+		}
 	}
 	match, cerr := argon2id.ComparePasswordAndHash(password, hash)
 	if cerr != nil {

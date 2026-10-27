@@ -101,10 +101,14 @@ func Library() (storage.Library, error) {
 	return s.Library(), err
 }
 
-// History is the read history.
+// History is the local user's read history (LocalUser).
 func History() (storage.History, error) {
 	s, err := Storage()
-	return s.History(), err
+	if err != nil {
+		return storage.History{}, err
+	}
+	user, err := LocalUser()
+	return s.History().Of(user), err
 }
 
 // Watches are the watched mangas and their checks.

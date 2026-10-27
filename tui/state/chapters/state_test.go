@@ -156,7 +156,7 @@ func TestReadMarks(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	history := storage.History{DB: db}
+	history := storage.History{DB: db, User: storage.DefaultUser}
 	now := time.Unix(1, 0)
 	for _, r := range []storage.Read{
 		{Provider: "mango-old", MangaID: "berserk", Chapter: 1, Last: now},              // under the old id

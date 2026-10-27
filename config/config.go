@@ -486,6 +486,8 @@ var Providers = configProviders{
 var Auth = configAuth{
 	Keyring: boolEntry("auth.keyring", false,
 		"Keep the logins and secrets (Anilist/Kitsu/MyAnimeList tokens and API clients, MangaPlus secrets, Discord webhook, serve API tokens) in the OS keyring (Secret Service on Linux, Keychain on macOS, Credential Manager on Windows) instead of mangal's database. They move on the next run after changing it."),
+	User: stringEntry("auth.user", "",
+		"The mangal user this machine's mangal is when nobody logs in (the TUI, the CLI, scripts, serve.auth none): its read history, search history and AniList/Kitsu/MyAnimeList accounts. Empty: the first admin (the user \"mangal\" made at the first start, unless there were users)."),
 }
 
 var Notification = configNotification{

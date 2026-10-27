@@ -172,7 +172,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Change a user's password or permissions (their logins end)
+         * Rename a user, change their password or permissions (their logins end)
          * @description The last admin stays admin (409).
          */
         patch: operations["updateUser"];
@@ -1320,7 +1320,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The page a chapter was left on in the web reader
+         * The page you left a chapter on in the web reader (each user has their own)
          * @description Saved by putReaderPosition from any device; the reader takes the newer of this and
          *     the browser's own.
          */
@@ -1454,7 +1454,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The read chapters, last read first */
+        /** Your read chapters, last read first (each user has their own; admins share the server's) */
         get: operations["listHistory"];
         put?: never;
         post?: never;
@@ -1780,6 +1780,8 @@ export interface components {
             perms: string[];
             /** @description the role the permissions match ("reader", "downloader + tokens", ...), else custom */
             role: string;
+            /** @description false for a user only mangal on the server's machine is (they can't log in) */
+            password: boolean;
             /** @description has the admin permission (manages the users, tokens, settings) */
             admin: boolean;
             /** Format: date-time */
@@ -1795,6 +1797,8 @@ export interface components {
             perms?: string[];
         };
         UserChange: {
+            /** @description a new name (their history, tokens and auth.user follow) */
+            name?: string;
             password?: string;
             /** @description a role (reader, downloader, manager, admin); perms are added to its */
             role?: string;
@@ -2645,7 +2649,7 @@ export interface components {
              * @description the library manga read (its ids are synced when the manga has no binding)
              */
             library_manga?: number;
-            /** @description set the progress on the metadata sources (default true) */
+            /** @description set the progress on the metadata sources (default true; only for an admin, the accounts are the server's) */
             sync?: boolean;
         };
         ReadResponse: {

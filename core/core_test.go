@@ -325,7 +325,7 @@ func TestEmptyTrash(t *testing.T) {
 func TestHistoryClear(t *testing.T) {
 	c, _ := testCore(t)
 	ctx := context.Background()
-	history := c.env.Storage.History()
+	history := c.env.Storage.History().Of(storage.DefaultUser)
 	for _, r := range []storage.Read{{Provider: "p", MangaID: "a", Chapter: 1}, {Provider: "p", MangaID: "a", Chapter: 2}, {Provider: "q", MangaID: "b", Chapter: 1}} {
 		if err := history.Record(r); err != nil {
 			t.Fatal(err)

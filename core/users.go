@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/alexedwards/argon2id"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -220,8 +221,11 @@ type User struct {
 	// Admin has the admin permission (the users can be managed).
 	Admin bool `json:"admin"`
 	// Role is the role the permissions match (RoleOf).
-	Role    string    `json:"role"`
-	Created time.Time `json:"created"`
+	Role string `json:"role"`
+	// Password is false for a user only mangal on this machine is (the default user
+	// "mangal" until it gets one): they can't log in.
+	Password bool      `json:"password"`
+	Created  time.Time `json:"created"`
 	// LastLogin is zero when the user never logged in.
 	LastLogin time.Time `json:"last_login,omitzero"`
 }
@@ -252,6 +256,9 @@ type Users interface {
 	Add(ctx context.Context, name, password string, perms []string) (User, error)
 	SetPassword(ctx context.Context, name, password string) error
 	SetPerms(ctx context.Context, name string, perms []string) error
+	// Rename renames the user with everything of theirs (history, positions, tokens,
+	// search history, auth.user); their logins end.
+	Rename(ctx context.Context, name, to string) error
 	// EndLogins ends the user's sessions (every browser and app).
 	EndLogins(ctx context.Context, name string) error
 	Remove(ctx context.Context, name string) error
@@ -290,7 +297,7 @@ func userOf(u storage.User) User {
 	if perms == nil {
 		perms = []string{}
 	}
-	return User{Name: u.Name, Perms: perms, Admin: slices.Contains(perms, ScopeAdmin), Role: RoleOf(perms), Created: u.Created, LastLogin: u.LastLogin}
+	return User{Name: u.Name, Perms: perms, Admin: slices.Contains(perms, ScopeAdmin), Role: RoleOf(perms), Password: u.Hash != "", Created: u.Created, LastLogin: u.LastLogin}
 }
 
 func notFound(err error) error {
@@ -401,6 +408,44 @@ func (l localUsers) SetPerms(_ context.Context, name string, perms []string) err
 	return notFound(st.SetPermsChecked(name, perms, keepsAdmin(name, perms, false)))
 }
 
+func (l localUsers) Rename(_ context.Context, name, to string) error {
+	if err := CheckUserName(to); err != nil {
+		return err
+	}
+	st, err := l.store()
+	if err != nil {
+		return err
+	}
+	u, err := st.Get(name)
+	if err != nil {
+		return notFound(err)
+	}
+	name = u.Name
+	if err := st.Rename(name, to); errors.Is(err, storage.ErrUserExists) {
+		return &RefusedError{Reasons: []string{fmt.Sprintf("there's a user %q already", to)}}
+	} else if err != nil {
+		return notFound(err)
+	}
+	err = cache.UpdateServeTokens(func(entries []cache.ServeTokenEntry) ([]cache.ServeTokenEntry, error) {
+		for i := range entries {
+			if strings.EqualFold(entries[i].Owner, name) {
+				entries[i].Owner = to
+			}
+		}
+		return entries, nil
+	})
+	if err != nil {
+		return err
+	}
+	if err := cache.ClaimSearchHistory(name, to); err != nil {
+		return err
+	}
+	if strings.EqualFold(config.Auth.User.Get(), name) {
+		return config.Auth.User.Write(to)
+	}
+	return nil
+}
+
 func (l localUsers) EndLogins(_ context.Context, name string) error {
 	st, err := l.store()
 	if err != nil {
@@ -494,13 +539,17 @@ func (l localUsers) RemoveToken(_ context.Context, name string) error {
 type historyUserKey struct{}
 
 // WithHistoryUser makes the reads and reading positions of the ctx's work the user's
-// (serve's logins), empty for the server's own.
+// (serve's logins).
 func WithHistoryUser(ctx context.Context, user string) context.Context {
 	return context.WithValue(ctx, historyUserKey{}, user)
 }
 
-// HistoryUser is whose reads the ctx's work has, empty for the server's own.
+// HistoryUser is whose reads the ctx's work has: serve's login, else the local user
+// (cache.LocalUser).
 func HistoryUser(ctx context.Context) string {
-	user, _ := ctx.Value(historyUserKey{}).(string)
+	if user, ok := ctx.Value(historyUserKey{}).(string); ok {
+		return user
+	}
+	user, _ := cache.LocalUser()
 	return user
 }

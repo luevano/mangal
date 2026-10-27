@@ -104,3 +104,17 @@ func TestHidePaths(t *testing.T) {
 		t.Errorf("library path %s", got)
 	}
 }
+
+// TestNoPasswordNoLogin: a user without a password (the default "mangal") can't log in.
+func TestNoPasswordNoLogin(t *testing.T) {
+	s := newTestServer(t, "")
+	if _, err := (storage.Users{DB: s.svc.Watches.DB}).EnsureOne(); err != nil {
+		t.Fatal(err)
+	}
+	h := s.handler(t)
+	for _, password := range []string{"", "anything"} {
+		if rec := do(h, "GET", "/api/v1/watches", "", "192.0.2.1:1", basic(storage.DefaultUser, password), nil); rec.Code != http.StatusUnauthorized {
+			t.Errorf("%q: %d %s", password, rec.Code, rec.Body)
+		}
+	}
+}

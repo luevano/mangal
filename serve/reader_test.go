@@ -181,7 +181,7 @@ func TestV1RecordRead(t *testing.T) {
 	if gotChapter != 2 || gotIDs[metadata.IDCodeAnilist] != "21087" {
 		t.Errorf("synced %v %v", gotChapter, gotIDs)
 	}
-	reads, err := storage.History{DB: s.src.library.DB}.List("fake", "opm")
+	reads, err := storage.History{DB: s.src.library.DB}.Of(localUser()).List("fake", "opm")
 	if err != nil || len(reads) != 1 || reads[0].LibraryManga != 1 || reads[0].ChapterTitle != "Two" {
 		t.Fatalf("history %v %+v", err, reads)
 	}
@@ -189,8 +189,8 @@ func TestV1RecordRead(t *testing.T) {
 	if code := s.call(t, "POST", "/api/v1/reads", `{"provider":"fake","manga_id":"opm","chapter":2,"sync":false}`, &out); code != http.StatusOK || len(out.Synced) != 0 || gotIDs != nil {
 		t.Errorf("no sync %d %+v", code, out)
 	}
-	if reads, _ := (storage.History{DB: s.src.library.DB}).List("fake", "opm"); reads[0].Count != 2 {
-		t.Errorf("count %d", reads[0].Count)
+	if reads, _ := (storage.History{DB: s.src.library.DB}).Of(localUser()).List("fake", "opm"); len(reads) != 1 || reads[0].Count != 2 {
+		t.Errorf("reads %+v", reads)
 	}
 	// a scanned folder's chapter: no manga id, synced with the library manga's ids only
 	gotIDs = nil

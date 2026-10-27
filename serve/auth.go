@@ -76,17 +76,18 @@ func (id identity) has(scope string) bool { return slices.Contains(id.Scopes, sc
 // admin is what the users, every token, the settings and the server need.
 func (id identity) admin() bool { return id.has(ScopeAdmin) }
 
-// user is whose read history and reading positions the request has: empty for the
-// server's own (admins, the local key, serve.auth none: the server's tracker accounts are
-// theirs), else the user's (a token's owner's).
+// user is whose read history, reading positions and accounts the request has: the
+// user's (a token's owner's), the local user for mangal on this machine and serve.auth
+// none, a token of nobody's its own.
 func (id identity) user() string {
 	switch {
-	case id.admin():
-		return ""
 	case id.Kind == KindUser:
 		return id.Name
 	case id.Owner != "":
 		return id.Owner
+	case id.Kind == KindLocal || id.Kind == KindNone:
+		user, _ := cache.LocalUser()
+		return user
 	}
 	return "token:" + id.Name
 }

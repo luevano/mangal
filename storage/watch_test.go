@@ -497,3 +497,44 @@ func TestMigratePermsAndReads(t *testing.T) {
 		t.Error("kid has the server's position")
 	}
 }
+
+// TestDefaultUserRenameClaim: "mangal" is made only when there's no user, nobody's reads
+// go to a user, a rename takes their reads along.
+func TestDefaultUserRenameClaim(t *testing.T) {
+	data, err := OpenData(filepath.Join(t.TempDir(), FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	users := Users{DB: data}
+	if made, err := users.EnsureOne(); err != nil || !made {
+		t.Fatalf("made %v %v", made, err)
+	}
+	if made, _ := users.EnsureOne(); made {
+		t.Error("made twice")
+	}
+	if admin, err := users.FirstAdmin(); err != nil || admin != DefaultUser {
+		t.Errorf("first admin %q %v", admin, err)
+	}
+	if err := (History{DB: data}).Record(Read{Provider: "p", MangaID: "m", Chapter: 1, Last: time.Unix(1, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := users.ClaimHistory(DefaultUser); err != nil || n != 1 {
+		t.Fatalf("claimed %d %v", n, err)
+	}
+	if err := users.Add(User{Name: "kid", Hash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := users.Rename(DefaultUser, "Kid"); !errors.Is(err, ErrUserExists) {
+		t.Errorf("rename onto kid: %v", err)
+	}
+	if err := users.Rename(DefaultUser, "david"); err != nil {
+		t.Fatal(err)
+	}
+	if reads, _ := (History{DB: data}).Of("david").List("", ""); len(reads) != 1 {
+		t.Errorf("david's reads %+v", reads)
+	}
+	if err := users.Rename("kid", "Kid"); err != nil {
+		t.Errorf("only the case: %v", err)
+	}
+}

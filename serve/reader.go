@@ -24,6 +24,7 @@ import (
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library/pages"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/web"
 	"github.com/luevano/mangal/v5/web/apiv1"
 	"github.com/spf13/afero"
@@ -344,10 +345,10 @@ func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObj
 	}
 	switch {
 	case b.Sync != nil && !*b.Sync:
-	case core.HistoryUser(ctx) != "":
-		// the tracker accounts are the server's: a user's reads stay theirs
+	case core.HistoryUser(ctx) != localUser():
+		// TODO: each user's own tracker accounts (docs/multi-user.md step 2)
 		if out.Note == nil {
-			out.Note = new("not synced: the server's AniList/Kitsu/MyAnimeList are only synced for an admin")
+			out.Note = new("not synced: your own AniList/Kitsu/MyAnimeList accounts aren't supported yet")
 		}
 	default:
 		var bindings []storage.Binding
@@ -481,4 +482,9 @@ func writeMangaZip(ctx context.Context, w io.Writer, root string, chapters []*pa
 		}
 	}
 	return zw.Close()
+}
+
+func localUser() string {
+	user, _ := cache.LocalUser()
+	return user
 }
