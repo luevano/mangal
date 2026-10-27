@@ -498,6 +498,11 @@ library fixes, health), tokens (their own API tokens), admin. They only see the 
 permissions allow (`serve.hide_unavailable = false` shows them all and lets the server refuse);
 readers and downloaders see library-relative paths, never the server's.
 
+Everything updates live: the pages follow what any mangal changes (the CLI, a TUI, the watch
+checks), and so does the TUI's library, a manga's chapters, the read history and the watches.
+A browser tab's live connection (`/api/v1/events`) ends when its login does (a logout, a new
+password, the user removed) or its permissions change, and renews itself every 15 minutes.
+
 #### Script
 
 Similar to [mangalorg/mangalcli](https://github.com/mangalorg/mangalcli) where a `run.lua` and a provider are required:
