@@ -61,3 +61,32 @@ func TestConfigExportImport(t *testing.T) {
 		t.Errorf("the same undo again: %v", err)
 	}
 }
+
+// TestConfigImportOldProviderTable: an exported file of before the per-provider settings,
+// with a jobs.*.providers table, is imported into each provider's setting.
+func TestConfigImportOldProviderTable(t *testing.T) {
+	ctx := context.Background()
+	if _, err := cache.Settings(); err != nil {
+		t.Fatal(err)
+	}
+	cfg := NewConfig()
+	plan, err := cfg.ImportPlan(ctx, []byte("[jobs.sources.providers]\nfake = 'off'\n"))
+	if err != nil || len(plan) != 1 || plan[0].Key != "jobs.sources.providers" {
+		t.Fatalf("plan %+v, %v", plan, err)
+	}
+	if _, err := cfg.Import(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = cfg.Set(ctx, "jobs.sources.providers", map[string]any{}) })
+	if on := config.Jobs.Sources.Providers.Fresh().On; on("fake") {
+		t.Error("fake still on for the source checks")
+	}
+	s, _ := cache.Settings()
+	values, _, err := s.All()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := values["providers.fake.job_sources"]; !ok {
+		t.Errorf("no providers.fake.job_sources row: %v", values)
+	}
+}

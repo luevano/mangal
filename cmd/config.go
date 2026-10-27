@@ -245,14 +245,20 @@ providers' settings, providers.<id>.<key>).`,
 		if e.Source.Kind == "env" {
 			cmd.PrintErrf("notice: %s overrides it in this process\n", e.Source.Name)
 		}
-		if e.Applies == "restart" {
-			cmd.PrintErrf("notice: %s is read when mangal starts: a running mangal serve or TUI keeps the old value until it restarts\n", key)
-		}
+		restartNotice(cmd, key)
 		if mode, readable := config.ReadableByOthers(); readable && e.Secret && e.Stored == string(config.StoredFile) {
 			cmd.PrintErrf("warning: %s holds secrets but others can read it (mode %o): chmod 600 it\n", config.Path, mode)
 		}
 		return nil
 	},
+}
+
+// restartNotice says when the key is only read at start (a running serve or TUI keeps
+// the old value).
+func restartNotice(cmd *cobra.Command, key string) {
+	if config.Applies(key) == "restart" {
+		cmd.PrintErrf("notice: %s is read when mangal starts: a running mangal serve or TUI keeps the old value until it restarts\n", key)
+	}
 }
 
 func storedText(stored string) string {
@@ -365,6 +371,7 @@ it (undo the later change first) and for secrets (their history doesn't keep the
 			return err
 		}
 		successf(cmd, "set %q back to %v", e.Key, e.Value)
+		restartNotice(cmd, e.Key)
 		return nil
 	},
 }
@@ -446,6 +453,9 @@ values are errors, nothing changes then.`,
 			return err
 		}
 		successf(cmd, "imported %s (operation %d, mangal library undo reverts it)", stringutil.Quantify(len(changes), "setting", "settings"), id)
+		for _, c := range changes {
+			restartNotice(cmd, c.Key)
+		}
 		return nil
 	},
 }
