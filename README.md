@@ -321,7 +321,7 @@ same config) apply from the next run. It also runs the source checks and address
 web UI (`serve.web`), a JSON API (that the TUI and the `mangal watch` commands use while it runs) and
 OPDS (`/opds`). Every request logs in, wherever it comes from: people as users (`mangal user add
 <name>`, then the web UI's login page, or basic auth for OPDS readers), programs with an API token
-(`mangal token add <what> --scope read`, sent as `Authorization: Bearer <token>`).
+(`mangal token add <what> --perms read`, sent as `Authorization: Bearer <token>`).
 mangal on the same config (the TUI, `mangal watch`, `mangal api`) uses the server's own key. Behind a
 reverse proxy nothing needs setting (`serve.trusted_proxies` puts the clients' addresses in the logs);
 [`nginx.conf.example`](nginx.conf.example) is an nginx site for it.
@@ -424,8 +424,10 @@ For more, use the `-h` flag.
 way, without the scheduled checks. It asks to log in as a user:
 
 ```sh
-mangal user add david              # the first user gets every permission
-mangal user add guest --perms read # the others read and progress unless --perms (read, progress, watch, write)
+mangal user add david                   # the first user is an admin
+mangal user add kid                     # the others are readers unless --role or --perms say
+mangal user add friend --role downloader
+mangal user roles --all                 # what each role and permission allows
 mangal serve                       # or: mangal web --open
 ```
 
@@ -439,15 +441,19 @@ What it has:
   bind, "Get unavailable chapters from another provider". Site icons on the providers and metadata
   sources.
 - **Reader**: downloaded and online chapters, paged (left to right, right to left) or webtoon,
-  double pages, zoom, keys and tap zones, the position kept per chapter; reads sync to AniList,
-  Kitsu and MyAnimeList.
+  double pages, zoom, keys and tap zones, the position kept per chapter; each user has their own
+  read history and positions, an admin's reads sync to AniList, Kitsu and MyAnimeList.
 - **Watches**: add, check, pause, edit, re-link, hold, live log, check runs.
 - **Jobs** and **Downloads**: the maintenance kinds (run, pause, settings) and the download queue.
 - **Health**: the findings with their fixes, dismiss, network checks.
-- **Logs**, **Accounts**, **Config**, and **Users** (users and API tokens) for admins.
+- **Logs**, **Accounts**, **Config**, and **Users** (users and API tokens) for admins; users
+  with the tokens permission manage their own tokens there.
 
-Users only see the actions their permissions allow (`serve.hide_unavailable = false` shows them
-all and lets the server refuse).
+Users have a role (reader, downloader, manager, admin) or their own set of permissions: read,
+progress, browse (the server contacts the sites: search, read online), download, manage (watches,
+library fixes, health), tokens (their own API tokens), admin. They only see the actions their
+permissions allow (`serve.hide_unavailable = false` shows them all and lets the server refuse);
+readers and downloaders see library-relative paths, never the server's.
 
 #### Script
 

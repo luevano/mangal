@@ -105,6 +105,7 @@ type API struct {
 	Events *Events
 
 	healthJobs healthJobs
+	summary    healthSummary
 	kindsOnce  sync.Once
 	jobKinds   core.JobKinds
 	wakeKinds  waker
@@ -195,7 +196,7 @@ func (a *API) GetIndex(context.Context, apiv1.GetIndexRequestObject) (apiv1.GetI
 		if !o.V1 {
 			continue
 		}
-		plan, admin := o.Plan, o.Admin
+		plan, admin := o.Plan, o.Scope == ScopeAdmin
 		index.Operations = append(index.Operations, apiv1.IndexOperation{Method: o.Method, Path: o.Path, OperationId: o.ID,
 			Scope: o.Scope, Plan: &plan, Admin: &admin, Summary: o.Summary})
 	}
@@ -231,7 +232,54 @@ func (a *API) GetStatus(ctx context.Context, _ apiv1.GetStatusRequestObject) (ap
 	if keys := restartNeeded(ctx); len(keys) > 0 {
 		resp.RestartNeeded = &keys
 	}
+	resp.Health = a.summary.get(a)
 	return resp, nil
+}
+
+// healthSummary is the library's health in short for the status (anyone with read sees
+// it), from the local checks run in the background at most every healthSummaryEvery.
+type healthSummary struct {
+	mu      sync.Mutex
+	last    *apiv1.HealthSummary
+	running bool
+}
+
+const healthSummaryEvery = 5 * time.Minute
+
+// get is the last summary (nil before the first), starting a new one when it's old.
+func (h *healthSummary) get(a *API) *apiv1.HealthSummary {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if !h.running && (h.last == nil || time.Since(h.last.Checked) > healthSummaryEvery) {
+		h.running = true
+		go func() {
+			sum := a.runSummary()
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.running = false
+			if sum != nil {
+				h.last = sum
+			}
+		}()
+	}
+	return h.last
+}
+
+func (a *API) runSummary() *apiv1.HealthSummary {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	c, err := a.services(ctx)
+	if err != nil {
+		return nil
+	}
+	report, err := c.Health.Report(ctx, health.Options{Kept: a.healthJobs.sourceFindings()})
+	if err != nil {
+		a.Log.Warnf("health summary: %s", err)
+		return nil
+	}
+	return &apiv1.HealthSummary{Warnings: report.Counts.Warning, Errors: report.Counts.Error, Checked: time.Now()}
 }
 
 func optTime(t time.Time) *time.Time {

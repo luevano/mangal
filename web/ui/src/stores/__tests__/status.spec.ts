@@ -6,8 +6,8 @@ import { useStatus, type Scope } from '../status'
 import type { Me } from '@/api/schemas'
 import opScopes from '@/api/scopes.json'
 
-const all: Scope[] = ['read', 'watch', 'progress', 'write']
-const me = (kind: Me['kind'], scopes: string[], hide = true): Me => ({ name: kind, kind, scopes, admin: scopes.length === 4, hide_unavailable: hide })
+const all: Scope[] = ['read', 'progress', 'browse', 'download', 'manage', 'tokens', 'admin']
+const me = (kind: Me['kind'], scopes: string[], hide = true): Me => ({ name: kind, kind, scopes, admin: scopes.includes('admin'), hide_unavailable: hide })
 
 describe('status store permissions', () => {
   beforeEach(() => setActivePinia(createPinia()))
@@ -17,14 +17,17 @@ describe('status store permissions', () => {
     ['local', me('local', [...all]), all, true],
     ['admin user', me('user', [...all]), all, true],
     ['read-only user', me('user', ['read']), ['read'], false],
-    ['progress token', me('token', ['read', 'progress']), ['read', 'progress'], false]
+    ['progress token', me('token', ['read', 'progress']), ['read', 'progress'], false],
+    ['manager', me('user', ['read', 'progress', 'browse', 'download', 'manage']), ['read', 'progress', 'browse', 'download', 'manage'], false]
   ] as [string, Me, Scope[], boolean][])('%s', (_, m, allowed, admin) => {
     const st = useStatus()
     st.me = m
     for (const s of all) expect(st.can(s), s).toBe(allowed.includes(s))
     expect(st.canAdmin()).toBe(admin)
     expect(st.allows('GET /v1/users')).toBe(admin)
-    expect(st.allows('POST /v1/library/scan')).toBe(allowed.includes('write'))
+    expect(st.allows('POST /v1/library/scan')).toBe(allowed.includes('manage'))
+    expect(st.allows('POST /v1/library/rename')).toBe(admin)
+    expect(st.allows('GET /v1/providers/{provider}/search')).toBe(allowed.includes('browse'))
     expect(st.allows('PUT /v1/reader/position')).toBe(allowed.includes('progress'))
     expect(st.allows('POST /v1/auth/logout')).toBe(true)
   })
@@ -32,7 +35,7 @@ describe('status store permissions', () => {
   it('treats auth none as everything, whatever its scopes say', () => {
     const st = useStatus()
     st.me = { name: 'none', kind: 'none', scopes: [], admin: false, hide_unavailable: true }
-    expect(st.can('write') && st.canAdmin()).toBe(true)
+    expect(st.can('manage') && st.canAdmin()).toBe(true)
   })
 
   it('shows everything with serve.hide_unavailable off', () => {

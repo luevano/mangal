@@ -61,7 +61,7 @@ func TestV1JobKinds(t *testing.T) {
 		t.Errorf("a bad interval: %d %+v", code, e)
 	}
 
-	addUser(t, s, "writer", "a long password", ScopeRead, ScopeWrite)
+	addUser(t, s, "writer", "a long password", ScopeRead, ScopeDownload, ScopeManage)
 	h := s.handler(t)
 	auth := "Basic " + base64.StdEncoding.EncodeToString([]byte("writer:a long password"))
 	if rec := do(h, "PUT", "/api/v1/jobs/kinds/urls/settings", `{"enabled":false}`, "127.0.0.1:1", auth, nil); rec.Code != http.StatusForbidden {
@@ -70,7 +70,11 @@ func TestV1JobKinds(t *testing.T) {
 	if rec := do(h, "PUT", "/api/v1/config/jobs.urls.enabled", `{"value":false}`, "127.0.0.1:1", auth, nil); rec.Code != http.StatusForbidden {
 		t.Errorf("jobs key by a writer: %d %s", rec.Code, rec.Body)
 	}
-	if rec := do(h, "POST", "/api/v1/jobs/kinds/urls/pause", "", "127.0.0.1:1", auth, nil); rec.Code != http.StatusOK {
-		t.Errorf("pause by a writer: %d %s", rec.Code, rec.Body)
+	if rec := do(h, "POST", "/api/v1/jobs/kinds/urls/pause", "", "127.0.0.1:1", auth, nil); rec.Code != http.StatusForbidden {
+		t.Errorf("pause by a manager: %d %s", rec.Code, rec.Body)
+	}
+	// running one now is manage's
+	if rec := do(h, "POST", "/api/v1/jobs/kinds/urls/run", "", "127.0.0.1:1", auth, nil); rec.Code == http.StatusForbidden {
+		t.Errorf("run by a manager: %d %s", rec.Code, rec.Body)
 	}
 }

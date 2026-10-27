@@ -2,7 +2,11 @@ package serve
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/web/apiv1"
@@ -16,20 +20,20 @@ func (a *API) users() core.Users {
 	return core.NewUsers()
 }
 
-// needAdmin refuses who hasn't every permission: only an admin manages the users.
+// needAdmin refuses who isn't an admin.
 func needAdmin(ctx context.Context) error {
 	id, ok := identityOf(ctx)
 	if !ok {
 		return newAPIError(http.StatusUnauthorized, CodeUnauthorized, "not logged in")
 	}
 	if !id.admin() {
-		return newAPIError(http.StatusForbidden, CodeForbidden, "this needs every permission (an admin), %s hasn't", id)
+		return newAPIError(http.StatusForbidden, CodeForbidden, "this needs the admin permission, %s hasn't it", id)
 	}
 	return nil
 }
 
 func userOut(u core.User) apiv1.User {
-	out := apiv1.User{Name: u.Name, Perms: u.Perms, Admin: u.Admin, Created: u.Created}
+	out := apiv1.User{Name: u.Name, Perms: u.Perms, Role: u.Role, Admin: u.Admin, Created: u.Created}
 	if !u.LastLogin.IsZero() {
 		out.LastLogin = &u.LastLogin
 	}
@@ -58,7 +62,11 @@ func (a *API) AddUser(ctx context.Context, request apiv1.AddUserRequestObject) (
 		return nil, err
 	}
 	b := request.Body
-	u, err := a.users().Add(ctx, b.Name, b.Password, deref(b.Perms))
+	perms, err := core.WithRole(deref(b.Role), deref(b.Perms))
+	if err != nil {
+		return nil, badRequest("%w", err)
+	}
+	u, err := a.users().Add(ctx, b.Name, b.Password, perms)
 	if err != nil {
 		return nil, err
 	}
@@ -71,11 +79,15 @@ func (a *API) UpdateUser(ctx context.Context, request apiv1.UpdateUserRequestObj
 		return nil, err
 	}
 	b := request.Body
-	if b.Password == nil && b.Perms == nil {
-		return nil, badRequest("nothing to change (password, perms)")
+	if b.Password == nil && b.Perms == nil && b.Role == nil {
+		return nil, badRequest("nothing to change (password, role, perms)")
 	}
-	if b.Perms != nil {
-		if err := a.users().SetPerms(ctx, request.Name, *b.Perms); err != nil {
+	if b.Perms != nil || b.Role != nil {
+		perms, err := core.WithRole(deref(b.Role), deref(b.Perms))
+		if err != nil {
+			return nil, badRequest("%w", err)
+		}
+		if err := a.users().SetPerms(ctx, request.Name, perms); err != nil {
 			return nil, err
 		}
 	}
@@ -113,31 +125,58 @@ func (a *API) EndUserLogins(ctx context.Context, request apiv1.EndUserLoginsRequ
 }
 
 func tokenOut(t core.Token) apiv1.Token {
-	return apiv1.Token{Name: t.Name, Scopes: t.Scopes, Created: t.Created}
+	out := apiv1.Token{Name: t.Name, Scopes: t.Scopes, Role: core.RoleOf(t.Scopes), Created: t.Created}
+	if t.Owner != "" {
+		out.Owner = &t.Owner
+	}
+	return out
+}
+
+// tokenOwner is whose tokens the request manages: "" for an admin (every token, a new one
+// is the server's), else its user's (the tokens permission: only their own).
+func tokenOwner(ctx context.Context) string {
+	id, _ := identityOf(ctx)
+	return id.user()
 }
 
 // ListTokens implements apiv1.StrictServerInterface.
 func (a *API) ListTokens(ctx context.Context, _ apiv1.ListTokensRequestObject) (apiv1.ListTokensResponseObject, error) {
-	if err := needAdmin(ctx); err != nil {
-		return nil, err
-	}
 	list, err := a.users().Tokens(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make(apiv1.ListTokens200JSONResponse, len(list))
-	for i, t := range list {
-		out[i] = tokenOut(t)
+	owner := tokenOwner(ctx)
+	out := apiv1.ListTokens200JSONResponse{}
+	for _, t := range list {
+		if owner == "" || t.Owner == owner {
+			out = append(out, tokenOut(t))
+		}
 	}
 	return out, nil
 }
 
 // AddToken implements apiv1.StrictServerInterface.
 func (a *API) AddToken(ctx context.Context, request apiv1.AddTokenRequestObject) (apiv1.AddTokenResponseObject, error) {
-	if err := needAdmin(ctx); err != nil {
-		return nil, err
+	b := request.Body
+	scopes, err := core.WithRole(deref(b.Role), deref(b.Scopes))
+	if err != nil {
+		return nil, badRequest("%w", err)
 	}
-	t, secret, err := a.users().AddToken(ctx, request.Body.Name, deref(request.Body.Scopes))
+	owner := tokenOwner(ctx)
+	if strings.HasPrefix(owner, "token:") {
+		return nil, newAPIError(http.StatusForbidden, CodeForbidden, "only a user's or an admin's tokens make tokens")
+	}
+	if owner != "" {
+		id, _ := identityOf(ctx)
+		want, err := core.NormalizeScopes(scopes)
+		if err != nil {
+			return nil, badRequest("%w", err)
+		}
+		if more := slices.DeleteFunc(want, id.has); len(more) != 0 {
+			return nil, newAPIError(http.StatusForbidden, CodeForbidden, "a token can't have more than %s: %s", id, strings.Join(more, ", "))
+		}
+	}
+	t, secret, err := a.users().AddToken(ctx, b.Name, owner, scopes)
 	if err != nil {
 		return nil, err
 	}
@@ -147,12 +186,28 @@ func (a *API) AddToken(ctx context.Context, request apiv1.AddTokenRequestObject)
 
 // RemoveToken implements apiv1.StrictServerInterface.
 func (a *API) RemoveToken(ctx context.Context, request apiv1.RemoveTokenRequestObject) (apiv1.RemoveTokenResponseObject, error) {
-	if err := needAdmin(ctx); err != nil {
-		return nil, err
+	if owner := tokenOwner(ctx); owner != "" {
+		list, err := a.users().Tokens(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.ContainsFunc(list, func(t core.Token) bool { return t.Name == request.Name && t.Owner == owner }) {
+			return nil, &core.NotFoundError{What: fmt.Sprintf("no token %q of yours", request.Name)}
+		}
 	}
 	if err := a.users().RemoveToken(ctx, request.Name); err != nil {
 		return nil, err
 	}
 	a.Auth.forgetTokens()
 	return apiv1.RemoveToken204Response{}, nil
+}
+
+// ListPermissions implements apiv1.StrictServerInterface.
+func (a *API) ListPermissions(context.Context, apiv1.ListPermissionsRequestObject) (apiv1.ListPermissionsResponseObject, error) {
+	var out apiv1.ListPermissions200JSONResponse
+	b, err := json.Marshal(map[string]any{"permissions": core.Permissions, "roles": core.Roles})
+	if err != nil {
+		return nil, err
+	}
+	return out, json.Unmarshal(b, &out)
 }

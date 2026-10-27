@@ -13,17 +13,59 @@ import type { User, Token } from '@/api/schemas'
 crumbs(() => [{ title: 'Users' }])
 const st = useStatus()
 const { busy, run } = useAction()
-const all = ['read', 'progress', 'watch', 'write'] as const
-const permHelp: Record<string, string> = {
-  read: 'browse, read, the events',
-  progress: 'the reader records reads (history, trackers)',
-  watch: 'add, change, check the watches',
-  write: 'files, library, config, downloads'
-}
+// what each permission and role allows (the server's words)
+const permissions = useLoad(() => ok(client.GET('/v1/permissions')))
+const roles = computed(() => permissions.data.value?.roles ?? [])
 
-const users = useLoad(() => ok(client.GET('/v1/users')))
+// the users are an admin's; the tokens permission alone shows your own tokens
+const isAdmin = computed(() => st.allows('GET /v1/users'))
+const users = useLoad(() => (isAdmin.value ? ok(client.GET('/v1/users')) : Promise.resolve([] as User[])))
 const tokens = useLoad(() => ok(client.GET('/v1/tokens')))
 const admins = computed(() => (users.data.value ?? []).filter((u) => u.admin).length)
+
+// withImplied adds what the permissions imply, and read
+function withImplied(list: string[]): string[] {
+  const out = new Set(list.length ? ['read', ...list] : [])
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const p of permissions.data.value?.permissions ?? []) {
+      if (!out.has(p.name)) continue
+      for (const i of p.implies ?? []) {
+        if (!out.has(i)) {
+          out.add(i)
+          grew = true
+        }
+      }
+    }
+  }
+  return (permissions.data.value?.permissions ?? []).map((p) => p.name).filter((n) => out.has(n))
+}
+
+// roleOf is the role the permissions match ("custom" else), the tokens permission aside
+function roleOf(list: string[]): string {
+  const want = withImplied(list.filter((p) => p !== 'tokens' || list.includes('admin'))).join(',')
+  return roles.value.find((r) => withImplied(r.perms).join(',') === want)?.name ?? 'custom'
+}
+
+const showAll = ref(false)
+const role = computed(() => roleOf(perms.value))
+const canTokens = computed({
+  get: () => perms.value.includes('tokens'),
+  set: (on: boolean) => {
+    perms.value = on ? withImplied([...perms.value, 'tokens']) : perms.value.filter((p) => p !== 'tokens')
+  }
+})
+
+function pickRole(name: string) {
+  const r = roles.value.find((r) => r.name === name)
+  if (!r) return
+  perms.value = withImplied(canTokens.value && name !== 'admin' ? [...r.perms, 'tokens'] : r.perms)
+}
+
+function togglePerm(name: string, on: boolean) {
+  perms.value = withImplied(on ? [...perms.value, name] : perms.value.filter((p) => p !== name))
+}
 
 // the open form: add a user, a user's permissions or password, add a token
 type Form = 'add' | 'perms' | 'password' | 'token'
@@ -39,7 +81,10 @@ function open(f: Form, u?: User) {
   target.value = u
   name.value = ''
   password.value = ''
+  showAll.value = false
   perms.value = f === 'perms' && u ? [...u.perms] : f === 'token' ? ['read'] : []
+  // a new user: a reader, the first one an admin
+  if (f === 'add') pickRole(users.data.value?.length ? 'reader' : 'admin')
 }
 
 function close() {
@@ -71,7 +116,7 @@ async function submit() {
     case 'add':
       r = await run(
         () => ok(client.POST('/v1/users', { body: { name: name.value.trim(), password: password.value, perms: perms.value.length ? perms.value : undefined } })),
-        (u: User) => `Added ${u.name} (${u.perms.join(', ')})`
+        (u: User) => `Added ${u.name} (${u.role})`
       )
       break
     case 'perms':
@@ -123,6 +168,7 @@ async function copySecret() {
 </script>
 
 <template>
+  <template v-if="isAdmin">
   <h4>Users</h4>
   <p class="small text-secondary">
     Who logs in (the web UI, OPDS readers). A new password or new permissions end the user's logins. Also from the
@@ -132,17 +178,17 @@ async function copySecret() {
   <LoadState :loading="users.loading.value && !users.data.value" :error="users.error.value" :empty="users.data.value && !users.data.value.length" empty-text="No users." />
   <div v-if="users.data.value?.length" class="table-responsive">
     <table class="table table-sm align-middle" data-test="users-table">
-      <thead><tr><th>Name</th><th>Permissions</th><th class="d-none d-md-table-cell">Last login</th><th /></tr></thead>
+      <thead><tr><th>Name</th><th>Role</th><th class="d-none d-md-table-cell">Last login</th><th /></tr></thead>
       <tbody>
         <tr v-for="u in users.data.value" :key="u.name">
           <td>{{ u.name }}<span v-if="u.name === st.me?.name" class="badge text-bg-secondary ms-1">you</span></td>
-          <td><span v-for="p in u.perms" :key="p" class="badge text-bg-light me-1">{{ p }}</span></td>
+          <td><span class="badge text-bg-light" :title="u.perms.join(', ')">{{ u.role }}</span></td>
           <td class="d-none d-md-table-cell small">{{ u.last_login ? ago(u.last_login) : 'never' }}</td>
           <td class="text-end text-nowrap">
             <button class="btn btn-sm btn-outline-secondary" :disabled="busy" @click="open('perms', u)">Permissions</button>
             <button class="btn btn-sm btn-outline-secondary ms-1" :disabled="busy" @click="open('password', u)">Password</button>
             <button class="btn btn-sm btn-outline-secondary ms-1" :disabled="busy" title="End the logins (every browser and app)" @click="endLogins(u)">Log out</button>
-            <button class="btn btn-sm btn-outline-danger ms-1" :disabled="busy || (u.admin && admins <= 1)" :title="u.admin && admins <= 1 ? 'the last user with every permission' : ''" :data-test="`user-rm-${u.name}`" @click="removeUser(u)">
+            <button class="btn btn-sm btn-outline-danger ms-1" :disabled="busy || (u.admin && admins <= 1)" :title="u.admin && admins <= 1 ? 'the last admin' : ''" :data-test="`user-rm-${u.name}`" @click="removeUser(u)">
               <i class="bi bi-trash" />
             </button>
           </td>
@@ -150,18 +196,22 @@ async function copySecret() {
       </tbody>
     </table>
   </div>
+  </template>
 
-  <h5 class="mt-4">API tokens</h5>
-  <p class="small text-secondary">For programs (scripts, other apps): <code>Authorization: Bearer &lt;token&gt;</code>. Not a password for the web UI.</p>
+  <h5 :class="{ 'mt-4': isAdmin }">{{ isAdmin ? 'API tokens' : 'Your API tokens' }}</h5>
+  <p class="small text-secondary">
+    For programs (scripts, other apps): <code>Authorization: Bearer &lt;token&gt;</code>. Not a password for the web UI.
+    <template v-if="!isAdmin">A token never has more than you do.</template>
+  </p>
   <div class="mb-2"><button class="btn btn-sm btn-outline-primary" data-test="token-add" @click="open('token')">Make a token</button></div>
   <LoadState :loading="tokens.loading.value && !tokens.data.value" :error="tokens.error.value" :empty="tokens.data.value && !tokens.data.value.length" empty-text="No API tokens." />
   <table v-if="tokens.data.value?.length" class="table table-sm align-middle" data-test="tokens-table">
-    <thead><tr><th>Name</th><th>Scopes</th><th class="d-none d-md-table-cell">Made</th><th /></tr></thead>
+    <thead><tr><th>Name</th><th>Role</th><th class="d-none d-md-table-cell">Made</th><th /></tr></thead>
     <tbody>
       <tr v-for="t in tokens.data.value" :key="t.name">
         <td>{{ t.name }}</td>
-        <td><span v-for="p in t.scopes" :key="p" class="badge text-bg-light me-1">{{ p }}</span></td>
-        <td class="d-none d-md-table-cell small">{{ date(t.created) }}</td>
+        <td><span class="badge text-bg-light" :title="t.scopes.join(', ')">{{ t.role }}</span></td>
+        <td class="d-none d-md-table-cell small">{{ date(t.created) }}<template v-if="t.owner"> · {{ t.owner }}'s</template></td>
         <td class="text-end">
           <button class="btn btn-sm btn-outline-danger" :disabled="busy" @click="removeToken(t)"><i class="bi bi-trash" /></button>
         </td>
@@ -180,12 +230,24 @@ async function copySecret() {
       <div class="form-text">8 characters or more.</div>
     </div>
     <div v-if="form !== 'password'">
-      <div class="form-label">{{ form === 'token' ? 'Scopes' : 'Permissions' }}</div>
-      <div v-for="p in all" :key="p" class="form-check">
-        <input :id="`perm-${p}`" v-model="perms" class="form-check-input" type="checkbox" :value="p" />
-        <label class="form-check-label" :for="`perm-${p}`">{{ p }} <span class="small text-secondary">· {{ permHelp[p] }}</span></label>
+      <div class="form-label">Role</div>
+      <div v-for="r in roles" :key="r.name" class="form-check">
+        <input :id="`role-${r.name}`" class="form-check-input" type="radio" name="role" :checked="role === r.name" :data-test="`role-${r.name}`" @change="pickRole(r.name)" />
+        <label class="form-check-label" :for="`role-${r.name}`"><span class="text-capitalize fw-semibold">{{ r.name }}</span> <span class="small text-secondary">· {{ r.line }}</span></label>
       </div>
-      <div v-if="form === 'add'" class="form-text">None: every permission for the first user, read and progress for the others.</div>
+      <div v-if="role === 'custom'" class="form-text">Custom: {{ perms.join(', ') || 'nothing' }}.</div>
+      <div v-if="role === 'admin'" class="alert alert-warning py-1 px-2 small mt-2 mb-0">An admin manages the users, every token and every setting.</div>
+      <div v-if="role !== 'admin'" class="form-check mt-2">
+        <input id="perm-tokens" v-model="canTokens" class="form-check-input" type="checkbox" data-test="perm-tokens" />
+        <label class="form-check-label" for="perm-tokens">Can make API tokens <span class="small text-secondary">· their own, never with more than they have</span></label>
+      </div>
+      <button type="button" class="btn btn-link btn-sm px-0 mt-1" data-test="show-all" @click="showAll = !showAll">{{ showAll ? 'Hide' : 'Show all' }} permissions</button>
+      <div v-if="showAll">
+        <div v-for="p in permissions.data.value?.permissions ?? []" :key="p.name" class="form-check">
+          <input :id="`perm-${p.name}`" class="form-check-input" type="checkbox" :checked="perms.includes(p.name)" :disabled="p.name === 'read'" @change="togglePerm(p.name, ($event.target as HTMLInputElement).checked)" />
+          <label class="form-check-label" :for="`perm-${p.name}`">{{ p.name }} <span class="small text-secondary">· {{ p.line }}</span></label>
+        </div>
+      </div>
     </div>
   </FormModal>
 

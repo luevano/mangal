@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// TestUsers: the first user gets every permission, the next read and progress; the last
-// admin can't be demoted or removed; API tokens.
+// TestUsers: the first user is an admin, the next a reader; the last admin can't be
+// demoted or removed; API tokens, a user's go with them.
 func TestUsers(t *testing.T) {
 	ctx := context.Background()
 	u := NewUsers()
@@ -44,8 +44,14 @@ func TestUsers(t *testing.T) {
 	if err := u.SetPerms(ctx, "guest", Scopes); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := u.AddToken(ctx, "davids", "david", []string{ScopeRead}); err != nil {
+		t.Fatal(err)
+	}
 	if err := u.Remove(ctx, "david"); err != nil {
 		t.Errorf("remove with another admin: %v", err)
+	}
+	if tokens, _ := u.Tokens(ctx); len(tokens) != 0 {
+		t.Errorf("a removed user's tokens stay: %+v", tokens)
 	}
 	if err := u.SetPassword(ctx, "nobody", "correct horse"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown user: %v", err)
@@ -54,14 +60,14 @@ func TestUsers(t *testing.T) {
 		t.Errorf("remove the last one: %v", err)
 	}
 
-	tok, secret, err := u.AddToken(ctx, "claude", nil)
+	tok, secret, err := u.AddToken(ctx, "claude", "", nil)
 	if err != nil || secret == "" || !slices.Equal(tok.Scopes, []string{ScopeRead}) {
 		t.Fatalf("token %+v %q %v", tok, secret, err)
 	}
-	if _, _, err := u.AddToken(ctx, "claude", nil); !errors.Is(err, ErrRefused) {
+	if _, _, err := u.AddToken(ctx, "claude", "", nil); !errors.Is(err, ErrRefused) {
 		t.Errorf("same token: %v", err)
 	}
-	if _, _, err := u.AddToken(ctx, "local", nil); !errors.Is(err, ErrInvalid) {
+	if _, _, err := u.AddToken(ctx, "local", "", nil); !errors.Is(err, ErrInvalid) {
 		t.Errorf("reserved name: %v", err)
 	}
 	if tokens, err := u.Tokens(ctx); err != nil || len(tokens) != 1 {
@@ -79,7 +85,7 @@ func TestUsers(t *testing.T) {
 func TestTokensConcurrent(t *testing.T) {
 	ctx := context.Background()
 	u := NewUsers()
-	if _, _, err := u.AddToken(ctx, "revoked", nil); err != nil {
+	if _, _, err := u.AddToken(ctx, "revoked", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
@@ -90,7 +96,7 @@ func TestTokensConcurrent(t *testing.T) {
 	})
 	for i := range 10 {
 		wg.Go(func() {
-			if _, _, err := u.AddToken(ctx, fmt.Sprint("t", i), nil); err != nil {
+			if _, _, err := u.AddToken(ctx, fmt.Sprint("t", i), "", nil); err != nil {
 				t.Error(err)
 			}
 		})
@@ -146,5 +152,52 @@ func TestLastAdminConcurrent(t *testing.T) {
 	}
 	if admins != 1 {
 		t.Errorf("%d admins left: %+v", admins, list)
+	}
+}
+
+// TestPermissions: what the permissions imply, the roles, the ones before 5.28.
+func TestPermissions(t *testing.T) {
+	for _, tc := range []struct {
+		in, want []string
+	}{
+		{nil, nil},
+		{[]string{"progress"}, []string{ScopeRead, ScopeProgress}},
+		{[]string{"Download"}, []string{ScopeRead, ScopeBrowse, ScopeDownload}},
+		{[]string{"manage"}, []string{ScopeRead, ScopeBrowse, ScopeDownload, ScopeManage}},
+		{[]string{"admin"}, Scopes},
+		{[]string{"write"}, []string{ScopeRead, ScopeBrowse, ScopeDownload, ScopeManage}},
+	} {
+		if got, err := NormalizeScopes(tc.in); err != nil || !slices.Equal(got, tc.want) {
+			t.Errorf("%v: %v %v", tc.in, got, err)
+		}
+	}
+	if _, err := NormalizeScopes([]string{"everything"}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("unknown: %v", err)
+	}
+	for _, tc := range []struct {
+		old  []string
+		want string
+	}{
+		{[]string{"read"}, "custom"},
+		{[]string{"read", "progress"}, "custom"},
+		{[]string{"read", "watch", "progress", "write"}, "admin"},
+		{[]string{"read", "progress", "write"}, "manager"},
+	} {
+		if got := RoleOf(MigrateScopes(tc.old)); got != tc.want {
+			t.Errorf("%v: %s (%v)", tc.old, got, MigrateScopes(tc.old))
+		}
+	}
+	if got := MigrateScopes([]string{"read"}); !slices.Equal(got, []string{ScopeRead, ScopeBrowse}) {
+		t.Errorf("read: %v", got)
+	}
+	perms, err := WithRole("downloader", []string{"tokens"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perms, _ = NormalizeScopes(perms); RoleOf(perms) != "downloader + tokens" {
+		t.Errorf("downloader + tokens: %s", RoleOf(perms))
+	}
+	if got := CapScopes(Scopes, []string{ScopeRead, ScopeBrowse}); !slices.Equal(got, []string{ScopeRead, ScopeBrowse}) {
+		t.Errorf("cap: %v", got)
 	}
 }

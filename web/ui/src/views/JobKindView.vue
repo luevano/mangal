@@ -18,7 +18,7 @@ const kind = computed(() => String(route.params.kind))
 const jobs = useJobs()
 const st = useStatus()
 const action = useAction()
-// an admin's (every permission)
+// an admin's
 const admin = computed(() => st.allows('PUT /v1/jobs/kinds/{kind}/settings'))
 
 const k = useLoad(() => ok(client.GET('/v1/jobs/kinds/{kind}', { params: { path: { kind: kind.value } } })), [kind, () => jobs.finished, () => jobs.running])

@@ -269,7 +269,7 @@ func (a *API) ListProviderChapters(ctx context.Context, request apiv1.ListProvid
 		for _, d := range downloads {
 			paths[d.Chapter] = d.Path
 		}
-		reads, err := st.History().List(provider, mangaID)
+		reads, err := st.History().Of(core.HistoryUser(ctx)).List(provider, mangaID)
 		if err != nil {
 			return nil, err
 		}
@@ -435,7 +435,7 @@ func configWho(ctx context.Context) string {
 }
 
 // SetConfig implements apiv1.StrictServerInterface: writes the key where it's stored.
-// Only an admin (x-mangal-admin); secrets aren't set over HTTP.
+// Only an admin (scope admin); secrets aren't set over HTTP.
 func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObject) (apiv1.SetConfigResponseObject, error) {
 	key := request.Key
 	if !config.Exists(key) {

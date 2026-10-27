@@ -3,26 +3,27 @@ import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import StatusBadge from './StatusBadge.vue'
 import NotificationBell from './NotificationBell.vue'
-import { useStatus } from '@/stores/status'
+import { useStatus, type Operation } from '@/stores/status'
 
 const open = ref(false)
 const st = useStatus()
 
-// the TUI's windows
-const links = [
+// the TUI's windows, each with the operation it shows
+const links: { name: string; title: string; icon: string; op?: Operation }[] = [
   { name: 'library', title: 'Library', icon: 'bi-collection' },
   { name: 'watches', title: 'Watches', icon: 'bi-eye' },
-  { name: 'health', title: 'Health', icon: 'bi-heart-pulse' },
+  { name: 'health', title: 'Health', icon: 'bi-heart-pulse', op: 'GET /v1/health' },
   { name: 'downloads', title: 'Downloads', icon: 'bi-download' },
   { name: 'jobs', title: 'Jobs', icon: 'bi-list-task' },
   { name: 'providers', title: 'Providers', icon: 'bi-search' },
   { name: 'history', title: 'History', icon: 'bi-clock-history' },
-  { name: 'logs', title: 'Logs', icon: 'bi-journal-text' },
-  { name: 'accounts', title: 'Accounts', icon: 'bi-person-badge' },
-  { name: 'config', title: 'Config', icon: 'bi-gear' }
+  { name: 'logs', title: 'Logs', icon: 'bi-journal-text', op: 'GET /v1/logs' },
+  { name: 'accounts', title: 'Accounts', icon: 'bi-person-badge', op: 'GET /v1/accounts' },
+  { name: 'config', title: 'Config', icon: 'bi-gear' },
+  // an admin's users and tokens, or your own tokens (the tokens permission)
+  { name: 'users', title: 'Users', icon: 'bi-people', op: 'GET /v1/tokens' }
 ]
-// the users page is an admin's (every permission)
-const shown = computed(() => (st.allows('GET /v1/users') ? [...links, { name: 'users', title: 'Users', icon: 'bi-people' }] : links))
+const shown = computed(() => links.filter((l) => !l.op || st.allows(l.op)))
 </script>
 
 <template>

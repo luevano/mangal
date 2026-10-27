@@ -105,6 +105,8 @@ func (s *state) Subtitle() string {
 		return "an API token for a program, shown once"
 	case formPassword, formPerms:
 		return s.target + ": its logins end"
+	case formTokenPerms:
+		return "the API token " + s.target + " (its secret stays)"
 	}
 	if s.inputting && s.discord {
 		return "the webhook url of the notifications (empty removes it)"

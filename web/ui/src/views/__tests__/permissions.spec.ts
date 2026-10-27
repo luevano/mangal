@@ -9,7 +9,7 @@ import { useStatus } from '@/stores/status'
 import type { Me } from '@/api/schemas'
 
 const reader: Me = { name: 'guest', kind: 'user', scopes: ['read'], admin: false, hide_unavailable: true }
-const admin: Me = { name: 'david', kind: 'user', scopes: ['read', 'watch', 'progress', 'write'], admin: true, hide_unavailable: true }
+const admin: Me = { name: 'david', kind: 'user', scopes: ['read', 'progress', 'browse', 'download', 'manage', 'tokens', 'admin'], admin: true, hide_unavailable: true }
 
 async function render(component: object, me: Me) {
   const pinia = createPinia()
@@ -34,9 +34,16 @@ describe('actions by permission', () => {
     expect((await render(LibraryView, { ...reader, hide_unavailable: false })).find('[data-test=scan]').exists()).toBe(true)
   })
 
-  it('lists Users for an admin only', async () => {
+  it('lists Users for an admin and the tokens permission', async () => {
     expect((await render(AppNav, reader)).find('[data-test=nav-users]').exists()).toBe(false)
+    expect((await render(AppNav, { ...reader, scopes: ['read', 'tokens'] })).find('[data-test=nav-users]').exists()).toBe(true)
     expect((await render(AppNav, admin)).find('[data-test=nav-users]').exists()).toBe(true)
     expect((await render(AppNav, { name: 'none', kind: 'none', scopes: [], admin: false, hide_unavailable: true })).find('[data-test=nav-users]').exists()).toBe(true)
+  })
+
+  it('hides health, logs and accounts from a reader', async () => {
+    const nav = await render(AppNav, reader)
+    for (const l of ['health', 'logs', 'accounts']) expect(nav.find(`[data-test=nav-${l}]`).exists(), l).toBe(false)
+    expect(nav.find('[data-test=nav-library]').exists()).toBe(true)
   })
 })

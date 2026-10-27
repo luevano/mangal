@@ -3,6 +3,7 @@ package accounts
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -43,6 +44,7 @@ const (
 	formAddToken
 	formPassword
 	formPerms
+	formTokenPerms
 )
 
 type usersMsg struct {
@@ -102,7 +104,7 @@ func (s *state) setRows() {
 			if !u.LastLogin.IsZero() {
 				last = "last login " + u.LastLogin.Format(time.DateTime)
 			}
-			rows = append(rows, table.Row{"mangal user", u.Name, strings.Join(u.Perms, ","), "", last, ""})
+			rows = append(rows, table.Row{"mangal user", u.Name, u.Role, "", last, ""})
 		case rowNoUsers:
 			notes := "none: " + s.keys.add.Help().Key + " adds one (the web UI's login)"
 			if s.usersErr != "" {
@@ -111,7 +113,11 @@ func (s *state) setRows() {
 			rows = append(rows, table.Row{"mangal users", "", "", "", notes, ""})
 		case rowToken:
 			t := s.tokens[r.i]
-			rows = append(rows, table.Row{"API token", t.Name, strings.Join(t.Scopes, ","), "", "made " + t.Created.Format(time.DateOnly), ""})
+			made := "made " + t.Created.Format(time.DateOnly)
+			if t.Owner != "" {
+				made += ", " + t.Owner + "'s"
+			}
+			rows = append(rows, table.Row{"API token", t.Name, core.RoleOf(t.Scopes), "", made, ""})
 		case rowNoTokens:
 			rows = append(rows, table.Row{"API tokens", "", "", "", "none: " + s.keys.add.Help().Key + " here makes one (for programs)", ""})
 		}
@@ -154,12 +160,43 @@ func done(message string) tea.Msg {
 // usersChangedMsg reloads the users and says what changed.
 type usersChangedMsg struct{ notice string }
 
-func validScopes(v string) error {
-	if v == "" {
-		return nil
+// roleHint is what the role field takes.
+const roleHint = "reader, downloader, manager, admin, or permissions (mangal user roles --all)"
+
+// permsOf are the permissions of the role field (a role or a list) and the tokens toggle;
+// none when the field is empty.
+func permsOf(v string, tokens bool) ([]string, error) {
+	var perms []string
+	if v != "" {
+		var err error
+		if perms, err = core.RolePerms(v); err != nil {
+			perms = strings.Split(v, ",")
+		}
 	}
-	_, err := core.NormalizeScopes(strings.Split(v, ","))
+	if tokens && len(perms) != 0 {
+		perms = append(perms, core.ScopeTokens)
+	}
+	if _, err := core.NormalizeScopes(perms); err != nil {
+		return nil, fmt.Errorf("not a role nor permissions: %w", err)
+	}
+	return perms, nil
+}
+
+func validRole(v string) error {
+	_, err := permsOf(v, false)
 	return err
+}
+
+// roleValue is the role field's value for the permissions, the tokens toggle's apart.
+func roleValue(perms []string) string {
+	role := core.RoleOf(perms)
+	if r, ok := strings.CutSuffix(role, " + tokens"); ok {
+		return r
+	}
+	if role == "custom" {
+		return strings.Join(slices.DeleteFunc(slices.Clone(perms), func(p string) bool { return p == core.ScopeTokens }), ",")
+	}
+	return role
 }
 
 func validPassword(v string) error {
@@ -201,12 +238,7 @@ func (s *state) updateUsersKeys(ctx context.Context, msg tea.KeyPressMsg) (tea.C
 			return s.addUserForm(), true
 		case key.Matches(msg, s.keys.edit):
 			s.target = u.Name
-			return s.openForm(formPerms, huhform.Text("Permissions", strings.Join(u.Perms, ","), "read, progress, watch, write", func(v string) error {
-				if err := required(v); err != nil {
-					return err
-				}
-				return validScopes(v)
-			})), true
+			return s.openForm(formPerms, permsFields(u.Perms)...), true
 		case key.Matches(msg, s.keys.login):
 			s.target = u.Name
 			return s.openForm(formPassword, huhform.Secret("New password", "", "its logins end", validPassword)), true
@@ -233,7 +265,8 @@ func (s *state) updateUsersKeys(ctx context.Context, msg tea.KeyPressMsg) (tea.C
 		case key.Matches(msg, s.keys.add):
 			return s.addTokenForm(), true
 		case key.Matches(msg, s.keys.edit):
-			return base.Notify("A token's scopes don't change: make another, remove this one"), true
+			s.target = t.Name
+			return s.openForm(formTokenPerms, permsFields(t.Scopes)...), true
 		case key.Matches(msg, s.keys.remove):
 			if !confirmed || pending != "token/"+t.Name {
 				s.confirm = "token/" + t.Name
@@ -251,10 +284,23 @@ func (s *state) updateUsersKeys(ctx context.Context, msg tea.KeyPressMsg) (tea.C
 	return nil, false
 }
 
+// permsFields are the role field and the tokens toggle, set to the permissions.
+func permsFields(perms []string) []*huhform.Field {
+	return []*huhform.Field{
+		huhform.Text("Role", roleValue(perms), roleHint, func(v string) error {
+			if err := required(v); err != nil {
+				return err
+			}
+			return validRole(v)
+		}),
+		huhform.Toggle("API tokens", slices.Contains(perms, core.ScopeTokens) && !slices.Contains(perms, core.ScopeAdmin), "can make their own (never with more than they have)"),
+	}
+}
+
 func (s *state) addUserForm() tea.Cmd {
-	hint := "read, progress, watch, write; empty: read,progress"
+	hint := "empty: reader; " + roleHint
 	if len(s.users) == 0 {
-		hint = "read, progress, watch, write; empty: every one (the first user)"
+		hint = "empty: admin (the first user); " + roleHint
 	}
 	return s.openForm(formAddUser,
 		huhform.Text("Name", "", "", func(v string) error {
@@ -264,22 +310,16 @@ func (s *state) addUserForm() tea.Cmd {
 			return core.CheckUserName(v)
 		}),
 		huhform.Secret("Password", "", "", validPassword),
-		huhform.Text("Permissions", "", hint, validScopes),
+		huhform.Text("Role", "", hint, validRole),
+		huhform.Toggle("API tokens", false, "can make their own (never with more than they have)"),
 	)
 }
 
 func (s *state) addTokenForm() tea.Cmd {
 	return s.openForm(formAddToken,
 		huhform.Text("Name", "", "what it's for: a script, an app", required),
-		huhform.Text("Scopes", "read", "read, progress, watch, write", validScopes),
+		huhform.Text("Role", "read", roleHint, validRole),
 	)
-}
-
-func scopesOf(v string) []string {
-	if v == "" {
-		return nil
-	}
-	return strings.Split(v, ",")
 }
 
 // submitForm runs the form's action.
@@ -288,16 +328,23 @@ func (s *state) submitForm(ctx context.Context) tea.Cmd {
 	s.formKind, s.inputting = formNone, false
 	switch kind {
 	case formAddUser:
-		name, password, perms := f.Fields[0].Value(), f.Fields[1].Value(), scopesOf(f.Fields[2].Value())
+		name, password := f.Fields[0].Value(), f.Fields[1].Value()
+		perms, _ := permsOf(f.Fields[2].Value(), f.Fields[3].On())
 		return s.userAction(ctx, "Adding the user", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
 			u, err := svc.Add(ctx, name, password, perms)
-			return done(fmt.Sprintf("Added the user %s (%s)", u.Name, strings.Join(u.Perms, ", "))), err
+			return done(fmt.Sprintf("Added the user %s (%s)", u.Name, u.Role)), err
 		})
 	case formAddToken:
-		name, scopes := f.Fields[0].Value(), scopesOf(f.Fields[1].Value())
+		name := f.Fields[0].Value()
+		scopes, _ := permsOf(f.Fields[1].Value(), false)
 		return s.userAction(ctx, "Making the token", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
-			t, secret, err := svc.AddToken(ctx, name, scopes)
+			t, secret, err := svc.AddToken(ctx, name, "", scopes)
 			return tokenMadeMsg{token: t, secret: secret}, err
+		})
+	case formTokenPerms:
+		scopes, _ := permsOf(f.Fields[0].Value(), f.Fields[1].On())
+		return s.userAction(ctx, "Changing the permissions", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
+			return done("Changed the permissions of the API token " + target), svc.SetTokenScopes(ctx, target, scopes)
 		})
 	case formPassword:
 		password := f.Fields[0].Value()
@@ -305,7 +352,7 @@ func (s *state) submitForm(ctx context.Context) tea.Cmd {
 			return done("Changed the password of " + target + ", its logins ended"), svc.SetPassword(ctx, target, password)
 		})
 	case formPerms:
-		perms := scopesOf(f.Fields[0].Value())
+		perms, _ := permsOf(f.Fields[0].Value(), f.Fields[1].On())
 		return s.userAction(ctx, "Changing the permissions", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
 			return done("Changed the permissions of " + target + ", its logins ended"), svc.SetPerms(ctx, target, perms)
 		})

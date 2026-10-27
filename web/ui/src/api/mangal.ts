@@ -114,6 +114,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every permission and role, with what it allows */
+        get: operations["listPermissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/users": {
         parameters: {
             query?: never;
@@ -121,15 +138,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * The users who log in
-         * @description Needs every permission (an admin), whatever its x-mangal-scope says.
-         */
+        /** The users who log in */
         get: operations["listUsers"];
         put?: never;
         /**
          * Add a user
-         * @description No perms gives the first user every one, the others read and progress. Needs every permission (an admin), whatever its x-mangal-scope says.
+         * @description No perms makes the first user an admin, the others readers (read, progress).
          */
         post: operations["addUser"];
         delete?: never;
@@ -152,14 +166,14 @@ export interface paths {
         post?: never;
         /**
          * Remove a user
-         * @description The last user with every permission stays (409). Needs every permission (an admin), whatever its x-mangal-scope says.
+         * @description The last admin stays (409).
          */
         delete: operations["removeUser"];
         options?: never;
         head?: never;
         /**
          * Change a user's password or permissions (their logins end)
-         * @description The last user with every permission keeps them (409). Needs every permission (an admin), whatever its x-mangal-scope says.
+         * @description The last admin stays admin (409).
          */
         patch: operations["updateUser"];
         trace?: never;
@@ -173,10 +187,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * End a user's logins (every browser and app)
-         * @description Needs every permission (an admin), whatever its x-mangal-scope says.
-         */
+        /** End a user's logins (every browser and app) */
         post: operations["endUserLogins"];
         delete?: never;
         options?: never;
@@ -191,15 +202,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * The API tokens (without their secrets)
-         * @description Needs every permission (an admin), whatever its x-mangal-scope says.
-         */
+        /** The API tokens (without their secrets) */
         get: operations["listTokens"];
         put?: never;
         /**
          * Make an API token, its secret is only in this answer
-         * @description No scopes is read. Needs every permission (an admin), whatever its x-mangal-scope says.
+         * @description No role or scopes is read. An admin's token is the server's; anyone else's is theirs (owner), with no permission they haven't.
          */
         post: operations["addToken"];
         delete?: never;
@@ -218,10 +226,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /**
-         * Remove an API token
-         * @description Needs every permission (an admin), whatever its x-mangal-scope says.
-         */
+        /** Remove an API token */
         delete: operations["removeToken"];
         options?: never;
         head?: never;
@@ -240,7 +245,8 @@ export interface paths {
          * @description `id:` is the event's seq, `data:` the Event JSON, `: ping` every 30 s. The recent
          *     events come first, after `since` or Last-Event-ID. A subscriber too far behind is
          *     disconnected (it reconnects from its last seq). GET /api/events stays the watch
-         *     events only, as watch.LiveEvent (watch.Remote).
+         *     events only, as watch.LiveEvent (watch.Remote). The health topic needs manage, the
+         *     log admin: left out for who hasn't.
          */
         get: operations["getEvents"];
         put?: never;
@@ -966,7 +972,7 @@ export interface paths {
         get?: never;
         /**
          * Change a job kind's settings (in the config file)
-         * @description enabled, schedule (its config key's value), per-provider on, off or an interval (empty for the prebuilt default), and the pause between requests (shared by the kinds). Needs every permission (an admin), whatever its x-mangal-scope says.
+         * @description enabled, schedule (its config key's value), per-provider on, off or an interval (empty for the prebuilt default), and the pause between requests (shared by the kinds).
          */
         put: operations["setJobKindSettings"];
         post?: never;
@@ -1126,7 +1132,7 @@ export interface paths {
         get?: never;
         /**
          * Set the provider's preferred website (providers.mirrors)
-         * @description Its website or one of its mirrors; empty or the website itself goes back to the default. The mirror that last worked is forgotten and the providers loaded again. Needs every permission (an admin), whatever its x-mangal-scope says.
+         * @description Its website or one of its mirrors; empty or the website itself goes back to the default. The mirror that last worked is forgotten and the providers loaded again.
          */
         put: operations["setProviderMirror"];
         post?: never;
@@ -1484,7 +1490,7 @@ export interface paths {
         };
         /**
          * The config, secrets masked
-         * @description Every key but the risky ones for whoever isn't an admin (every permission); only an admin changes them.
+         * @description Every key but the risky ones for whoever isn't an admin; only an admin changes them.
          */
         get: operations["listConfig"];
         put?: never;
@@ -1527,7 +1533,7 @@ export interface paths {
         /**
          * Set a change's key back to its old value
          * @description Recorded as a change of its own. 400 when the key changed after it or it's a
-         *     secret's. Needs every permission (an admin), whatever its x-mangal-scope says.
+         *     secret's.
          */
         post: operations["undoConfigChange"];
         delete?: never;
@@ -1549,7 +1555,6 @@ export interface paths {
          * @description `applies` says when the server uses it: now, reload (the providers load again)
          *     or restart (then the status's restart_needed lists it until serve restarts).
          *     Secret keys aren't set over HTTP (403). Every key is a server-wide setting:
-         *     Needs every permission (an admin), whatever its x-mangal-scope says.
          */
         put: operations["setConfig"];
         post?: never;
@@ -1773,7 +1778,9 @@ export interface components {
         User: {
             name: string;
             perms: string[];
-            /** @description every permission (manages the users) */
+            /** @description the role the permissions match ("reader", "downloader + tokens", ...), else custom */
+            role: string;
+            /** @description has the admin permission (manages the users, tokens, settings) */
             admin: boolean;
             /** Format: date-time */
             created: string;
@@ -1783,26 +1790,49 @@ export interface components {
         NewUser: {
             name: string;
             password: string;
+            /** @description a role (reader, downloader, manager, admin); perms are added to its */
+            role?: string;
             perms?: string[];
         };
         UserChange: {
             password?: string;
+            /** @description a role (reader, downloader, manager, admin); perms are added to its */
+            role?: string;
             perms?: string[];
         };
         Token: {
             name: string;
             scopes: string[];
+            /** @description the role the permissions match, else custom */
+            role: string;
+            /** @description the user who made it (it never has more than they do now), none for the server's */
+            owner?: string;
             /** Format: date-time */
             created: string;
         };
         NewToken: {
             name: string;
+            /** @description a role (reader, downloader, manager, admin); scopes are added to its */
+            role?: string;
             scopes?: string[];
         };
         NewTokenResponse: {
             token: components["schemas"]["Token"];
             /** @description Authorization Bearer, shown only here */
             secret: string;
+        };
+        Permissions: {
+            permissions: {
+                name: string;
+                line: string;
+                /** @description the permissions it brings along (read aside) */
+                implies?: string[];
+            }[];
+            roles: {
+                name: string;
+                line: string;
+                perms: string[];
+            }[];
         };
         Me: {
             /** @description the user's or the API token's name */
@@ -1813,7 +1843,7 @@ export interface components {
              */
             kind: "user" | "token" | "local" | "none";
             scopes: string[];
-            /** @description every permission (serve.auth none and local too), what the admin-only endpoints need */
+            /** @description has the admin permission (serve.auth none and local too) */
             admin: boolean;
             /** @description serve.hide_unavailable, the web UI hides the actions the scopes don't allow */
             hide_unavailable: boolean;
@@ -1911,7 +1941,7 @@ export interface components {
             scope: string;
             /** @description a plan/apply operation (the scope is for apply) */
             plan?: boolean;
-            /** @description needs every permission (an admin), whatever the scope */
+            /** @description the scope is admin (kept for older clients) */
             admin?: boolean;
             summary: string;
         };
@@ -1944,6 +1974,14 @@ export interface components {
             event_seq?: number;
             /** @description the config keys changed since the server started that it reads only at start (the risky ones only for an admin) */
             restart_needed?: string[];
+            health?: components["schemas"]["HealthSummary"];
+        };
+        /** @description the library's health in short (the local checks, a few minutes old at most, none before the first); the findings need manage */
+        HealthSummary: {
+            warnings: number;
+            errors: number;
+            /** Format: date-time */
+            checked: string;
         };
         ProviderStatus: {
             provider?: string;
@@ -2438,7 +2476,7 @@ export interface components {
             selector?: string;
             /** @description a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...) */
             chapters: string;
-            /** @description the download format, download.format by default */
+            /** @description the download format, download.format by default; picking one needs manage */
             format?: string;
         };
         FillRequest: {
@@ -3104,6 +3142,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Me"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listPermissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the permissions, from the least to the most, and the roles */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Permissions"];
                 };
             };
             default: components["responses"]["Error"];

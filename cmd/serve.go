@@ -80,7 +80,7 @@ func init() {
 	f := serveTokenCmd.Flags()
 	f.BoolVar(&serveTokenArgs.Generate, "generate", false, "Make an API token (with --name), print it once")
 	f.StringVar(&serveTokenArgs.Name, "name", "", "The token's name (what it's for: a script, an app)")
-	f.StringSliceVar(&serveTokenArgs.Scopes, "scope", nil, "Its scopes: read, watch, progress, write (comma separated or repeated; read by default)")
+	f.StringSliceVar(&serveTokenArgs.Scopes, "scope", nil, "Its permissions: "+strings.Join(core.Scopes, ", ")+" (comma separated or repeated; read by default)")
 	f.BoolVar(&serveTokenArgs.List, "list", false, "List the API tokens, with their scopes")
 	f.StringVar(&serveTokenArgs.Revoke, "revoke", "", "Remove the named API token")
 	serveTokenCmd.MarkFlagsMutuallyExclusive("generate", "list", "revoke")
@@ -93,11 +93,9 @@ var serveTokenCmd = &cobra.Command{
 	Hidden:     true,
 	Deprecated: `use "mangal token add|ls|rm"`,
 	Long: `API tokens are for programs calling the API (scripts, "mangal api --server", other
-apps): Authorization: Bearer <token>. They aren't logins: people log in as users ("mangal user"). --generate --name NAME --scope read,watch makes one: only its hash is kept,
+apps): Authorization: Bearer <token>. They aren't logins: people log in as users ("mangal user"). --generate --name NAME --scope read,browse makes one: only its hash is kept,
 it's printed once. --list shows them, --revoke NAME removes one (a running server stops
-taking it within seconds). Scopes: read (GET, events), watch (the watches: add, change,
-check), progress (the reader's reads: history, tracker progress), write (the files, the
-library, the config, downloads).`,
+taking it within seconds). Permissions: "mangal user roles --all".`,
 	Example: `  mangal serve token --generate --name claude --scope read
   mangal serve token --list
   mangal serve token --revoke claude`,
@@ -119,12 +117,12 @@ library, the config, downloads).`,
 }
 
 func generateNamedToken(cmd *cobra.Command, name string, scopes []string) error {
-	t, secret, err := core.NewUsers().AddToken(ctxOf(cmd), name, scopes)
+	t, secret, err := core.NewUsers().AddToken(ctxOf(cmd), name, "", scopes)
 	if err != nil {
 		return err
 	}
 	cmd.Println(secret)
-	successf(cmd, "saved the API token %q (%s); it isn't shown again", t.Name, strings.Join(t.Scopes, ", "))
+	successf(cmd, "saved the API token %q (%s: %s); it isn't shown again", t.Name, core.RoleOf(t.Scopes), strings.Join(t.Scopes, ", "))
 	return nil
 }
 
@@ -142,7 +140,11 @@ func listServeTokens(cmd *cobra.Command) error {
 		return err
 	}
 	for _, t := range tokens {
-		cmd.Printf("%s  %s  (made %s)\n", t.Name, strings.Join(t.Scopes, ", "), t.Created.Format(time.DateOnly))
+		owner := ""
+		if t.Owner != "" {
+			owner = ", " + t.Owner + "'s"
+		}
+		cmd.Printf("%s  %s: %s  (made %s%s)\n", t.Name, core.RoleOf(t.Scopes), strings.Join(t.Scopes, ", "), t.Created.Format(time.DateOnly), owner)
 	}
 	if len(tokens) == 0 {
 		cmd.Println("no API tokens")

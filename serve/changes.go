@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/luevano/libmangal"
 	lmmeta "github.com/luevano/libmangal/metadata"
@@ -12,6 +13,7 @@ import (
 	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
@@ -250,6 +252,9 @@ func (a *API) MigrateLibrary(ctx context.Context, request apiv1.MigrateLibraryRe
 
 // UndoOp implements apiv1.StrictServerInterface.
 func (a *API) UndoOp(ctx context.Context, request apiv1.UndoOpRequestObject) (apiv1.UndoOpResponseObject, error) {
+	if err := a.canUndo(ctx, request.Id); err != nil {
+		return nil, err
+	}
 	b := deref(request.Body)
 	resp, err := changeResponse(a.change(ctx, core.UndoReq{ID: request.Id}, deref(request.Params.Apply), applyFields{b.Expect, b.Force, b.Confirm}))
 	if err != nil {
@@ -314,4 +319,30 @@ func (a *API) loaders() ([]libmangal.ProviderLoader, error) {
 		return nil, err
 	}
 	return c.Env().Loaders()
+}
+
+// manageKinds are the operations manage may undo: one manga at a time. The rest (rename,
+// migrate, empty trash, clear history, settings, ...) need admin.
+var manageKinds = []core.Kind{core.KindMerge, core.KindMove, core.KindLink, core.KindBackups, core.KindMark,
+	core.KindForget, core.KindDelete, core.KindRetitle, core.KindHealthFix, core.KindBind, core.KindUnbind,
+	core.KindDismissPick, "scan"}
+
+// canUndo refuses undoing an operation that isn't manage's to whoever isn't an admin.
+func (a *API) canUndo(ctx context.Context, id int64) error {
+	if who, ok := identityOf(ctx); !ok || who.admin() {
+		return nil
+	}
+	c, err := a.services(ctx)
+	if err != nil {
+		return err
+	}
+	ops, err := c.Library.Ops(ctx, 0)
+	if err != nil {
+		return err
+	}
+	i := slices.IndexFunc(ops, func(op storage.Op) bool { return op.ID == id })
+	if i >= 0 && !slices.Contains(manageKinds, core.Kind(ops[i].Kind)) {
+		return newAPIError(http.StatusForbidden, CodeForbidden, "undoing a %s needs the admin permission", ops[i].Kind)
+	}
+	return nil
 }

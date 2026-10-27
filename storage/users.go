@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -265,4 +266,49 @@ func (s Sessions) RemoveExpired() error {
 		return fmt.Errorf("remove the expired sessions: %w", err)
 	}
 	return nil
+}
+
+// migratePerms moves the users to the permissions of 5.28 (MigratePerms); perms_before
+// keeps the old ones. Their sessions go on: the access is the same.
+func migratePerms(tx *sql.Tx) error {
+	if _, err := tx.Exec(`ALTER TABLE serve_users ADD COLUMN perms_before TEXT`); err != nil {
+		return err
+	}
+	users, err := listUsers(tx)
+	if err != nil {
+		return err
+	}
+	for _, u := range users {
+		if _, err := tx.Exec(`UPDATE serve_users SET perms_before = perms, perms = ? WHERE name = ?`,
+			strings.Join(MigratePerms(u.Perms), ","), u.Name); err != nil {
+			return fmt.Errorf("migrate the permissions of %q: %w", u.Name, err)
+		}
+	}
+	return nil
+}
+
+// MigratePerms are the permissions before 5.28 (read, watch, progress, write) in today's,
+// with what they imply: all four is admin, read keeps browsing the sites, watch is manage
+// (the watches are) and write download and manage.
+func MigratePerms(old []string) []string {
+	has := func(s string) bool { return slices.Contains(old, s) }
+	all := []string{"read", "progress", "browse", "download", "manage", "tokens", "admin"}
+	if has("read") && has("watch") && has("progress") && has("write") {
+		return all
+	}
+	var perms []string
+	for _, s := range old {
+		switch s {
+		case "read":
+			perms = append(perms, "read", "browse")
+		case "progress":
+			perms = append(perms, "progress")
+		case "watch", "write":
+			perms = append(perms, "browse", "download", "manage")
+		}
+	}
+	if len(perms) != 0 {
+		perms = append(perms, "read")
+	}
+	return slices.DeleteFunc(all, func(s string) bool { return !slices.Contains(perms, s) })
 }

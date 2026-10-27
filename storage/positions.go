@@ -24,13 +24,17 @@ type ReaderPosition struct {
 	Updated time.Time
 }
 
-// ReaderPositions are the web reader's page positions.
-type ReaderPositions struct{ DB *DB }
+// ReaderPositions are the web reader's page positions of a user (empty: the server's own,
+// as History).
+type ReaderPositions struct {
+	DB   *DB
+	User string
+}
 
 // Get is the chapter's position, found false if none was saved.
 func (p ReaderPositions) Get(chapter string) (pos ReaderPosition, found bool, err error) {
 	var updated int64
-	err = p.DB.QueryRow(`SELECT page, updated FROM reader_positions WHERE chapter = ?`, chapter).Scan(&pos.Page, &updated)
+	err = p.DB.QueryRow(`SELECT page, updated FROM reader_positions WHERE user = ? AND chapter = ?`, p.User, chapter).Scan(&pos.Page, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ReaderPosition{}, false, nil
 	}
@@ -46,9 +50,9 @@ func (p ReaderPositions) Set(pos ReaderPosition) error {
 	if pos.Updated.IsZero() {
 		pos.Updated = time.Now()
 	}
-	_, err := p.DB.Exec(`INSERT INTO reader_positions (chapter, page, updated) VALUES (?, ?, ?)
-ON CONFLICT (chapter) DO UPDATE SET page = excluded.page, updated = excluded.updated WHERE excluded.updated >= reader_positions.updated`,
-		pos.Chapter, pos.Page, pos.Updated.UnixMilli())
+	_, err := p.DB.Exec(`INSERT INTO reader_positions (user, chapter, page, updated) VALUES (?, ?, ?, ?)
+ON CONFLICT (user, chapter) DO UPDATE SET page = excluded.page, updated = excluded.updated WHERE excluded.updated >= reader_positions.updated`,
+		p.User, pos.Chapter, pos.Page, pos.Updated.UnixMilli())
 	if err != nil {
 		return fmt.Errorf("save the reader position of %q: %w", pos.Chapter, err)
 	}

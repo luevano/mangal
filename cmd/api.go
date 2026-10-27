@@ -41,8 +41,8 @@ var apiCmd = &cobra.Command{
 	Use:   "api [METHOD] PATH",
 	Short: "Call the serve API",
 	Long: `Call the API of the running mangal serve of this config (found with its discovery file,
-which has its key: every permission), or of --server with an API token in MANGAL_API_TOKEN
-(or in the file MANGAL_API_TOKEN_FILE names) ("mangal token add <name> --scope read" on the server makes one; it also
+which has its key: an admin), or of --server with an API token in MANGAL_API_TOKEN
+(or in the file MANGAL_API_TOKEN_FILE names) ("mangal token add <name> --perms read" on the server makes one; it also
 overrides the key). PATH is relative to
 /api/v1 unless it starts with /api/. The answer is pretty-printed; an error answer exits
 non-zero. Changes plan first: POST without ?apply=1 answers the plan and its hash, then
@@ -229,7 +229,7 @@ func listAPI(cmd *cobra.Command) error {
 		}
 		scope := o.Scope
 		if o.Plan {
-			scope += " (plan: read)"
+			scope += " (plan)"
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", o.Method, o.Path, scope, o.Summary)
 	}

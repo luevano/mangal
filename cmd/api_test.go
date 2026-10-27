@@ -68,7 +68,7 @@ func TestAPICommand(t *testing.T) {
 	reset()
 	apiArgs.List = true
 	out, err = runCmd(t, apiCmd, func() error { return apiCmd.RunE(apiCmd, nil) })
-	if err != nil || !strings.Contains(out, "/api/v1/library/merge") || !strings.Contains(out, "write (plan: read)") {
+	if err != nil || !strings.Contains(out, "/api/v1/library/merge") || !strings.Contains(out, "manage (plan)") {
 		t.Errorf("list: %v %q", err, out)
 	}
 }

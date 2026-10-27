@@ -196,8 +196,13 @@ func TestAPITokens(t *testing.T) {
 		return []cache.ServeTokenEntry{
 			{Name: "claude", Hash: HashToken("r3ad"), Scopes: []string{ScopeRead}},
 			{Name: "phone", Hash: HashToken("pr0g"), Scopes: []string{ScopeRead, ScopeProgress}},
+			// today's permissions; kid's own token, capped at what kid has
+			{Name: "reader", Hash: HashToken("r3ader"), Perms: []string{ScopeRead}},
+			{Name: "kids", Hash: HashToken("k1d"), Perms: []string{ScopeRead, ScopeBrowse, ScopeDownload}, Owner: "kid"},
+			{Name: "gones", Hash: HashToken("g0ne"), Perms: []string{ScopeRead}, Owner: "gone"},
 		}, nil
 	}
+	addUser(t, s, "kid", "a long password", ScopeRead, ScopeBrowse)
 	h := s.handler(t)
 	const remote = "192.0.2.1:1234"
 	for _, tc := range []struct {
@@ -209,8 +214,15 @@ func TestAPITokens(t *testing.T) {
 		{"GET", "/api/v1/watches", "", "Bearer " + testLocalKey, http.StatusOK},
 		// a token isn't a password
 		{"GET", "/api/v1/watches", "", "Basic bWU6cjNhZA==", http.StatusUnauthorized},
-		// a plan is a read
-		{"POST", "/api/v1/history/clear", `{}`, "Bearer r3ad", http.StatusOK},
+		// a plan needs the operation's permission
+		{"POST", "/api/v1/history/clear", `{}`, "Bearer r3ad", http.StatusForbidden},
+		{"POST", "/api/v1/history/clear", `{}`, "Bearer " + testLocalKey, http.StatusOK},
+		// the sites need browse: a token before 5.28 kept it, a reader hasn't
+		{"GET", "/api/v1/providers/fake/search?q=x", "", "Bearer r3ader", http.StatusForbidden},
+		{"GET", "/api/v1/logs", "", "Bearer r3ad", http.StatusForbidden},
+		// kid's token has no more than kid (no download), a removed owner's nothing
+		{"POST", "/api/v1/downloads", `{"provider":"fake","manga_id":"m","chapters":"1"}`, "Bearer k1d", http.StatusForbidden},
+		{"GET", "/api/v1/watches", "", "Bearer g0ne", http.StatusUnauthorized},
 		{"POST", "/api/v1/history/clear?apply=1", `{"expect":"x"}`, "Bearer r3ad", http.StatusForbidden},
 		{"POST", "/api/v1/history/clear?apply=1", `{"expect":"x"}`, "Bearer " + testLocalKey, http.StatusConflict},
 		{"POST", "/api/check", `{"dry_run":true}`, "Bearer r3ad", http.StatusForbidden},
@@ -267,7 +279,7 @@ func TestUsersAPI(t *testing.T) {
 	s.api.Users = core.NewUsersOf(storage.Users{DB: s.svc.Watches.DB})
 	s.api.Auth.Tokens = cache.ServeTokens
 	addUser(t, s, "david", "correct horse", Scopes...)
-	addUser(t, s, "guest", "battery staple", ScopeRead, ScopeWrite)
+	addUser(t, s, "guest", "battery staple", ScopeRead, ScopeDownload, ScopeManage)
 	h := s.handler(t)
 	const remote = "192.0.2.1:1234"
 	admin := "Basic " + base64.StdEncoding.EncodeToString([]byte("david:correct horse"))

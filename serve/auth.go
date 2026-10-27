@@ -20,12 +20,15 @@ import (
 	"github.com/luevano/mangal/v5/web"
 )
 
-// The permissions of the users and the scopes of the API tokens (core's).
+// The permissions of the users and the API tokens (core's).
 const (
 	ScopeRead     = core.ScopeRead
-	ScopeWatch    = core.ScopeWatch
 	ScopeProgress = core.ScopeProgress
-	ScopeWrite    = core.ScopeWrite
+	ScopeBrowse   = core.ScopeBrowse
+	ScopeDownload = core.ScopeDownload
+	ScopeManage   = core.ScopeManage
+	ScopeTokens   = core.ScopeTokens
+	ScopeAdmin    = core.ScopeAdmin
 	// ScopePublic is an operation anyone may call (the login).
 	ScopePublic = "public"
 )
@@ -64,18 +67,28 @@ type identity struct {
 	Name   string
 	Kind   string
 	Scopes []string
+	// Owner is the user who made the token, empty for the server's.
+	Owner string
 }
 
 func (id identity) has(scope string) bool { return slices.Contains(id.Scopes, scope) }
 
-// admin is every permission: what the users, tokens and admin-only settings need.
-func (id identity) admin() bool {
-	for _, s := range Scopes {
-		if !id.has(s) {
-			return false
-		}
+// admin is what the users, every token, the settings and the server need.
+func (id identity) admin() bool { return id.has(ScopeAdmin) }
+
+// user is whose read history and reading positions the request has: empty for the
+// server's own (admins, the local key, serve.auth none: the server's tracker accounts are
+// theirs), else the user's (a token's owner's).
+func (id identity) user() string {
+	switch {
+	case id.admin():
+		return ""
+	case id.Kind == KindUser:
+		return id.Name
+	case id.Owner != "":
+		return id.Owner
 	}
-	return true
+	return "token:" + id.Name
 }
 
 // String says how the request is authorized, as the status has it.
@@ -92,7 +105,7 @@ func (id identity) String() string {
 type identityKey struct{}
 
 func withIdentity(ctx context.Context, id identity) context.Context {
-	return context.WithValue(ctx, identityKey{}, id)
+	return core.WithHistoryUser(context.WithValue(ctx, identityKey{}, id), id.user())
 }
 
 func identityOf(ctx context.Context) (identity, bool) {
@@ -268,8 +281,19 @@ func (a *Auth) bearer(r *http.Request, token string) (identity, error) {
 	hash := HashToken(token)
 	for _, t := range tokens {
 		if subtle.ConstantTimeCompare([]byte(hash), []byte(t.Hash)) == 1 {
-			scopes, _ := NormalizeScopes(t.Scopes)
-			return identity{Name: t.Name, Kind: KindToken, Scopes: scopes}, nil
+			id := identity{Name: t.Name, Kind: KindToken, Scopes: core.TokenScopes(t), Owner: t.Owner}
+			if t.Owner != "" {
+				// never more than its owner has now (a removed owner: nothing)
+				u, err := a.user(t.Owner)
+				if err != nil && !errors.Is(err, storage.ErrUserNotFound) {
+					return identity{}, err
+				}
+				id.Scopes = core.CapScopes(id.Scopes, userIdentity(u).Scopes)
+				if len(id.Scopes) == 0 {
+					break
+				}
+			}
+			return id, nil
 		}
 	}
 	web.LogRefused(r, "wrong API token")

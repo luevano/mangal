@@ -23,12 +23,11 @@ type Operation struct {
 	// Path is the full path ("/api/v1/status").
 	Path string
 	ID   string
-	// Scope is the token scope it needs (x-mangal-scope), read when not said.
+	// Scope is the permission it needs (x-mangal-scope), read when not said; a plan
+	// (x-mangal-plan without apply) needs it too.
 	Scope string
-	// Plan is a plan/apply operation (x-mangal-plan): Scope is for apply, a plan is read.
-	Plan bool
-	// Admin needs every permission (x-mangal-admin), whatever Scope says.
-	Admin   bool
+	// Plan is a plan/apply operation (x-mangal-plan).
+	Plan    bool
 	Summary string
 	// V1 is an operation of the API v1, else of the browse routes.
 	V1         bool
@@ -53,7 +52,6 @@ var operations = sync.OnceValues(func() ([]Operation, error) {
 				o.Scope = s
 			}
 			o.Plan, _ = extension[bool](op.Extensions, "x-mangal-plan")
-			o.Admin, _ = extension[bool](op.Extensions, "x-mangal-admin")
 			ops = append(ops, o)
 		}
 	}
@@ -100,7 +98,7 @@ func extension[T any](ext map[string]any, key string) (T, bool) {
 //go:generate go run ./internal/scopesgen ui/src/api/scopes.json
 
 // UIScopesJSON is the web UI's api/scopes.json: what each v1 operation needs, by
-// "METHOD /v1/path": its scope, or admin.
+// "METHOD /v1/path": its permission.
 func UIScopesJSON() ([]byte, error) {
 	ops, err := Operations()
 	if err != nil {
@@ -111,11 +109,7 @@ func UIScopesJSON() ([]byte, error) {
 		if !o.V1 {
 			continue
 		}
-		s := o.Scope
-		if o.Admin {
-			s = "admin"
-		}
-		scopes[o.Method+" "+strings.TrimPrefix(o.Path, "/api")] = s
+		scopes[o.Method+" "+strings.TrimPrefix(o.Path, "/api")] = o.Scope
 	}
 	b, err := json.MarshalIndent(scopes, "", "  ")
 	return append(b, '\n'), err

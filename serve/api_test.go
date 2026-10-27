@@ -182,7 +182,7 @@ func newTestServer(t *testing.T, token string) *testServer {
 	if token != "" {
 		key = ""
 		auth.Tokens = func() ([]cache.ServeTokenEntry, error) {
-			return []cache.ServeTokenEntry{{Name: "config", Hash: HashToken(token), Scopes: Scopes}}, nil
+			return []cache.ServeTokenEntry{{Name: "config", Hash: HashToken(token), Perms: Scopes}}, nil
 		}
 	}
 	api := &API{

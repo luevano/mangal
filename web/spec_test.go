@@ -24,11 +24,12 @@ func TestSpecOperations(t *testing.T) {
 		}
 		v1++
 		switch o.Scope {
-		case "read", "watch", "progress", "write", "public":
+		case "read", "progress", "browse", "download", "manage", "tokens", "admin", "public":
 		default:
 			t.Errorf("%s: scope %q", o.ID, o.Scope)
 		}
-		if o.Method == "GET" && o.Scope != "read" && o.Scope != "public" {
+		// a GET changes nothing: it needs at most the permission to see what it shows
+		if o.Method == "GET" && (o.Scope == "progress" || o.Scope == "download") {
 			t.Errorf("%s: a GET with scope %s", o.ID, o.Scope)
 		}
 		if o.Plan && o.Method == "GET" {
@@ -38,7 +39,7 @@ func TestSpecOperations(t *testing.T) {
 	if v1 == 0 {
 		t.Fatal("no v1 operations")
 	}
-	if o, ok := OperationByID("mergeLibraryMangas"); !ok || !o.Plan || o.Scope != "write" || o.Path != "/api/v1/library/merge" {
+	if o, ok := OperationByID("mergeLibraryMangas"); !ok || !o.Plan || o.Scope != "manage" || o.Path != "/api/v1/library/merge" {
 		t.Errorf("merge: %+v", o)
 	}
 }

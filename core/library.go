@@ -328,7 +328,8 @@ func (r HistoryClearReq) plan(_ context.Context, c *Core) (*prepared, error) {
 	if r.MangaID != "" && r.Provider == "" {
 		return nil, invalid("a manga id needs its provider")
 	}
-	history := c.env.Storage.History()
+	// every user's: clearing is the admin's, for the whole server
+	history := c.env.Storage.History().Everyone()
 	reads, err := history.List(r.Provider, r.MangaID)
 	if err != nil {
 		return nil, err

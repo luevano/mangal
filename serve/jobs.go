@@ -107,6 +107,24 @@ func (a *API) ListJobs(ctx context.Context, _ apiv1.ListJobsRequestObject) (apiv
 	return out, nil
 }
 
+// jobOrigin is the origin of the jobs the request starts: who it is ("api: user kid").
+func jobOrigin(ctx context.Context) string {
+	id, _ := identityOf(ctx)
+	return "api: " + id.String()
+}
+
+// ownJob is the job when the request may change it: its own, or anyone's with manage.
+func (a *API) ownJob(ctx context.Context, id int64) (core.Job, core.Jobs, error) {
+	j, svc, err := a.job(ctx, id)
+	if err != nil {
+		return j, svc, err
+	}
+	if who, _ := identityOf(ctx); !who.has(ScopeManage) && j.Origin != jobOrigin(ctx) {
+		return j, svc, newAPIError(http.StatusForbidden, CodeForbidden, "job %d isn't yours: someone else's jobs need the manage permission", id)
+	}
+	return j, svc, nil
+}
+
 func (a *API) job(ctx context.Context, id int64) (core.Job, core.Jobs, error) {
 	svc, err := a.jobService()
 	if err != nil {
@@ -130,7 +148,7 @@ func (a *API) GetJob(ctx context.Context, request apiv1.GetJobRequestObject) (ap
 
 // CancelJob implements apiv1.StrictServerInterface.
 func (a *API) CancelJob(ctx context.Context, request apiv1.CancelJobRequestObject) (apiv1.CancelJobResponseObject, error) {
-	j, svc, err := a.job(ctx, request.Id)
+	j, svc, err := a.ownJob(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +166,7 @@ func (a *API) CancelJob(ctx context.Context, request apiv1.CancelJobRequestObjec
 
 // RetryJob implements apiv1.StrictServerInterface.
 func (a *API) RetryJob(ctx context.Context, request apiv1.RetryJobRequestObject) (apiv1.RetryJobResponseObject, error) {
-	_, svc, err := a.job(ctx, request.Id)
+	_, svc, err := a.ownJob(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +183,7 @@ func (a *API) RetryJob(ctx context.Context, request apiv1.RetryJobRequestObject)
 
 // RemoveJob implements apiv1.StrictServerInterface.
 func (a *API) RemoveJob(ctx context.Context, request apiv1.RemoveJobRequestObject) (apiv1.RemoveJobResponseObject, error) {
-	j, svc, err := a.job(ctx, request.Id)
+	j, svc, err := a.ownJob(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +228,9 @@ func (a *API) StartDownload(ctx context.Context, request apiv1.StartDownloadRequ
 	}
 	options := config.DownloadOptions()
 	if f := deref(b.Format); f != "" {
+		if who, _ := identityOf(ctx); !who.has(ScopeManage) {
+			return nil, newAPIError(http.StatusForbidden, CodeForbidden, "picking the format needs the manage permission, the server's (%s) is used without it", options.Format)
+		}
 		format, err := libmangal.FormatString(strings.ToUpper(f))
 		if err != nil {
 			return nil, badRequest("format: %q isn't one of %s", f, strings.Join(libmangal.FormatStrings(), ", "))
@@ -247,7 +268,7 @@ func (a *API) StartDownload(ctx context.Context, request apiv1.StartDownloadRequ
 		options.SearchMetadata = false
 	}
 	title := fmt.Sprintf("%s: %s", manga.Info().Title, chaptersTitle(chapters))
-	job := m.Add(jobs.DownloadSpec(c, manga, chapters, options, title, "api"))
+	job := m.Add(jobs.DownloadSpec(c, manga, chapters, options, title, jobOrigin(ctx)))
 	a.Log.Infof("download %d (asked through the API): %s from %s", job.ID, title, c.Info().ID)
 	return apiv1.StartDownload202JSONResponse(toAPIJob(core.JobOf(job))), nil
 }

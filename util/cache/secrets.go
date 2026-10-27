@@ -260,8 +260,14 @@ func moveConfigClient(data *storage.DB) string {
 type ServeTokenEntry struct {
 	Name string `json:"name"`
 	// Hash is the hex sha256 of the token.
-	Hash    string    `json:"hash"`
-	Scopes  []string  `json:"scopes"`
+	Hash string `json:"hash"`
+	// Scopes are the permissions before 5.28 (read, watch, progress, write), kept for
+	// tokens made then; Perms are today's.
+	Scopes []string `json:"scopes,omitempty"`
+	Perms  []string `json:"perms,omitempty"`
+	// Owner is the user who made it (it never has more than they do), empty when made
+	// from the CLI or by an admin for the server.
+	Owner   string    `json:"owner,omitempty"`
 	Created time.Time `json:"created"`
 }
 

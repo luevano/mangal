@@ -4,10 +4,10 @@ info:
   title: mangal API
   description: |
     The HTTP API v1 of `mangal serve` and `mangal web` under /api/v1 (tag v1). Paths are
-    relative to /api. Every v1 operation has an x-mangal-scope (read, watch, progress or write):
-    the permission it needs (a user's, or an API token's scope); the plan/apply ones
-    (x-mangal-plan) need it only with apply=1, a plan needs read; public ones (the login)
-    need none; x-mangal-admin ones need every permission (an admin), whatever the scope. A request is a user's (the session cookie of POST /v1/auth/login, or basic
+    relative to /api. Every v1 operation has an x-mangal-scope (read, progress, browse,
+    download, manage, tokens or admin, GET /v1/permissions says what each allows): the
+    permission it needs (a user's, or an API token's), a plan of the plan/apply ones
+    (x-mangal-plan) too; public ones (the login) need none. A request is a user's (the session cookie of POST /v1/auth/login, or basic
     auth with the user's name and password) or an API token's (Authorization: Bearer).
 servers:
   - url: /api
@@ -109,14 +109,27 @@ paths:
                 $ref: '#/components/schemas/Me'
         default:
           $ref: '#/components/responses/Error'
+  /v1/permissions:
+    get:
+      summary: Every permission and role, with what it allows
+      operationId: listPermissions
+      tags: [v1, auth]
+      x-mangal-scope: read
+      responses:
+        '200':
+          description: the permissions, from the least to the most, and the roles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Permissions'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/users:
     get:
       summary: The users who log in
-      description: Needs every permission (an admin), whatever its x-mangal-scope says.
       operationId: listUsers
       tags: [v1, auth]
-      x-mangal-scope: read
-      x-mangal-admin: true
+      x-mangal-scope: admin
       responses:
         '200':
           description: the users
@@ -131,11 +144,10 @@ paths:
     post:
       summary: Add a user
       description: |
-        No perms gives the first user every one, the others read and progress. Needs every permission (an admin), whatever its x-mangal-scope says.
+        No perms makes the first user an admin, the others readers (read, progress).
       operationId: addUser
       tags: [v1, auth]
-      x-mangal-scope: write
-      x-mangal-admin: true
+      x-mangal-scope: admin
       requestBody:
         required: true
         content:
@@ -161,11 +173,10 @@ paths:
     patch:
       summary: Change a user's password or permissions (their logins end)
       description: |
-        The last user with every permission keeps them (409). Needs every permission (an admin), whatever its x-mangal-scope says.
+        The last admin stays admin (409).
       operationId: updateUser
       tags: [v1, auth]
-      x-mangal-scope: write
-      x-mangal-admin: true
+      x-mangal-scope: admin
       requestBody:
         required: true
         content:
@@ -179,11 +190,10 @@ paths:
           $ref: '#/components/responses/Error'
     delete:
       summary: Remove a user
-      description: The last user with every permission stays (409). Needs every permission (an admin), whatever its x-mangal-scope says.
+      description: The last admin stays (409).
       operationId: removeUser
       tags: [v1, auth]
-      x-mangal-scope: write
-      x-mangal-admin: true
+      x-mangal-scope: admin
       responses:
         '204':
           description: removed
@@ -192,11 +202,9 @@ paths:
   /v1/users/{name}/logout:
     post:
       summary: End a user's logins (every browser and app)
-      description: Needs every permission (an admin), whatever its x-mangal-scope says.
       operationId: endUserLogins
       tags: [v1, auth]
-      x-mangal-scope: write
-      x-mangal-admin: true
+      x-mangal-scope: admin
       parameters:
         - name: name
           in: path
@@ -211,11 +219,9 @@ paths:
   /v1/tokens:
     get:
       summary: The API tokens (without their secrets)
-      description: Needs every permission (an admin), whatever its x-mangal-scope says.
       operationId: listTokens
       tags: [v1, auth]
-      x-mangal-scope: read
-      x-mangal-admin: true
+      x-mangal-scope: tokens
       responses:
         '200':
           description: the tokens
@@ -229,11 +235,12 @@ paths:
           $ref: '#/components/responses/Error'
     post:
       summary: Make an API token, its secret is only in this answer
-      description: No scopes is read. Needs every permission (an admin), whatever its x-mangal-scope says.
+      description: >-
+        No role or scopes is read. An admin's token is the server's; anyone else's is theirs
+        (owner), with no permission they haven't.
       operationId: addToken
       tags: [v1, auth]
-      x-mangal-scope: write
-      x-mangal-admin: true
+      x-mangal-scope: tokens
       requestBody:
         required: true
         content:
@@ -252,11 +259,9 @@ paths:
   /v1/tokens/{name}:
     delete:
       summary: Remove an API token
-      description: Needs every permission (an admin), whatever its x-mangal-scope says.
       operationId: removeToken
       tags: [v1, auth]
-      x-mangal-scope: write
-      x-mangal-admin: true
+      x-mangal-scope: tokens
       parameters:
         - name: name
           in: path
@@ -275,7 +280,8 @@ paths:
         `id:` is the event's seq, `data:` the Event JSON, `: ping` every 30 s. The recent
         events come first, after `since` or Last-Event-ID. A subscriber too far behind is
         disconnected (it reconnects from its last seq). GET /api/events stays the watch
-        events only, as watch.LiveEvent (watch.Remote).
+        events only, as watch.LiveEvent (watch.Remote). The health topic needs manage, the
+        log admin: left out for who hasn't.
       operationId: getEvents
       tags: [v1, meta]
       x-mangal-scope: read
@@ -369,7 +375,7 @@ paths:
       description: hiatus and ended check the watches once more (synchronously, unless no_check), then pause them; provider marks them as needing another provider; an empty mark clears the marks and resumes the watches the hold paused.
       operationId: holdLibraryManga
       tags: [v1, library]
-      x-mangal-scope: watch
+      x-mangal-scope: manage
       parameters:
         - $ref: '#/components/parameters/IDParam'
       requestBody:
@@ -393,7 +399,7 @@ paths:
       description: The titles of the provider's manga (the library manga's current source's by default) for the same chapter numbers, every chapter listed (unavailable and retired ones too); the files get the names the chapter name template gives and, zips with a ComicInfo.xml, its Title (the originals go to the trash).
       operationId: retitleLibraryManga
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/IDParam'
@@ -601,7 +607,7 @@ paths:
       summary: The library mangas sharing a metadata id (to merge)
       operationId: listDuplicates
       tags: [v1, library]
-      x-mangal-scope: read
+      x-mangal-scope: manage
       responses:
         '200':
           description: the duplicates
@@ -618,7 +624,7 @@ paths:
       summary: What's in the trash
       operationId: getTrash
       tags: [v1, library]
-      x-mangal-scope: read
+      x-mangal-scope: manage
       responses:
         '200':
           description: the trash
@@ -634,7 +640,7 @@ paths:
       description: Reconciles the library with the files (rows only, as a download does). Answers 202 with the job.
       operationId: scanLibrary
       tags: [v1, library]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       requestBody:
         content:
           application/json:
@@ -655,7 +661,7 @@ paths:
       description: The sources without a url (and not gone), or all of them (stale urls refreshed, gone ones asked again); a provider is asked one manga at a time with a pause of jobs.delay_min to jobs.delay_max, watch.parallel_providers providers at once, the providers not installed or off in jobs.urls.providers skipped. Answers 202 with the job.
       operationId: lookupSourceURLs
       tags: [v1, library]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       requestBody:
         content:
           application/json:
@@ -675,7 +681,7 @@ paths:
       summary: Merge a library manga into another
       operationId: mergeLibraryMangas
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -695,7 +701,7 @@ paths:
       summary: Move a library manga to another provider's manga
       operationId: moveLibraryManga
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -715,7 +721,7 @@ paths:
       summary: Set a library manga's metadata links
       operationId: linkLibraryManga
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -735,7 +741,7 @@ paths:
       summary: Fill the Kitsu and MyAnimeList links of mangas linked to AniList
       operationId: fillBackupLinks
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -754,7 +760,7 @@ paths:
       summary: Write the .libmangal.json of folders without one
       operationId: markLibraryMangas
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -773,7 +779,7 @@ paths:
       summary: Rename the library's folders (and chapters) to the name templates
       operationId: renameLibrary
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: admin
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -792,7 +798,7 @@ paths:
       summary: Forget library mangas (rows only, the files stay)
       operationId: forgetLibraryMangas
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -812,7 +818,7 @@ paths:
       summary: Delete a library manga or one of its chapters (to the trash)
       operationId: deleteLibraryManga
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -833,7 +839,7 @@ paths:
       description: Applying needs `"confirm":"empty-trash"` too, else 428 confirm_required.
       operationId: emptyTrash
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: admin
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -852,7 +858,7 @@ paths:
       summary: Migrate the library's old provider ids
       operationId: migrateLibrary
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: admin
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -872,7 +878,7 @@ paths:
       summary: The journal's operations, newest first
       operationId: listOps
       tags: [v1, library]
-      x-mangal-scope: read
+      x-mangal-scope: manage
       parameters:
         - $ref: '#/components/parameters/LimitParam'
       responses:
@@ -892,7 +898,7 @@ paths:
       description: A forced undo (force, when the plan is forceable) loses what it blocks, it needs `"confirm":"force-undo"` too.
       operationId: undoOp
       tags: [v1, library, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/IDParam'
@@ -914,7 +920,7 @@ paths:
       description: Also GET /api/health.
       operationId: getHealth
       tags: [v1, health]
-      x-mangal-scope: read
+      x-mangal-scope: manage
       parameters:
         - name: only
           in: query
@@ -951,7 +957,7 @@ paths:
       summary: A health job, with its report once done
       operationId: getHealthJob
       tags: [v1, health]
-      x-mangal-scope: read
+      x-mangal-scope: manage
       parameters:
         - $ref: '#/components/parameters/IDParam'
       responses:
@@ -972,7 +978,7 @@ paths:
         without a choice, a scan).
       operationId: fixHealthFinding
       tags: [v1, health, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -992,7 +998,7 @@ paths:
       summary: Dismiss findings (fine as they are) or bring them back
       operationId: dismissHealthFindings
       tags: [v1, health]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       requestBody:
         required: true
         content:
@@ -1031,7 +1037,7 @@ paths:
       summary: Cancel the queued jobs (of a provider)
       operationId: clearJobQueue
       tags: [v1, jobs]
-      x-mangal-scope: write
+      x-mangal-scope: admin
       requestBody:
         content:
           application/json:
@@ -1087,7 +1093,7 @@ paths:
       description: Only the missing items (the due watches, the sources not checked within their interval, those without an address; the scan and the network health check do everything), or all of them. The providers off for the kind are skipped. 409 refused while one runs, 409 nothing_to_do when nothing is missing.
       operationId: runJobKind
       tags: [v1, jobs]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       parameters:
         - $ref: '#/components/parameters/KindParam'
       requestBody:
@@ -1109,7 +1115,7 @@ paths:
       summary: Pause a job kind's schedule (a running job goes on)
       operationId: pauseJobKind
       tags: [v1, jobs]
-      x-mangal-scope: write
+      x-mangal-scope: admin
       parameters:
         - $ref: '#/components/parameters/KindParam'
       responses:
@@ -1126,7 +1132,7 @@ paths:
       summary: Resume a job kind's schedule
       operationId: resumeJobKind
       tags: [v1, jobs]
-      x-mangal-scope: write
+      x-mangal-scope: admin
       parameters:
         - $ref: '#/components/parameters/KindParam'
       responses:
@@ -1141,11 +1147,10 @@ paths:
   /v1/jobs/kinds/{kind}/settings:
     put:
       summary: Change a job kind's settings (in the config file)
-      description: enabled, schedule (its config key's value), per-provider on, off or an interval (empty for the prebuilt default), and the pause between requests (shared by the kinds). Needs every permission (an admin), whatever its x-mangal-scope says.
+      description: enabled, schedule (its config key's value), per-provider on, off or an interval (empty for the prebuilt default), and the pause between requests (shared by the kinds).
       operationId: setJobKindSettings
       tags: [v1, jobs]
-      x-mangal-scope: write
-      x-mangal-admin: true
+      x-mangal-scope: admin
       parameters:
         - $ref: '#/components/parameters/KindParam'
       requestBody:
@@ -1184,7 +1189,7 @@ paths:
       summary: Remove a finished job from the list
       operationId: removeJob
       tags: [v1, jobs]
-      x-mangal-scope: write
+      x-mangal-scope: download
       parameters:
         - $ref: '#/components/parameters/IDParam'
       responses:
@@ -1197,7 +1202,7 @@ paths:
       summary: Cancel a queued or running job
       operationId: cancelJob
       tags: [v1, jobs]
-      x-mangal-scope: write
+      x-mangal-scope: download
       parameters:
         - $ref: '#/components/parameters/IDParam'
       responses:
@@ -1214,7 +1219,7 @@ paths:
       summary: Retry a finished download's failed chapters, as a new job
       operationId: retryJob
       tags: [v1, jobs]
-      x-mangal-scope: write
+      x-mangal-scope: download
       parameters:
         - $ref: '#/components/parameters/IDParam'
       responses:
@@ -1231,7 +1236,7 @@ paths:
       summary: Download chapters of a provider's manga (a job)
       operationId: startDownload
       tags: [v1, jobs]
-      x-mangal-scope: write
+      x-mangal-scope: download
       requestBody:
         required: true
         content:
@@ -1253,7 +1258,7 @@ paths:
       summary: The log files' entries, oldest first (the last `limit`)
       operationId: listLogs
       tags: [v1, logs]
-      x-mangal-scope: read
+      x-mangal-scope: admin
       parameters:
         - name: since
           in: query
@@ -1297,7 +1302,7 @@ paths:
       summary: The log files, oldest first
       operationId: listLogFiles
       tags: [v1, logs]
-      x-mangal-scope: read
+      x-mangal-scope: admin
       responses:
         '200':
           description: the files
@@ -1333,7 +1338,7 @@ paths:
       description: Only the providers already installed, from their own remotes (https, ssh, file); installing a provider has no endpoint. The providers are loaded again after.
       operationId: updateProviders
       tags: [v1, providers]
-      x-mangal-scope: write
+      x-mangal-scope: admin
       responses:
         '200':
           description: what each provider directory did
@@ -1346,11 +1351,10 @@ paths:
   /v1/providers/{provider}/mirror:
     put:
       summary: Set the provider's preferred website (providers.mirrors)
-      description: Its website or one of its mirrors; empty or the website itself goes back to the default. The mirror that last worked is forgotten and the providers loaded again. Needs every permission (an admin), whatever its x-mangal-scope says.
+      description: Its website or one of its mirrors; empty or the website itself goes back to the default. The mirror that last worked is forgotten and the providers loaded again.
       operationId: setProviderMirror
       tags: [v1, providers]
-      x-mangal-scope: write
-      x-mangal-admin: true
+      x-mangal-scope: admin
       parameters:
         - $ref: '#/components/parameters/ProviderPathParam'
       requestBody:
@@ -1413,7 +1417,7 @@ paths:
       summary: Search a provider's mangas
       operationId: searchProvider
       tags: [v1, providers]
-      x-mangal-scope: read
+      x-mangal-scope: browse
       parameters:
         - $ref: '#/components/parameters/ProviderPathParam'
         - name: q
@@ -1443,7 +1447,7 @@ paths:
       description: By the provider's id lookup (MangaByID), or a search of `q` picking the manga with the id.
       operationId: getProviderManga
       tags: [v1, providers]
-      x-mangal-scope: read
+      x-mangal-scope: browse
       parameters:
         - $ref: '#/components/parameters/ProviderPathParam'
         - $ref: '#/components/parameters/MangaIDRequiredParam'
@@ -1466,7 +1470,7 @@ paths:
       summary: A provider's manga's chapters, with what the library has
       operationId: listProviderChapters
       tags: [v1, providers]
-      x-mangal-scope: read
+      x-mangal-scope: browse
       parameters:
         - $ref: '#/components/parameters/ProviderPathParam'
         - $ref: '#/components/parameters/MangaIDRequiredParam'
@@ -1492,7 +1496,7 @@ paths:
       description: The manga's chapter numbers it can't download and its folder doesn't have, matched by number on the other provider's manga (the first available chapter with the number). Applied, a download job of the other provider gets them into the manga's folder with the manga's titles and series metadata, recorded as the other provider's downloads; the folder's source stays the manga's.
       operationId: fillProviderManga
       tags: [v1, providers, jobs]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ProviderPathParam'
@@ -1522,7 +1526,7 @@ paths:
       description: The pages are kept a while; getProviderPage gets each through the provider (its headers, its rate limit).
       operationId: listProviderPages
       tags: [v1, providers, reader]
-      x-mangal-scope: read
+      x-mangal-scope: browse
       parameters:
         - $ref: '#/components/parameters/ProviderPathParam'
         - $ref: '#/components/parameters/MangaIDRequiredParam'
@@ -1542,7 +1546,7 @@ paths:
       summary: A page of a provider's chapter (0-based)
       operationId: getProviderPage
       tags: [v1, providers, reader]
-      x-mangal-scope: read
+      x-mangal-scope: browse
       parameters:
         - $ref: '#/components/parameters/ProviderPathParam'
         - $ref: '#/components/parameters/PageParam'
@@ -1590,7 +1594,7 @@ paths:
           $ref: '#/components/responses/Error'
   /v1/reader/position:
     get:
-      summary: The page a chapter was left on in the web reader
+      summary: The page you left a chapter on in the web reader (each user has their own)
       description: |
         Saved by putReaderPosition from any device; the reader takes the newer of this and
         the browser's own.
@@ -1657,7 +1661,7 @@ paths:
       summary: An image of a public http(s) url (raster images only)
       operationId: proxyImage
       tags: [v1, providers]
-      x-mangal-scope: read
+      x-mangal-scope: browse
       parameters:
         - name: url
           in: query
@@ -1703,7 +1707,7 @@ paths:
       summary: Bind a provider's manga to a metadata id
       operationId: setBinding
       tags: [v1, bindings, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -1722,7 +1726,7 @@ paths:
       summary: Remove a binding
       operationId: removeBinding
       tags: [v1, bindings, changes]
-      x-mangal-scope: write
+      x-mangal-scope: manage
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -1800,7 +1804,7 @@ paths:
       description: The closest match first (with its score), then the source's results; a number (or `id:<n>`) gets the manga with that id. Bind one with setBinding, link it with linkLibraryManga.
       operationId: searchMetadata
       tags: [v1, metadata]
-      x-mangal-scope: read
+      x-mangal-scope: browse
       parameters:
         - name: source
           in: path
@@ -1827,7 +1831,7 @@ paths:
 
   /v1/history:
     get:
-      summary: The read chapters, last read first
+      summary: Your read chapters, last read first (each user has their own; admins share the server's)
       operationId: listHistory
       tags: [v1, history]
       x-mangal-scope: read
@@ -1850,7 +1854,7 @@ paths:
       summary: Forget the read history (of a provider, or its manga)
       operationId: clearHistory
       tags: [v1, history, changes]
-      x-mangal-scope: write
+      x-mangal-scope: admin
       x-mangal-plan: true
       parameters:
         - $ref: '#/components/parameters/ApplyParam'
@@ -1868,7 +1872,7 @@ paths:
   /v1/config:
     get:
       summary: The config, secrets masked
-      description: Every key but the risky ones for whoever isn't an admin (every permission); only an admin changes them.
+      description: Every key but the risky ones for whoever isn't an admin; only an admin changes them.
       operationId: listConfig
       tags: [v1, config]
       x-mangal-scope: read
@@ -1917,11 +1921,10 @@ paths:
       summary: Set a change's key back to its old value
       description: |
         Recorded as a change of its own. 400 when the key changed after it or it's a
-        secret's. Needs every permission (an admin), whatever its x-mangal-scope says.
+        secret's.
       operationId: undoConfigChange
       tags: [v1, config]
-      x-mangal-scope: write
-      x-mangal-admin: true
+      x-mangal-scope: admin
       parameters:
         - name: id
           in: path
@@ -1945,11 +1948,10 @@ paths:
         `applies` says when the server uses it: now, reload (the providers load again)
         or restart (then the status's restart_needed lists it until serve restarts).
         Secret keys aren't set over HTTP (403). Every key is a server-wide setting:
-        Needs every permission (an admin), whatever its x-mangal-scope says.
+       
       operationId: setConfig
       tags: [v1, config]
-      x-mangal-scope: write
-      x-mangal-admin: true
+      x-mangal-scope: admin
       parameters:
         - name: key
           in: path
@@ -1978,7 +1980,7 @@ paths:
       description: The providers' accounts as last fetched (no request to the sites).
       operationId: listAccounts
       tags: [v1, accounts]
-      x-mangal-scope: read
+      x-mangal-scope: admin
       responses:
         '200':
           description: the accounts
@@ -2013,7 +2015,7 @@ paths:
       summary: Watch a manga
       operationId: addWatch
       tags: [v1, watches]
-      x-mangal-scope: watch
+      x-mangal-scope: manage
       requestBody:
         required: true
         content:
@@ -2073,7 +2075,7 @@ paths:
       summary: Pause, resume or change a watch
       operationId: updateWatch
       tags: [v1, watches]
-      x-mangal-scope: watch
+      x-mangal-scope: manage
       parameters:
         - $ref: '#/components/parameters/IDParam'
       requestBody:
@@ -2095,7 +2097,7 @@ paths:
       summary: Stop watching (the history stays)
       operationId: removeWatch
       tags: [v1, watches]
-      x-mangal-scope: watch
+      x-mangal-scope: manage
       parameters:
         - $ref: '#/components/parameters/IDParam'
       responses:
@@ -2108,7 +2110,7 @@ paths:
       summary: Point a watch to another manga
       operationId: relinkWatch
       tags: [v1, watches]
-      x-mangal-scope: watch
+      x-mangal-scope: manage
       parameters:
         - $ref: '#/components/parameters/IDParam'
       requestBody:
@@ -2132,7 +2134,7 @@ paths:
       description: hiatus and ended check the watches once more (synchronously, unless no_check), then pause them; provider marks them as needing another provider; an empty mark clears the marks and resumes the watches the hold paused.
       operationId: holdWatch
       tags: [v1, watches]
-      x-mangal-scope: watch
+      x-mangal-scope: manage
       parameters:
         - $ref: '#/components/parameters/IDParam'
       requestBody:
@@ -2156,7 +2158,7 @@ paths:
       description: A dry run answers 200 with the report, a check 202 with its run (409 when every provider is busy).
       operationId: checkWatches
       tags: [v1, watches]
-      x-mangal-scope: watch
+      x-mangal-scope: manage
       requestBody:
         required: true
         content:
@@ -2232,7 +2234,7 @@ paths:
       summary: Cancel a check asked through the API
       operationId: cancelRun
       tags: [v1, watches]
-      x-mangal-scope: watch
+      x-mangal-scope: manage
       parameters:
         - $ref: '#/components/parameters/IDParam'
       responses:
@@ -2245,7 +2247,7 @@ paths:
       summary: Remove a watch's run from the history
       operationId: removeWatchRun
       tags: [v1, watches]
-      x-mangal-scope: watch
+      x-mangal-scope: manage
       parameters:
         - $ref: '#/components/parameters/IDParam'
       responses:
@@ -2391,7 +2393,7 @@ components:
           type: boolean
     User:
       type: object
-      required: [name, perms, admin, created]
+      required: [name, perms, role, admin, created]
       properties:
         name:
           type: string
@@ -2399,9 +2401,12 @@ components:
           type: array
           items:
             type: string
+        role:
+          type: string
+          description: the role the permissions match ("reader", "downloader + tokens", ...), else custom
         admin:
           type: boolean
-          description: every permission (manages the users)
+          description: has the admin permission (manages the users, tokens, settings)
         created:
           type: string
           format: date-time
@@ -2416,6 +2421,9 @@ components:
           type: string
         password:
           type: string
+        role:
+          type: string
+          description: a role (reader, downloader, manager, admin); perms are added to its
         perms:
           type: array
           items:
@@ -2425,13 +2433,16 @@ components:
       properties:
         password:
           type: string
+        role:
+          type: string
+          description: a role (reader, downloader, manager, admin); perms are added to its
         perms:
           type: array
           items:
             type: string
     Token:
       type: object
-      required: [name, scopes, created]
+      required: [name, scopes, role, created]
       properties:
         name:
           type: string
@@ -2439,6 +2450,12 @@ components:
           type: array
           items:
             type: string
+        role:
+          type: string
+          description: the role the permissions match, else custom
+        owner:
+          type: string
+          description: the user who made it (it never has more than they do now), none for the server's
         created:
           type: string
           format: date-time
@@ -2448,6 +2465,9 @@ components:
       properties:
         name:
           type: string
+        role:
+          type: string
+          description: a role (reader, downloader, manager, admin); scopes are added to its
         scopes:
           type: array
           items:
@@ -2461,6 +2481,39 @@ components:
         secret:
           type: string
           description: Authorization Bearer, shown only here
+    Permissions:
+      type: object
+      required: [permissions, roles]
+      properties:
+        permissions:
+          type: array
+          items:
+            type: object
+            required: [name, line]
+            properties:
+              name:
+                type: string
+              line:
+                type: string
+              implies:
+                type: array
+                description: the permissions it brings along (read aside)
+                items:
+                  type: string
+        roles:
+          type: array
+          items:
+            type: object
+            required: [name, line, perms]
+            properties:
+              name:
+                type: string
+              line:
+                type: string
+              perms:
+                type: array
+                items:
+                  type: string
     Me:
       type: object
       required: [name, kind, scopes, admin, hide_unavailable]
@@ -2478,7 +2531,7 @@ components:
             type: string
         admin:
           type: boolean
-          description: every permission (serve.auth none and local too), what the admin-only endpoints need
+          description: has the admin permission (serve.auth none and local too)
         hide_unavailable:
           type: boolean
           description: serve.hide_unavailable, the web UI hides the actions the scopes don't allow
@@ -2676,7 +2729,7 @@ components:
           description: a plan/apply operation (the scope is for apply)
         admin:
           type: boolean
-          description: needs every permission (an admin), whatever the scope
+          description: the scope is admin (kept for older clients)
         summary:
           type: string
 
@@ -2737,6 +2790,20 @@ components:
           description: the config keys changed since the server started that it reads only at start (the risky ones only for an admin)
           items:
             type: string
+        health:
+          $ref: '#/components/schemas/HealthSummary'
+    HealthSummary:
+      type: object
+      description: the library's health in short (the local checks, a few minutes old at most, none before the first); the findings need manage
+      required: [warnings, errors, checked]
+      properties:
+        warnings:
+          type: integer
+        errors:
+          type: integer
+        checked:
+          type: string
+          format: date-time
     ProviderStatus:
       type: object
       x-go-type: watch.ProviderStatus
@@ -3700,7 +3767,7 @@ components:
           description: a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...)
         format:
           type: string
-          description: the download format, download.format by default
+          description: the download format, download.format by default; picking one needs manage
 
     FillRequest:
       type: object
@@ -3999,7 +4066,7 @@ components:
           description: the library manga read (its ids are synced when the manga has no binding)
         sync:
           type: boolean
-          description: set the progress on the metadata sources (default true)
+          description: set the progress on the metadata sources (default true; only for an admin, the accounts are the server's)
     ReadResponse:
       type: object
       required: [recorded, synced]

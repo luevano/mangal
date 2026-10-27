@@ -21,6 +21,7 @@ import (
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library/pages"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web"
@@ -72,6 +73,7 @@ func (a *API) libraryChapter(ctx context.Context, id int64, path string) (*pages
 	if err != nil {
 		return nil, storage.Download{}, err
 	}
+	path = libraryPath(path)
 	i := slices.IndexFunc(downloads, func(d storage.Download) bool { return d.Path == path })
 	if i < 0 {
 		return nil, storage.Download{}, newAPIError(http.StatusNotFound, watch.CodeNotFound, "%s has no chapter %q", m.Title, path)
@@ -332,7 +334,7 @@ func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObj
 		if title == "" {
 			title = mangaID
 		}
-		err := st.History().Record(storage.Read{Provider: provider, MangaID: mangaID, MangaTitle: title,
+		err := st.History().Of(core.HistoryUser(ctx)).Record(storage.Read{Provider: provider, MangaID: mangaID, MangaTitle: title,
 			Volume: deref(b.Volume), Chapter: b.Chapter, ChapterTitle: deref(b.ChapterTitle), ChapterURL: deref(b.ChapterUrl),
 			LibraryManga: libraryManga, Last: time.Now()})
 		if err != nil {
@@ -340,7 +342,14 @@ func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObj
 		}
 		out.Recorded = true
 	}
-	if b.Sync == nil || *b.Sync {
+	switch {
+	case b.Sync != nil && !*b.Sync:
+	case core.HistoryUser(ctx) != "":
+		// the tracker accounts are the server's: a user's reads stay theirs
+		if out.Note == nil {
+			out.Note = new("not synced: the server's AniList/Kitsu/MyAnimeList are only synced for an admin")
+		}
+	default:
 		var bindings []storage.Binding
 		if provider != "" && mangaID != "" {
 			if bindings, err = st.Bindings().Get(provider, mangaID); err != nil {
@@ -372,7 +381,7 @@ func (a *API) GetReaderPosition(ctx context.Context, request apiv1.GetReaderPosi
 	if err != nil {
 		return nil, err
 	}
-	pos, found, err := storage.ReaderPositions{DB: svc.Env().Storage.Data}.Get(request.Params.Chapter)
+	pos, found, err := storage.ReaderPositions{DB: svc.Env().Storage.Data, User: core.HistoryUser(ctx)}.Get(request.Params.Chapter)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +401,7 @@ func (a *API) PutReaderPosition(ctx context.Context, request apiv1.PutReaderPosi
 	if err != nil {
 		return nil, err
 	}
-	positions := storage.ReaderPositions{DB: svc.Env().Storage.Data}
+	positions := storage.ReaderPositions{DB: svc.Env().Storage.Data, User: core.HistoryUser(ctx)}
 	if err := positions.Set(storage.ReaderPosition{Chapter: b.Chapter, Page: b.Page, Updated: deref(b.Updated)}); err != nil {
 		return nil, err
 	}

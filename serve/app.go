@@ -91,7 +91,7 @@ func (a *API) NewApp(opts AppOptions) (*echo.Echo, error) {
 	e := echo.NewWithConfig(echo.Config{JSONSerializer: strictJSON{}})
 	e.HTTPErrorHandler = a.errorHandler
 	e.Pre(a.logRequests(), echo.WrapMiddleware(web.Guard(opts.Guard)))
-	e.Use(a.authenticate, jsonBodies, web.ImageHeaders)
+	e.Use(a.authenticate, a.hidePaths, jsonBodies, web.ImageHeaders)
 
 	strict := apiv1.NewStrictHandler(a, []apiv1.StrictMiddlewareFunc{a.checkScope})
 	apiRoute := func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -121,7 +121,7 @@ func (a *API) NewApp(opts AppOptions) (*echo.Echo, error) {
 	g.DELETE("/api/watch-runs/:id", w.RemoveWatchRun)
 	g.GET("/api/health", w.GetHealth)
 	g.GET("/api/health/jobs/:id", w.GetHealthJob)
-	g.POST("/api/health/fix", a.legacyHealthFix, a.need(ScopeWrite))
+	g.POST("/api/health/fix", a.legacyHealthFix, a.need(ScopeManage))
 	g.GET("/api/events", a.legacyEvents, a.need(ScopeRead))
 	a.registerOPDS(e)
 
@@ -242,11 +242,11 @@ func (a *API) need(scope string) echo.MiddlewareFunc {
 	}
 }
 
-// checkScope refuses an operation the request's scopes don't allow: its x-mangal-scope,
-// read for a plan (x-mangal-plan without apply), every permission for x-mangal-admin.
+// checkScope refuses an operation the request's permissions don't allow: its
+// x-mangal-scope (a plan too: a plan nobody may apply is no use to them).
 func (a *API) checkScope(f apiv1.StrictHandlerFunc, operationID string) apiv1.StrictHandlerFunc {
 	op, ok := web.OperationByID(operationID)
-	scope := ScopeWrite
+	scope := ScopeAdmin
 	if ok {
 		scope = op.Scope
 	}
@@ -254,20 +254,8 @@ func (a *API) checkScope(f apiv1.StrictHandlerFunc, operationID string) apiv1.St
 		if scope == ScopePublic {
 			return f(c, request)
 		}
-		need := scope
-		if op.Plan {
-			if apply, _ := strconv.ParseBool(c.QueryParam("apply")); !apply {
-				need = ScopeRead
-			}
-		}
-		if err := scopeError(c.Request(), need); err != nil {
+		if err := scopeError(c.Request(), scope); err != nil {
 			return nil, err
-		}
-		if op.Admin && (!op.Plan || need != ScopeRead) {
-			if err := needAdmin(c.Request().Context()); err != nil {
-				web.LogRefused(c.Request(), err.Error())
-				return nil, err
-			}
 		}
 		return f(c, request)
 	}

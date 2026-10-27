@@ -153,7 +153,7 @@ func TestWebUI(t *testing.T) {
 	}
 	step().MustElement("[data-test=plan-dialog] .btn-close").MustClick()
 
-	// the users page (david has every permission): add a user, make a token
+	// the users page (david is an admin): add a user (a reader), make a token
 	step().MustElement("[data-test=nav-users]").MustClick()
 	step().MustElement("[data-test=users-table]")
 	step().MustElement("[data-test=user-add]").MustClick()

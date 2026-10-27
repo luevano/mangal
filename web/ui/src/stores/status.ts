@@ -5,7 +5,7 @@ import { ApiError, errorMessage } from '@/api/errors'
 import type { Me, Status } from '@/api/schemas'
 import opScopes from '@/api/scopes.json'
 
-export type Scope = 'read' | 'watch' | 'progress' | 'write'
+export type Scope = 'read' | 'progress' | 'browse' | 'download' | 'manage' | 'tokens' | 'admin'
 // an API v1 operation, "METHOD /v1/path" as the spec has it (api/scopes.json)
 export type Operation = keyof typeof opScopes
 
@@ -39,7 +39,7 @@ export const useStatus = defineStore('status', () => {
     return !hiding.value || everything.value || scopes.value.includes(scope)
   }
 
-  // canAdmin is whether to show what needs every permission (users, tokens, job settings).
+  // canAdmin is whether to show what needs the admin permission (users, settings, the log).
   function canAdmin(): boolean {
     return !hiding.value || admin.value
   }

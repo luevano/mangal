@@ -242,6 +242,11 @@ func (a *API) GetEvents(ctx context.Context, request apiv1.GetEventsRequestObjec
 	if err != nil {
 		return nil, err
 	}
+	// the health findings need manage, the log admin: left out for who hasn't
+	id, _ := identityOf(ctx)
+	topics = slices.DeleteFunc(slices.Clone(topics), func(t string) bool {
+		return (t == TopicHealth && !id.has(ScopeManage)) || (t == TopicLog && !id.has(ScopeAdmin))
+	})
 	var since uint64
 	if s := deref(request.Params.Since); s > 0 {
 		since = uint64(s)

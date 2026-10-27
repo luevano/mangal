@@ -30,7 +30,7 @@ func TestV1ConfigAdmin(t *testing.T) {
 	}
 	t.Cleanup(func() { config.Path = saved })
 	addUser(t, s, "reader", "a long password", ScopeRead)
-	addUser(t, s, "writer", "a long password", ScopeRead, ScopeWrite)
+	addUser(t, s, "writer", "a long password", ScopeRead, ScopeDownload, ScopeManage)
 	addUser(t, s, "admin", "a long password", Scopes...)
 	h := s.handler(t)
 	as := func(user string) func(method, path, body string, out any) int {

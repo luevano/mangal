@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +19,9 @@ func TestMigrateWatches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := (History{DB: old}).Record(Read{Provider: "p", MangaID: "m", Chapter: 1, Last: time.Unix(1, 0)}); err != nil {
+	// that schema's reads (no user)
+	if _, err := old.Exec(`INSERT INTO reads (provider, manga_id, manga_title, volume, chapter, chapter_title, chapter_url, count, first_read, last_read)
+VALUES ('p', 'm', '', 0, 1, '', '', 1, 1, 1)`); err != nil {
 		t.Fatal(err)
 	}
 	old.Close()
@@ -439,5 +442,58 @@ func TestWatchUpdate(t *testing.T) {
 	}
 	if _, err := s.Update(w.ID+1, func(*Watch) {}); !errors.Is(err, ErrWatchNotFound) {
 		t.Errorf("missing watch: %v", err)
+	}
+}
+
+// TestMigratePermsAndReads: the users get the permissions of 5.28 (the old ones kept), the
+// reads and reader positions before are the server's own.
+func TestMigratePermsAndReads(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FilenameData)
+	n := len(dataMigrations) - 2 // before migratePerms and historyUsers
+	old, err := Open(path, dataMigrations[:n])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO serve_users (name, hash, perms, created) VALUES ('david', 'h', 'read,watch,progress,write', 1), ('kid', 'h', 'read,progress', 1)`,
+		`INSERT INTO reads (provider, manga_id, manga_title, volume, chapter, chapter_title, chapter_url, count, first_read, last_read) VALUES ('p', 'm', '', 0, 1, '', '', 1, 1, 1)`,
+		`INSERT INTO reader_positions (chapter, page, updated) VALUES ('c', 4, 1)`,
+	} {
+		if _, err := old.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old.Close()
+
+	data, err := OpenData(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	users, err := Users{DB: data}.List()
+	if err != nil || len(users) != 2 {
+		t.Fatalf("users %+v %v", users, err)
+	}
+	if got := strings.Join(users[0].Perms, ","); got != "read,progress,browse,download,manage,tokens,admin" {
+		t.Errorf("david: %s", got)
+	}
+	if got := strings.Join(users[1].Perms, ","); got != "read,progress,browse" {
+		t.Errorf("kid: %s", got)
+	}
+	var kept string
+	if err := data.QueryRow(`SELECT perms_before FROM serve_users WHERE name = 'kid'`).Scan(&kept); err != nil || kept != "read,progress" {
+		t.Errorf("kept %q %v", kept, err)
+	}
+	if reads, _ := (History{DB: data}).List("", ""); len(reads) != 1 {
+		t.Errorf("the server's reads: %+v", reads)
+	}
+	if reads, _ := (History{DB: data}).Of("kid").List("", ""); len(reads) != 0 {
+		t.Errorf("kid's reads: %+v", reads)
+	}
+	if pos, found, _ := (ReaderPositions{DB: data}).Get("c"); !found || pos.Page != 4 {
+		t.Errorf("the server's position: %+v %v", pos, found)
+	}
+	if _, found, _ := (ReaderPositions{DB: data, User: "kid"}).Get("c"); found {
+		t.Error("kid has the server's position")
 	}
 }

@@ -470,7 +470,8 @@
         "endUserLogins",
         "listTokens",
         "addToken",
-        "removeToken"
+        "removeToken",
+        "listPermissions"
       ]
     }
   ],

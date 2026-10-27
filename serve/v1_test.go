@@ -28,7 +28,7 @@ func TestV1Meta(t *testing.T) {
 		t.Fatalf("index %d %+v", code, index)
 	}
 	for _, o := range index.Operations {
-		if o.OperationId == "mergeLibraryMangas" && (o.Scope != ScopeWrite || o.Plan == nil || !*o.Plan || o.Method != "POST") {
+		if o.OperationId == "mergeLibraryMangas" && (o.Scope != ScopeManage || o.Plan == nil || !*o.Plan || o.Method != "POST") {
 			t.Errorf("merge %+v", o)
 		}
 	}
@@ -113,7 +113,7 @@ func TestV1ReadEndpoints(t *testing.T) {
 		t.Errorf("unknown key: %d %+v", code, e)
 	}
 	// every setting is an admin's to change, a writer is refused before the key is looked up
-	addUser(t, s, "writer", "a long password", ScopeRead, ScopeWrite)
+	addUser(t, s, "writer", "a long password", ScopeRead, ScopeDownload, ScopeManage)
 	h := s.handler(t)
 	auth := "Basic " + base64.StdEncoding.EncodeToString([]byte("writer:a long password"))
 	for _, key := range []string{"providers.allow_private_addresses", "providers.private_allowlist", "data.path", "providers.path", "cache.path", "serve.auth", "providers.headless.flaresolverr_url", "providers.mirrors"} {

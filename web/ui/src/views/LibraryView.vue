@@ -73,10 +73,10 @@ function planAll(title: string, path: string, body: object = {}) {
 <template>
   <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
     <h4 class="me-auto mb-0">Library <small v-if="data" class="text-secondary fs-6">{{ data.total }}</small></h4>
-    <RouterLink class="btn btn-sm btn-outline-secondary" :to="{ name: 'duplicates' }">Duplicates</RouterLink>
-    <RouterLink class="btn btn-sm btn-outline-secondary" :to="{ name: 'trash' }">Trash</RouterLink>
-    <RouterLink class="btn btn-sm btn-outline-secondary" :to="{ name: 'ops' }">Operations</RouterLink>
-    <div v-if="st.can('write')" class="btn-group btn-group-sm">
+    <RouterLink v-if="st.allows('GET /v1/library/duplicates')" class="btn btn-sm btn-outline-secondary" :to="{ name: 'duplicates' }">Duplicates</RouterLink>
+    <RouterLink v-if="st.allows('GET /v1/library/trash')" class="btn btn-sm btn-outline-secondary" :to="{ name: 'trash' }">Trash</RouterLink>
+    <RouterLink v-if="st.allows('GET /v1/ops')" class="btn btn-sm btn-outline-secondary" :to="{ name: 'ops' }">Operations</RouterLink>
+    <div v-if="st.can('manage')" class="btn-group btn-group-sm">
       <button v-if="st.allows('POST /v1/library/scan')" class="btn btn-outline-primary" :disabled="action.busy.value" data-test="scan" @click="scan">Scan</button>
       <button v-if="st.allows('POST /v1/library/rename')" class="btn btn-outline-primary" @click="planAll('Rename folders and chapters', '/library/rename', { chapters: true })">Rename</button>
       <button v-if="st.allows('POST /v1/library/mark')" class="btn btn-outline-primary" @click="planAll('Mark the folders without a marker', '/library/mark')">Mark</button>

@@ -21,32 +21,38 @@ var userCmd = &cobra.Command{
 	Short:   "Manage the users who log into mangal serve",
 	Long: `The users log into mangal serve: the web UI's login page, or basic auth (name and
 password) for OPDS readers. They're kept in the data db (passwords as argon2id hashes),
-each with its permissions: read (browse, read, the events), progress (the reader records
-reads: history, tracker progress), watch (add, change, check the watches), write (the
-files, the library, the config, downloads). A running server sees changes within seconds;
-a new password or new permissions end the user's logins. No server needs to run: they're
-changed in the data db of this config.`,
+each with a role (reader, downloader, manager, admin) or their own set of permissions:
+"mangal user roles --all" says what each allows. A running server sees changes within
+seconds; a new password or new permissions end the user's logins. No server needs to run:
+they're changed in the data db of this config.`,
 	Args: cobra.NoArgs,
 }
 
 var userArgs = struct {
+	Role  string
 	Perms []string
 }{}
 
+// permsFlags are --role and --perms (added to the role's).
+func permsFlags(cmd *cobra.Command, role *string, perms *[]string) {
+	cmd.Flags().StringVar(role, "role", "", "A role: reader, downloader, manager, admin (mangal user roles)")
+	cmd.Flags().StringSliceVar(perms, "perms", nil, "Permissions on top of the role, or instead of it: "+strings.Join(core.Scopes, ", "))
+}
+
 func init() {
 	userCmd.AddCommand(userAddCmd)
-	userAddCmd.Flags().StringSliceVar(&userArgs.Perms, "perms", nil,
-		"Permissions: read, progress, watch, write (comma separated; every one for the first user, read and progress for the others)")
+	permsFlags(userAddCmd, &userArgs.Role, &userArgs.Perms)
 }
 
 var userAddCmd = &cobra.Command{
 	Use:   "add <name>",
 	Short: "Add a user",
 	Long: `Add a user; the password is asked twice (without echo), or read from stdin (one line).
-The first user gets every permission, the others read and progress unless --perms says.`,
+The first user is an admin, the others readers unless --role or --perms say.`,
 	Example: `  mangal user add david
-  mangal user add guest --perms read
-  mangal user add kid --perms read,progress`,
+  mangal user add kid
+  mangal user add friend --role downloader --perms tokens
+  mangal user add guest --perms read`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := core.CheckUserName(args[0]); err != nil {
@@ -56,11 +62,15 @@ The first user gets every permission, the others read and progress unless --perm
 		if err != nil {
 			return err
 		}
-		u, err := core.NewUsers().Add(ctxOf(cmd), args[0], password, userArgs.Perms)
+		perms, err := core.WithRole(userArgs.Role, userArgs.Perms)
 		if err != nil {
 			return err
 		}
-		successf(cmd, "added the user %q (%s)", u.Name, strings.Join(u.Perms, ", "))
+		u, err := core.NewUsers().Add(ctxOf(cmd), args[0], password, perms)
+		if err != nil {
+			return err
+		}
+		successf(cmd, "added the user %q (%s: %s)", u.Name, u.Role, strings.Join(u.Perms, ", "))
 		return nil
 	},
 }
@@ -86,17 +96,33 @@ var userPasswdCmd = &cobra.Command{
 	},
 }
 
+var userPermsArgs = struct {
+	Role  string
+	Perms []string
+}{}
+
 func init() {
 	userCmd.AddCommand(userPermsCmd)
+	permsFlags(userPermsCmd, &userPermsArgs.Role, &userPermsArgs.Perms)
 }
 
 var userPermsCmd = &cobra.Command{
-	Use:     "perms <name> <permissions>",
-	Short:   "Set a user's permissions (their logins end)",
-	Example: `  mangal user perms guest read,progress`,
-	Args:    cobra.ExactArgs(2),
+	Use:   "perms <name> [permissions]",
+	Short: "Set a user's role or permissions (their logins end)",
+	Example: `  mangal user perms kid --role downloader
+  mangal user perms friend --role reader --perms tokens
+  mangal user perms guest read,progress`,
+	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := core.NewUsers().SetPerms(ctxOf(cmd), args[0], strings.Split(args[1], ",")); err != nil {
+		perms := userPermsArgs.Perms
+		if len(args) == 2 {
+			perms = append(perms, strings.Split(args[1], ",")...)
+		}
+		perms, err := core.WithRole(userPermsArgs.Role, perms)
+		if err != nil {
+			return err
+		}
+		if err := core.NewUsers().SetPerms(ctxOf(cmd), args[0], perms); err != nil {
 			return err
 		}
 		successf(cmd, "changed the permissions of %q, its logins ended", args[0])
@@ -162,9 +188,41 @@ var userLsCmd = &cobra.Command{
 			if !u.LastLogin.IsZero() {
 				last = "last login " + u.LastLogin.Format(time.DateTime)
 			}
-			cmd.Printf("%s  %s  (%s)\n", u.Name, strings.Join(u.Perms, ", "), last)
+			cmd.Printf("%s  %s: %s  (%s)\n", u.Name, u.Role, strings.Join(u.Perms, ", "), last)
 		}
 		return nil
+	},
+}
+
+var userRolesArgs = struct {
+	All bool
+}{}
+
+func init() {
+	userCmd.AddCommand(userRolesCmd)
+	userRolesCmd.Flags().BoolVar(&userRolesArgs.All, "all", false, "Also every permission, with what it allows")
+}
+
+var userRolesCmd = &cobra.Command{
+	Use:   "roles",
+	Short: "What each role (and with --all each permission) allows",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, _ []string) {
+		for _, r := range core.Roles {
+			cmd.Printf("%-10s  %s\n            (%s)\n", r.Name, r.Line, strings.Join(r.Perms, ", "))
+		}
+		cmd.Println("tokens can be added to any of them (--perms tokens): they make their own API tokens.")
+		if !userRolesArgs.All {
+			return
+		}
+		cmd.Println()
+		for _, p := range core.Permissions {
+			implies := ""
+			if len(p.Implies) != 0 {
+				implies = " [with " + strings.Join(p.Implies, ", ") + "]"
+			}
+			cmd.Printf("%-10s  %s%s\n", p.Name, p.Line, implies)
+		}
 	},
 }
 

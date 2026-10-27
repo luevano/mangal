@@ -191,7 +191,7 @@ func (l *localLibrary) ChapterFiles(ctx context.Context, req ChapterFilesReq) (C
 	for _, alias := range req.Provider.History {
 		ids = append(ids, alias.ID)
 	}
-	read, err := l.core.env.Storage.History().ReadChapters(ids, req.MangaID, out.Manga.ID)
+	read, err := l.core.env.Storage.History().Of(HistoryUser(ctx)).ReadChapters(ids, req.MangaID, out.Manga.ID)
 	if err != nil {
 		out.Errors = append(out.Errors, fmt.Sprintf("read history: %s", err))
 	}
@@ -231,8 +231,8 @@ func (l *localLibrary) Ops(_ context.Context, limit int) ([]storage.Op, error) {
 	return l.core.env.Storage.Journal().Ops(limit)
 }
 
-func (l *localLibrary) History(_ context.Context, provider, mangaID string) ([]storage.Read, error) {
-	return l.core.env.Storage.History().List(provider, mangaID)
+func (l *localLibrary) History(ctx context.Context, provider, mangaID string) ([]storage.Read, error) {
+	return l.core.env.Storage.History().Of(HistoryUser(ctx)).List(provider, mangaID)
 }
 
 // ScanManga reconciles the library manga with its folder (a missing one is looked for

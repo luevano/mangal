@@ -423,7 +423,7 @@ type DownloadRequest struct {
 	// Chapters a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...)
 	Chapters string `json:"chapters"`
 
-	// Format the download format, download.format by default
+	// Format the download format, download.format by default; picking one needs manage
 	Format   *string `json:"format,omitempty"`
 	MangaId  *string `json:"manga_id,omitempty"`
 	Provider string  `json:"provider"`
@@ -596,6 +596,13 @@ type HealthJob struct {
 // HealthReport defines model for HealthReport.
 type HealthReport = health.Report
 
+// HealthSummary the library's health in short (the local checks, a few minutes old at most, none before the first); the findings need manage
+type HealthSummary struct {
+	Checked  time.Time `json:"checked"`
+	Errors   int       `json:"errors"`
+	Warnings int       `json:"warnings"`
+}
+
 // HistoryClearRequest defines model for HistoryClearRequest.
 type HistoryClearRequest struct {
 	// Confirm empty-trash for an irreversible plan, force-undo for a forced undo
@@ -625,7 +632,7 @@ type Index struct {
 
 // IndexOperation defines model for IndexOperation.
 type IndexOperation struct {
-	// Admin needs every permission (an admin), whatever the scope
+	// Admin the scope is admin (kept for older clients)
 	Admin       *bool  `json:"admin,omitempty"`
 	Method      string `json:"method"`
 	OperationId string `json:"operation_id"`
@@ -855,7 +862,7 @@ type MarkRequest struct {
 
 // Me defines model for Me.
 type Me struct {
-	// Admin every permission (serve.auth none and local too), what the admin-only endpoints need
+	// Admin has the admin permission (serve.auth none and local too)
 	Admin bool `json:"admin"`
 
 	// HideUnavailable serve.hide_unavailable, the web UI hides the actions the scopes don't allow
@@ -966,7 +973,10 @@ type MoveRequest struct {
 
 // NewToken defines model for NewToken.
 type NewToken struct {
-	Name   string    `json:"name"`
+	Name string `json:"name"`
+
+	// Role a role (reader, downloader, manager, admin); scopes are added to its
+	Role   *string   `json:"role,omitempty"`
 	Scopes *[]string `json:"scopes,omitempty"`
 }
 
@@ -982,6 +992,9 @@ type NewUser struct {
 	Name     string    `json:"name"`
 	Password string    `json:"password"`
 	Perms    *[]string `json:"perms,omitempty"`
+
+	// Role a role (reader, downloader, manager, admin); perms are added to its
+	Role *string `json:"role,omitempty"`
 }
 
 // Op defines model for Op.
@@ -1003,6 +1016,21 @@ type OpResult = core.OpResult
 
 // PatchWatchRequest defines model for PatchWatchRequest.
 type PatchWatchRequest = watch.PatchRequest
+
+// Permissions defines model for Permissions.
+type Permissions struct {
+	Permissions []struct {
+		// Implies the permissions it brings along (read aside)
+		Implies *[]string `json:"implies,omitempty"`
+		Line    string    `json:"line"`
+		Name    string    `json:"name"`
+	} `json:"permissions"`
+	Roles []struct {
+		Line  string   `json:"line"`
+		Name  string   `json:"name"`
+		Perms []string `json:"perms"`
+	} `json:"roles"`
+}
 
 // Plan defines model for Plan.
 type Plan = core.Plan
@@ -1228,7 +1256,10 @@ type Status struct {
 	EventSeq *uint64 `json:"event_seq,omitempty"`
 
 	// Features the features (core.Features names) the API has
-	Features  []string          `json:"features"`
+	Features []string `json:"features"`
+
+	// Health the library's health in short (the local checks, a few minutes old at most, none before the first); the findings need manage
+	Health    *HealthSummary    `json:"health,omitempty"`
 	NextCheck *time.Time        `json:"next_check,omitempty"`
 	Providers *[]ProviderStatus `json:"providers,omitempty"`
 
@@ -1249,7 +1280,13 @@ type Status struct {
 type Token struct {
 	Created time.Time `json:"created"`
 	Name    string    `json:"name"`
-	Scopes  []string  `json:"scopes"`
+
+	// Owner the user who made it (it never has more than they do now), none for the server's
+	Owner *string `json:"owner,omitempty"`
+
+	// Role the role the permissions match, else custom
+	Role   string   `json:"role"`
+	Scopes []string `json:"scopes"`
 }
 
 // Trash defines model for Trash.
@@ -1269,18 +1306,24 @@ type TrashBatch struct {
 
 // User defines model for User.
 type User struct {
-	// Admin every permission (manages the users)
+	// Admin has the admin permission (manages the users, tokens, settings)
 	Admin     bool       `json:"admin"`
 	Created   time.Time  `json:"created"`
 	LastLogin *time.Time `json:"last_login,omitempty"`
 	Name      string     `json:"name"`
 	Perms     []string   `json:"perms"`
+
+	// Role the role the permissions match ("reader", "downloader + tokens", ...), else custom
+	Role string `json:"role"`
 }
 
 // UserChange defines model for UserChange.
 type UserChange struct {
 	Password *string   `json:"password,omitempty"`
 	Perms    *[]string `json:"perms,omitempty"`
+
+	// Role a role (reader, downloader, manager, admin); perms are added to its
+	Role *string `json:"role,omitempty"`
 }
 
 // Watch a watch (client/watch.Watch)
