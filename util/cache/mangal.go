@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"strings"
+
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
 )
@@ -76,37 +78,50 @@ func LocalUser() (string, error) {
 	return admin, nil
 }
 
-// ClaimSearchHistory moves the search history of before 5.28 (nobody's) to the user's, and
-// the user's to another name (a rename) with from set.
-func ClaimSearchHistory(from, user string) error {
-	store, err := CacheStore(CacheDBNameMangal, BucketNameSearchHistory)
-	if err != nil {
-		return err
-	}
-	for _, key := range searchKeys {
-		old := key
-		if from != "" {
-			old = from + "/" + key
+// ClaimUserData moves what's a user's (the search history, the logins: who's logged in,
+// the logouts) from before 5.28 (nobody's) to the user's, or, with from set, from one user
+// to another (a rename).
+func ClaimUserData(from, user string) error {
+	for _, set := range []struct {
+		db, bucket string
+		keys       []string
+	}{
+		{CacheDBNameMangal, BucketNameSearchHistory, searchKeys},
+		{CacheDBNameMangalAuth, BucketNameAuthHistory, authKeys},
+	} {
+		store, err := CacheStore(set.db, set.bucket)
+		if err != nil {
+			return err
 		}
-		var v any
-		switch key {
-		case FillProviders:
-			v = new([]string)
-		default:
-			v = new(Records)
-		}
-		found, err := store.Get(old, v)
-		if err != nil || !found {
+		for _, key := range set.keys {
+			old := key
+			if from != "" {
+				old = from + "/" + key
+			}
+			var v any
+			switch {
+			case key == FillProviders:
+				v = new([]string)
+			case set.bucket == BucketNameAuthHistory && strings.HasSuffix(key, "/logged_out"):
+				v = new(bool)
+			case set.bucket == BucketNameAuthHistory:
+				v = new(UserHistory)
+			default:
+				v = new(Records)
+			}
+			found, err := store.Get(old, v)
 			if err != nil {
 				return err
 			}
-			continue
-		}
-		if err := store.Set(user+"/"+key, v); err != nil {
-			return err
-		}
-		if err := store.Delete(old); err != nil {
-			return err
+			if !found {
+				continue
+			}
+			if err := store.Set(user+"/"+key, v); err != nil {
+				return err
+			}
+			if err := store.Delete(old); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

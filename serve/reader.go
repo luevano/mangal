@@ -343,21 +343,14 @@ func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObj
 		}
 		out.Recorded = true
 	}
-	switch {
-	case b.Sync != nil && !*b.Sync:
-	case core.HistoryUser(ctx) != localUser():
-		// TODO: each user's own tracker accounts (docs/multi-user.md step 2)
-		if out.Note == nil {
-			out.Note = new("not synced: your own AniList/Kitsu/MyAnimeList accounts aren't supported yet")
-		}
-	default:
+	if b.Sync == nil || *b.Sync {
 		var bindings []storage.Binding
 		if provider != "" && mangaID != "" {
 			if bindings, err = st.Bindings().Get(provider, mangaID); err != nil {
 				return nil, err
 			}
 		}
-		synced, err := syncProgress(ctx, bindings, ids, b.Chapter)
+		synced, err := syncProgress(ctx, core.HistoryUser(ctx), bindings, ids, b.Chapter)
 		out.Synced = append(out.Synced, synced...)
 		if err != nil {
 			out.Error = new(err.Error())

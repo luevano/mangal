@@ -54,12 +54,23 @@ func Kitsu() (*metadata.ProviderWithCache, error) {
 }
 
 func newKitsu() (*metadata.ProviderWithCache, error) {
+	p, k, err := build()
+	if err != nil {
+		return nil, err
+	}
+	// the login methods are only on the concrete client
+	kitsu_ = k
+	return p, nil
+}
+
+// build is a Kitsu instance and its concrete client.
+func build() (*metadata.ProviderWithCache, *kitsu.Kitsu, error) {
 	opts := kitsu.DefaultOptions()
 	opts.HTTPClient = httpClient()
 
 	k, err := kitsu.NewKitsu(opts)
 	if err != nil {
-		return nil, fmt.Errorf("create kitsu: %w", err)
+		return nil, nil, fmt.Errorf("create kitsu: %w", err)
 	}
 
 	cacheOpts := metadata.DefaultProviderWithCacheOptions()
@@ -68,13 +79,45 @@ func newKitsu() (*metadata.ProviderWithCache, error) {
 
 	p, err := metadata.NewProviderWithCache(cacheOpts)
 	if err != nil {
-		return nil, fmt.Errorf("create kitsu: %w", err)
+		return nil, nil, fmt.Errorf("create kitsu: %w", err)
 	}
 	// logged before any client sets its logger too (e.g. library commands)
 	p.Logger().SetOnLog(mlog.ProviderHook("kitsu"))
-	// the login methods are only on the concrete client
-	kitsu_ = k
-	return p, nil
+	return p, k, nil
+}
+
+// accounts are the instances of other mangal users' accounts, by Kitsu user.
+var accounts sync.Map
+
+// ForAccount is a Kitsu instance logged in as the saved account (a mangal user's other
+// than the local one: their reads sync there), made once per process.
+func ForAccount(ctx context.Context, user string) (*metadata.ProviderWithCache, error) {
+	if p, ok := accounts.Load(user); ok {
+		return p.(*metadata.ProviderWithCache), nil
+	}
+	var token kitsu.Token
+	found, err := cache.GetKitsuAuthData(user, &token)
+	if err != nil {
+		return nil, fmt.Errorf("get login of %q: %w", user, err)
+	}
+	if !found {
+		return nil, fmt.Errorf("%q: %w", user, ErrUserNotFound)
+	}
+	if (Login{Expires: token.Expiry(), token: token}).Expired() {
+		return nil, &ExpiredError{User: user, On: token.Expiry()}
+	}
+	p, k, err := build()
+	if err != nil {
+		return nil, err
+	}
+	if err := logInSaved(ctx, k, user, token); err != nil {
+		if errors.Is(err, metadata.ErrUnauthorized) {
+			return nil, &ExpiredError{User: user, On: time.Now()}
+		}
+		return nil, fmt.Errorf("log in %q: %w", user, err)
+	}
+	p2, _ := accounts.LoadOrStore(user, p)
+	return p2.(*metadata.ProviderWithCache), nil
 }
 
 func client() (*kitsu.Kitsu, error) {

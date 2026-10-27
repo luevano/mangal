@@ -28,7 +28,7 @@ func EnsureUsers() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := cache.ClaimSearchHistory("", user); err != nil {
+	if err := cache.ClaimUserData("", user); err != nil {
 		return "", err
 	}
 	var notice string

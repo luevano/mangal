@@ -168,7 +168,7 @@ func TestV1RecordRead(t *testing.T) {
 	}
 	var gotIDs map[metadata.IDCode]string
 	var gotChapter float32
-	syncProgress = func(_ context.Context, _ []storage.Binding, ids map[metadata.IDCode]string, chapter float32) ([]string, error) {
+	syncProgress = func(_ context.Context, _ string, _ []storage.Binding, ids map[metadata.IDCode]string, chapter float32) ([]string, error) {
 		gotIDs, gotChapter = ids, chapter
 		return []string{"Anilist"}, nil
 	}

@@ -100,6 +100,16 @@ func current() (*myanimelist.MyAnimeList, *metadata.ProviderWithCache, error) {
 		return nil, nil, ErrNotConfigured
 	}
 
+	m, p, err := build(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	mal, provider, providerID = m, p, id
+	return mal, provider, nil
+}
+
+// build is a MyAnimeList instance with the client id, and its concrete client.
+func build(id string) (*myanimelist.MyAnimeList, *metadata.ProviderWithCache, error) {
 	opts := myanimelist.DefaultOptions()
 	opts.ClientID = id
 	opts.HTTPClient = httpClient()
@@ -117,8 +127,48 @@ func current() (*myanimelist.MyAnimeList, *metadata.ProviderWithCache, error) {
 	}
 	// logged before any client sets its logger too (e.g. library commands)
 	p.Logger().SetOnLog(mlog.ProviderHook("myanimelist"))
-	mal, provider, providerID = m, p, id
-	return mal, provider, nil
+	return m, p, nil
+}
+
+// accounts are the instances of other mangal users' accounts, by MyAnimeList user.
+var accounts sync.Map
+
+// ForAccount is a MyAnimeList instance logged in as the saved account (a mangal user's
+// other than the local one: their reads sync there), made once per process.
+func ForAccount(ctx context.Context, user string) (*metadata.ProviderWithCache, error) {
+	if p, ok := accounts.Load(user); ok {
+		return p.(*metadata.ProviderWithCache), nil
+	}
+	id, _, err := cache.MyAnimeListClient()
+	if err != nil {
+		return nil, fmt.Errorf("get the myanimelist client: %w", err)
+	}
+	if id == "" {
+		return nil, ErrNotConfigured
+	}
+	var token oauth2.Token
+	found, err := cache.GetMyAnimeListAuthData(user, &token)
+	if err != nil {
+		return nil, fmt.Errorf("get login of %q: %w", user, err)
+	}
+	if !found {
+		return nil, fmt.Errorf("%q: %w", user, ErrUserNotFound)
+	}
+	if (Login{Expires: token.Expiry, token: token}).Expired() {
+		return nil, &ExpiredError{User: user, On: token.Expiry}
+	}
+	m, p, err := build(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := logInSaved(ctx, m, user, token); err != nil {
+		if rejected(err) {
+			return nil, &ExpiredError{User: user, On: time.Now()}
+		}
+		return nil, fmt.Errorf("log in %q: %w", user, err)
+	}
+	p2, _ := accounts.LoadOrStore(user, p)
+	return p2.(*metadata.ProviderWithCache), nil
 }
 
 // guarded stops searching once MyAnimeList refused the client id: the first search says so,

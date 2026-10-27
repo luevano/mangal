@@ -437,7 +437,7 @@ func (l localUsers) Rename(_ context.Context, name, to string) error {
 	if err != nil {
 		return err
 	}
-	if err := cache.ClaimSearchHistory(name, to); err != nil {
+	if err := cache.ClaimUserData(name, to); err != nil {
 		return err
 	}
 	if strings.EqualFold(config.Auth.User.Get(), name) {

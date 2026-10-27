@@ -177,3 +177,37 @@ func ResetLogin() {
 func ResetLoginContext(ctx context.Context) error {
 	return account.Reset(ctx)
 }
+
+// accounts are the instances of other mangal users' accounts, by AniList user.
+var accounts sync.Map
+
+// ForAccount is an AniList instance logged in as the saved account (a mangal user's other
+// than the local one: their reads sync there), made once per process.
+func ForAccount(ctx context.Context, user string) (*metadata.ProviderWithCache, error) {
+	if p, ok := accounts.Load(user); ok {
+		return p.(*metadata.ProviderWithCache), nil
+	}
+	var token oauth2.Token
+	found, err := cache.GetAnilistAuthData(user, &token)
+	if err != nil {
+		return nil, fmt.Errorf("get login of %q: %w", user, err)
+	}
+	if !found {
+		return nil, fmt.Errorf("%q: %w", user, ErrUserNotFound)
+	}
+	if !token.Expiry.IsZero() && time.Now().After(token.Expiry) {
+		return nil, &ExpiredError{User: user, On: token.Expiry}
+	}
+	p, err := newAnilist()
+	if err != nil {
+		return nil, err
+	}
+	if err := p.LoginContext(ctx, token.AccessToken); err != nil {
+		if errors.Is(err, metadata.ErrUnauthorized) {
+			return nil, errors.Join(&ExpiredError{User: user, On: time.Now()}, cache.ExpireAnilistAuthData(user))
+		}
+		return nil, fmt.Errorf("log in %q: %w", user, err)
+	}
+	p2, _ := accounts.LoadOrStore(user, p)
+	return p2.(*metadata.ProviderWithCache), nil
+}
