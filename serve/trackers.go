@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"errors"
+	"github.com/luevano/mangal/v5/log"
 	"net/http"
 	"sync"
 	"time"
@@ -175,7 +176,7 @@ func (a *API) LoginMyAccount(ctx context.Context, request apiv1.LoginMyAccountRe
 		}
 	}
 	name := u.Name()
-	a.Log.Infof("%s logged into %s as %q", user, source, name)
+	log.Info("%s logged into %s as %q", user, source, name)
 	return apiv1.LoginMyAccount200JSONResponse{Account: &name}, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/luevano/mangal/v5/log"
 	"io"
 	"mime"
 	"net/http"
@@ -356,7 +357,7 @@ func (a *API) RecordRead(ctx context.Context, request apiv1.RecordReadRequestObj
 			out.Error = new(err.Error())
 		}
 	}
-	a.Log.Infof("read %s %q chapter %g (library manga %d) through the API%s", provider, mangaID, b.Chapter, libraryManga, syncedNote(out.Synced))
+	log.Info("read %s %q chapter %g (library manga %d) through the API%s", provider, mangaID, b.Chapter, libraryManga, syncedNote(out.Synced))
 	return out, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/luevano/mangal/v5/log"
 	"net/http"
 	"strings"
 	"sync"
@@ -44,10 +45,10 @@ func (a *API) kindsChanged() {
 // kindRan logs a job kind's run once it's over.
 func (a *API) kindRan(kind jobs.Kind, run core.JobRun) {
 	if run.Error != "" {
-		a.Log.Warnf("job %d (%s) failed: %s", run.Job, kind, run.Error)
+		log.Warn("job %d (%s) failed: %s", run.Job, kind, run.Error)
 		return
 	}
-	a.Log.Infof("job %d (%s) done: %s", run.Job, kind, run.Summary)
+	log.Info("job %d (%s) done: %s", run.Job, kind, run.Summary)
 }
 
 // keepHealth keeps a job kind's health run (a source check, a network health check) as a
@@ -60,13 +61,13 @@ func (a *API) keepHealth(opts health.Options, started time.Time, report health.R
 		what = strings.Join(opts.Only, ", ")
 	}
 	if err != nil {
-		a.Log.Errorf("health check %d (%s): %s", job.ID, what, err)
+		log.Error("health check %d (%s): %s", job.ID, what, err)
 		return job.ID
 	}
 	for _, e := range report.Errors {
-		a.Log.Warnf("health check %d: %s", job.ID, e)
+		log.Warn("health check %d: %s", job.ID, e)
 	}
-	a.Log.Infof("health check %d (%s) done: %d errors, %d warnings, %d info", job.ID, what, report.Counts.Error, report.Counts.Warning, report.Counts.Info)
+	log.Info("health check %d (%s) done: %d errors, %d warnings, %d info", job.ID, what, report.Counts.Error, report.Counts.Warning, report.Counts.Info)
 	return job.ID
 }
 
@@ -134,7 +135,6 @@ type kindSchedule struct {
 	Now   func() time.Time
 	After func(time.Duration) <-chan time.Time
 	Wake  <-chan struct{}
-	Log   logger
 }
 
 func (s kindSchedule) loop(ctx context.Context) {
@@ -153,13 +153,13 @@ func (s kindSchedule) loop(ctx context.Context) {
 func (s kindSchedule) step(ctx context.Context) time.Duration {
 	kinds, err := s.Kinds(ctx)
 	if err != nil {
-		s.Log.Warnf("scheduled %s: %s", s.Kind, err)
+		log.Warn("scheduled %s: %s", s.Kind, err)
 		return kindRetry
 	}
 	k, err := kinds.Get(ctx, s.Kind)
 	switch {
 	case err != nil:
-		s.Log.Warnf("scheduled %s: %s", s.Kind, err)
+		log.Warn("scheduled %s: %s", s.Kind, err)
 		return kindRetry
 	case k.Next.IsZero():
 		return kindPoll
@@ -171,14 +171,14 @@ func (s kindSchedule) step(ctx context.Context) time.Duration {
 	case errors.Is(err, core.ErrNothingToDo):
 		return kindPoll
 	case err != nil:
-		s.Log.Infof("scheduled %s: %s, tried again in %s", strings.ToLower(k.Title), err, kindRetry)
+		log.Info("scheduled %s: %s, tried again in %s", strings.ToLower(k.Title), err, kindRetry)
 		return kindRetry
 	}
 	// its end is logged by API.kindRan
-	s.Log.Infof("job %d (%s, scheduled): %s", job.ID, s.Kind, job.Title)
+	log.Info("job %d (%s, scheduled): %s", job.ID, s.Kind, job.Title)
 	s.Wait(ctx, job.ID)
 	if k, err := kinds.Get(ctx, s.Kind); err == nil && !k.Next.IsZero() {
-		s.Log.Infof("%s: next run %s", strings.ToLower(k.Title), k.Next.Format(time.DateTime))
+		log.Info("%s: next run %s", strings.ToLower(k.Title), k.Next.Format(time.DateTime))
 	}
 	return 0
 }
@@ -211,7 +211,7 @@ func (a *API) runKinds(ctx context.Context) {
 	a.logKinds(ctx)
 	for _, kind := range scheduledKinds {
 		s := kindSchedule{Kind: kind, Kinds: a.kinds, Wait: func(ctx context.Context, id int64) core.Job { return waitJob(ctx, m, id) },
-			Now: time.Now, After: time.After, Wake: a.wakeKinds.listen(), Log: a.Log}
+			Now: time.Now, After: time.After, Wake: a.wakeKinds.listen()}
 		go s.loop(ctx)
 	}
 }
@@ -285,7 +285,7 @@ func (a *API) RunJobKind(ctx context.Context, request apiv1.RunJobKindRequestObj
 	if all {
 		what = "all"
 	}
-	a.Log.Infof("job %d (%s, %s, asked through the API): %s", job.ID, kind, what, job.Title)
+	log.Info("job %d (%s, %s, asked through the API): %s", job.ID, kind, what, job.Title)
 	return apiv1.RunJobKind202JSONResponse(toAPIJob(job)), nil
 }
 
@@ -302,7 +302,7 @@ func (a *API) pauseKind(ctx context.Context, name string, paused bool) (core.Job
 	if paused {
 		what = "paused"
 	}
-	a.Log.Infof("%s %s through the API", strings.ToLower(k.Title), what)
+	log.Info("%s %s through the API", strings.ToLower(k.Title), what)
 	return k, nil
 }
 
@@ -337,7 +337,7 @@ func (a *API) SetJobKindSettings(ctx context.Context, request apiv1.SetJobKindSe
 	if err != nil {
 		return nil, err
 	}
-	a.Log.Infof("%s settings changed through the API", strings.ToLower(k.Title))
+	log.Info("%s settings changed through the API", strings.ToLower(k.Title))
 	return apiv1.SetJobKindSettings200JSONResponse(k), nil
 }
 
@@ -349,7 +349,7 @@ func (a *API) logKinds(ctx context.Context) {
 	}
 	list, err := kinds.List(ctx)
 	if err != nil {
-		a.Log.Warnf("jobs: %s", err)
+		log.Warn("jobs: %s", err)
 		return
 	}
 	var on, off []string
@@ -366,5 +366,5 @@ func (a *API) logKinds(ctx context.Context) {
 	if len(off) != 0 {
 		line += "; off or paused: " + strings.Join(off, ", ")
 	}
-	a.Log.Infof("%s", line)
+	log.Info("%s", line)
 }

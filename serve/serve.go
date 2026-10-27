@@ -13,7 +13,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -56,39 +55,6 @@ const lockName = watch.ServeLock
 // is taken over; a server of this host that doesn't run anymore loses it at once.
 const lockStale = watch.ServeLockStale
 
-// logger logs through package log (the file, the recent lines and, while serving, the
-// journal: SetOutput) and to out, which the tests read.
-type logger struct {
-	out io.Writer
-	mu  *sync.Mutex
-}
-
-func newLogger(out io.Writer) logger { return logger{out: out, mu: &sync.Mutex{}} }
-
-func (l logger) print(prefix, line string) {
-	if l.out == nil {
-		return
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	fmt.Fprintln(l.out, prefix+line)
-}
-
-func (l logger) Infof(format string, a ...any) {
-	log.Info(format, a...)
-	l.print("", fmt.Sprintf(format, a...))
-}
-
-func (l logger) Warnf(format string, a ...any) {
-	log.Warn(format, a...)
-	l.print("warning: ", fmt.Sprintf(format, a...))
-}
-
-func (l logger) Errorf(format string, a ...any) {
-	log.Error(format, a...)
-	l.print("error: ", fmt.Sprintf(format, a...))
-}
-
 // Run serves until ctx is cancelled (SIGTERM, ctrl+c): the running checks are cancelled
 // (the chapter being downloaded finished or dropped) and recorded, then the server stops.
 // It logs to out and the log file: the same lines, at log.level.
@@ -99,12 +65,11 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	parent := ctx
 	ctx, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
-	lg := newLogger(nil)
 	svc, err := watch.New(notify.Watches())
 	if err != nil {
 		return err
 	}
-	svc.OnError = func(err error) { lg.Warnf("%s", err) }
+	svc.OnError = func(err error) { log.Warn("%s", err) }
 
 	lock, err := svc.Watches.Lock(lockName, lockStale)
 	if err != nil {
@@ -116,10 +81,10 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	}
 	defer func() {
 		if err := lock.Unlock(); err != nil {
-			lg.Warnf("%s", err)
+			log.Warn("%s", err)
 		}
 	}()
-	stopBeat := heartbeat(lock, lg, func(err error) { stop(err) })
+	stopBeat := heartbeat(lock, func(err error) { stop(err) })
 	defer stopBeat()
 
 	listener, err := listenArgs(args)
@@ -128,7 +93,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	}
 	defer listener.Close()
 	loopback := isLoopback(listener.Addr())
-	auth, err := listenerAuth(args, listener.Addr(), lg)
+	auth, err := listenerAuth(args, listener.Addr())
 	if err != nil {
 		return err
 	}
@@ -150,14 +115,13 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	r := &runs{}
 	address := serverAddress(listener.Addr(), args)
 	started := time.Now()
-	rl := &reloader{current: &current, log: lg}
-	sched := newScheduler(rl.reload, lg, r)
+	rl := &reloader{current: &current}
+	sched := newScheduler(rl.reload, r)
 	api := &API{
 		Manager: func() watch.Manager { return current.Load() },
 		Info:    watch.Status{Server: true, Address: address, Version: meta.Version, Started: started},
 		Auth:    auth,
 		Changed: sched.Wake,
-		Log:     lg,
 		Runs:    r,
 		Browser: browser,
 		Jobs:    jobManager,
@@ -173,9 +137,9 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	dataDB := watch.DataDB()
 	discovery := watch.DiscoveryPath(dataDB)
 	if err := watch.WriteDiscovery(discovery, watch.Discovery{PID: os.Getpid(), Address: address, Started: started, Version: meta.Version, Data: dataDB, Key: auth.LocalKey}); err != nil {
-		lg.Warnf("%s (the TUI and the CLI won't find this server)", err)
+		log.Warn("%s (the TUI and the CLI won't find this server)", err)
 	}
-	defer removeDiscovery(discovery, lg)
+	defer removeDiscovery(discovery)
 
 	extra := ""
 	if args.Web {
@@ -186,9 +150,9 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		listen = fmt.Sprintf("%s (%s)", listener.Addr(), address)
 	}
 	listen += " (" + auth.describe() + ")"
-	lg.Infof("mangal serve %s on %s%s, data %s (pid %d)", meta.Version, listen, extra, dataDB, os.Getpid())
-	lg.Infof("logging at %s level (log.level) to %s", strings.ToLower(log.Lowest().String()), cmp.Or(log.Dir(), "no file"))
-	logLogins(ctx, lg, auth, args.TrustedProxies)
+	log.Info("mangal serve %s on %s%s, data %s (pid %d)", meta.Version, listen, extra, dataDB, os.Getpid())
+	log.Info("logging at %s level (log.level) to %s", strings.ToLower(log.Lowest().String()), cmp.Or(log.Dir(), "no file"))
+	logLogins(ctx, auth, args.TrustedProxies)
 
 	sched.Gate = api.checkGate
 	schedDone := make(chan struct{})
@@ -201,7 +165,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	err = web.Serve(ctx, server, listener, func() {
 		// stopped by the caller (its cause may be the signal), not a failure
 		if parent.Err() != nil {
-			lg.Infof("stopping")
+			log.Info("stopping")
 		}
 		// a failed server stops the scheduler too: systemd restarts the whole thing
 		stop(nil)
@@ -212,26 +176,26 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 		err = cause
 	}
 	if err != nil {
-		lg.Errorf("%s", err)
+		log.Error("%s", err)
 	}
-	lg.Infof("stopped")
+	log.Info("stopped")
 	return err
 }
 
 // listenerAuth is the Auth of a server listening on addr: the users and sessions of the
 // data db, the API tokens, a new local key (the discovery file has it).
-func listenerAuth(args Args, addr net.Addr, lg logger) (*Auth, error) {
+func listenerAuth(args Args, addr net.Addr) (*Auth, error) {
 	auth, err := newAuth(args)
 	if err != nil {
 		return nil, err
 	}
 	switch auth.Mode {
 	case AuthNone:
-		lg.Warnf("serve.auth is none: every request that reaches %s may do everything (only behind something that authenticates)", addr)
+		log.Warn("serve.auth is none: every request that reaches %s may do everything (only behind something that authenticates)", addr)
 	default:
 		if st, err := cache.Storage(); err == nil {
 			if users, err := st.Users().List(); err == nil && len(users) == 0 {
-				lg.Warnf("no users yet: the web UI and OPDS need one, `mangal user add <name>` makes it")
+				log.Warn("no users yet: the web UI and OPDS need one, `mangal user add <name>` makes it")
 			}
 		}
 	}
@@ -323,20 +287,20 @@ var heartbeatEvery = lockStale / 4
 
 // heartbeat keeps the lock alive until stopped. A lost lock (another server took it
 // over) calls lost: two servers can't share a data db.
-func heartbeat(lock *storage.Lock, lg logger, lost func(error)) (stop func()) {
+func heartbeat(lock *storage.Lock, lost func(error)) (stop func()) {
 	return lock.KeepAlive(heartbeatEvery, func(err error) {
 		lost(fmt.Errorf("%w: another mangal serve took over %s", err, watch.DataDB()))
-	}, func(err error) { lg.Warnf("%s", err) })
+	}, func(err error) { log.Warn("%s", err) })
 }
 
 // removeDiscovery removes the discovery file if it's still this process's.
-func removeDiscovery(file string, lg logger) {
+func removeDiscovery(file string) {
 	d, found, err := watch.ReadDiscovery(file)
 	if err != nil || !found || d.PID != os.Getpid() {
 		return
 	}
 	if err := os.Remove(file); err != nil {
-		lg.Warnf("%s", err)
+		log.Warn("%s", err)
 	}
 }
 
@@ -357,7 +321,6 @@ var watchKeys = []string{
 // and swaps the service for one with the new options when they changed.
 type reloader struct {
 	current *atomic.Pointer[watch.Service]
-	log     logger
 	// last are the values of the last cycle
 	last map[string]any
 }
@@ -374,7 +337,7 @@ func (r *reloader) reload() checker {
 			v, err = config.Parse(key, v)
 		}
 		if err != nil {
-			r.log.Warnf("re-read the config: %s", err)
+			log.Warn("re-read the config: %s", err)
 			return serviceChecker{svc}
 		}
 		values[key] = v
@@ -395,7 +358,7 @@ func (r *reloader) reload() checker {
 	if len(changed) == 0 {
 		return serviceChecker{svc}
 	}
-	r.log.Infof("config changed: %s", strings.Join(changed, ", "))
+	log.Info("config changed: %s", strings.Join(changed, ", "))
 	next := *svc
 	next.Options = optionsFrom(svc.Options, values)
 	r.current.Store(&next)
@@ -455,15 +418,15 @@ func optionsFrom(opts watch.Options, values map[string]any) watch.Options {
 
 // logLogins says at start who can log in: the users by role, the API tokens, the proxies
 // trusted for the clients' addresses.
-func logLogins(ctx context.Context, lg logger, auth *Auth, proxies []string) {
+func logLogins(ctx context.Context, auth *Auth, proxies []string) {
 	if auth.Mode == AuthNone {
-		lg.Warnf("serve.auth is none: every request may do everything")
+		log.Warn("serve.auth is none: every request may do everything")
 		return
 	}
 	users := core.NewUsers()
 	list, err := users.List(ctx)
 	if err != nil {
-		lg.Warnf("users: %s", err)
+		log.Warn("users: %s", err)
 		return
 	}
 	roles := map[string]int{}
@@ -476,14 +439,14 @@ func logLogins(ctx context.Context, lg logger, auth *Auth, proxies []string) {
 	}
 	tokens, err := users.Tokens(ctx)
 	if err != nil {
-		lg.Warnf("API tokens: %s", err)
+		log.Warn("API tokens: %s", err)
 	}
 	line := fmt.Sprintf("logins: %s, %s", stringutil.Quantify(len(list), "user", "users"), stringutil.Quantify(len(tokens), "API token", "API tokens"))
 	if len(parts) != 0 {
 		line += " (" + strings.Join(parts, ", ") + ")"
 	}
-	lg.Infof("%s; trusted proxies: %s", line, cmp.Or(strings.Join(proxies, ", "), "none"))
+	log.Info("%s; trusted proxies: %s", line, cmp.Or(strings.Join(proxies, ", "), "none"))
 	if len(list) == 0 {
-		lg.Warnf("no users: only programs with an API token and mangal on this config get in (mangal user add <name>)")
+		log.Warn("no users: only programs with an API token and mangal on this config get in (mangal user add <name>)")
 	}
 }

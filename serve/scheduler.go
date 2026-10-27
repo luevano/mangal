@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"errors"
+	"github.com/luevano/mangal/v5/log"
 	"slices"
 	"sync"
 	"time"
@@ -64,7 +65,6 @@ type Scheduler struct {
 	// MaxSleep is the longest wait between cycles.
 	MaxSleep time.Duration
 	// Log is told what happens.
-	Log logger
 	// Runs tracks the running checks.
 	Runs *runs
 
@@ -96,13 +96,12 @@ type Scheduler struct {
 // from being checked in a loop.
 const minSleep = 5 * time.Second
 
-func newScheduler(c func() checker, log logger, r *runs) *Scheduler {
+func newScheduler(c func() checker, r *runs) *Scheduler {
 	return &Scheduler{
 		Checker:         c,
 		Now:             time.Now,
 		After:           time.After,
 		MaxSleep:        time.Minute,
-		Log:             log,
 		Runs:            r,
 		wake:            make(chan struct{}, 1),
 		AuthChanged:     client.ReleaseIfAuthChanged,
@@ -153,7 +152,7 @@ func (s *Scheduler) cycle(ctx context.Context) time.Duration {
 	s.resetLogins()
 	all, err := c.List(ctx)
 	if err != nil {
-		s.Log.Errorf("list the watches: %s", err)
+		log.Error("list the watches: %s", err)
 		return s.MaxSleep
 	}
 	if s.Gate != nil {
@@ -245,7 +244,7 @@ func (s *Scheduler) resetLogins() {
 		anilist.ResetLogin()
 		kitsu.ResetLogin()
 		myanimelist.ResetLogin()
-		s.Log.Infof("logins or secrets changed")
+		log.Info("logins or secrets changed")
 	}
 	s.auth = fp
 }
@@ -255,9 +254,9 @@ func (s *Scheduler) runProvider(ctx context.Context, c checker, provider string,
 	defer s.wg.Done()
 	if s.AuthChanged != nil {
 		if released, err := s.AuthChanged(provider); err != nil {
-			s.Log.Errorf("%s: logins: %s", provider, err)
+			log.Error("%s: logins: %s", provider, err)
 		} else if released {
-			s.Log.Infof("logins or secrets changed, %s reloads with them", provider)
+			log.Info("logins or secrets changed, %s reloads with them", provider)
 		}
 	}
 	result := checkDone
@@ -280,13 +279,13 @@ func (s *Scheduler) runProvider(ctx context.Context, c checker, provider string,
 		// its slot is free for another provider meanwhile
 		s.Wake()
 		err := c.WaitFree(ctx, provider, func(b client.ProviderBusy) {
-			s.Log.Infof("scheduled check of %s queued: %s", provider, b.Message())
+			log.Info("scheduled check of %s queued: %s", provider, b.Message())
 		})
 		switch {
 		case err == nil:
 			wait = 0
 		case ctx.Err() == nil:
-			s.Log.Errorf("wait for %s: %s", provider, err)
+			log.Error("wait for %s: %s", provider, err)
 			wait = s.MaxSleep
 		}
 	}
@@ -311,9 +310,9 @@ const (
 func (s *Scheduler) check(ctx context.Context, c checker, provider string, ids []int64, opts watch.CheckOptions) checkResult {
 	opts.OnRun = func(run storage.CheckRun) {
 		s.Runs.start(run.ID, nil)
-		s.Log.Infof("%s check %d of %s: %s", run.Kind, run.ID, provider, stringutil.Quantify(len(ids), "watch", "watches"))
+		log.Info("%s check %d of %s: %s", run.Kind, run.ID, provider, stringutil.Quantify(len(ids), "watch", "watches"))
 	}
-	opts.OnEvent = logEvents(s.Log, false)
+	opts.OnEvent = logEvents(false)
 	report, err := c.Check(ctx, ids, opts)
 	if report.ID != 0 {
 		s.Runs.done(report.ID)
@@ -322,60 +321,60 @@ func (s *Scheduler) check(ctx context.Context, c checker, provider string, ids [
 	case errors.Is(err, watch.ErrBusy):
 		return checkBusy
 	case err != nil:
-		s.Log.Errorf("%s check of %s: %s", opts.Kind, provider, err)
+		log.Error("%s check of %s: %s", opts.Kind, provider, err)
 		return checkFailed
 	}
-	logReport(s.Log, report)
+	logReport(report)
 	return checkDone
 }
 
 // logEvents logs each watch's chapters found and downloaded, its result, the rate limits
 // waited out and what the providers say (a mirror down, a rate limit).
-func logEvents(log logger, dryRun bool) func(watch.Event) {
+func logEvents(dryRun bool) func(watch.Event) {
 	return func(e watch.Event) {
 		switch e.Kind {
 		case watch.EventFound:
 			if le, ok := e.Live(); ok {
-				log.Infof("%s", le.Line())
+				log.Info("%s", le.Line())
 			}
 		case watch.EventStatus:
 			if le, ok := e.Live(); ok && le.Kind == watch.LiveStatus {
-				log.Infof("%s", le.Line())
+				log.Info("%s", le.Line())
 			}
 		case watch.EventChapter:
 			switch c := e.Chapter; c.Kind {
 			case client.EventWait:
-				log.Infof("%s: chapter %s rate limited (retry #%d), retrying in %s", e.Watch.Title, c.Result.Chapter, c.Attempt, c.Wait)
+				log.Info("%s: chapter %s rate limited (retry #%d), retrying in %s", e.Watch.Title, c.Result.Chapter, c.Attempt, c.Wait)
 			case client.EventDone:
 				le, _ := e.Live()
 				if c.Result.Err != nil {
-					log.Warnf("%s", le.Line())
+					log.Warn("%s", le.Line())
 				} else {
-					log.Infof("%s", le.Line())
+					log.Info("%s", le.Line())
 				}
 			}
 		case watch.EventBusy:
-			log.Infof("%s: %s", e.Watch.Title, e.Busy.Message())
+			log.Info("%s: %s", e.Watch.Title, e.Busy.Message())
 		case watch.EventDone:
 			r := *e.Result
 			line := watch.Describe(r, dryRun)
 			if r.Error != "" {
-				log.Warnf("%s", line)
+				log.Warn("%s", line)
 			} else {
-				log.Infof("%s", line)
+				log.Info("%s", line)
 			}
 			for _, ch := range r.Chapters {
 				if ch.Path != "" {
-					log.Infof("  %s", ch.Path)
+					log.Info("  %s", ch.Path)
 				}
 			}
 		}
 	}
 }
 
-func logReport(log logger, report watch.Report) {
+func logReport(report watch.Report) {
 	took := report.Finished.Sub(report.Started).Round(time.Second)
-	log.Infof("%s check %d done in %s: %s, %s, %s", report.Kind, report.ID, took,
+	log.Info("%s check %d done in %s: %s, %s, %s", report.Kind, report.ID, took,
 		stringutil.Quantify(report.Watches, "watch", "watches"),
 		stringutil.Quantify(report.NewChapters, "new chapter", "new chapters"),
 		stringutil.Quantify(report.Errors, "error", "errors"))

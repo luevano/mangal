@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/luevano/mangal/v5/log"
 	"net/http"
 	"slices"
 	"strings"
@@ -113,7 +114,7 @@ func (a *API) UpdateUser(ctx context.Context, request apiv1.UpdateUserRequestObj
 		if err := client.UseLocalUser(ctx, name); err != nil {
 			return nil, err
 		}
-		a.Log.Infof("mangal on this machine is %q now (asked through the API)", name)
+		log.Info("mangal on this machine is %q now (asked through the API)", name)
 	}
 	a.Auth.forget(request.Name)
 	return apiv1.UpdateUser204Response{}, nil

@@ -189,7 +189,6 @@ func newTestServer(t *testing.T, token string) *testServer {
 		Manager: func() watch.Manager { return svc },
 		Info:    watch.Status{Server: true, Version: "test", Started: time.Now()},
 		Auth:    auth,
-		Log:     newLogger(io.Discard),
 		Runs:    &runs{},
 		Events:  NewEvents(),
 		ctx:     ctx,

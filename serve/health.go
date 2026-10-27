@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/luevano/mangal/v5/log"
 	"net/http"
 	"slices"
 	"strings"
@@ -222,7 +223,7 @@ func (a *API) runHealth(id int64, h core.Health, opts health.Options, scheduled 
 		what += " (" + strings.Join(opts.Only, ", ") + ")"
 	}
 	if !scheduled {
-		a.Log.Infof("health check %d (asked through the API): %s", id, what)
+		log.Info("health check %d (asked through the API): %s", id, what)
 	}
 	publish(watch.LiveHealthStart, "health: checking "+what)
 	ctx := progress.WithReporter(a.ctx, func(s progress.Status) {
@@ -242,18 +243,18 @@ func (a *API) runHealth(id int64, h core.Health, opts health.Options, scheduled 
 		j.Report = &report
 	})
 	if err != nil {
-		a.Log.Errorf("health check %d: %s", id, err)
+		log.Error("health check %d: %s", id, err)
 		publish(watch.LiveHealthDone, "health: "+err.Error())
 		return
 	}
 	for _, e := range report.Errors {
-		a.Log.Warnf("health check %d: %s", id, e)
+		log.Warn("health check %d: %s", id, e)
 	}
 	done := fmt.Sprintf("health: %d errors, %d warnings, %d info", report.Counts.Error, report.Counts.Warning, report.Counts.Info)
 	if scheduled {
-		a.Log.Infof("health check %d (scheduled, %s) done: %s", id, strings.Join(opts.Only, ", "), strings.TrimPrefix(done, "health: "))
+		log.Info("health check %d (scheduled, %s) done: %s", id, strings.Join(opts.Only, ", "), strings.TrimPrefix(done, "health: "))
 	} else {
-		a.Log.Infof("health check %d done: %s", id, strings.TrimPrefix(done, "health: "))
+		log.Info("health check %d done: %s", id, strings.TrimPrefix(done, "health: "))
 	}
 	publish(watch.LiveHealthDone, done)
 }
@@ -346,7 +347,7 @@ func (a *API) DismissHealthFindings(ctx context.Context, request apiv1.DismissHe
 	req := core.DismissReq{Keys: dismiss, Network: deref(body.Network), Known: a.healthJobs.sourceFindings(), Fallback: a.healthJobs.findings()}
 	dismissed, err := c.Health.Dismiss(ctx, req)
 	for _, f := range dismissed {
-		a.Log.Infof("health finding %s dismissed through the API: %s", f.Key, f.Message)
+		log.Info("health finding %s dismissed through the API: %s", f.Key, f.Message)
 		resp.Dismissed = append(resp.Dismissed, f.Key)
 	}
 	if err != nil {
@@ -377,7 +378,7 @@ func (a *API) legacyHealthFix(c *echo.Context) error {
 	}
 	res.Plan = orEmpty(res.Plan)
 	if res.Applied {
-		a.Log.Infof("health fix %s applied: %s", res.Key, res.Message)
+		log.Info("health fix %s applied: %s", res.Key, res.Message)
 		if res.Kind == health.ActionWatch || res.Kind == health.ActionResume || res.Kind == health.ActionHold {
 			a.changed()
 		}

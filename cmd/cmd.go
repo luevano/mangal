@@ -245,14 +245,15 @@ func setup(cmd *cobra.Command, _ []string) error {
 		Compress:     config.Log.Compress.Get(),
 	})
 	icon.SetType(config.Icons.Get())
-	// serve's journal is its stderr: the same lines as the log file from here on, the
-	// database upgrades and migrations below included (serve.Run keeps it)
-	if cmd == serveCmd {
+	// the servers (serve, web) show the log on stderr, the journal of a service: the same
+	// lines as the log file from here on, the database upgrades and migrations below
+	// included (serve.Run and serve.RunWeb keep it)
+	if teesLog(cmd) {
 		log.SetOutput(cmd.ErrOrStderr())
 	}
 	for _, w := range warnings {
 		log.Warn("%s", w)
-		if cmd != serveCmd {
+		if !teesLog(cmd) {
 			cmd.PrintErrf("warning: %s\n", w)
 		}
 	}
@@ -275,9 +276,9 @@ func setup(cmd *cobra.Command, _ []string) error {
 		if notice == "" {
 			continue
 		}
-		// in the log file too; serve's log is its stderr already, the TUI shows them itself
+		// in the log file too; a server's log is its stderr already, the TUI shows them itself
 		log.Info("notice: %s", notice)
-		if cmd.HasParent() && cmd != serveCmd {
+		if cmd.HasParent() && !teesLog(cmd) {
 			cmd.PrintErrf("notice: %s\n", notice)
 		}
 	}
@@ -339,3 +340,6 @@ func configKeyFlag(fs *pflag.FlagSet, name, key string) {
 	}
 	f.Annotations[configKeyAnnotation] = []string{key}
 }
+
+// teesLog is true for the commands whose log also goes to stderr: the servers.
+func teesLog(cmd *cobra.Command) bool { return cmd == serveCmd || cmd == webCmd }

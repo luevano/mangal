@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"errors"
+	"github.com/luevano/mangal/v5/log"
 
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/web/apiv1"
@@ -44,7 +45,7 @@ func (a *API) FillProviderManga(ctx context.Context, request apiv1.FillProviderM
 			return nil, err
 		}
 		job := m.Add(plan.Job(jobOrigin(ctx)))
-		a.Log.Infof("download %d (asked through the API): %s", job.ID, job.Title)
+		log.Info("download %d (asked through the API): %s", job.ID, job.Title)
 		go a.logDownload(m, job.ID)
 		resp.Job = new(toAPIJob(core.JobOf(job)))
 	}

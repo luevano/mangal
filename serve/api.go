@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/luevano/mangal/v5/log"
 	"io"
 	"maps"
 	"net/http"
@@ -92,7 +93,6 @@ type API struct {
 	Users core.Users
 	// Changed is told when watches are added or changed (to wake the scheduler), may be nil.
 	Changed func()
-	Log     logger
 	Runs    *runs
 	// Health makes the health checker over the watches of a manager (health.NewWith when
 	// nil), Core the app's services over them (core.New with them and Health when nil).
@@ -277,7 +277,7 @@ func (a *API) runSummary() *apiv1.HealthSummary {
 	}
 	report, err := c.Health.Report(ctx, health.Options{Kept: a.healthJobs.sourceFindings()})
 	if err != nil {
-		a.Log.Warnf("health summary: %s", err)
+		log.Warn("health summary: %s", err)
 		return nil
 	}
 	return &apiv1.HealthSummary{Warnings: report.Counts.Warning, Errors: report.Counts.Error, Checked: time.Now()}
@@ -312,7 +312,7 @@ func (a *API) AddWatch(ctx context.Context, request apiv1.AddWatchRequestObject)
 	if err != nil {
 		return nil, unprocessable(err)
 	}
-	a.Log.Infof("watching %q from %s (id %d)", added.Title, added.Provider, added.ID)
+	log.Info("watching %q from %s (id %d)", added.Title, added.Provider, added.ID)
 	a.changed()
 	return apiv1.AddWatch201JSONResponse(added), nil
 }
@@ -381,7 +381,7 @@ func (a *API) RelinkWatch(ctx context.Context, request apiv1.RelinkWatchRequestO
 	if err != nil {
 		return nil, unprocessable(err)
 	}
-	a.Log.Infof("re-linked watch %d to %q from %s (%s)", got.ID, got.Title, got.Provider, got.MangaID)
+	log.Info("re-linked watch %d to %q from %s (%s)", got.ID, got.Title, got.Provider, got.MangaID)
 	a.changed()
 	return apiv1.RelinkWatch200JSONResponse(got), nil
 }
@@ -417,7 +417,7 @@ func (a *API) hold(ctx context.Context, opts watch.HoldOptions, req watch.HoldRe
 	if opts.Manga != 0 {
 		what = fmt.Sprintf("library manga %d", opts.Manga)
 	}
-	a.Log.Infof("marked %s %s", what, cmp.Or(req.Mark, "(cleared)"))
+	log.Info("marked %s %s", what, cmp.Or(req.Mark, "(cleared)"))
 	a.changed()
 	return res, nil
 }
@@ -427,7 +427,7 @@ func (a *API) RemoveWatch(ctx context.Context, request apiv1.RemoveWatchRequestO
 	if err := a.Manager().Remove(ctx, request.Id); err != nil {
 		return nil, err
 	}
-	a.Log.Infof("stopped watching %d", request.Id)
+	log.Info("stopped watching %d", request.Id)
 	return apiv1.RemoveWatch204Response{}, nil
 }
 
@@ -437,7 +437,7 @@ func (a *API) RemoveWatchRun(ctx context.Context, request apiv1.RemoveWatchRunRe
 	if err != nil {
 		return nil, err
 	}
-	a.Log.Infof("removed watch run %d from the history (snapshot %s)", request.Id, removed.Snapshot)
+	log.Info("removed watch run %d from the history (snapshot %s)", request.Id, removed.Snapshot)
 	return apiv1.RemoveWatchRun200JSONResponse(removed), nil
 }
 
@@ -477,7 +477,7 @@ func (a *API) CheckWatches(ctx context.Context, request apiv1.CheckWatchesReques
 		var id int64
 		var busy []string
 		report, err := m.Check(checkCtx, req.IDs, watch.CheckOptions{Kind: kind, Gaps: req.Gaps,
-			OnEvent: logEvents(a.Log, false),
+			OnEvent: logEvents(false),
 			OnBusy:  func(providers []string) { busy = providers },
 			OnRun: func(run storage.CheckRun) {
 				id = run.ID
@@ -489,7 +489,7 @@ func (a *API) CheckWatches(ctx context.Context, request apiv1.CheckWatchesReques
 				if len(busy) > 0 {
 					what += " (busy, skipped: " + strings.Join(busy, ", ") + ")"
 				}
-				a.Log.Infof("%s check %d (asked through the API): %s", run.Kind, id, what)
+				log.Info("%s check %d (asked through the API): %s", run.Kind, id, what)
 				started <- watch.CheckResponse{Run: id, Busy: busy}
 			},
 		})
@@ -500,9 +500,9 @@ func (a *API) CheckWatches(ctx context.Context, request apiv1.CheckWatchesReques
 		case err != nil && id == 0:
 			failed <- err
 		case err != nil:
-			a.Log.Errorf("%s check %d: %s", kind, id, err)
+			log.Error("%s check %d: %s", kind, id, err)
 		default:
-			logReport(a.Log, report)
+			logReport(report)
 		}
 	}()
 	select {
@@ -571,7 +571,7 @@ func (a *API) CancelRun(_ context.Context, request apiv1.CancelRunRequestObject)
 	if !a.Runs.cancel(request.Id) {
 		return nil, fmt.Errorf("check run %d isn't running here (only the ones asked through the API can be cancelled): %w", request.Id, watch.ErrNotFound)
 	}
-	a.Log.Infof("check %d cancelled through the API", request.Id)
+	log.Info("check %d cancelled through the API", request.Id)
 	return apiv1.CancelRun202Response{}, nil
 }
 

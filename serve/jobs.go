@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/luevano/mangal/v5/log"
 	"net/http"
 	"slices"
 	"strings"
@@ -157,7 +158,7 @@ func (a *API) CancelJob(ctx context.Context, request apiv1.CancelJobRequestObjec
 	} else if !ok {
 		return nil, newAPIError(http.StatusConflict, CodeRefused, "job %d is %s", j.ID, j.Status)
 	}
-	a.Log.Infof("job %d (%s) cancelled through the API", j.ID, j.Title)
+	log.Info("job %d (%s) cancelled through the API", j.ID, j.Title)
 	if now, err := svc.Get(ctx, request.Id); err == nil {
 		j = now
 	}
@@ -177,7 +178,7 @@ func (a *API) RetryJob(ctx context.Context, request apiv1.RetryJobRequestObject)
 		}
 		return nil, &apiError{status: http.StatusConflict, code: CodeRefused, err: err}
 	}
-	a.Log.Infof("job %d (%s) retried through the API", j.ID, j.Title)
+	log.Info("job %d (%s) retried through the API", j.ID, j.Title)
 	return apiv1.RetryJob202JSONResponse(toAPIJob(j)), nil
 }
 
@@ -206,7 +207,7 @@ func (a *API) ClearJobQueue(ctx context.Context, request apiv1.ClearJobQueueRequ
 		return nil, err
 	}
 	if n > 0 {
-		a.Log.Infof("%s cancelled through the API", stringutil.Quantify(n, "queued job", "queued jobs"))
+		log.Info("%s cancelled through the API", stringutil.Quantify(n, "queued job", "queued jobs"))
 	}
 	return apiv1.ClearJobQueue200JSONResponse{Count: n}, nil
 }
@@ -263,14 +264,14 @@ func (a *API) StartDownload(ctx context.Context, request apiv1.StartDownloadRequ
 	}
 	// a bound manga gets its metadata now, a search would replace it
 	if bound, err := client.ApplyBinding(ctx, c, manga); err != nil {
-		a.Log.Warnf("binding of %q: %s", manga, err)
+		log.Warn("binding of %q: %s", manga, err)
 	} else if bound {
 		options.SearchMetadata = false
 	}
 	title := fmt.Sprintf("%s: %s", manga.Info().Title, chaptersTitle(chapters))
 	job := m.Add(jobs.DownloadSpec(c, manga, chapters, options, title, jobOrigin(ctx)))
 	go a.logDownload(m, job.ID)
-	a.Log.Infof("download %d (asked through the API): %s from %s", job.ID, title, c.Info().ID)
+	log.Info("download %d (asked through the API): %s from %s", job.ID, title, c.Info().ID)
 	return apiv1.StartDownload202JSONResponse(toAPIJob(core.JobOf(job))), nil
 }
 
@@ -308,7 +309,7 @@ func (a *API) ScanLibrary(ctx context.Context, request apiv1.ScanLibraryRequestO
 		}
 		msg := core.ScanSummary(rep)
 		p.Message(msg)
-		a.Log.Infof("library scan (asked through the API): %s", msg)
+		log.Info("library scan (asked through the API): %s", msg)
 		return nil
 	}})
 	return apiv1.ScanLibrary202JSONResponse(toAPIJob(core.JobOf(job))), nil
@@ -334,7 +335,7 @@ func (a *API) LookupSourceURLs(ctx context.Context, request apiv1.LookupSourceUR
 		rep, err := c.Library.LookupSourceURLs(ctx, opts)
 		msg := core.SourceURLsSummary(rep)
 		p.Message(msg)
-		a.Log.Infof("source urls (asked through the API): %s", msg)
+		log.Info("source urls (asked through the API): %s", msg)
 		return err
 	}})
 	return apiv1.LookupSourceURLs202JSONResponse(toAPIJob(core.JobOf(job))), nil
@@ -353,7 +354,7 @@ func (a *API) logDownload(m *jobs.Manager, id int64) {
 	}
 	_, done, failed := j.Results.GetEach()
 	for _, r := range failed {
-		a.Log.Warnf("download %d: chapter %s: %s", id, stringutil.FormatFloat32(r.Chapter.Info().Number), r.Err)
+		log.Warn("download %d: chapter %s: %s", id, stringutil.FormatFloat32(r.Chapter.Info().Number), r.Err)
 	}
 	line := fmt.Sprintf("download %d (%s) %s: %d downloaded, %d failed, %d unavailable", id, j.Title, j.Status,
 		len(done), len(failed), len(j.Results.Unavailable()))
@@ -361,8 +362,8 @@ func (a *API) logDownload(m *jobs.Manager, id int64) {
 		line += ": " + j.Err.Error()
 	}
 	if len(failed) != 0 || j.Err != nil {
-		a.Log.Warnf("%s", line)
+		log.Warn("%s", line)
 		return
 	}
-	a.Log.Infof("%s", line)
+	log.Info("%s", line)
 }

@@ -3,7 +3,7 @@ package serve
 import (
 	"context"
 	"fmt"
-	"io"
+	"github.com/luevano/mangal/v5/log"
 	"slices"
 	"strings"
 	"sync"
@@ -155,7 +155,7 @@ func providerWatch(provider string, id int64, next time.Time, enabled bool) watc
 }
 
 func newTestScheduler(f *fakeChecker) *Scheduler {
-	s := newScheduler(func() checker { return f }, newLogger(io.Discard), &runs{})
+	s := newScheduler(func() checker { return f }, &runs{})
 	s.AuthChanged, s.AuthFingerprint = nil, nil
 	s.Now = func() time.Time {
 		f.mu.Lock()
@@ -309,7 +309,7 @@ func TestSchedulerBusyFreesSlot(t *testing.T) {
 	now := time.Unix(1_000_000, 0)
 	f := &fakeChecker{now: now, parallel: 1, free: make(chan struct{}), watches: []watch.Watch{providerWatch("p", 1, now.Add(-time.Hour), true)}}
 	busyP := &busyOnce{fakeChecker: f, provider: "p"}
-	s := newScheduler(func() checker { return busyP }, newLogger(io.Discard), &runs{})
+	s := newScheduler(func() checker { return busyP }, &runs{})
 	s.AuthChanged, s.AuthFingerprint = nil, nil
 	s.Now = func() time.Time { return now }
 	s.cycle(context.Background())
@@ -506,7 +506,7 @@ func TestSchedulerTicks(t *testing.T) {
 		},
 	}
 	f.now = at(10, 1, 10)
-	s := newScheduler(func() checker { return f }, newLogger(io.Discard), &runs{})
+	s := newScheduler(func() checker { return f }, &runs{})
 	s.AuthChanged, s.AuthFingerprint = nil, nil
 	s.Now = func() time.Time {
 		f.mu.Lock()
@@ -566,7 +566,7 @@ func TestSchedulerNoCatchUp(t *testing.T) {
 		},
 	}
 	f.now = at(9, 30, 0)
-	s := newScheduler(func() checker { return f }, newLogger(io.Discard), &runs{})
+	s := newScheduler(func() checker { return f }, &runs{})
 	s.AuthChanged, s.AuthFingerprint = nil, nil
 	s.Now = func() time.Time {
 		f.mu.Lock()
@@ -602,7 +602,9 @@ func TestSchedulerLibraryIssue(t *testing.T) {
 
 func TestLogEvents(t *testing.T) {
 	var out strings.Builder
-	onEvent := logEvents(newLogger(&out), false)
+	log.SetOutput(&out)
+	t.Cleanup(func() { log.SetOutput(nil) })
+	onEvent := logEvents(false)
 	w := storage.Watch{ID: 1, Provider: "mangadex", Title: "One Piece"}
 	from := float32(1122)
 	onEvent(watch.Event{Kind: watch.EventFound, Watch: w, Found: &watch.Found{Chapters: 1124, Picked: []float32{1123, 1124}, From: &from}})

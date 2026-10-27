@@ -3,7 +3,6 @@ package serve
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"path/filepath"
 	"slices"
@@ -226,7 +225,7 @@ func TestKindSchedule(t *testing.T) {
 	waited := 0
 	s := kindSchedule{Kind: jobs.KindSourceCheck, Kinds: func(context.Context) (core.JobKinds, error) { return k, nil },
 		Wait: func(context.Context, int64) core.Job { waited++; return core.Job{Message: "3 of 3 looked up"} },
-		Now:  func() time.Time { return now }, Log: newLogger(io.Discard)}
+		Now:  func() time.Time { return now }}
 	ctx := context.Background()
 	for _, c := range []struct {
 		next time.Time

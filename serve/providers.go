@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"fmt"
+	"github.com/luevano/mangal/v5/log"
 	"io"
 	"net/http"
 	"slices"
@@ -54,7 +55,7 @@ func (a *API) reloadProviders() ([]string, error) {
 		}
 	}
 	if err := client.CloseAll(); err != nil {
-		a.Log.Warnf("close the provider clients: %s", err)
+		log.Warn("close the provider clients: %s", err)
 	}
 	return problems, nil
 }
@@ -81,12 +82,12 @@ func (a *API) SetProviderMirror(_ context.Context, request apiv1.SetProviderMirr
 	}
 	// the choice wins over the mirror that last worked
 	if err := forgetMirror(info.ID); err != nil {
-		a.Log.Warnf("forget the last mirror of %s: %s", info.Name, err)
+		log.Warn("forget the last mirror of %s: %s", info.Name, err)
 	}
 	if _, err := a.reloadProviders(); err != nil {
 		return nil, err
 	}
-	a.Log.Infof("%s prefers %s (set through the API)", info.Name, cmpOr(mirror, info.Website))
+	log.Info("%s prefers %s (set through the API)", info.Name, cmpOr(mirror, info.Website))
 	if l, err = a.loader(info.ID); err != nil {
 		return nil, err
 	}
@@ -119,7 +120,7 @@ func (a *API) UpdateProviders(ctx context.Context, _ apiv1.UpdateProvidersReques
 		u := apiv1.ProviderUpdate{Dir: r.Dir, Status: r.Status}
 		if r.Err != nil {
 			u.Error = new(r.Err.Error())
-			a.Log.Warnf("update provider %s: %s", r.Dir, r.Err)
+			log.Warn("update provider %s: %s", r.Dir, r.Err)
 		}
 		if r.Status == install.StatusUpdated {
 			updated++
@@ -135,7 +136,7 @@ func (a *API) UpdateProviders(ctx context.Context, _ apiv1.UpdateProvidersReques
 			out.Problems = &problems
 		}
 	}
-	a.Log.Infof("providers updated through the API: %d of %d", updated, len(results))
+	log.Info("providers updated through the API: %d of %d", updated, len(results))
 	return out, nil
 }
 

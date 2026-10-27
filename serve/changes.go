@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/luevano/mangal/v5/log"
 	"net/http"
 	"slices"
 
@@ -72,7 +73,7 @@ func (a *API) change(ctx context.Context, ch core.Change, apply bool, f applyFie
 		undo := fmt.Sprintf("POST /api/v1/ops/%d/undo (mangal library undo %d)", res.OpID, res.OpID)
 		resp.Undo = &undo
 	}
-	a.Log.Infof("%s applied through the API: %s", res.Kind, res.Summary)
+	log.Info("%s applied through the API: %s", res.Kind, res.Summary)
 	a.publishOp(res)
 	return resp, nil
 }

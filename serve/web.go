@@ -22,14 +22,15 @@ import (
 // serve` (on its address, with its auth) without the scheduler: the watches are this
 // process's, downloads and scans its jobs. It stops when ctx is cancelled.
 func RunWeb(ctx context.Context, args Args, openIt bool, out io.Writer) error {
-	lg := newLogger(out)
+	log.SetOutput(out)
+	defer log.SetOutput(nil)
 	if remote, d, err := watch.Find(ctx, watch.DataDB()); err != nil {
 		return err
 	} else if remote != nil {
 		if !serverHasUI(ctx, remote) {
 			return fmt.Errorf("mangal serve runs on %s without the web UI: set serve.web to true and restart it", d.Address)
 		}
-		lg.Infof("the web UI of the mangal serve running: %s", d.Address)
+		log.Info("the web UI of the mangal serve running: %s", d.Address)
 		if openIt {
 			if err := open.Start(d.Address); err != nil {
 				log.Warn("open %s: %s", d.Address, err)
@@ -42,7 +43,7 @@ func RunWeb(ctx context.Context, args Args, openIt bool, out io.Writer) error {
 		return err
 	}
 	defer listener.Close()
-	auth, err := listenerAuth(args, listener.Addr(), lg)
+	auth, err := listenerAuth(args, listener.Addr())
 	if err != nil {
 		return err
 	}
@@ -66,7 +67,6 @@ func RunWeb(ctx context.Context, args Args, openIt bool, out io.Writer) error {
 		Manager: func() watch.Manager { return m },
 		Info:    watch.Status{Server: true, Address: address, Version: meta.Version, Started: time.Now()},
 		Auth:    auth,
-		Log:     lg,
 		Runs:    &runs{},
 		Browser: browser,
 		Jobs:    jobManager,
@@ -77,7 +77,7 @@ func RunWeb(ctx context.Context, args Args, openIt bool, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	lg.Infof("mangal web %s on %s (%s), the watches aren't checked on schedule (mangal serve does that)", meta.Version, address, auth.describe())
+	log.Info("mangal web %s on %s (%s), the watches aren't checked on schedule (mangal serve does that)", meta.Version, address, auth.describe())
 	if openIt {
 		if err := open.Start(address); err != nil {
 			log.Warn("open %s: %s", address, err)

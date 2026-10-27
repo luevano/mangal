@@ -458,7 +458,7 @@ func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObjec
 	if err != nil {
 		return nil, err
 	}
-	a.Log.Infof("config %s = %v set through the API (applies: %s)", key, e.Value, e.Applies)
+	log.Info("config %s = %v set through the API (applies: %s)", key, e.Value, e.Applies)
 	return apiv1.SetConfig200JSONResponse(toAPIConfig(e)), nil
 }
 
@@ -502,7 +502,7 @@ func (a *API) UndoConfigChange(ctx context.Context, request apiv1.UndoConfigChan
 	if err != nil {
 		return nil, err
 	}
-	a.Log.Infof("config %s set back to %v through the API (undo of change %d)", e.Key, e.Value, request.Id)
+	log.Info("config %s set back to %v through the API (undo of change %d)", e.Key, e.Value, request.Id)
 	return apiv1.UndoConfigChange200JSONResponse(toAPIConfig(e)), nil
 }
 
