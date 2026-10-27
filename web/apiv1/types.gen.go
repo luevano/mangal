@@ -129,6 +129,69 @@ func (e MeKind) Valid() bool {
 	}
 }
 
+// Defines values for TrackerAccountLogin.
+const (
+	Address  TrackerAccountLogin = "address"
+	Code     TrackerAccountLogin = "code"
+	Password TrackerAccountLogin = "password"
+)
+
+// Valid indicates whether the value is a known member of the TrackerAccountLogin enum.
+func (e TrackerAccountLogin) Valid() bool {
+	switch e {
+	case Address:
+		return true
+	case Code:
+		return true
+	case Password:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LoginMyAccountParamsSource.
+const (
+	LoginMyAccountParamsSourceAnilist     LoginMyAccountParamsSource = "anilist"
+	LoginMyAccountParamsSourceKitsu       LoginMyAccountParamsSource = "kitsu"
+	LoginMyAccountParamsSourceMyanimelist LoginMyAccountParamsSource = "myanimelist"
+)
+
+// Valid indicates whether the value is a known member of the LoginMyAccountParamsSource enum.
+func (e LoginMyAccountParamsSource) Valid() bool {
+	switch e {
+	case LoginMyAccountParamsSourceAnilist:
+		return true
+	case LoginMyAccountParamsSourceKitsu:
+		return true
+	case LoginMyAccountParamsSourceMyanimelist:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LogoutMyAccountParamsSource.
+const (
+	LogoutMyAccountParamsSourceAnilist     LogoutMyAccountParamsSource = "anilist"
+	LogoutMyAccountParamsSourceKitsu       LogoutMyAccountParamsSource = "kitsu"
+	LogoutMyAccountParamsSourceMyanimelist LogoutMyAccountParamsSource = "myanimelist"
+)
+
+// Valid indicates whether the value is a known member of the LogoutMyAccountParamsSource enum.
+func (e LogoutMyAccountParamsSource) Valid() bool {
+	switch e {
+	case LogoutMyAccountParamsSourceAnilist:
+		return true
+	case LogoutMyAccountParamsSourceKitsu:
+		return true
+	case LogoutMyAccountParamsSourceMyanimelist:
+		return true
+	default:
+		return false
+	}
+}
+
 // Account defines model for Account.
 type Account struct {
 	Checked  *time.Time `json:"checked,omitempty"`
@@ -1289,6 +1352,41 @@ type Token struct {
 	Scopes []string `json:"scopes"`
 }
 
+// TrackerAccount defines model for TrackerAccount.
+type TrackerAccount struct {
+	// Account your account there, none when logged out
+	Account *string    `json:"account,omitempty"`
+	Expired *bool      `json:"expired,omitempty"`
+	Expires *time.Time `json:"expires,omitempty"`
+
+	// Login what the login asks for
+	Login TrackerAccountLogin `json:"login"`
+	Name  string              `json:"name"`
+
+	// Ready false when the server has no API client for it yet (an admin logs in once from mangal on the server)
+	Ready  bool   `json:"ready"`
+	Source string `json:"source"`
+}
+
+// TrackerAccountLogin what the login asks for
+type TrackerAccountLogin string
+
+// TrackerLogin defines model for TrackerLogin.
+type TrackerLogin struct {
+	Name     *string `json:"name,omitempty"`
+	Password *string `json:"password,omitempty"`
+	Paste    *string `json:"paste,omitempty"`
+}
+
+// TrackerLoginResponse defines model for TrackerLoginResponse.
+type TrackerLoginResponse struct {
+	// Account the account logged in
+	Account *string `json:"account,omitempty"`
+
+	// Url the authorize url to open (the login started)
+	Url *string `json:"url,omitempty"`
+}
+
 // Trash defines model for Trash.
 type Trash struct {
 	Batches []TrashBatch `json:"batches"`
@@ -1657,6 +1755,12 @@ type ListLogsParams struct {
 	Limit *LogLimitParam `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// LoginMyAccountParamsSource defines parameters for LoginMyAccount.
+type LoginMyAccountParamsSource string
+
+// LogoutMyAccountParamsSource defines parameters for LogoutMyAccount.
+type LogoutMyAccountParamsSource string
+
 // SearchMetadataParams defines parameters for SearchMetadata.
 type SearchMetadataParams struct {
 	Q string `form:"q" json:"q"`
@@ -1833,6 +1937,9 @@ type EmptyTrashJSONRequestBody = ApplyFields
 
 // LookupSourceURLsJSONRequestBody defines body for LookupSourceURLs for application/json ContentType.
 type LookupSourceURLsJSONRequestBody = SourceURLsRequest
+
+// LoginMyAccountJSONRequestBody defines body for LoginMyAccount for application/json ContentType.
+type LoginMyAccountJSONRequestBody = TrackerLogin
 
 // UndoOpJSONRequestBody defines body for UndoOp for application/json ContentType.
 type UndoOpJSONRequestBody = ApplyFields

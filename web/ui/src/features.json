@@ -401,7 +401,10 @@
         "accounts"
       ],
       "api": [
-        "listAccounts"
+        "listAccounts",
+        "listMyAccounts",
+        "loginMyAccount",
+        "logoutMyAccount"
       ]
     },
     {

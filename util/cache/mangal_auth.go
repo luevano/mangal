@@ -207,3 +207,22 @@ func SetMyAnimeListLoggedOut(out bool) error { return setLoggedOut(myAnimeListLo
 
 // MyAnimeListLoggedOut is true if the user logged out of MyAnimeList (and didn't log in since).
 func MyAnimeListLoggedOut() (bool, error) { return loggedOut(myAnimeListLoggedOut) }
+
+// AddAuthAccount makes the account the user's current one of the provider (logged in).
+func AddAuthAccount(user, provider, account string) error {
+	var history UserHistory
+	if _, err := get(CacheDBNameMangalAuth, BucketNameAuthHistory, user+"/"+provider, &history); err != nil {
+		return err
+	}
+	history.Add(account)
+	if err := set(CacheDBNameMangalAuth, BucketNameAuthHistory, user+"/"+provider, history); err != nil {
+		return err
+	}
+	return SetAuthLoggedOut(user, provider, false)
+}
+
+// SetAuthLoggedOut saves whether the user logged out of the provider (their reads don't
+// sync there until they log in again).
+func SetAuthLoggedOut(user, provider string, out bool) error {
+	return set(CacheDBNameMangalAuth, BucketNameAuthHistory, user+"/"+provider+"/logged_out", out)
+}

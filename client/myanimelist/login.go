@@ -125,3 +125,53 @@ func LogoutContext(ctx context.Context) error {
 func Forget(user string) error {
 	return account.Forget(user)
 }
+
+// LoginFor is LoginManual for the mangal user: the local user's is this process' login,
+// another's an instance of its own (ForAccount).
+func LoginFor(ctx context.Context, user string, manual oauth.Manual) (metadata.User, error) {
+	if local, err := cache.LocalUser(); err != nil || local == user {
+		if err != nil {
+			return nil, err
+		}
+		return LoginManual(ctx, manual)
+	}
+	id, secret, err := cache.MyAnimeListClient()
+	if err != nil {
+		return nil, fmt.Errorf("get the myanimelist client: %w", err)
+	}
+	if id == "" {
+		return nil, ErrNotConfigured
+	}
+	option, err := oauth.NewMyAnimeListLoginOption(id, secret)
+	if err != nil {
+		return nil, err
+	}
+	if err := option.AuthorizeManual(oauthContext(ctx), manual); err != nil {
+		return nil, fmt.Errorf("authorize: %w", err)
+	}
+	token := option.Token()
+	m, p, err := build(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.Login(ctx, token.AccessToken); err != nil {
+		return nil, fmt.Errorf("log in: %w", err)
+	}
+	u := m.User()
+	if err := cache.SetMyAnimeListAuthData(u.Name(), token); err != nil {
+		return nil, fmt.Errorf("save login of %q: %w", u.Name(), err)
+	}
+	accounts.Store(u.Name(), p)
+	return u, cache.AddAuthAccount(user, cache.MyAnimeListAuthHistory, u.Name())
+}
+
+// LogoutFor logs the mangal user out of MyAnimeList (the local user: this process too).
+func LogoutFor(ctx context.Context, user string) error {
+	if local, err := cache.LocalUser(); err != nil || local == user {
+		if err != nil {
+			return err
+		}
+		return LogoutContext(ctx)
+	}
+	return cache.SetAuthLoggedOut(user, cache.MyAnimeListAuthHistory, true)
+}

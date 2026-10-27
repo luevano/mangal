@@ -131,6 +131,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your AniList, Kitsu and MyAnimeList accounts (your reads sync there) */
+        get: operations["listMyAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/accounts/{source}/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log into your account of a tracker
+         * @description AniList and MyAnimeList: without paste it starts the login and answers its authorize url (open it, allow mangal); then send what the page ends on (AniList's code, or the address MyAnimeList sends you to) as paste. Kitsu: name and password (not kept).
+         */
+        post: operations["loginMyAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/accounts/{source}/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log out of your account of a tracker (your reads stop syncing there) */
+        post: operations["logoutMyAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/users": {
         parameters: {
             query?: never;
@@ -1825,6 +1879,33 @@ export interface components {
             /** @description Authorization Bearer, shown only here */
             secret: string;
         };
+        TrackerAccount: {
+            source: string;
+            name: string;
+            /** @description your account there, none when logged out */
+            account?: string;
+            /** Format: date-time */
+            expires?: string;
+            expired?: boolean;
+            /**
+             * @description what the login asks for
+             * @enum {string}
+             */
+            login: "code" | "address" | "password";
+            /** @description false when the server has no API client for it yet (an admin logs in once from mangal on the server) */
+            ready: boolean;
+        };
+        TrackerLogin: {
+            paste?: string;
+            name?: string;
+            password?: string;
+        };
+        TrackerLoginResponse: {
+            /** @description the authorize url to open (the login started) */
+            url?: string;
+            /** @description the account logged in */
+            account?: string;
+        };
         Permissions: {
             permissions: {
                 name: string;
@@ -3168,6 +3249,75 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Permissions"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listMyAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description one per tracker */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackerAccount"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    loginMyAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source: "anilist" | "kitsu" | "myanimelist";
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TrackerLogin"];
+            };
+        };
+        responses: {
+            /** @description the authorize url to open, or the account logged in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackerLoginResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    logoutMyAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source: "anilist" | "kitsu" | "myanimelist";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description logged out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

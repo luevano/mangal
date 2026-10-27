@@ -118,3 +118,29 @@ func TestNoPasswordNoLogin(t *testing.T) {
 		}
 	}
 }
+
+// TestMyAccounts: each user sees their own trackers; a paste without a started login is
+// refused; logging out of a tracker is the user's alone.
+func TestMyAccounts(t *testing.T) {
+	s := newTestServer(t, "")
+	addUser(t, s, "kid", "a long password", ScopeRead, ScopeProgress)
+	if err := cache.AddAuthAccount("kid", cache.KitsuAuthHistory, "kidsname"); err != nil {
+		t.Fatal(err)
+	}
+	h := s.handler(t)
+	kid := basic("kid", "a long password")
+	var list []apiv1.TrackerAccount
+	rec := do(h, "GET", "/api/v1/me/accounts", "", "192.0.2.1:1", kid, nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list) != 3 || list[1].Source != "kitsu" || deref(list[1].Account) != "kidsname" {
+		t.Fatalf("kid's accounts %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "POST", "/api/v1/me/accounts/anilist/login", `{"paste":"x"}`, "192.0.2.1:1", kid, nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("paste without a login: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "POST", "/api/v1/me/accounts/kitsu/logout", "", "192.0.2.1:1", kid, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("logout %d %s", rec.Code, rec.Body)
+	}
+	if account, _ := cache.AuthAccount("kid", cache.KitsuAuthHistory); account != "" {
+		t.Errorf("still logged in as %q", account)
+	}
+}

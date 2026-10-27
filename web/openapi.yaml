@@ -124,6 +124,72 @@ paths:
                 $ref: '#/components/schemas/Permissions'
         default:
           $ref: '#/components/responses/Error'
+  /v1/me/accounts:
+    get:
+      summary: Your AniList, Kitsu and MyAnimeList accounts (your reads sync there)
+      operationId: listMyAccounts
+      tags: [v1, auth]
+      x-mangal-scope: progress
+      responses:
+        '200':
+          description: one per tracker
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrackerAccount'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/me/accounts/{source}/login:
+    post:
+      summary: Log into your account of a tracker
+      description: >-
+        AniList and MyAnimeList: without paste it starts the login and answers its authorize
+        url (open it, allow mangal); then send what the page ends on (AniList's code, or the
+        address MyAnimeList sends you to) as paste. Kitsu: name and password (not kept).
+      operationId: loginMyAccount
+      tags: [v1, auth]
+      x-mangal-scope: progress
+      parameters:
+        - name: source
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [anilist, kitsu, myanimelist]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackerLogin'
+      responses:
+        '200':
+          description: the authorize url to open, or the account logged in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerLoginResponse'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/me/accounts/{source}/logout:
+    post:
+      summary: Log out of your account of a tracker (your reads stop syncing there)
+      operationId: logoutMyAccount
+      tags: [v1, auth]
+      x-mangal-scope: progress
+      parameters:
+        - name: source
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [anilist, kitsu, myanimelist]
+      responses:
+        '204':
+          description: logged out
+        default:
+          $ref: '#/components/responses/Error'
   /v1/users:
     get:
       summary: The users who log in
@@ -2487,6 +2553,47 @@ components:
         secret:
           type: string
           description: Authorization Bearer, shown only here
+    TrackerAccount:
+      type: object
+      required: [source, name, login, ready]
+      properties:
+        source:
+          type: string
+        name:
+          type: string
+        account:
+          type: string
+          description: your account there, none when logged out
+        expires:
+          type: string
+          format: date-time
+        expired:
+          type: boolean
+        login:
+          type: string
+          description: what the login asks for
+          enum: [code, address, password]
+        ready:
+          type: boolean
+          description: false when the server has no API client for it yet (an admin logs in once from mangal on the server)
+    TrackerLogin:
+      type: object
+      properties:
+        paste:
+          type: string
+        name:
+          type: string
+        password:
+          type: string
+    TrackerLoginResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          description: the authorize url to open (the login started)
+        account:
+          type: string
+          description: the account logged in
     Permissions:
       type: object
       required: [permissions, roles]

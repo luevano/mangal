@@ -106,6 +106,7 @@ type API struct {
 
 	healthJobs healthJobs
 	summary    healthSummary
+	trackers   trackerLogins
 	kindsOnce  sync.Once
 	jobKinds   core.JobKinds
 	wakeKinds  waker

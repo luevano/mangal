@@ -18,7 +18,7 @@ const links: { name: string; title: string; icon: string; op?: Operation }[] = [
   { name: 'providers', title: 'Providers', icon: 'bi-search' },
   { name: 'history', title: 'History', icon: 'bi-clock-history' },
   { name: 'logs', title: 'Logs', icon: 'bi-journal-text', op: 'GET /v1/logs' },
-  { name: 'accounts', title: 'Accounts', icon: 'bi-person-badge', op: 'GET /v1/accounts' },
+  { name: 'accounts', title: 'Accounts', icon: 'bi-person-badge', op: 'GET /v1/me/accounts' },
   { name: 'config', title: 'Config', icon: 'bi-gear' },
   // an admin's users and tokens, or your own tokens (the tokens permission)
   { name: 'users', title: 'Users', icon: 'bi-people', op: 'GET /v1/tokens' }

@@ -142,7 +142,7 @@ var Features = []Feature{
 		NotApplicable: map[Mode]string{ModeScript: "watches are serve's (its API)"}},
 	{Name: "watch history", Web: []string{"runs", "run", "watch"}, API: []string{"listRuns", "getRun", "removeWatchRun"}, CLI: []string{"watch log"}, TUI: "V (watches)", TUIKey: "V",
 		NotApplicable: map[Mode]string{ModeScript: "watches are serve's (its API)"}},
-	{Name: "accounts", Web: []string{"accounts"}, API: []string{"listAccounts"}, CLI: []string{"accounts", "anilist", "anilist login", "kitsu", "myanimelist", "myanimelist login", "myanimelist client", "notify webhook"}, TUI: "K (home)", TUIKey: "K",
+	{Name: "accounts", Web: []string{"accounts"}, API: []string{"listAccounts", "listMyAccounts", "loginMyAccount", "logoutMyAccount"}, CLI: []string{"accounts", "anilist", "anilist login", "kitsu", "myanimelist", "myanimelist login", "myanimelist client", "notify webhook"}, TUI: "K (home)", TUIKey: "K",
 		NotApplicable: map[Mode]string{ModeScript: "logins are interactive"}},
 	{Name: "config", Web: []string{"config"}, API: []string{"listConfig", "setConfig"}, CLI: []string{"config get", "config set", "config info", "config write", "config clean", "config export", "config import"}, TUI: ", (anywhere)",
 		NotApplicable: map[Mode]string{ModeScript: cliEnough}},

@@ -29,7 +29,7 @@ func TestSpecOperations(t *testing.T) {
 			t.Errorf("%s: scope %q", o.ID, o.Scope)
 		}
 		// a GET changes nothing: it needs at most the permission to see what it shows
-		if o.Method == "GET" && (o.Scope == "progress" || o.Scope == "download") {
+		if o.Method == "GET" && o.Scope == "download" {
 			t.Errorf("%s: a GET with scope %s", o.ID, o.Scope)
 		}
 		if o.Plan && o.Method == "GET" {

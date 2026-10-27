@@ -149,3 +149,54 @@ func Forget(user string) error {
 func clean(in string) string {
 	return strings.Join(strings.Fields(in), "")
 }
+
+// LoginFor is LoginManual with the saved API client for the mangal user: the local user's
+// is this process' login, another's an instance of its own (ForAccount).
+func LoginFor(ctx context.Context, user string, manual oauth.Manual) (metadata.User, error) {
+	id, secret, err := Client()
+	if err != nil {
+		return nil, err
+	}
+	if id == "" {
+		return nil, errors.New("no AniList API client yet: log in once from mangal on the server (mangal anilist login)")
+	}
+	if local, err := cache.LocalUser(); err != nil || local == user {
+		if err != nil {
+			return nil, err
+		}
+		return LoginManual(ctx, id, secret, Pin(), manual)
+	}
+	option, err := oauth.NewAnilistLoginOption(id, secret)
+	if err != nil {
+		return nil, err
+	}
+	option.Pin = Pin()
+	if err := option.AuthorizeManual(ctx, manual); err != nil {
+		return nil, fmt.Errorf("authorize: %w", err)
+	}
+	token := option.Token()
+	p, err := newAnilist()
+	if err != nil {
+		return nil, err
+	}
+	if err := p.LoginContext(ctx, token.AccessToken); err != nil {
+		return nil, fmt.Errorf("log in: %w", err)
+	}
+	u := p.User()
+	if err := cache.SetAnilistAuthData(u.Name(), token); err != nil {
+		return nil, fmt.Errorf("save login of %q: %w", u.Name(), err)
+	}
+	accounts.Store(u.Name(), p)
+	return u, cache.AddAuthAccount(user, cache.AnilistAuthHistory, u.Name())
+}
+
+// LogoutFor logs the mangal user out of AniList (the local user: this process too).
+func LogoutFor(ctx context.Context, user string) error {
+	if local, err := cache.LocalUser(); err != nil || local == user {
+		if err != nil {
+			return err
+		}
+		return LogoutContext(ctx)
+	}
+	return cache.SetAuthLoggedOut(user, cache.AnilistAuthHistory, true)
+}

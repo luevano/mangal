@@ -102,3 +102,46 @@ func LogoutContext(ctx context.Context) error {
 func Forget(user string) error {
 	return account.Forget(user)
 }
+
+// LoginPasswordFor is LoginPassword for the mangal user: the local user's is this
+// process' login, another's an instance of its own (ForAccount).
+func LoginPasswordFor(ctx context.Context, user, username, password string) (metadata.User, error) {
+	if local, err := cache.LocalUser(); err != nil || local == user {
+		if err != nil {
+			return nil, err
+		}
+		return LoginPassword(ctx, username, password)
+	}
+	username = strings.TrimSpace(username)
+	if username == "" || password == "" {
+		return nil, errors.New("empty username or password")
+	}
+	p, k, err := build()
+	if err != nil {
+		return nil, err
+	}
+	token, err := k.LoginPassword(ctx, username, password)
+	if err != nil {
+		return nil, fmt.Errorf("log in: %w", err)
+	}
+	u := k.User()
+	if u == nil {
+		return nil, errors.New("kitsu returned no user")
+	}
+	if err := cache.SetKitsuAuthData(u.Name(), token); err != nil {
+		return nil, fmt.Errorf("save login of %q: %w", u.Name(), err)
+	}
+	accounts.Store(u.Name(), p)
+	return u, cache.AddAuthAccount(user, cache.KitsuAuthHistory, u.Name())
+}
+
+// LogoutFor logs the mangal user out of Kitsu (the local user: this process too).
+func LogoutFor(ctx context.Context, user string) error {
+	if local, err := cache.LocalUser(); err != nil || local == user {
+		if err != nil {
+			return err
+		}
+		return LogoutContext(ctx)
+	}
+	return cache.SetAuthLoggedOut(user, cache.KitsuAuthHistory, true)
+}
