@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/meta"
@@ -24,6 +27,7 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/util/cron"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/luevano/mangal/v5/util/tlsutil"
 	"github.com/luevano/mangal/v5/web"
 )
@@ -184,6 +188,7 @@ func Run(ctx context.Context, args Args, out io.Writer) error {
 	listen += " (" + auth.describe() + ")"
 	lg.Infof("mangal serve %s on %s%s, data %s (pid %d)", meta.Version, listen, extra, dataDB, os.Getpid())
 	lg.Infof("logging at %s level (log.level) to %s", strings.ToLower(log.Lowest().String()), cmp.Or(log.Dir(), "no file"))
+	logLogins(ctx, lg, auth, args.TrustedProxies)
 
 	sched.Gate = api.checkGate
 	schedDone := make(chan struct{})
@@ -446,4 +451,39 @@ func optionsFrom(opts watch.Options, values map[string]any) watch.Options {
 		opts.ProviderSchedules = watch.ProviderSchedules(p)
 	}
 	return opts
+}
+
+// logLogins says at start who can log in: the users by role, the API tokens, the proxies
+// trusted for the clients' addresses.
+func logLogins(ctx context.Context, lg logger, auth *Auth, proxies []string) {
+	if auth.Mode == AuthNone {
+		lg.Warnf("serve.auth is none: every request may do everything")
+		return
+	}
+	users := core.NewUsers()
+	list, err := users.List(ctx)
+	if err != nil {
+		lg.Warnf("users: %s", err)
+		return
+	}
+	roles := map[string]int{}
+	for _, u := range list {
+		roles[u.Role]++
+	}
+	var parts []string
+	for _, r := range slices.Sorted(maps.Keys(roles)) {
+		parts = append(parts, fmt.Sprintf("%d %s", roles[r], r))
+	}
+	tokens, err := users.Tokens(ctx)
+	if err != nil {
+		lg.Warnf("API tokens: %s", err)
+	}
+	line := fmt.Sprintf("logins: %s, %s", stringutil.Quantify(len(list), "user", "users"), stringutil.Quantify(len(tokens), "API token", "API tokens"))
+	if len(parts) != 0 {
+		line += " (" + strings.Join(parts, ", ") + ")"
+	}
+	lg.Infof("%s; trusted proxies: %s", line, cmp.Or(strings.Join(proxies, ", "), "none"))
+	if len(list) == 0 {
+		lg.Warnf("no users: only programs with an API token and mangal on this config get in (mangal user add <name>)")
+	}
 }

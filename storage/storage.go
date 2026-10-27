@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/luevano/mangal/v5/log"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -267,8 +268,12 @@ func queryAll[T any](q querier, scan func(*sql.Rows) (T, error), query string, a
 
 func (db *DB) migrate(migrations []Migration) error {
 	busy := 0
+	from := -1
 	for {
-		done, err := db.migrateOne(migrations)
+		version, done, err := db.migrateOne(migrations)
+		if from < 0 && err == nil {
+			from = version
+		}
 		// a brand new file can be busy without waiting (busy_timeout doesn't apply) while
 		// another process switches it to WAL; retrying is safe, the version is read again
 		var sqliteErr *sqlite.Error
@@ -277,41 +282,45 @@ func (db *DB) migrate(migrations []Migration) error {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
+		if err == nil && done && from > 0 && version > from {
+			// a new file isn't news, an upgrade is (the start of a new mangal)
+			log.Info("%s: schema %d -> %d", db.Path, from, version)
+		}
 		if err != nil || done {
 			return err
 		}
 	}
 }
 
-// migrateOne applies the next migration, if any. The version is read inside the
-// transaction, another process may have migrated while this one waited for the lock.
-func (db *DB) migrateOne(migrations []Migration) (done bool, err error) {
+// migrateOne applies the next migration, if any, and is the version before it. The version
+// is read inside the transaction, another process may have migrated while this one waited
+// for the lock.
+func (db *DB) migrateOne(migrations []Migration) (version int, done bool, err error) {
 	tx, err := db.Begin()
 	if err != nil {
-		return false, err
+		return 0, false, err
 	}
 	defer func() {
 		if err != nil || done {
 			_ = tx.Rollback()
 		}
 	}()
-	var version int
 	if err := tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
-		return false, err
+		return 0, false, err
 	}
 	if version > len(migrations) {
-		return false, fmt.Errorf("schema version %d is newer than this mangal's %d", version, len(migrations))
+		return version, false, fmt.Errorf("schema version %d is newer than this mangal's %d", version, len(migrations))
 	}
 	if version == len(migrations) {
-		return true, nil
+		return version, true, nil
 	}
 	if err := migrations[version](tx); err != nil {
-		return false, fmt.Errorf("migration %d: %w", version+1, err)
+		return version, false, fmt.Errorf("migration %d: %w", version+1, err)
 	}
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", version+1)); err != nil {
-		return false, err
+		return version, false, err
 	}
-	return false, tx.Commit()
+	return version, false, tx.Commit()
 }
 
 // OpenCache opens the cache database and removes its expired entries. It's only

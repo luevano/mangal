@@ -269,6 +269,7 @@ func (a *API) StartDownload(ctx context.Context, request apiv1.StartDownloadRequ
 	}
 	title := fmt.Sprintf("%s: %s", manga.Info().Title, chaptersTitle(chapters))
 	job := m.Add(jobs.DownloadSpec(c, manga, chapters, options, title, jobOrigin(ctx)))
+	go a.logDownload(m, job.ID)
 	a.Log.Infof("download %d (asked through the API): %s from %s", job.ID, title, c.Info().ID)
 	return apiv1.StartDownload202JSONResponse(toAPIJob(core.JobOf(job))), nil
 }
@@ -337,4 +338,31 @@ func (a *API) LookupSourceURLs(ctx context.Context, request apiv1.LookupSourceUR
 		return err
 	}})
 	return apiv1.LookupSourceURLs202JSONResponse(toAPIJob(core.JobOf(job))), nil
+}
+
+// logDownload logs a download job's failed chapters and its outcome once it ends.
+func (a *API) logDownload(m *jobs.Manager, id int64) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	waitJob(ctx, m, id)
+	j, ok := m.Get(id)
+	if !ok || j.Status.Active() {
+		return
+	}
+	_, done, failed := j.Results.GetEach()
+	for _, r := range failed {
+		a.Log.Warnf("download %d: chapter %s: %s", id, stringutil.FormatFloat32(r.Chapter.Info().Number), r.Err)
+	}
+	line := fmt.Sprintf("download %d (%s) %s: %d downloaded, %d failed, %d unavailable", id, j.Title, j.Status,
+		len(done), len(failed), len(j.Results.Unavailable()))
+	if j.Err != nil {
+		line += ": " + j.Err.Error()
+	}
+	if len(failed) != 0 || j.Err != nil {
+		a.Log.Warnf("%s", line)
+		return
+	}
+	a.Log.Infof("%s", line)
 }

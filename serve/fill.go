@@ -43,8 +43,9 @@ func (a *API) FillProviderManga(ctx context.Context, request apiv1.FillProviderM
 		if err != nil {
 			return nil, err
 		}
-		job := m.Add(plan.Job("api"))
+		job := m.Add(plan.Job(jobOrigin(ctx)))
 		a.Log.Infof("download %d (asked through the API): %s", job.ID, job.Title)
+		go a.logDownload(m, job.ID)
 		resp.Job = new(toAPIJob(core.JobOf(job)))
 	}
 	return apiv1.FillProviderManga200JSONResponse(resp), nil

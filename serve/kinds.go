@@ -1,8 +1,10 @@
 package serve
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -175,6 +177,9 @@ func (s kindSchedule) step(ctx context.Context) time.Duration {
 	// its end is logged by API.kindRan
 	s.Log.Infof("job %d (%s, scheduled): %s", job.ID, s.Kind, job.Title)
 	s.Wait(ctx, job.ID)
+	if k, err := kinds.Get(ctx, s.Kind); err == nil && !k.Next.IsZero() {
+		s.Log.Infof("%s: next run %s", strings.ToLower(k.Title), k.Next.Format(time.DateTime))
+	}
 	return 0
 }
 
@@ -203,6 +208,7 @@ func (a *API) runKinds(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	a.logKinds(ctx)
 	for _, kind := range scheduledKinds {
 		s := kindSchedule{Kind: kind, Kinds: a.kinds, Wait: func(ctx context.Context, id int64) core.Job { return waitJob(ctx, m, id) },
 			Now: time.Now, After: time.After, Wake: a.wakeKinds.listen(), Log: a.Log}
@@ -333,4 +339,32 @@ func (a *API) SetJobKindSettings(ctx context.Context, request apiv1.SetJobKindSe
 	}
 	a.Log.Infof("%s settings changed through the API", strings.ToLower(k.Title))
 	return apiv1.SetJobKindSettings200JSONResponse(k), nil
+}
+
+// logKinds says at start which job kinds serve runs on its own, and when.
+func (a *API) logKinds(ctx context.Context) {
+	kinds, err := a.kinds(ctx)
+	if err != nil {
+		return
+	}
+	list, err := kinds.List(ctx)
+	if err != nil {
+		a.Log.Warnf("jobs: %s", err)
+		return
+	}
+	var on, off []string
+	for _, k := range list {
+		switch {
+		case k.Manual:
+		case !k.Enabled || k.Paused:
+			off = append(off, strings.ToLower(k.Title))
+		default:
+			on = append(on, fmt.Sprintf("%s (%s)", strings.ToLower(k.Title), k.Schedule))
+		}
+	}
+	line := "scheduled jobs: " + cmp.Or(strings.Join(on, ", "), "none")
+	if len(off) != 0 {
+		line += "; off or paused: " + strings.Join(off, ", ")
+	}
+	a.Log.Infof("%s", line)
 }
