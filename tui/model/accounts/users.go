@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/huhform"
@@ -160,43 +161,61 @@ func done(message string) tea.Msg {
 // usersChangedMsg reloads the users and says what changed.
 type usersChangedMsg struct{ notice string }
 
-// roleHint is what the role field takes.
-const roleHint = "reader, downloader, manager, admin, or permissions (mangal user roles --all)"
+// custom is the role choice of a set of permissions of one's own.
+const custom = "custom"
 
-// permsOf are the permissions of the role field (a role or a list) and the tokens toggle;
-// none when the field is empty.
-func permsOf(v string, tokens bool) ([]string, error) {
-	var perms []string
-	if v != "" {
-		var err error
-		if perms, err = core.RolePerms(v); err != nil {
-			perms = strings.Split(v, ",")
+// roleOptions are the roles to pick, with what each allows, and custom.
+func roleOptions() []huh.Option[string] {
+	var opts []huh.Option[string]
+	for _, r := range core.Roles {
+		opts = append(opts, huh.NewOption(r.Name+": "+r.Line, r.Name))
+	}
+	return append(opts, huh.NewOption("custom: the permissions below (mangal user roles --all)", custom))
+}
+
+// roleFields are the role (← →), the permissions of a custom one and, with tokens, the
+// tokens toggle, set to perms (none: role).
+func roleFields(perms []string, role string, tokens bool) []*huhform.Field {
+	listed := ""
+	if len(perms) != 0 {
+		role, _ = strings.CutSuffix(core.RoleOf(perms), " + tokens")
+		if role == custom {
+			listed = strings.Join(slices.DeleteFunc(slices.Clone(perms), func(p string) bool { return p == core.ScopeTokens }), ",")
 		}
 	}
-	if tokens && len(perms) != 0 {
+	choice := huhform.Choice("Role", roleOptions(), role, "")
+	fields := []*huhform.Field{
+		choice,
+		huhform.Text("Permissions", listed, "for custom: "+strings.Join(core.Scopes, ", "), func(v string) error {
+			if choice.Choice() != custom {
+				return nil
+			}
+			if err := required(v); err != nil {
+				return err
+			}
+			_, err := core.NormalizeScopes(strings.Split(v, ","))
+			return err
+		}),
+	}
+	if tokens {
+		fields = append(fields, huhform.Toggle("API tokens", slices.Contains(perms, core.ScopeTokens) && !slices.Contains(perms, core.ScopeAdmin), "can make their own (never with more than they have)"))
+	}
+	return fields
+}
+
+// permsOf are the permissions of roleFields.
+func permsOf(fields []*huhform.Field) []string {
+	var perms []string
+	if role := fields[0].Choice(); role == custom {
+		perms = strings.Split(fields[1].Value(), ",")
+	} else {
+		perms, _ = core.RolePerms(role)
+		perms = slices.Clone(perms)
+	}
+	if len(fields) > 2 && fields[2].On() {
 		perms = append(perms, core.ScopeTokens)
 	}
-	if _, err := core.NormalizeScopes(perms); err != nil {
-		return nil, fmt.Errorf("not a role nor permissions: %w", err)
-	}
-	return perms, nil
-}
-
-func validRole(v string) error {
-	_, err := permsOf(v, false)
-	return err
-}
-
-// roleValue is the role field's value for the permissions, the tokens toggle's apart.
-func roleValue(perms []string) string {
-	role := core.RoleOf(perms)
-	if r, ok := strings.CutSuffix(role, " + tokens"); ok {
-		return r
-	}
-	if role == "custom" {
-		return strings.Join(slices.DeleteFunc(slices.Clone(perms), func(p string) bool { return p == core.ScopeTokens }), ",")
-	}
-	return role
+	return perms
 }
 
 func validPassword(v string) error {
@@ -238,7 +257,7 @@ func (s *state) updateUsersKeys(ctx context.Context, msg tea.KeyPressMsg) (tea.C
 			return s.addUserForm(), true
 		case key.Matches(msg, s.keys.edit):
 			s.target = u.Name
-			return s.openForm(formPerms, permsFields(u.Perms)...), true
+			return s.openForm(formPerms, roleFields(u.Perms, "", true)...), true
 		case key.Matches(msg, s.keys.login):
 			s.target = u.Name
 			return s.openForm(formPassword, huhform.Secret("New password", "", "its logins end", validPassword)), true
@@ -266,7 +285,7 @@ func (s *state) updateUsersKeys(ctx context.Context, msg tea.KeyPressMsg) (tea.C
 			return s.addTokenForm(), true
 		case key.Matches(msg, s.keys.edit):
 			s.target = t.Name
-			return s.openForm(formTokenPerms, permsFields(t.Scopes)...), true
+			return s.openForm(formTokenPerms, roleFields(t.Scopes, "", false)...), true
 		case key.Matches(msg, s.keys.remove):
 			if !confirmed || pending != "token/"+t.Name {
 				s.confirm = "token/" + t.Name
@@ -284,25 +303,13 @@ func (s *state) updateUsersKeys(ctx context.Context, msg tea.KeyPressMsg) (tea.C
 	return nil, false
 }
 
-// permsFields are the role field and the tokens toggle, set to the permissions.
-func permsFields(perms []string) []*huhform.Field {
-	return []*huhform.Field{
-		huhform.Text("Role", roleValue(perms), roleHint, func(v string) error {
-			if err := required(v); err != nil {
-				return err
-			}
-			return validRole(v)
-		}),
-		huhform.Toggle("API tokens", slices.Contains(perms, core.ScopeTokens) && !slices.Contains(perms, core.ScopeAdmin), "can make their own (never with more than they have)"),
-	}
-}
-
 func (s *state) addUserForm() tea.Cmd {
-	hint := "empty: reader; " + roleHint
+	// a reader, the first user an admin
+	role := "reader"
 	if len(s.users) == 0 {
-		hint = "empty: admin (the first user); " + roleHint
+		role = "admin"
 	}
-	return s.openForm(formAddUser,
+	return s.openForm(formAddUser, append([]*huhform.Field{
 		huhform.Text("Name", "", "", func(v string) error {
 			if err := required(v); err != nil {
 				return err
@@ -310,16 +317,13 @@ func (s *state) addUserForm() tea.Cmd {
 			return core.CheckUserName(v)
 		}),
 		huhform.Secret("Password", "", "", validPassword),
-		huhform.Text("Role", "", hint, validRole),
-		huhform.Toggle("API tokens", false, "can make their own (never with more than they have)"),
-	)
+	}, roleFields(nil, role, true)...)...)
 }
 
 func (s *state) addTokenForm() tea.Cmd {
-	return s.openForm(formAddToken,
+	return s.openForm(formAddToken, append([]*huhform.Field{
 		huhform.Text("Name", "", "what it's for: a script, an app", required),
-		huhform.Text("Role", "read", roleHint, validRole),
-	)
+	}, roleFields([]string{core.ScopeRead}, "", false)...)...)
 }
 
 // submitForm runs the form's action.
@@ -329,20 +333,20 @@ func (s *state) submitForm(ctx context.Context) tea.Cmd {
 	switch kind {
 	case formAddUser:
 		name, password := f.Fields[0].Value(), f.Fields[1].Value()
-		perms, _ := permsOf(f.Fields[2].Value(), f.Fields[3].On())
+		perms := permsOf(f.Fields[2:])
 		return s.userAction(ctx, "Adding the user", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
 			u, err := svc.Add(ctx, name, password, perms)
 			return done(fmt.Sprintf("Added the user %s (%s)", u.Name, u.Role)), err
 		})
 	case formAddToken:
 		name := f.Fields[0].Value()
-		scopes, _ := permsOf(f.Fields[1].Value(), false)
+		scopes := permsOf(f.Fields[1:])
 		return s.userAction(ctx, "Making the token", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
 			t, secret, err := svc.AddToken(ctx, name, "", scopes)
 			return tokenMadeMsg{token: t, secret: secret}, err
 		})
 	case formTokenPerms:
-		scopes, _ := permsOf(f.Fields[0].Value(), f.Fields[1].On())
+		scopes := permsOf(f.Fields)
 		return s.userAction(ctx, "Changing the permissions", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
 			return done("Changed the permissions of the API token " + target), svc.SetTokenScopes(ctx, target, scopes)
 		})
@@ -352,7 +356,7 @@ func (s *state) submitForm(ctx context.Context) tea.Cmd {
 			return done("Changed the password of " + target + ", its logins ended"), svc.SetPassword(ctx, target, password)
 		})
 	case formPerms:
-		perms, _ := permsOf(f.Fields[0].Value(), f.Fields[1].On())
+		perms := permsOf(f.Fields)
 		return s.userAction(ctx, "Changing the permissions", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
 			return done("Changed the permissions of " + target + ", its logins ended"), svc.SetPerms(ctx, target, perms)
 		})

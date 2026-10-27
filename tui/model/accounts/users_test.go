@@ -69,7 +69,18 @@ func TestUsersRows(t *testing.T) {
 	if s.formKind != formPerms {
 		t.Fatalf("form %d", s.formKind)
 	}
-	s.form.Fields[0].SetValue("read")
+	if s.form.Fields[0].Choice() != "admin" {
+		t.Fatalf("role %q", s.form.Fields[0].Choice())
+	}
+	// → picks the next role: custom after admin, which needs its permissions
+	press(s, "right")
+	if s.form.Fields[0].Choice() != custom {
+		t.Fatalf("after →: %q", s.form.Fields[0].Choice())
+	}
+	if s.form.Valid() {
+		t.Error("custom without permissions is valid")
+	}
+	s.form.Fields[1].SetValue("read")
 	run(s, press(s, "enter"))
 	if !s.users[0].Admin {
 		t.Error("the last admin was demoted")

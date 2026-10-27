@@ -18,6 +18,7 @@ const (
 	kindText kind = iota
 	kindToggle
 	kindAction
+	kindChoice
 )
 
 // defaultWidth is a text field's width.
@@ -44,6 +45,9 @@ type Field struct {
 
 	confirm *huh.Confirm
 	on      bool
+
+	choose *huh.Select[string]
+	choice string
 
 	action *action
 }
@@ -76,6 +80,20 @@ func Toggle(label string, on bool, hint string) *Field {
 	f.Field = f.confirm
 	return f
 }
+
+// Choice is one of options (each value with its line), ← and → pick another.
+func Choice(label string, options []huh.Option[string], value, hint string) *Field {
+	f := &Field{kind: kindChoice, label: label, hint: hint, choice: value}
+	f.choose = huh.NewSelect[string]().Inline(true).Options(options...).Value(&f.choice)
+	f.Field = f.choose
+	return f
+}
+
+// Choice is the picked value of a Choice.
+func (f *Field) Choice() string { return f.choice }
+
+// SetChoice picks the value.
+func (f *Field) SetChoice(v string) { f.choice = v }
 
 // Action shows display, its key (enter) runs press instead of submitting the form.
 func Action(label, display, hint string, binding key.Binding, press func() tea.Cmd) *Field {
@@ -165,6 +183,8 @@ func (f *Field) setTitle(title string) {
 		f.fit()
 	case kindToggle:
 		f.confirm.Title(title)
+	case kindChoice:
+		f.choose.Title(title)
 	case kindAction:
 		f.action.title = title
 	}

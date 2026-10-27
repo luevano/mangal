@@ -28,7 +28,7 @@ type Form struct {
 	current int
 	accent  gocolor.Color
 
-	next, prev, flip, submit key.Binding
+	next, prev, flip, submit, pick key.Binding
 }
 
 func New(fields ...*Field) *Form {
@@ -38,6 +38,7 @@ func New(fields ...*Field) *Form {
 		prev:   util.Bind("previous", "shift+tab", "up"),
 		flip:   base.KeyOnOff,
 		submit: util.Bind("save", "enter"),
+		pick:   key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→", "pick")),
 	}
 	width := 0
 	for _, fl := range fields {
@@ -66,13 +67,17 @@ func New(fields ...*Field) *Form {
 
 // keyMap is huh's keymap: Update moves between the fields and submits, so huh's next,
 // previous and submit keys are off (as its quit key: esc and ctrl+c are base's); a toggle
-// flips with base.KeyOnOff.
+// flips with base.KeyOnOff, a choice with ← and →.
 func keyMap() *huh.KeyMap {
 	off := key.NewBinding(key.WithDisabled())
 	km := huh.NewDefaultKeyMap()
 	km.Quit = off
 	km.Input = huh.InputKeyMap{AcceptSuggestion: off, Next: off, Prev: off, Submit: off}
 	km.Confirm = huh.ConfirmKeyMap{Next: off, Prev: off, Submit: off, Toggle: base.KeyOnOff, Accept: off, Reject: off}
+	// a choice cycles with the arrows only (h and l page elsewhere)
+	km.Select = huh.SelectKeyMap{Next: off, Prev: off, Up: off, Down: off, HalfPageUp: off, HalfPageDown: off, GotoTop: off, GotoBottom: off,
+		Left: key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "previous")), Right: key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "next")),
+		Filter: off, SetFilter: off, ClearFilter: off, Submit: off}
 	return km
 }
 
@@ -98,7 +103,7 @@ func (f *Form) Keys() []key.Binding {
 	if len(f.Fields) > 1 {
 		keys = append(keys, f.next, f.prev)
 	}
-	return append(keys, f.flip)
+	return append(keys, f.flip, f.pick)
 }
 
 // Focus focuses the field i (wrapping around), through huh's next and previous field.
@@ -121,6 +126,7 @@ func (f *Form) Focus(i int) tea.Cmd {
 func (f *Form) updateKeys() {
 	cur := f.Fields[f.current]
 	f.flip.SetEnabled(cur.kind == kindToggle)
+	f.pick.SetEnabled(cur.kind == kindChoice)
 	f.submit.SetEnabled(cur.kind != kindAction)
 }
 
