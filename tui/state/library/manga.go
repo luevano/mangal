@@ -275,6 +275,12 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		// e.g. paused or bound on its watch's screen, linked (maybe renamed) on its links',
 		// chapters downloaded by a watch meanwhile
 		return tea.Batch(s.watchesCmd(ctx), s.bindingsCmd(ctx), s.mangaCmd(ctx), s.reload(ctx))
+	case base.DBChangedMsg:
+		// another process downloaded, deleted, renamed, read or watched
+		if msg.Has(storage.RevLibrary, storage.RevJournal, storage.RevHistory, storage.RevWatches) {
+			return tea.Batch(s.watchesCmd(ctx), s.bindingsCmd(ctx), s.mangaCmd(ctx), s.reload(ctx))
+		}
+		return nil
 	case mangaMsg:
 		// its sources may have changed, the header with them
 		s.manga = storage.Manga(msg)

@@ -259,6 +259,12 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			i.setReadFormat(readFormat)
 		}
 		return nil
+	case base.DBChangedMsg:
+		// another process downloaded, deleted, renamed or read: the marks
+		if msg.Has(storage.RevLibrary, storage.RevJournal, storage.RevHistory) {
+			return s.refresh(ctx, false)
+		}
+		return nil
 	case base.RestoredMsg:
 		// e.g. after the download screen
 		s.updateSubtitleFormats()

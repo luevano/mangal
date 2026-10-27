@@ -270,3 +270,19 @@ func TestEmptyTrashListsBlockedUndos(t *testing.T) {
 		t.Errorf("nothing blocked, still lists:\n%s", view)
 	}
 }
+
+// TestReloadsOnOtherProcesses: the library and a manga's screen reload when another process
+// changed the library (a download, a delete, a rename), not on the settings.
+func TestReloadsOnOtherProcesses(t *testing.T) {
+	ctx := context.Background()
+	for name, s := range map[string]base.State{"library": newMangasState(), "manga": newMangaState(storage.Manga{ID: 7, Title: "Berserk"})} {
+		if s.Update(ctx, base.DBChangedMsg{Topics: []string{storage.RevSettings}}) != nil {
+			t.Errorf("%s reloads on the settings", name)
+		}
+		for _, topic := range []string{storage.RevLibrary, storage.RevJournal} {
+			if s.Update(ctx, base.DBChangedMsg{Topics: []string{topic}}) == nil {
+				t.Errorf("%s doesn't reload on %s", name, topic)
+			}
+		}
+	}
+}
