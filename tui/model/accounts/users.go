@@ -11,10 +11,12 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/huhform"
 	"github.com/luevano/mangal/v5/tui/util"
+	"github.com/luevano/mangal/v5/util/cache"
 )
 
 // The users who log into mangal serve and its API tokens are rows after the accounts:
@@ -46,6 +48,7 @@ const (
 	formPassword
 	formPerms
 	formTokenPerms
+	formRename
 )
 
 type usersMsg struct {
@@ -102,8 +105,14 @@ func (s *state) setRows() {
 		case rowUser:
 			u := s.users[r.i]
 			last := "never logged in"
-			if !u.LastLogin.IsZero() {
+			switch {
+			case !u.Password:
+				last = "no password: only this machine"
+			case !u.LastLogin.IsZero():
 				last = "last login " + u.LastLogin.Format(time.DateTime)
+			}
+			if local, _ := cache.LocalUser(); local == u.Name {
+				last += ", this machine's user"
 			}
 			rows = append(rows, table.Row{"mangal user", u.Name, u.Role, "", last, ""})
 		case rowNoUsers:
@@ -261,6 +270,18 @@ func (s *state) updateUsersKeys(ctx context.Context, msg tea.KeyPressMsg) (tea.C
 		case key.Matches(msg, s.keys.login):
 			s.target = u.Name
 			return s.openForm(formPassword, huhform.Secret("New password", "", "its logins end", validPassword)), true
+		case key.Matches(msg, s.keys.rename):
+			s.target = u.Name
+			return s.openForm(formRename, huhform.Text("New name", u.Name, "", func(v string) error {
+				if err := required(v); err != nil {
+					return err
+				}
+				return core.CheckUserName(v)
+			})), true
+		case key.Matches(msg, s.keys.beUser):
+			return s.userAction(ctx, "Switching the user", func(ctx context.Context, _ core.Users) (tea.Msg, error) {
+				return done("mangal on this machine is " + u.Name + " now: their history, searches and AniList/Kitsu/MyAnimeList"), client.UseLocalUser(ctx, u.Name)
+			}), true
 		case key.Matches(msg, s.keys.logout):
 			return s.userAction(ctx, "Ending the logins", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
 				return done("Ended the logins of " + u.Name), svc.EndLogins(ctx, u.Name)
@@ -350,6 +371,11 @@ func (s *state) submitForm(ctx context.Context) tea.Cmd {
 		return s.userAction(ctx, "Changing the permissions", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
 			return done("Changed the permissions of the API token " + target), svc.SetTokenScopes(ctx, target, scopes)
 		})
+	case formRename:
+		to := f.Fields[0].Value()
+		return s.userAction(ctx, "Renaming the user", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
+			return done("Renamed " + target + " to " + to + ", its logins ended"), svc.Rename(ctx, target, to)
+		})
 	case formPassword:
 		password := f.Fields[0].Value()
 		return s.userAction(ctx, "Changing the password", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
@@ -406,7 +432,7 @@ func (s *state) usersKeys() []key.Binding {
 	}
 	switch ref.kind {
 	case rowUser:
-		return []key.Binding{s.keys.add, s.keys.edit, s.keys.login, s.keys.logout, s.keys.remove}
+		return []key.Binding{s.keys.add, s.keys.edit, s.keys.login, s.keys.rename, s.keys.beUser, s.keys.logout, s.keys.remove}
 	case rowToken:
 		return []key.Binding{s.keys.add, s.keys.remove}
 	case rowNoUsers, rowNoTokens:

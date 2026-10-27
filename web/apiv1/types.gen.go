@@ -1408,7 +1408,10 @@ type User struct {
 	Admin     bool       `json:"admin"`
 	Created   time.Time  `json:"created"`
 	LastLogin *time.Time `json:"last_login,omitempty"`
-	Name      string     `json:"name"`
+
+	// Local mangal on the server's machine is this user (auth.user)
+	Local *bool  `json:"local,omitempty"`
+	Name  string `json:"name"`
 
 	// Password false for a user only mangal on the server's machine is (they can't log in)
 	Password bool     `json:"password"`
@@ -1420,6 +1423,9 @@ type User struct {
 
 // UserChange defines model for UserChange.
 type UserChange struct {
+	// Local true makes mangal on the server's machine this user (auth.user; its tracker logins switch too)
+	Local *bool `json:"local,omitempty"`
+
 	// Name a new name (their history, tokens and auth.user follow)
 	Name     *string   `json:"name,omitempty"`
 	Password *string   `json:"password,omitempty"`

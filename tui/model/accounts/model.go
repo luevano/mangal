@@ -105,6 +105,8 @@ func (s *state) Subtitle() string {
 		return "an API token for a program, shown once"
 	case formPassword, formPerms:
 		return s.target + ": its logins end"
+	case formRename:
+		return s.target + ": their history, tokens and logins follow, their logins end"
 	case formTokenPerms:
 		return "the API token " + s.target + " (its secret stays)"
 	}
@@ -325,6 +327,8 @@ type keyMap struct {
 	edit,
 	logout,
 	remove,
+	rename,
+	beUser,
 	save,
 	cancel key.Binding
 }
@@ -338,6 +342,8 @@ func newKeyMap() keyMap {
 		edit:    base.KeyEdit,
 		logout:  base.KeyLogOut,
 		remove:  base.KeyDelete,
+		rename:  base.KeyRename,
+		beUser:  base.KeyBeUser,
 		save:    util.Bind("save", "enter"),
 		cancel:  util.Bind("cancel", "esc"),
 	}

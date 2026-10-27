@@ -68,7 +68,7 @@ function togglePerm(name: string, on: boolean) {
 }
 
 // the open form: add a user, a user's permissions or password, add a token
-type Form = 'add' | 'perms' | 'password' | 'token'
+type Form = 'add' | 'perms' | 'password' | 'token' | 'rename'
 const form = ref<Form>()
 const target = ref<User>()
 const name = ref('')
@@ -82,6 +82,7 @@ function open(f: Form, u?: User) {
   name.value = ''
   password.value = ''
   showAll.value = false
+  if (f === 'rename' && u) name.value = u.name
   perms.value = f === 'perms' && u ? [...u.perms] : f === 'token' ? ['read'] : []
   // a new user: a reader, the first one an admin
   if (f === 'add') pickRole(users.data.value?.length ? 'reader' : 'admin')
@@ -102,11 +103,13 @@ const valid = computed(() => {
       return perms.value.length > 0
     case 'token':
       return name.value.trim() !== ''
+    case 'rename':
+      return name.value.trim() !== '' && name.value.trim() !== target.value?.name
   }
   return false
 })
 
-const titles: Record<Form, string> = { add: 'Add a user', perms: 'Permissions', password: 'New password', token: 'Make an API token' }
+const titles: Record<Form, string> = { add: 'Add a user', perms: 'Permissions', password: 'New password', token: 'Make an API token', rename: 'Rename' }
 
 async function submit() {
   const f = form.value
@@ -122,6 +125,9 @@ async function submit() {
     case 'perms':
       r = await run(() => ok(client.PATCH('/v1/users/{name}', { params: { path: { name: u!.name } }, body: { perms: perms.value } })), `Changed the permissions of ${u!.name}, its logins ended`)
       break
+    case 'rename':
+      r = await run(() => ok(client.PATCH('/v1/users/{name}', { params: { path: { name: u!.name } }, body: { name: name.value.trim() } })), `Renamed ${u!.name} to ${name.value.trim()}, their logins ended`)
+      break
     case 'password':
       r = await run(() => ok(client.PATCH('/v1/users/{name}', { params: { path: { name: u!.name } }, body: { password: password.value } })), `Changed the password of ${u!.name}, its logins ended`)
       break
@@ -136,8 +142,15 @@ async function submit() {
   close()
   users.load()
   tokens.load()
-  // my own password or permissions: this login ended
-  if (u && u.name === st.me?.name && (f === 'password' || f === 'perms')) st.loadMe()
+  // my own name, password or permissions: this login ended
+  if (u && u.name === st.me?.name && (f === 'password' || f === 'perms' || f === 'rename')) st.loadMe()
+}
+
+// beLocal makes mangal on the server's machine (its TUI, CLI) this user
+async function beLocal(u: User) {
+  if (!confirm(`Make mangal on the server's machine ${u.name}? Its TUI and CLI then read, search and sync as ${u.name}.`)) return
+  await run(() => ok(client.PATCH('/v1/users/{name}', { params: { path: { name: u.name } }, body: { local: true } })), `mangal on the server's machine is ${u.name} now`)
+  users.load()
 }
 
 async function endLogins(u: User) {
@@ -184,12 +197,15 @@ async function copySecret() {
           <td>
             {{ u.name }}<span v-if="u.name === st.me?.name" class="badge text-bg-secondary ms-1">you</span>
             <span v-if="!u.password" class="badge text-bg-warning ms-1" title="Only mangal on the server's machine is this user: no login until it gets a password">no password</span>
+            <span v-if="u.local" class="badge text-bg-info ms-1" title="mangal on the server's machine (its TUI, CLI) is this user (auth.user)">server's machine</span>
           </td>
           <td><span class="badge text-bg-light" :title="u.perms.join(', ')">{{ u.role }}</span></td>
           <td class="d-none d-md-table-cell small">{{ u.last_login ? ago(u.last_login) : 'never' }}</td>
           <td class="text-end text-nowrap">
             <button class="btn btn-sm btn-outline-secondary" :disabled="busy" @click="open('perms', u)">Permissions</button>
             <button class="btn btn-sm btn-outline-secondary ms-1" :disabled="busy" @click="open('password', u)">Password</button>
+            <button class="btn btn-sm btn-outline-secondary ms-1" :disabled="busy" :data-test="`user-rename-${u.name}`" @click="open('rename', u)">Rename</button>
+            <button v-if="!u.local" class="btn btn-sm btn-outline-secondary ms-1" :disabled="busy" title="Make mangal on the server's machine (its TUI, CLI) this user" @click="beLocal(u)">Server's user</button>
             <button class="btn btn-sm btn-outline-secondary ms-1" :disabled="busy" title="End the logins (every browser and app)" @click="endLogins(u)">Log out</button>
             <button class="btn btn-sm btn-outline-danger ms-1" :disabled="busy || (u.admin && admins <= 1)" :title="u.admin && admins <= 1 ? 'the last admin' : ''" :data-test="`user-rm-${u.name}`" @click="removeUser(u)">
               <i class="bi bi-trash" />
@@ -223,7 +239,7 @@ async function copySecret() {
   </table>
 
   <FormModal :title="form ? titles[form] + (target ? `: ${target.name}` : '') : ''" :open="!!form" :disabled="!valid || busy" submit-text="Save" @close="close" @submit="submit">
-    <div v-if="form === 'add' || form === 'token'" class="mb-3">
+    <div v-if="form === 'add' || form === 'token' || form === 'rename'" class="mb-3">
       <label class="form-label" for="u-name">Name</label>
       <input id="u-name" v-model="name" class="form-control" autocomplete="off" autocapitalize="none" spellcheck="false" :placeholder="form === 'token' ? 'what it\'s for: a script, an app' : ''" data-test="u-name" />
     </div>
@@ -232,7 +248,8 @@ async function copySecret() {
       <input id="u-password" v-model="password" type="password" class="form-control" autocomplete="new-password" data-test="u-password" />
       <div class="form-text">8 characters or more.</div>
     </div>
-    <div v-if="form !== 'password'">
+    <div v-if="form === 'rename'" class="form-text mb-2">Their history, tokens and tracker logins follow the name; their logins end.</div>
+    <div v-if="form !== 'password' && form !== 'rename'">
       <div class="form-label">Role</div>
       <div v-for="r in roles" :key="r.name" class="form-check">
         <input :id="`role-${r.name}`" class="form-check-input" type="radio" name="role" :checked="role === r.name" :data-test="`role-${r.name}`" @change="pickRole(r.name)" />

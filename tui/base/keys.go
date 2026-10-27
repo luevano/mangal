@@ -124,6 +124,7 @@ var (
 	// library rename (library, health's rename fixes) and its options (mangal library
 	// rename --chapters, --fallback); r and R are read and reverse
 	KeyRename       = util.Bind("rename", "alt+r")
+	KeyBeUser       = util.Bind("be this user here", "alt+u")
 	KeyChapterFiles = util.Bind("chapter files", "alt+f")
 	KeyFallback     = util.Bind("fallback names", "alt+b")
 
@@ -203,7 +204,7 @@ func Keys() (old, newer []key.Binding) {
 		KeyNotInLibrary, KeyNextMatch, KeyPrevMatch, KeyLevel, KeyNarrow,
 		KeyLogFiles, KeyPrevPeriod, KeyNextPeriod, KeyApplyFix, KeyNetwork, KeyDismiss, KeyShowDismissed,
 		KeyRename, KeyChapterFiles, KeyFallback, KeyReadHistory, KeySettingsHistory, KeyClearAll, KeyByID, KeyRetitle, KeyFill,
-		KeyJobs, KeyRunAll, KeyRunMissing,
+		KeyJobs, KeyRunAll, KeyRunMissing, KeyBeUser,
 	}
 }
 

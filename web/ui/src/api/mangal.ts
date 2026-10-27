@@ -1836,6 +1836,8 @@ export interface components {
             role: string;
             /** @description false for a user only mangal on the server's machine is (they can't log in) */
             password: boolean;
+            /** @description mangal on the server's machine is this user (auth.user) */
+            local?: boolean;
             /** @description has the admin permission (manages the users, tokens, settings) */
             admin: boolean;
             /** Format: date-time */
@@ -1853,6 +1855,8 @@ export interface components {
         UserChange: {
             /** @description a new name (their history, tokens and auth.user follow) */
             name?: string;
+            /** @description true makes mangal on the server's machine this user (auth.user; its tracker logins switch too) */
+            local?: boolean;
             password?: string;
             /** @description a role (reader, downloader, manager, admin); perms are added to its */
             role?: string;

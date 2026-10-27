@@ -8,7 +8,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
@@ -34,6 +36,9 @@ func needAdmin(ctx context.Context) error {
 
 func userOut(u core.User) apiv1.User {
 	out := apiv1.User{Name: u.Name, Perms: u.Perms, Role: u.Role, Password: u.Password, Admin: u.Admin, Created: u.Created}
+	if local, _ := cache.LocalUser(); local == u.Name {
+		out.Local = new(true)
+	}
 	if !u.LastLogin.IsZero() {
 		out.LastLogin = &u.LastLogin
 	}
@@ -79,8 +84,8 @@ func (a *API) UpdateUser(ctx context.Context, request apiv1.UpdateUserRequestObj
 		return nil, err
 	}
 	b := request.Body
-	if b.Password == nil && b.Perms == nil && b.Role == nil && b.Name == nil {
-		return nil, badRequest("nothing to change (name, password, role, perms)")
+	if b.Password == nil && b.Perms == nil && b.Role == nil && b.Name == nil && !deref(b.Local) {
+		return nil, badRequest("nothing to change (name, password, role, perms, local)")
 	}
 	if b.Perms != nil || b.Role != nil {
 		perms, err := core.WithRole(deref(b.Role), deref(b.Perms))
@@ -96,11 +101,19 @@ func (a *API) UpdateUser(ctx context.Context, request apiv1.UpdateUserRequestObj
 			return nil, err
 		}
 	}
+	name := request.Name
 	if b.Name != nil {
 		if err := a.users().Rename(ctx, request.Name, *b.Name); err != nil {
 			return nil, err
 		}
-		a.Auth.forget(*b.Name)
+		name = *b.Name
+		a.Auth.forget(name)
+	}
+	if deref(b.Local) {
+		if err := client.UseLocalUser(ctx, name); err != nil {
+			return nil, err
+		}
+		a.Log.Infof("mangal on this machine is %q now (asked through the API)", name)
 	}
 	a.Auth.forget(request.Name)
 	return apiv1.UpdateUser204Response{}, nil

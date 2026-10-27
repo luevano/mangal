@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 )
 
@@ -150,6 +152,27 @@ var userRenameCmd = &cobra.Command{
 }
 
 func init() {
+	userCmd.AddCommand(userUseCmd)
+}
+
+var userUseCmd = &cobra.Command{
+	Use:   "use <name>",
+	Short: "Be this user on this machine (the TUI, the CLI: auth.user)",
+	Long: `Make the user mangal on this machine (the TUI, the CLI, scripts; auth.user in mangal.toml):
+their read history, search history and AniList/Kitsu/MyAnimeList accounts from now on. No
+password needed, whoever runs mangal here owns its files anyway.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := client.UseLocalUser(ctxOf(cmd), args[0]); err != nil {
+			return err
+		}
+		successf(cmd, "mangal on this machine is %q now", args[0])
+		restartNotice(cmd, "auth.user")
+		return nil
+	},
+}
+
+func init() {
 	userCmd.AddCommand(userLogoutCmd)
 }
 
@@ -202,6 +225,10 @@ var userLsCmd = &cobra.Command{
 			cmd.Println("no users (mangal user add <name>)")
 			return nil
 		}
+		local, err := cache.LocalUser()
+		if err != nil {
+			return err
+		}
 		for _, u := range list {
 			last := "never logged in"
 			switch {
@@ -209,6 +236,9 @@ var userLsCmd = &cobra.Command{
 				last = "no password: only mangal on this machine"
 			case !u.LastLogin.IsZero():
 				last = "last login " + u.LastLogin.Format(time.DateTime)
+			}
+			if u.Name == local {
+				last += ", this machine's user"
 			}
 			cmd.Printf("%s  %s: %s  (%s)\n", u.Name, u.Role, strings.Join(u.Perms, ", "), last)
 		}

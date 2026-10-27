@@ -1,8 +1,14 @@
 package client
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
+	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/client/kitsu"
+	"github.com/luevano/mangal/v5/client/myanimelist"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -41,4 +47,26 @@ func EnsureUsers() (string, error) {
 		notice += fmt.Sprintf(" The read history so far is %s's now.", user)
 	}
 	return notice, nil
+}
+
+// UseLocalUser makes the user mangal on this machine (auth.user): their history, search
+// history and tracker accounts from now on, this process' tracker logins included.
+func UseLocalUser(ctx context.Context, name string) error {
+	st, err := cache.Storage()
+	if err != nil {
+		return err
+	}
+	u, err := st.Users().Get(name)
+	if err != nil {
+		return err
+	}
+	// a file key: made like "mangal config set" makes it
+	if err := config.CreateFile(); err != nil {
+		return err
+	}
+	if err := config.Auth.User.Write(u.Name); err != nil {
+		return err
+	}
+	// the next login is the new user's saved account
+	return errors.Join(anilist.ResetLoginContext(ctx), kitsu.ResetLoginContext(ctx), myanimelist.ResetLoginContext(ctx))
 }

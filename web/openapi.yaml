@@ -2473,6 +2473,9 @@ components:
         password:
           type: boolean
           description: false for a user only mangal on the server's machine is (they can't log in)
+        local:
+          type: boolean
+          description: mangal on the server's machine is this user (auth.user)
         admin:
           type: boolean
           description: has the admin permission (manages the users, tokens, settings)
@@ -2503,6 +2506,9 @@ components:
         name:
           type: string
           description: a new name (their history, tokens and auth.user follow)
+        local:
+          type: boolean
+          description: true makes mangal on the server's machine this user (auth.user; its tracker logins switch too)
         password:
           type: string
         role:

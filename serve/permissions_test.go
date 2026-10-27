@@ -144,3 +144,23 @@ func TestMyAccounts(t *testing.T) {
 		t.Errorf("still logged in as %q", account)
 	}
 }
+
+// TestRenameUser: an admin renames a user through the API, their reads follow.
+func TestRenameUser(t *testing.T) {
+	s := newTestServer(t, "")
+	s.api.Users = core.NewUsersOf(storage.Users{DB: s.svc.Watches.DB})
+	addUser(t, s, "kid", "a long password", ScopeRead, ScopeProgress)
+	if err := (storage.History{DB: s.svc.Watches.DB, User: "kid"}).Record(storage.Read{Provider: "p", MangaID: "m", Chapter: 1}); err != nil {
+		t.Fatal(err)
+	}
+	h := s.handler(t)
+	if rec := do(h, "PATCH", "/api/v1/users/kid", `{"name":"teen"}`, "192.0.2.1:1", "Bearer "+testLocalKey, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("rename %d %s", rec.Code, rec.Body)
+	}
+	if reads, _ := (storage.History{DB: s.svc.Watches.DB, User: "teen"}).List("", ""); len(reads) != 1 {
+		t.Errorf("teen's reads %+v", reads)
+	}
+	if rec := do(h, "GET", "/api/v1/watches", "", "192.0.2.1:1", basic("teen", "a long password"), nil); rec.Code != http.StatusOK {
+		t.Errorf("teen logs in: %d %s", rec.Code, rec.Body)
+	}
+}

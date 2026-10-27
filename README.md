@@ -20,7 +20,7 @@ Version 5 is now based on metafates' [mangalorg](https://github.com/mangalorg) s
 - [Watches](#headless): mangas kept up to date by `mangal serve` on a schedule, with Discord notifications.
 - [Jobs](#jobs): the maintenance runs (watch checks, source checks, source addresses, scan, health) with their schedules and per-provider settings.
 - [Health](#health): problems of the library and the watches, each with its fix.
-- `mangal serve`: the web UI, a JSON API and OPDS, with users and API tokens.
+- `mangal serve`: the web UI, a JSON API and OPDS, with [users](#users) (roles, their own history and tracker accounts) and API tokens.
 
 ## Install
 
@@ -276,7 +276,7 @@ Only reads (the library, its folders and their `.libmangal.json`); it makes no r
 mangal accounts
 ```
 
-Shows every account mangal can use, logged in or not: Anilist, Kitsu, MyAnimeList and the provider accounts (e.g. the MangaPlus subscription), `K` on the TUI home. From there you can log into Anilist, Kitsu or MyAnimeList, set the MangaPlus secret or the Discord webhook. mangal tells you when the Anilist login expires. Without a browser on the same machine, `mangal anilist login` and `mangal myanimelist login` print the URL to open and take the redirected URL pasted back. `mangal anilist login --pin` (or `metadata.anilist.redirect = "pin"`) needs no callback server at all: AniList shows the code to paste, for an Anilist API client registered with the redirect URL `https://anilist.co/api/v2/oauth/pin`.
+Shows every account mangal can use, logged in or not: Anilist, Kitsu, MyAnimeList and the provider accounts (e.g. the MangaPlus subscription), `K` on the TUI home. The Anilist, Kitsu and MyAnimeList logins are this machine's [user](#users)'s: each user has their own (on the web UI: Accounts, "Your trackers"). From there you can log into Anilist, Kitsu or MyAnimeList, set the MangaPlus secret or the Discord webhook. mangal tells you when the Anilist login expires. Without a browser on the same machine, `mangal anilist login` and `mangal myanimelist login` print the URL to open and take the redirected URL pasted back. `mangal anilist login --pin` (or `metadata.anilist.redirect = "pin"`) needs no callback server at all: AniList shows the code to paste, for an Anilist API client registered with the redirect URL `https://anilist.co/api/v2/oauth/pin`.
 
 Metadata comes from [Anilist](https://anilist.co), then [Kitsu](https://kitsu.app) when Anilist finds nothing (`metadata.kitsu.enabled`), then MyAnimeList when configured (below), or the provider, and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config (AniList tags less relevant than `metadata.anilist.tag_rank_min`, 60 by default, are left out). Log in with `mangal anilist` to also sync the reading progress when reading from the TUI; `mangal kitsu` and `read.history.kitsu = true` do the same for Kitsu. MyAnimeList needs an API client id of your own: register an app at https://myanimelist.net/apiconfig (App Type "other", redirect URL `http://localhost:6969/oauth/mal/callback`), save its client id with `mangal myanimelist client` (or from `mangal myanimelist`, which asks for it), log in with `mangal myanimelist` and set `read.history.myanimelist = true`. Chapters read from the TUI are kept in a local history (`mangal history`, `read.history.local`).
 
@@ -287,6 +287,45 @@ mangal bind mango-mangapill "One-Punch Man" --anilist 74347 --kitsu 24147
 mangal bind mango-mangaplus --id 100171 --remove kitsu
 mangal bind ls
 ```
+
+### Users
+
+Everything a person records belongs to a mangal user: their read history, reading positions,
+read marks, search history and their own Anilist, Kitsu and MyAnimeList logins (their reads sync
+there). The library, watches, jobs, settings and the provider accounts are shared.
+
+There's always a user. The first start makes `mangal`, an admin without a password: mangal on
+this machine (the TUI, the CLI, scripts) is that user, nothing else to do on a desktop. A user
+without a password can't log in from the web UI or another machine; give it one to log in, rename
+it to yours:
+
+```sh
+mangal user rename mangal david       # their history, tokens and logins follow
+mangal user passwd david              # now david can log into the web UI
+mangal user add kid                   # a reader (--role downloader|manager|admin, --perms tokens)
+mangal user roles --all               # what each role and permission allows
+mangal user use kid                   # mangal on this machine is kid now (auth.user)
+mangal user ls                        # roles, who has no password, this machine's user
+mangal token add phone --perms read   # an API token (a program's, not a login)
+mangal token perms phone --role reader
+```
+
+Roles: **reader** (reads the library, keeps their place), **downloader** (also searches the
+sites, reads online and downloads with the server's settings), **manager** (also the watches,
+library fixes, health, running a job now) and **admin** (everything: users, settings, the log,
+library-wide operations). Any of them can also get `tokens` (make their own API tokens, never
+with more than they have), or pick permissions one by one: read, progress, browse, download,
+manage, tokens, admin. Readers and downloaders see paths relative to the library, never the
+server's.
+
+Which user mangal on this machine is: `auth.user` in mangal.toml (empty: the first admin);
+`mangal user use`, `alt+u` on a user in the TUI's accounts screen (`K`), or "Server's user" on
+the web UI's Users page. The same places rename (`alt+r`, Rename) and set roles and passwords.
+Each user logs into their own trackers: the TUI/CLI as this machine's user (`mangal anilist`,
+`mangal kitsu`, `mangal myanimelist`), anyone on the web UI's Accounts page (Anilist: open the
+link, paste the code; MyAnimeList: paste the address it ends on; Kitsu: name and password). The
+Anilist and MyAnimeList logins need the API client saved by a first login from mangal on the
+server.
 
 ### Headless
 
@@ -421,13 +460,12 @@ For more, use the `-h` flag.
 
 `mangal serve` serves the web UI (`serve.web`, on by default) on `serve.host`:`serve.port`
 (`127.0.0.1:6977`). `mangal web` opens that one, or without a server running serves it the same
-way, without the scheduled checks. It asks to log in as a user:
+way, without the scheduled checks. It asks to log in as a user with a password (see
+[Users](#users)):
 
 ```sh
-mangal user add david                   # the first user is an admin
-mangal user add kid                     # the others are readers unless --role or --perms say
-mangal user add friend --role downloader
-mangal user roles --all                 # what each role and permission allows
+mangal user rename mangal david    # the user made at the first start, an admin
+mangal user passwd david
 mangal serve                       # or: mangal web --open
 ```
 
@@ -442,12 +480,15 @@ What it has:
   sources.
 - **Reader**: downloaded and online chapters, paged (left to right, right to left) or webtoon,
   double pages, zoom, keys and tap zones, the position kept per chapter; each user has their own
-  read history and positions, an admin's reads sync to AniList, Kitsu and MyAnimeList.
+  read history and positions, synced to their own AniList, Kitsu and MyAnimeList.
 - **Watches**: add, check, pause, edit, re-link, hold, live log, check runs.
 - **Jobs** and **Downloads**: the maintenance kinds (run, pause, settings) and the download queue.
 - **Health**: the findings with their fixes, dismiss, network checks.
-- **Logs**, **Accounts**, **Config**, and **Users** (users and API tokens) for admins; users
-  with the tokens permission manage their own tokens there.
+- **Accounts**: your own Anilist, Kitsu and MyAnimeList logins (everyone who keeps their
+  place), the server's accounts for admins.
+- **Logs**, **Config**, and **Users** (users and API tokens: roles, passwords, rename, which
+  user the server's machine is) for admins; users with the tokens permission manage their own
+  tokens there.
 
 Users have a role (reader, downloader, manager, admin) or their own set of permissions: read,
 progress, browse (the server contacts the sites: search, read online), download, manage (watches,
