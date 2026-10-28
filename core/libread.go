@@ -14,9 +14,9 @@ import (
 	"github.com/spf13/afero"
 )
 
-// Library reads the library: its mangas, downloads, bindings, trash, journal and read
-// history. Scans reconcile the library's rows with the files (never touching them), so
-// they're here and not Changes.
+// Library reads the library: its mangas, downloads, bindings, trash and journal. Scans
+// reconcile the library's rows with the files (never touching them), so they're here and
+// not Changes.
 type Library interface {
 	// Root is the download directory.
 	Root(ctx context.Context) (string, error)
@@ -48,8 +48,6 @@ type Library interface {
 	Trash(ctx context.Context) ([]library.TrashBatch, error)
 	// Ops are the journal's operations, newest first (limit 0: all).
 	Ops(ctx context.Context, limit int) ([]storage.Op, error)
-	// History is the read chapters (of the provider, or its manga), last read first.
-	History(ctx context.Context, provider, mangaID string) ([]storage.Read, error)
 	// Duplicates are the library mangas sharing a metadata id, the one to keep suggested.
 	Duplicates(ctx context.Context) ([]library.Duplicate, error)
 	Scan(ctx context.Context, opts ScanOptions) (ScanReport, error)
@@ -229,10 +227,6 @@ func (l *localLibrary) Trash(context.Context) ([]library.TrashBatch, error) {
 
 func (l *localLibrary) Ops(_ context.Context, limit int) ([]storage.Op, error) {
 	return l.core.env.Storage.Journal().Ops(limit)
-}
-
-func (l *localLibrary) History(ctx context.Context, provider, mangaID string) ([]storage.Read, error) {
-	return l.core.env.Storage.History().Of(HistoryUser(ctx)).List(provider, mangaID)
 }
 
 // ScanManga reconciles the library manga with its folder (a missing one is looked for

@@ -340,11 +340,11 @@ func TestHistoryClear(t *testing.T) {
 	if err != nil || res.Detail.(int64) != 2 || strings.Join(lines, "") != "forgot 2 read chapters" {
 		t.Fatalf("%+v %v %q", res, err, lines)
 	}
-	if reads, _ := c.Library.History(t.Context(), "", ""); len(reads) != 1 {
+	if reads, _ := c.History.List(t.Context(), "", ""); len(reads) != 1 {
 		t.Fatalf("%d reads left", len(reads))
 	}
 	undoLast(t, c)
-	if reads, _ := c.Library.History(t.Context(), "", ""); len(reads) != 3 {
+	if reads, _ := c.History.List(t.Context(), "", ""); len(reads) != 3 {
 		t.Fatalf("%d reads back", len(reads))
 	}
 	if _, err := c.Changes.Plan(ctx, HistoryClearReq{MangaID: "a"}); !errors.Is(err, ErrInvalid) {

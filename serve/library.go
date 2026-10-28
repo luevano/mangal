@@ -229,7 +229,7 @@ func (a *API) ListLibraryChapters(ctx context.Context, request apiv1.ListLibrary
 	}
 	reads := map[readKey]storage.Read{}
 	for _, s := range m.Sources {
-		list, err := c.Library.History(ctx, s.Provider, s.MangaID)
+		list, err := c.History.List(ctx, s.Provider, s.MangaID)
 		if err != nil {
 			return nil, err
 		}

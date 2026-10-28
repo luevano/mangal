@@ -127,7 +127,7 @@ func (t target) history(ctx context.Context, provider, mangaID string) ([]storag
 	if t.remote != nil {
 		return t.remote.History(ctx, provider, mangaID)
 	}
-	return t.local.Library.History(ctx, provider, mangaID)
+	return t.local.History.List(ctx, provider, mangaID)
 }
 
 func (t target) watches(ctx context.Context) (watch.Manager, error) {

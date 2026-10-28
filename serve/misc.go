@@ -341,7 +341,7 @@ func (a *API) ListHistory(ctx context.Context, request apiv1.ListHistoryRequestO
 		return nil, err
 	}
 	p := request.Params
-	reads, err := svc.Library.History(ctx, deref(p.Provider), deref(p.MangaId))
+	reads, err := svc.History.List(ctx, deref(p.Provider), deref(p.MangaId))
 	if err != nil {
 		return nil, err
 	}
