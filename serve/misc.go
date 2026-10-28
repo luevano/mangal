@@ -327,7 +327,7 @@ func (a *API) ListBindings(ctx context.Context, request apiv1.ListBindingsReques
 	if err != nil {
 		return nil, err
 	}
-	list, err := svc.Library.Bindings(ctx, deref(request.Params.Provider), deref(request.Params.MangaId))
+	list, err := svc.Bindings.List(ctx, deref(request.Params.Provider), deref(request.Params.MangaId))
 	if err != nil {
 		return nil, err
 	}

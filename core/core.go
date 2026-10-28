@@ -207,6 +207,7 @@ type Core struct {
 	// Library reads the library.
 	Library   Library
 	History   History
+	Bindings  Bindings
 	Health    Health
 	Logs      Logs
 	Providers Providers
@@ -224,6 +225,7 @@ func New(_ context.Context, env Env) (*Core, error) {
 	c.Changes = &changes{core: c}
 	c.Library = &localLibrary{core: c}
 	c.History = &localHistory{core: c}
+	c.Bindings = &localBindings{core: c}
 	c.Health = &localHealth{core: c}
 	c.Logs = NewLogs(env.LogDir)
 	c.Providers = NewProviders(env.Loaders)

@@ -89,11 +89,11 @@ func (s *bindingsState) Init(ctx context.Context) tea.Cmd {
 func (s *bindingsState) load(ctx context.Context) tea.Cmd {
 	c, manga := s.client, s.manga
 	return base.Load(ctx, "Loading the metadata bindings", func(ctx context.Context) (loadedMsg, error) {
-		lib, err := base.Library()
+		app, err := base.Core()
 		if err != nil {
 			return nil, err
 		}
-		bound, err := lib.Bindings(ctx, c.Info().ID, manga.Info().ID)
+		bound, err := app.Bindings.List(ctx, c.Info().ID, manga.Info().ID)
 		if err != nil {
 			return nil, err
 		}

@@ -102,7 +102,7 @@ func assignBound(ctx context.Context, c *libmangal.Client, args Args, results []
 	var unbound []int
 	for _, i := range pending {
 		manga := results[i].Manga
-		list, err := app.Library.Bindings(ctx, c.Info().ID, manga.Info().ID)
+		list, err := app.Bindings.List(ctx, c.Info().ID, manga.Info().ID)
 		if err != nil {
 			return nil, err
 		}

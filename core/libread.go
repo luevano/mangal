@@ -14,9 +14,9 @@ import (
 	"github.com/spf13/afero"
 )
 
-// Library reads the library: its mangas, downloads, bindings, trash and journal. Scans
-// reconcile the library's rows with the files (never touching them), so they're here and
-// not Changes.
+// Library reads the library: its mangas, downloads, trash and journal. Scans reconcile
+// the library's rows with the files (never touching them), so they're here and not
+// Changes.
 type Library interface {
 	// Root is the download directory.
 	Root(ctx context.Context) (string, error)
@@ -34,10 +34,6 @@ type Library interface {
 	// manga and chapter.
 	ProviderDownloads(ctx context.Context, provider, mangaID string) ([]storage.Download, error)
 	ChapterFiles(ctx context.Context, req ChapterFilesReq) (ChapterFiles, error)
-	// Bindings are the metadata bindings of a provider and manga (empty for any).
-	Bindings(ctx context.Context, provider, mangaID string) ([]storage.Binding, error)
-	// MangaBindings are the bindings of the library manga's sources, then its own ids.
-	MangaBindings(ctx context.Context, id int64) ([]storage.Binding, error)
 	// Links are the library manga's metadata links: each source's ids from its sources'
 	// bindings, its own ids and its folder.
 	Links(ctx context.Context, id int64) (library.LinkInfo, error)
@@ -195,14 +191,6 @@ func (l *localLibrary) ChapterFiles(ctx context.Context, req ChapterFilesReq) (C
 	}
 	out.Read = slices.Sorted(maps.Keys(read))
 	return out, nil
-}
-
-func (l *localLibrary) Bindings(_ context.Context, provider, mangaID string) ([]storage.Binding, error) {
-	return l.core.env.Storage.Bindings().List(provider, mangaID)
-}
-
-func (l *localLibrary) MangaBindings(_ context.Context, id int64) ([]storage.Binding, error) {
-	return l.core.env.Storage.Bindings().OfLibraryManga(id)
 }
 
 func (l *localLibrary) Links(ctx context.Context, id int64) (library.LinkInfo, error) {

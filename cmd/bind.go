@@ -144,7 +144,7 @@ manga) share the bindings.`,
 			}
 		}
 
-		list, err := app.Library.Bindings(ctx, provider, mangaID)
+		list, err := app.Bindings.List(ctx, provider, mangaID)
 		if err != nil {
 			return err
 		}
@@ -193,7 +193,7 @@ var bindLsCmd = &cobra.Command{
 			return err
 		}
 		provider, mangaID := providerManga(args)
-		list, err := c.Library.Bindings(ctxOf(cmd), provider, mangaID)
+		list, err := c.Bindings.List(ctxOf(cmd), provider, mangaID)
 		if err != nil {
 			return err
 		}
