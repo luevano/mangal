@@ -344,7 +344,7 @@ func (a *API) canUndo(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	ops, err := c.Library.Ops(ctx, 0)
+	ops, err := c.Journal.Ops(ctx, 0)
 	if err != nil {
 		return err
 	}

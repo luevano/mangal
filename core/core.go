@@ -208,6 +208,7 @@ type Core struct {
 	Library   Library
 	History   History
 	Bindings  Bindings
+	Journal   Journal
 	Health    Health
 	Logs      Logs
 	Providers Providers
@@ -226,6 +227,7 @@ func New(_ context.Context, env Env) (*Core, error) {
 	c.Library = &localLibrary{core: c}
 	c.History = &localHistory{core: c}
 	c.Bindings = &localBindings{core: c}
+	c.Journal = &localJournal{core: c}
 	c.Health = &localHealth{core: c}
 	c.Logs = NewLogs(env.LogDir)
 	c.Providers = NewProviders(env.Loaders)

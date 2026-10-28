@@ -14,9 +14,8 @@ import (
 	"github.com/spf13/afero"
 )
 
-// Library reads the library: its mangas, downloads, trash and journal. Scans reconcile
-// the library's rows with the files (never touching them), so they're here and not
-// Changes.
+// Library reads the library: its mangas, downloads and trash. Scans reconcile the
+// library's rows with the files (never touching them), so they're here and not Changes.
 type Library interface {
 	// Root is the download directory.
 	Root(ctx context.Context) (string, error)
@@ -42,8 +41,6 @@ type Library interface {
 	LinkPick(ctx context.Context, id int64, source lmmeta.IDCode) (storage.LinkPick, bool, error)
 	// Trash is what's in the trash, oldest first.
 	Trash(ctx context.Context) ([]library.TrashBatch, error)
-	// Ops are the journal's operations, newest first (limit 0: all).
-	Ops(ctx context.Context, limit int) ([]storage.Op, error)
 	// Duplicates are the library mangas sharing a metadata id, the one to keep suggested.
 	Duplicates(ctx context.Context) ([]library.Duplicate, error)
 	Scan(ctx context.Context, opts ScanOptions) (ScanReport, error)
@@ -211,10 +208,6 @@ func (l *localLibrary) LinkPick(_ context.Context, id int64, source lmmeta.IDCod
 
 func (l *localLibrary) Trash(context.Context) ([]library.TrashBatch, error) {
 	return library.Trash(l.core.env.FS, l.core.env.Root())
-}
-
-func (l *localLibrary) Ops(_ context.Context, limit int) ([]storage.Op, error) {
-	return l.core.env.Storage.Journal().Ops(limit)
 }
 
 // ScanManga reconciles the library manga with its folder (a missing one is looked for

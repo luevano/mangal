@@ -120,7 +120,7 @@ func (t target) ops(ctx context.Context) ([]storage.Op, error) {
 	if t.remote != nil {
 		return t.remote.Ops(ctx, 0)
 	}
-	return t.local.Library.Ops(ctx, 0)
+	return t.local.Journal.Ops(ctx, 0)
 }
 
 func (t target) history(ctx context.Context, provider, mangaID string) ([]storage.Read, error) {

@@ -340,7 +340,7 @@ func (a *API) ListOps(ctx context.Context, request apiv1.ListOpsRequestObject) (
 	if err != nil {
 		return nil, err
 	}
-	ops, err := c.Library.Ops(ctx, deref(request.Params.Limit))
+	ops, err := c.Journal.Ops(ctx, deref(request.Params.Limit))
 	if err != nil {
 		return nil, err
 	}
