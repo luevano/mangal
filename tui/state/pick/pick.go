@@ -16,7 +16,6 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/selector"
-	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
@@ -40,7 +39,11 @@ var SearchProvider = func(ctx context.Context, provider, id, query string) (mang
 
 // InstalledProviders are the installed providers. Swapped in tests.
 var InstalledProviders = func() ([]libmangal.ProviderInfo, error) {
-	return core.NewProviders(nil).List(context.Background())
+	svc, err := base.Services()
+	if err != nil {
+		return nil, err
+	}
+	return svc.Providers.List(context.Background())
 }
 
 // MangaItem is a search result.
