@@ -41,7 +41,9 @@ function undo(o: Op) {
           <span v-if="o.error" class="text-danger"> · {{ o.error }}</span>
           <span v-if="o.interfered" class="text-warning"> · {{ o.interfered }}</span>
         </td>
-        <td class="d-none d-md-table-cell small">{{ date(o.started) }}</td>
+        <td class="d-none d-md-table-cell small">
+          {{ date(o.started) }}<span v-if="o.origin" class="text-secondary"> · {{ o.origin }}</span>
+        </td>
         <td class="text-end">
           <span v-if="o.undone" class="small text-secondary">undone {{ date(o.undone) }}</span>
           <button v-else-if="st.allows('POST /v1/ops/{id}/undo')" class="btn btn-sm btn-outline-warning py-0" data-test="undo" @click="undo(o)">Undo</button>

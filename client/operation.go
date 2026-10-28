@@ -161,7 +161,9 @@ func (o Ops) Run(ctx context.Context, kind, summary string, do func(library.Jour
 		return OpInfo{}, err
 	}
 	info := OpInfo{Snapshot: snapshot}
-	op, err := o.Storage.Journal().BeginAfter(mark, kind, summary, snapshot)
+	journal := o.Storage.Journal()
+	journal.Origin = config.WhoOf(ctx)
+	op, err := journal.BeginAfter(mark, kind, summary, snapshot)
 	if err != nil {
 		return info, err
 	}

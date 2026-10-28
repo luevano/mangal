@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -102,8 +103,24 @@ type Store interface {
 // ErrNoStore is a write of a database key without the database (it couldn't be opened).
 var ErrNoStore = errors.New("it's stored in the database, which isn't open")
 
-// Who is who changes the database keys, in their history: the command, set at startup.
+// Who is who changes the database keys (in their history) and does the library
+// operations (in the journal): the command, set at startup.
 var Who = meta.AppName
+
+type whoKey struct{}
+
+// WithWho says who makes the changes done with ctx, e.g. the API's user.
+func WithWho(ctx context.Context, who string) context.Context {
+	return context.WithValue(ctx, whoKey{}, who)
+}
+
+// WhoOf is who makes the changes done with ctx: WithWho's, else Who.
+func WhoOf(ctx context.Context) string {
+	if who, ok := ctx.Value(whoKey{}).(string); ok {
+		return who
+	}
+	return Who
+}
 
 // The stored layer of viper (its "config"): the file's values without the moved keys,
 // then the database's. Guarded by lmu.

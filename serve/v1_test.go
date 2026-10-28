@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -124,9 +125,11 @@ func TestV1ReadEndpoints(t *testing.T) {
 }
 
 // TestV1PlanApply: plan, apply needs the hash, a stale hash is refused with the new
-// plan, then the operation is undone the same way; the op events are streamed.
+// plan, then the operation is undone the same way; the op events (from the journal, as
+// any process's) are streamed, with who did it.
 func TestV1PlanApply(t *testing.T) {
 	s, _, _ := newHealthServer(t)
+	s.api.watchData(t.Context(), s.src.library.DB)
 	events := s.subscribe(t, "op")
 
 	var plan apiv1.ChangeResponse
@@ -156,9 +159,12 @@ func TestV1PlanApply(t *testing.T) {
 	if code := s.call(t, "GET", "/api/v1/library/mangas/1", "", nil); code != http.StatusNotFound {
 		t.Errorf("forgotten manga: %d", code)
 	}
-	ev := <-events
-	if ev.Topic != TopicOp || ev.Kind != "done" {
-		t.Errorf("event %+v", ev)
+	for _, kind := range []string{"started", "done"} {
+		ev := nextEvent(t, events)
+		data, _ := ev.Data.(map[string]any)
+		if ev.Topic != TopicOp || ev.Kind != kind || data["id"] != float64(applied.Result.OpID) || data["origin"] != "api: local (this config's mangal)" {
+			t.Errorf("event %+v, want %s", ev, kind)
+		}
 	}
 
 	undo := fmt.Sprintf("/api/v1/ops/%d/undo", applied.Result.OpID)
@@ -172,6 +178,9 @@ func TestV1PlanApply(t *testing.T) {
 	}
 	if code := s.call(t, "GET", "/api/v1/library/mangas/1", "", nil); code != http.StatusOK {
 		t.Errorf("undone manga: %d", code)
+	}
+	if ev := nextEvent(t, events); ev.Kind != "undone" {
+		t.Errorf("event %+v, want undone", ev)
 	}
 	var ops []apiv1.Op
 	if code := s.call(t, "GET", "/api/v1/ops?limit=1", "", &ops); code != http.StatusOK || len(ops) != 1 || ops[0].Undone == nil {
@@ -201,6 +210,17 @@ func TestV1PlanApply(t *testing.T) {
 }
 
 // subscribe streams the events of the topics (until the test ends).
+func nextEvent(t *testing.T, events <-chan Event) Event {
+	t.Helper()
+	select {
+	case ev := <-events:
+		return ev
+	case <-time.After(5 * time.Second):
+		t.Fatal("no event")
+		return Event{}
+	}
+}
+
 func (s *testServer) subscribe(t *testing.T, topics string) <-chan Event {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -333,5 +353,48 @@ func TestV1Jobs(t *testing.T) {
 	}
 	if code := s.call(t, "POST", "/api/v1/downloads", `{"provider":"nope","manga_id":"x","chapters":"all"}`, &e); code != http.StatusNotFound {
 		t.Errorf("download from an unknown provider: %d %+v", code, e)
+	}
+}
+
+// TestOpWatch: another process's operation (only in the journal) is told started, done
+// and undone, the ones there before the watch aren't.
+func TestOpWatch(t *testing.T) {
+	s := newTestServer(t, "")
+	j := storage.Journal{DB: s.src.library.DB, Origin: "tui"}
+	if _, err := j.Begin("merge", "old", ""); err != nil {
+		t.Fatal(err)
+	}
+	w, err := newOpWatch(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := func() (out []string) {
+		events, err := w.changes()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range events {
+			out = append(out, e.kind+" "+e.op.Summary+" "+e.op.Origin)
+		}
+		return out
+	}
+	op, err := j.Begin("rename", "new", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := kinds(); !slices.Equal(got, []string{"started new tui"}) {
+		t.Errorf("started: %q", got)
+	}
+	if err := op.Finish(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.MarkUndone(*op); err != nil {
+		t.Fatal(err)
+	}
+	if got := kinds(); !slices.Equal(got, []string{"done new tui", "undone new tui"}) {
+		t.Errorf("done, undone: %q", got)
+	}
+	if got := kinds(); len(got) != 0 {
+		t.Errorf("nothing new: %q", got)
 	}
 }

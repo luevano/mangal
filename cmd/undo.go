@@ -118,7 +118,11 @@ func listOperations(cmd *cobra.Command, c *core.Core) error {
 		case op.Interfered != "":
 			state = "  " + op.Interfered
 		}
-		cmd.Printf("%d  %s  %s  %s  %d steps  %s%s\n", op.ID, op.Started.Format(time.DateTime), op.Kind, op.Summary, op.Steps, op.Snapshot, state)
+		by := ""
+		if op.Origin != "" {
+			by = "  by " + op.Origin
+		}
+		cmd.Printf("%d  %s  %s  %s  %d steps%s  %s%s\n", op.ID, op.Started.Format(time.DateTime), op.Kind, op.Summary, op.Steps, by, op.Snapshot, state)
 	}
 	return nil
 }

@@ -425,15 +425,6 @@ func restartNeeded(ctx context.Context) []string {
 	return slices.DeleteFunc(keys, config.IsRisky)
 }
 
-// configWho is who changes the config through the API, in the settings' history.
-func configWho(ctx context.Context) string {
-	who := "api"
-	if id, ok := identityOf(ctx); ok {
-		who += ": " + id.String()
-	}
-	return who
-}
-
 // SetConfig implements apiv1.StrictServerInterface: writes the key where it's stored.
 // Only an admin (scope admin); secrets aren't set over HTTP.
 func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObject) (apiv1.SetConfigResponseObject, error) {
@@ -451,7 +442,7 @@ func (a *API) SetConfig(ctx context.Context, request apiv1.SetConfigRequestObjec
 	if body.Value == nil {
 		return nil, badRequest("value is needed")
 	}
-	e, err := core.NewConfig().Set(core.WithWho(ctx, configWho(ctx)), key, body.Value)
+	e, err := core.NewConfig().Set(ctx, key, body.Value)
 	if errors.Is(err, core.ErrInvalid) {
 		return nil, badRequest("%w", err)
 	}
@@ -495,7 +486,7 @@ func (a *API) UndoConfigChange(ctx context.Context, request apiv1.UndoConfigChan
 	if i < 0 || config.IsRisky(changes[i].Key) && !seesRisky(ctx) {
 		return nil, newAPIError(http.StatusNotFound, "not_found", "no settings change %d", request.Id)
 	}
-	e, err := cfg.Undo(core.WithWho(ctx, configWho(ctx)), request.Id)
+	e, err := cfg.Undo(ctx, request.Id)
 	if errors.Is(err, core.ErrInvalid) {
 		return nil, badRequest("%w", err)
 	}

@@ -47,6 +47,9 @@ CREATE TABLE journal_steps (
 // it ran (a restore of its snapshot would lose them).
 const journalInterfered = `ALTER TABLE journal ADD COLUMN interfered TEXT NOT NULL DEFAULT ''`
 
+// journalOrigin: who did an operation (config.Who: the command, "tui", the API's user).
+const journalOrigin = `ALTER TABLE journal ADD COLUMN origin TEXT NOT NULL DEFAULT ''`
+
 // keptTables aren't restored from a snapshot: no library operation changes them (but a
 // removed manga's dismissed findings go with it, see forgetSubject), and logins, searches
 // or dismissed health findings made since are worth more than the old ones.
@@ -109,6 +112,9 @@ type Op struct {
 	// Interfered says what else changed the database while it ran (another process, a
 	// download): undoing it would lose that.
 	Interfered string
+	// Origin is who did it: the command ("mangal library merge"), "tui", the API's user
+	// ("api: user david"); empty for older operations.
+	Origin string
 
 	fingerprint string
 	db          *DB
@@ -119,6 +125,8 @@ type Op struct {
 // Journal is the journal of the library operations, in the data database.
 type Journal struct {
 	DB *DB
+	// Origin is who does the operations begun (Op.Origin).
+	Origin string
 }
 
 // Journal is the journal of the library operations.
@@ -138,9 +146,9 @@ func (j Journal) Begin(kind, summary, snapshot string) (*Op, error) {
 // BeginAfter starts journaling an operation, whose database snapshot is snapshot, taken
 // after mark: what others write to the database since makes it not cleanly undoable.
 func (j Journal) BeginAfter(mark Mark, kind, summary, snapshot string) (*Op, error) {
-	op := &Op{Kind: kind, Summary: summary, Started: time.Now(), Snapshot: snapshot, db: j.DB, since: mark}
-	res, err := j.DB.Exec(`INSERT INTO journal (kind, summary, started, snapshot) VALUES (?, ?, ?, ?)`,
-		kind, summary, op.Started.UnixMilli(), snapshot)
+	op := &Op{Kind: kind, Summary: summary, Started: time.Now(), Snapshot: snapshot, Origin: j.Origin, db: j.DB, since: mark}
+	res, err := j.DB.Exec(`INSERT INTO journal (kind, summary, started, snapshot, origin) VALUES (?, ?, ?, ?, ?)`,
+		kind, summary, op.Started.UnixMilli(), snapshot, j.Origin)
 	if err != nil {
 		return nil, fmt.Errorf("journal %s: %w", kind, err)
 	}
@@ -206,12 +214,12 @@ func (o *Op) Finish(opErr error) error {
 }
 
 const opColumns = `id, kind, summary, started, finished, error, snapshot, fingerprint, undone,
-	(SELECT count(*) FROM journal_steps WHERE op = journal.id), interfered`
+	(SELECT count(*) FROM journal_steps WHERE op = journal.id), interfered, origin`
 
 func scanOp(rows *sql.Rows) (Op, error) {
 	var op Op
 	var started, finished, undone int64
-	err := rows.Scan(&op.ID, &op.Kind, &op.Summary, &started, &finished, &op.Error, &op.Snapshot, &op.fingerprint, &undone, &op.Steps, &op.Interfered)
+	err := rows.Scan(&op.ID, &op.Kind, &op.Summary, &started, &finished, &op.Error, &op.Snapshot, &op.fingerprint, &undone, &op.Steps, &op.Interfered, &op.Origin)
 	op.Started = time.UnixMilli(started)
 	if finished != 0 {
 		op.Finished = time.UnixMilli(finished)

@@ -50,10 +50,84 @@ func (a *API) dbChanged(topics []string) {
 			a.authChanged()
 			continue
 		}
+		if t == storage.RevJournal {
+			a.opsChanged()
+		}
 		if topic, ok := dbTopics[t]; ok && a.Events != nil && !published[topic] {
 			published[topic] = true
 			a.Events.Publish(topic, "changed", "", nil)
 		}
+	}
+}
+
+// opsWatched is how many of the newest operations opWatch compares.
+// shortcut: undoing an older one has no op event (the library one still comes), raise it if that matters.
+const opsWatched = 100
+
+type opState struct{ finished, undone bool }
+
+// opWatch tells which of the journal's operations started, finished or were undone since
+// it last looked, whichever process did them.
+type opWatch struct {
+	journal storage.Journal
+	seen    map[int64]opState
+}
+
+// newOpWatch watches the journal from now on.
+func newOpWatch(journal storage.Journal) (*opWatch, error) {
+	w := &opWatch{journal: journal}
+	_, err := w.changes()
+	return w, err
+}
+
+type opEvent struct {
+	kind string
+	op   storage.Op
+}
+
+// changes are the op events since the last call, oldest first: started, done, undone.
+func (w *opWatch) changes() ([]opEvent, error) {
+	ops, err := w.journal.Ops(opsWatched)
+	if err != nil {
+		return nil, err
+	}
+	first := w.seen == nil
+	seen := make(map[int64]opState, len(ops))
+	var events []opEvent
+	for _, op := range slices.Backward(ops) {
+		now := opState{finished: !op.Finished.IsZero(), undone: !op.Undone.IsZero()}
+		seen[op.ID] = now
+		if first {
+			continue
+		}
+		was, ok := w.seen[op.ID]
+		if !ok {
+			events = append(events, opEvent{"started", op})
+		}
+		if now.finished && !was.finished {
+			events = append(events, opEvent{"done", op})
+		}
+		if now.undone && !was.undone {
+			events = append(events, opEvent{"undone", op})
+		}
+	}
+	w.seen = seen
+	return events, nil
+}
+
+// opsChanged publishes the op events of the journal's changes. Called by the database
+// watcher only (one goroutine).
+func (a *API) opsChanged() {
+	if a.opWatch == nil || a.Events == nil {
+		return
+	}
+	events, err := a.opWatch.changes()
+	if err != nil {
+		log.Warn("watch the journal: %s", err)
+		return
+	}
+	for _, e := range events {
+		a.Events.Publish(TopicOp, e.kind, e.op.Summary, toAPIOp(e.op))
 	}
 }
 
@@ -64,7 +138,7 @@ type Event struct {
 	Topic   string    `json:"topic"`
 	Kind    string    `json:"kind"`
 	Message string    `json:"message,omitempty"`
-	// Data is the topic's object: a watch.LiveEvent, a Job, a core.OpResult, a LogEntry.
+	// Data is the topic's object: a watch.LiveEvent, a Job, an apiv1.Op, a LogEntry.
 	Data any `json:"data,omitempty"`
 }
 

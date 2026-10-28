@@ -84,19 +84,11 @@ type ConfigEntry struct {
 	Risky bool `json:"risky,omitempty"`
 }
 
-type whoKey struct{}
+// WithWho says who changes the config (in the settings' history) or the library (the
+// journal's origin), e.g. the API's user.
+func WithWho(ctx context.Context, who string) context.Context { return config.WithWho(ctx, who) }
 
-// WithWho says who changes the config (in the settings' history), e.g. the API's user.
-func WithWho(ctx context.Context, who string) context.Context {
-	return context.WithValue(ctx, whoKey{}, who)
-}
-
-func whoOf(ctx context.Context) string {
-	if who, ok := ctx.Value(whoKey{}).(string); ok {
-		return who
-	}
-	return config.Who
-}
+func whoOf(ctx context.Context) string { return config.WhoOf(ctx) }
 
 var providersOnce sync.Once
 

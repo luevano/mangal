@@ -2965,12 +2965,13 @@ components:
           format: date-time
         topic:
           type: string
-          description: watch, job, op, health or log
+          description: watch, job, op, health, log, library, history, settings or watches
         kind:
           type: string
           description: |
-            watch and health: the watch.LiveEvent kind; job: added, changed, removed; op:
-            done, undone; log: the level
+            watch and health: the watch.LiveEvent kind; job: added, changed, removed; op
+            (an operation of the journal, by any process): started, done, undone; log: the
+            level; library, history, settings, watches: changed
         message:
           type: string
         data:
@@ -3222,6 +3223,9 @@ components:
           type: integer
         interfered:
           type: string
+        origin:
+          type: string
+          description: 'who did it, e.g. "mangal library merge", "tui", "api: user david"'
 
     Plan:
       type: object

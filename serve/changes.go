@@ -74,7 +74,6 @@ func (a *API) change(ctx context.Context, ch core.Change, apply bool, f applyFie
 		resp.Undo = &undo
 	}
 	log.Info("%s applied through the API: %s", res.Kind, res.Summary)
-	a.publishOp(res)
 	return resp, nil
 }
 
@@ -85,13 +84,6 @@ func mayBeIrreversible(ch core.Change) bool {
 		return true
 	}
 	return false
-}
-
-func (a *API) publishOp(res core.OpResult) {
-	if a.Events == nil {
-		return
-	}
-	a.Events.Publish(TopicOp, "done", res.Summary, res)
 }
 
 func changeResponse(resp apiv1.ChangeResponse, err error) (apiv1.ChangeJSONResponse, error) {

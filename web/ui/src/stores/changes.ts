@@ -3,9 +3,8 @@ import { ref } from 'vue'
 import type { Event } from '@/api/schemas'
 import { useEvents } from './events'
 
-// counts the library's changes, for the views to reload what they show: op events (applies
-// and undos through this server) and the library or read history changing in any process
-// (the CLI, the TUI, a watch check).
+// counts the library's changes, for the views to reload what they show: op events and the
+// library or read history changing, in any process (the CLI, the TUI, a watch check).
 export const useChanges = defineStore('changes', () => {
   const version = ref(0)
   const last = ref<Event>()

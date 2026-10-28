@@ -106,7 +106,8 @@ func (id identity) String() string {
 type identityKey struct{}
 
 func withIdentity(ctx context.Context, id identity) context.Context {
-	return core.WithHistoryUser(context.WithValue(ctx, identityKey{}, id), id.user())
+	ctx = core.WithWho(context.WithValue(ctx, identityKey{}, id), "api: "+id.String())
+	return core.WithHistoryUser(ctx, id.user())
 }
 
 func identityOf(ctx context.Context) (identity, bool) {

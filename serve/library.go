@@ -328,6 +328,9 @@ func toAPIOp(op storage.Op) apiv1.Op {
 	if op.Interfered != "" {
 		out.Interfered = &op.Interfered
 	}
+	if op.Origin != "" {
+		out.Origin = &op.Origin
+	}
 	return out
 }
 

@@ -2094,11 +2094,12 @@ export interface components {
             seq: number;
             /** Format: date-time */
             time: string;
-            /** @description watch, job, op, health or log */
+            /** @description watch, job, op, health, log, library, history, settings or watches */
             topic: string;
             /**
-             * @description watch and health: the watch.LiveEvent kind; job: added, changed, removed; op:
-             *     done, undone; log: the level
+             * @description watch and health: the watch.LiveEvent kind; job: added, changed, removed; op
+             *     (an operation of the journal, by any process): started, done, undone; log: the
+             *     level; library, history, settings, watches: changed
              */
             kind: string;
             message?: string;
@@ -2237,6 +2238,8 @@ export interface components {
             undone?: string;
             steps: number;
             interfered?: string;
+            /** @description who did it, e.g. "mangal library merge", "tui", "api: user david" */
+            origin?: string;
         };
         Plan: {
             kind: string;

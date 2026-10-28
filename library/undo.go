@@ -164,7 +164,11 @@ func (p UndoPlan) Refusal(force bool) error {
 
 // Lines describe the undo, paths through rel (e.g. relative to the download directory).
 func (p UndoPlan) Lines(rel func(string) string) []string {
-	lines := []string{fmt.Sprintf("undo %d %s: %s (%s, %d steps)", p.Op.ID, p.Op.Kind, p.Op.Summary, p.Op.Started.Format(time.DateTime), p.Op.Steps)}
+	when := p.Op.Started.Format(time.DateTime)
+	if p.Op.Origin != "" {
+		when += " by " + p.Op.Origin
+	}
+	lines := []string{fmt.Sprintf("undo %d %s: %s (%s, %d steps)", p.Op.ID, p.Op.Kind, p.Op.Summary, when, p.Op.Steps)}
 	if p.Op.Error != "" {
 		lines = append(lines, "  it stopped midway: "+p.Op.Error)
 	}

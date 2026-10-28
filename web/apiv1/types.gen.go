@@ -1067,11 +1067,14 @@ type Op struct {
 	Id         int64      `json:"id"`
 	Interfered *string    `json:"interfered,omitempty"`
 	Kind       string     `json:"kind"`
-	Snapshot   *string    `json:"snapshot,omitempty"`
-	Started    time.Time  `json:"started"`
-	Steps      int        `json:"steps"`
-	Summary    string     `json:"summary"`
-	Undone     *time.Time `json:"undone,omitempty"`
+
+	// Origin who did it, e.g. "mangal library merge", "tui", "api: user david"
+	Origin   *string    `json:"origin,omitempty"`
+	Snapshot *string    `json:"snapshot,omitempty"`
+	Started  time.Time  `json:"started"`
+	Steps    int        `json:"steps"`
+	Summary  string     `json:"summary"`
+	Undone   *time.Time `json:"undone,omitempty"`
 }
 
 // OpResult defines model for OpResult.

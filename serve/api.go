@@ -108,6 +108,7 @@ type API struct {
 	streams    streams
 	// dbWatch tells what changed in the data database (watchDB), nil without
 	dbWatch   *core.DBWatcher
+	opWatch   *opWatch
 	trackers  trackerLogins
 	kindsOnce sync.Once
 	jobKinds  core.JobKinds
@@ -644,6 +645,16 @@ func (a *API) watchDB(ctx context.Context) {
 		log.Warn("watch the database: %s", err)
 		return
 	}
-	a.dbWatch = core.NewDBWatcher(st.Data)
+	a.watchData(ctx, st.Data)
+}
+
+// watchData runs the watcher of db (the data database).
+func (a *API) watchData(ctx context.Context, db *storage.DB) {
+	w, err := newOpWatch(storage.Journal{DB: db})
+	if err != nil {
+		log.Warn("watch the journal: %s", err)
+	}
+	a.opWatch = w
+	a.dbWatch = core.NewDBWatcher(db)
 	go a.dbWatch.Run(ctx, a.dbChanged)
 }
