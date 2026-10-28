@@ -23,7 +23,7 @@ import (
 // mangal keeps its data, downloads and runs providers from, the files' permissions, the log.
 // Over HTTP only an admin sees them; every other key is seen with read, changed by an admin.
 var (
-	riskyPrefixes = []string{"serve.", "auth.", "log."}
+	riskyPrefixes = []string{"serve.", "auth.", "log.", "remote."}
 	riskyKeys     = []string{
 		"providers.allow_private_addresses", "providers.private_allowlist", "providers.headless.flaresolverr_url",
 		"providers.mirrors", "data.path", "cache.path", "providers.path",

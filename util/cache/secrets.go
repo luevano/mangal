@@ -340,3 +340,17 @@ func UpdateServeTokens(change func([]ServeTokenEntry) ([]ServeTokenEntry, error)
 	}
 	return SetServeTokens(tokens)
 }
+
+// authOwnerRemote keeps `mangal remote login`'s API tokens, by the server's address.
+const authOwnerRemote = "remote"
+
+// RemoteToken is the API token saved for the server at the (normalized) address, empty if
+// none.
+func RemoteToken(address string) (string, error) {
+	return getString(authOwnerRemote, address)
+}
+
+// SetRemoteToken saves the API token of the server at the address, empty removes it.
+func SetRemoteToken(address, token string) error {
+	return setString(authOwnerRemote, address, token)
+}
