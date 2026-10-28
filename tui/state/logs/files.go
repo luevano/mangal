@@ -80,8 +80,11 @@ type files struct {
 }
 
 // New is the Logs screen: the current log, this session's entries when the log file isn't
-// written.
+// written; the server's log on a remote.
 func New() base.State {
+	if base.CurrentRemote != nil {
+		return newServer()
+	}
 	dir := log.Dir()
 	if dir == "" {
 		dir = path.Logs()

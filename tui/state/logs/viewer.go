@@ -43,6 +43,8 @@ const (
 	kindSearch
 	// every file of a period, in order
 	kindPeriod
+	// the server's log on a remote: its latest entries, then its log events
+	kindServer
 )
 
 type viewerKeys struct {
@@ -74,6 +76,8 @@ type viewer struct {
 	followed string
 	// tailMu: a follow of before the window was left may still be reading
 	tailMu *sync.Mutex
+	// stream has the server's new entries (kindServer)
+	stream *stream
 	gen    int
 
 	loaded  bool
@@ -152,6 +156,51 @@ func newPeriod(dir, period string) *viewer {
 	return v
 }
 
+// newServer is the main viewer of the server's log, followed.
+func newServer() *viewer {
+	v := newViewer(kindServer)
+	v.main, v.followable, v.follow = true, true, true
+	return v
+}
+
+// stream keeps the server's new entries until a tick takes them; after is the last
+// entry read before, the ones up to it are dropped (the stream starts first).
+type stream struct {
+	mu      sync.Mutex
+	entries []log.Entry
+	after   *log.Entry
+	err     error
+}
+
+func (st *stream) seen(e log.Entry) bool {
+	return st.after != nil && (e.Time.Before(st.after.Time) || e == *st.after)
+}
+
+func (st *stream) add(e log.Entry) error {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if !st.seen(e) {
+		keepLast(&st.entries)(e)
+	}
+	return nil
+}
+
+// skip drops the entries up to last, those to come too.
+func (st *stream) skip(last log.Entry) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.after = &last
+	st.entries = slices.DeleteFunc(st.entries, st.seen)
+}
+
+func (st *stream) take() ([]log.Entry, error) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	entries := st.entries
+	st.entries = nil
+	return entries, st.err
+}
+
 func newSearch(dir, query string) *viewer {
 	v := newViewer(kindSearch)
 	v.dir, v.query = dir, query
@@ -174,6 +223,8 @@ func (v *viewer) Key() string {
 
 func (v *viewer) Title() base.Title {
 	switch {
+	case v.kind == kindServer:
+		return base.Title{Text: "Logs · " + base.CurrentRemote.Host()}
 	case v.main && v.period != "":
 		return base.Title{Text: "Logs · " + v.period}
 	case v.main:
@@ -263,7 +314,7 @@ func (v *viewer) KeyMap() help.KeyMap {
 	if v.followable {
 		end.SetHelp(end.Help().Key, "follow")
 	}
-	if !v.main {
+	if !v.periods() {
 		return util.KeyMap{
 			Short: []key.Binding{k.find, k.next, k.narrow, k.level, end, k.clear},
 			Full: [][]key.Binding{
@@ -289,6 +340,9 @@ func (v *viewer) KeyMap() help.KeyMap {
 		},
 	}
 }
+
+// periods: the files and the periods can be shown, the main viewer of this machine's log.
+func (v *viewer) periods() bool { return v.main && v.kind != kindServer }
 
 // stepPeriod is the period d (1, -1) after the shown one, "" for the current one; ok is
 // false past the ends.
@@ -356,6 +410,9 @@ type entriesMsg struct {
 	tail    *log.Tail
 	// followed is the tail's file after the read
 	followed string
+	// stream is the server's, note why it stopped
+	stream *stream
+	note   string
 }
 
 // periodMsg is a period loaded: its entries, the tail that follows it (the current one),
@@ -385,12 +442,15 @@ func (v *viewer) start(ctx context.Context) tea.Cmd {
 		v.setEntries(log.Recent(), true)
 		return v.tick(ctx)
 	}
-	if v.loaded {
+	if v.loaded && v.kind != kindServer {
 		// the file was read, the tail goes on from where it was
 		return v.tick(ctx)
 	}
 	if v.kind == kindPeriod {
 		return v.loadPeriod(ctx, gen)
+	}
+	if v.kind == kindServer {
+		return v.loadServer(ctx, gen)
 	}
 	label := "Reading " + v.file.Name
 	if v.kind == kindSearch {
@@ -516,6 +576,41 @@ func (v *viewer) loadPeriod(ctx context.Context, gen int) tea.Cmd {
 	}, func(msg periodMsg) tea.Msg { return msg })
 }
 
+// loadServer reads the server's latest entries and follows its log from then on, while
+// ctx (this showing of the window) lasts.
+func (v *viewer) loadServer(ctx context.Context, gen int) tea.Cmd {
+	r := base.CurrentRemote
+	if !r.Has(core.ScopeAdmin) && !r.ShowAll {
+		v.followable, v.follow, v.note = false, false, "the server's log needs the admin permission on "+r.Host()
+		return nil
+	}
+	svc, err := base.Services()
+	if err != nil {
+		return func() tea.Msg { return err }
+	}
+	st := &stream{}
+	v.stream = st
+	go func() {
+		release, ok := base.Track(ctx)
+		if !ok {
+			return
+		}
+		defer release()
+		err := svc.Logs.Follow(ctx, core.LogQuery{}, st.add)
+		st.mu.Lock()
+		st.err = err
+		st.mu.Unlock()
+	}()
+	return base.Load(ctx, "Reading the server's log", func(ctx context.Context) ([]log.Entry, error) {
+		var entries []log.Entry
+		err := svc.Logs.Entries(ctx, core.LogQuery{}, keepLast(&entries))
+		if len(entries) > 0 {
+			st.skip(entries[len(entries)-1])
+		}
+		return entries, err
+	}, func(entries []log.Entry) tea.Msg { return entriesMsg{gen: gen, entries: entries, replace: true} })
+}
+
 // sameEntries: this session's entries didn't change (the ring only adds at the end).
 func sameEntries(a, b []log.Entry) bool {
 	return len(a) == len(b) && (len(a) == 0 || a[len(a)-1] == b[len(b)-1])
@@ -526,10 +621,18 @@ func (v *viewer) tick(ctx context.Context) tea.Cmd {
 	if !v.followable {
 		return nil
 	}
-	gen, tail, mu := v.gen, v.tail, v.tailMu
+	gen, tail, mu, st := v.gen, v.tail, v.tailMu, v.stream
 	return tea.Tick(followEvery, func(time.Time) tea.Msg {
 		if ctx.Err() != nil {
 			return nil
+		}
+		if st != nil {
+			entries, err := st.take()
+			msg := entriesMsg{gen: gen, entries: entries, stream: st}
+			if err != nil {
+				msg.note = "following the server's log: " + err.Error()
+			}
+			return msg
 		}
 		if tail == nil {
 			return entriesMsg{gen: gen, entries: log.Recent(), replace: true}
@@ -567,8 +670,11 @@ func (v *viewer) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case entriesMsg:
 		// what a tail read is added even from an older follow: the tail moved past it; not
 		// another tail's (another period)
-		if (msg.replace && msg.gen != v.gen) || (!msg.replace && msg.tail != v.tail) {
+		if (msg.replace && msg.gen != v.gen) || (!msg.replace && (msg.tail != v.tail || msg.stream != v.stream)) {
 			return nil
+		}
+		if msg.note != "" {
+			v.note, v.followable, v.follow = msg.note, false, false
 		}
 		first := !v.loaded
 		v.loaded = true
@@ -609,13 +715,13 @@ func (v *viewer) key(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 	k := v.keys
 	page := max(1, v.height()-1)
 	switch {
-	case v.main && key.Matches(msg, k.files):
+	case v.periods() && key.Matches(msg, k.files):
 		return push(newFiles(v.dir))
-	case v.main && key.Matches(msg, k.prevPeriod):
+	case v.periods() && key.Matches(msg, k.prevPeriod):
 		if p, ok := v.stepPeriod(-1); ok {
 			return v.showPeriod(ctx, p)
 		}
-	case v.main && key.Matches(msg, k.nextPeriod):
+	case v.periods() && key.Matches(msg, k.nextPeriod):
 		if p, ok := v.stepPeriod(1); ok {
 			return v.showPeriod(ctx, p)
 		}

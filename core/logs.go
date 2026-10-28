@@ -39,7 +39,8 @@ type LogQuery struct {
 // MaxLogLimit is the most entries a LogQuery's Limit keeps (they are all held in memory).
 const MaxLogLimit = 10000
 
-func (q LogQuery) filter() (log.Filter, error) {
+// Filter is the query's filter of the entries.
+func (q LogQuery) Filter() (log.Filter, error) {
 	f := log.Filter{Since: q.Since, Until: q.Until, Pattern: log.Pattern(q.Grep, q.CaseSensitive)}
 	if q.Level != "" {
 		level, err := log.ParseLevel(q.Level)
@@ -70,7 +71,7 @@ func (l *localLogs) Files(context.Context) ([]log.File, error) {
 }
 
 func (l *localLogs) Entries(ctx context.Context, q LogQuery, fn func(log.Entry) error) error {
-	filter, err := q.filter()
+	filter, err := q.Filter()
 	if err != nil {
 		return err
 	}
@@ -110,7 +111,7 @@ func (l *localLogs) Entries(ctx context.Context, q LogQuery, fn func(log.Entry) 
 }
 
 func (l *localLogs) Follow(ctx context.Context, q LogQuery, fn func(log.Entry) error) error {
-	filter, err := q.filter()
+	filter, err := q.Filter()
 	if err != nil {
 		return err
 	}

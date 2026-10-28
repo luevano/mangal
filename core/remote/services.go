@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -166,8 +167,32 @@ func (l remoteLogs) Entries(ctx context.Context, q core.LogQuery, fn func(log.En
 	return nil
 }
 
-func (remoteLogs) Follow(context.Context, core.LogQuery, func(log.Entry) error) error {
-	return unsupported("following the server's log")
+// Follow tells fn the server's new entries of the query (its log event topic, an admin's)
+// until ctx is done or fn fails.
+func (l remoteLogs) Follow(ctx context.Context, q core.LogQuery, fn func(log.Entry) error) error {
+	filter, err := q.Filter()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var fnErr error
+	err = l.c.Events(ctx, []string{"log"}, 0, func(ev Event) {
+		var e apiv1.LogEntry
+		if fnErr != nil || ev.Topic != "log" || json.Unmarshal(ev.Data, &e) != nil {
+			return
+		}
+		level, _ := log.ParseLevel(e.Level)
+		if entry := (log.Entry{Time: e.Time, Level: level, Message: e.Message, File: e.File}); filter.Match(entry) {
+			if fnErr = fn(entry); fnErr != nil {
+				cancel()
+			}
+		}
+	})
+	if fnErr != nil {
+		return fnErr
+	}
+	return err
 }
 
 // remoteProviders are the server's providers (core.Providers).

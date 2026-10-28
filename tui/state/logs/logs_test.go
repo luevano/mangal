@@ -12,6 +12,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/search"
@@ -441,5 +442,66 @@ func TestSessionFallback(t *testing.T) {
 	run(v, v.Init(ctx))
 	if v.kind != kindSession || !strings.Contains(view(v), "a fallback line") || !strings.Contains(v.Subtitle(), "no log file") {
 		t.Errorf("unreadable: %v %q\n%s", v.kind, v.Subtitle(), view(v))
+	}
+}
+
+// serverLogs are a server's log: entries, then the followed ones once asked.
+type serverLogs struct {
+	core.Logs
+	entries, follow []log.Entry
+}
+
+func (l serverLogs) Entries(_ context.Context, _ core.LogQuery, fn func(log.Entry) error) error {
+	for _, e := range l.entries {
+		_ = fn(e)
+	}
+	return nil
+}
+
+func (l serverLogs) Follow(ctx context.Context, _ core.LogQuery, fn func(log.Entry) error) error {
+	for _, e := range l.follow {
+		_ = fn(e)
+	}
+	<-ctx.Done()
+	return nil
+}
+
+func TestServerLog(t *testing.T) {
+	at := time.Date(2026, 10, 28, 10, 0, 0, 0, time.UTC)
+	entry := func(min int, msg string) log.Entry {
+		return log.Entry{Time: at.Add(time.Duration(min) * time.Minute), Level: log.LevelInfo, Message: msg}
+	}
+	logs := serverLogs{entries: []log.Entry{entry(0, "one"), entry(1, "two")}, follow: []log.Entry{entry(1, "two"), entry(2, "three")}}
+	base.CurrentRemote = &base.Remote{URL: "http://nas.lan:6977", Perms: []string{core.ScopeRead}, Services: core.Services{Logs: logs}}
+	t.Cleanup(func() { base.CurrentRemote = nil })
+
+	v := New().(*viewer)
+	if run(v, v.Init(ctx)); !strings.Contains(v.Subtitle(), "admin permission on nas.lan:6977") || len(v.entries) != 0 {
+		t.Fatalf("a reader: %q, %d entries", v.Subtitle(), len(v.entries))
+	}
+
+	base.CurrentRemote.Perms = core.Scopes
+	followEvery = time.Millisecond
+	t.Cleanup(func() { followEvery = 500 * time.Millisecond })
+	c, cancel := context.WithCancel(ctx)
+	defer cancel()
+	v = New().(*viewer)
+	v.Resize(base.Size{Width: 80, Height: 20})
+	for _, msg := range base.Drain(v.Init(c)) {
+		v.Update(c, msg)
+	}
+	// the follow's first tick: what the stream got after the entries read
+	deadline := time.Now().Add(2 * time.Second)
+	for len(v.entries) < 3 && time.Now().Before(deadline) {
+		for _, msg := range base.Drain(v.tick(c)) {
+			v.Update(c, msg)
+		}
+	}
+	var got []string
+	for _, e := range v.entries {
+		got = append(got, e.Message)
+	}
+	if strings.Join(got, ",") != "one,two,three" || v.Title().Text != "Logs · nas.lan:6977" || v.periods() {
+		t.Errorf("entries %v, title %q", got, v.Title().Text)
 	}
 }

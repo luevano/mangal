@@ -2,12 +2,14 @@ package remote
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/log"
 )
 
 func TestNormalizeURL(t *testing.T) {
@@ -67,5 +69,37 @@ func TestTransport(t *testing.T) {
 	_ = c.edit(t.Context(), req)
 	if len(warnings) != 1 || strings.Contains(warnings[0], "secret") {
 		t.Errorf("warnings %q", warnings)
+	}
+}
+
+func TestLogsFollow(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/events" || r.URL.Query().Get("topics") != "log" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		for i, line := range []string{`"level":"debug","message":"hidden"`, `"level":"warn","message":"one"`, `"level":"error","message":"two"`} {
+			fmt.Fprintf(w, "id: %d\ndata: {\"seq\":%d,\"topic\":\"log\",\"data\":{\"time\":\"2026-10-28T10:00:00Z\",%s}}\n\n", i+1, i+1, line)
+		}
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	c, err := New(Options{URL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	stop := errors.New("stop")
+	err = c.Services().Logs.Follow(t.Context(), core.LogQuery{Level: "info"}, func(e log.Entry) error {
+		got = append(got, e.Level.String()+" "+e.Message)
+		if len(got) == 2 {
+			return stop
+		}
+		return nil
+	})
+	if !errors.Is(err, stop) || strings.Join(got, ", ") != "WARN one, ERROR two" {
+		t.Errorf("got %q, %v", got, err)
 	}
 }
