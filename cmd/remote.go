@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
@@ -28,65 +27,19 @@ func remoteFlags(cmds ...*cobra.Command) {
 	}
 }
 
-// remoteURL is the server the command goes to (--remote, else remote.url unless --local),
-// normalized, empty for this machine.
-func remoteURL() (string, error) {
-	raw := remoteArgs.URL
-	if raw == "" && !remoteArgs.Local {
-		raw = config.Remote.URL.Get()
-	}
-	if raw == "" {
-		return "", nil
-	}
-	return remote.NormalizeURL(raw)
+// remoteTarget is the command's server: --remote, else remote.url unless --local.
+func remoteTarget(cmd *cobra.Command) remote.Target {
+	return remote.Target{URL: remoteArgs.URL, Local: remoteArgs.Local, Warn: remoteWarn(cmd)}
 }
 
-// remoteToken is the token for the server at url: remote.token when it's remote.url's
-// (never sent to another server), else the one `mangal remote login` saved.
-func remoteToken(url string) (token, from string, err error) {
-	if t := config.Remote.Token.Get(); t != "" {
-		if configured, err := remote.NormalizeURL(config.Remote.URL.Get()); err == nil && configured == url {
-			return t, "remote.token", nil
-		}
-	}
-	if token, err = cache.RemoteToken(url); err != nil || token == "" {
-		return "", "", err
-	}
-	return token, "saved", nil
-}
-
-// newRemote is the client of the server at url with the token.
-func newRemote(cmd *cobra.Command, url, token string) (*remote.Client, error) {
-	timeout, err := time.ParseDuration(config.Remote.Timeout.Get())
-	if err != nil {
-		return nil, fmt.Errorf("remote.timeout: %w", err)
-	}
-	return remote.New(remote.Options{URL: url, Token: token, CAFile: config.Remote.CAFile.Get(), Timeout: timeout,
-		Warn: func(msg string) { cmd.PrintErrln("warning: " + msg) }})
+func remoteWarn(cmd *cobra.Command) func(string) {
+	return func(msg string) { cmd.PrintErrln("warning: " + msg) }
 }
 
 // connectRemote is the client of the command's server, checked (the API version, the
 // token), nil for this machine.
 func connectRemote(cmd *cobra.Command) (*remote.Client, error) {
-	url, err := remoteURL()
-	if err != nil || url == "" {
-		return nil, err
-	}
-	token, _, err := remoteToken(url)
-	if err != nil {
-		return nil, err
-	}
-	rc, err := newRemote(cmd, url, token)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := rc.Status(ctxOf(cmd)); err != nil {
-		if errors.Is(err, remote.ErrUnauthorized) {
-			return nil, fmt.Errorf("%s: %w (mangal remote login %s)", url, err, url)
-		}
-		return nil, fmt.Errorf("%s: %w", url, err)
-	}
-	return rc, nil
+	return remote.Connect(ctxOf(cmd), remoteTarget(cmd))
 }
 
 // newServices are the command's services: this machine's core, or a server's (--remote,
@@ -157,7 +110,7 @@ it there and save it for that address. A line on stdin when it isn't a terminal.
 		if token == "" {
 			return errors.New("no token: nothing saved")
 		}
-		rc, err := newRemote(cmd, url, token)
+		rc, err := remote.Open(url, token, remoteWarn(cmd))
 		if err != nil {
 			return err
 		}
@@ -215,7 +168,7 @@ var remoteStatusCmd = &cobra.Command{
 			}
 			return err
 		}
-		token, from, err := remoteToken(url)
+		token, from, err := remote.Token(url)
 		if err != nil {
 			return err
 		}
@@ -223,7 +176,7 @@ var remoteStatusCmd = &cobra.Command{
 			from = "none (mangal remote login)"
 		}
 		cmd.Printf("server: %s\ntoken: %s\n", url, from)
-		rc, err := newRemote(cmd, url, token)
+		rc, err := remote.Open(url, token, remoteWarn(cmd))
 		if err != nil {
 			return err
 		}
