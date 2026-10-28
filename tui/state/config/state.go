@@ -72,7 +72,7 @@ type state struct {
 	// write saves the change to the config file, reload marks the loaded providers stale
 	write  func(key string, raw any) error
 	reload func()
-	// cfg has the settings' history and its undo
+	// cfg has the settings' history and its undo, the services' Config when nil
 	cfg     core.Config
 	history historyView
 }
@@ -107,7 +107,6 @@ func New(filter string) base.State {
 		Host:     confirm.NewHost(40, color.Warning),
 		write:    writeKey,
 		reload:   base.ReloadProviders,
-		cfg:      core.NewConfig(),
 	}
 	s.showRows()
 	s.Filter(filter)
@@ -412,9 +411,21 @@ func (s *state) set(key string, value any) (cmd tea.Cmd, ok bool) {
 	return base.Notify(notice), true
 }
 
+func (s *state) config() (core.Config, error) {
+	if s.cfg != nil {
+		return s.cfg, nil
+	}
+	svc, err := base.Services()
+	return svc.Config, err
+}
+
 // openHistory lists the changes of key, every key's when "".
 func (s *state) openHistory(ctx context.Context, key string) tea.Cmd {
-	changes, err := s.cfg.History(ctx, key, 200)
+	cfg, err := s.config()
+	var changes []core.ConfigChange
+	if err == nil {
+		changes, err = cfg.History(ctx, key, 200)
+	}
 	if err != nil {
 		s.err = err.Error()
 		return nil
@@ -448,7 +459,11 @@ func (s *state) updateHistory(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		c := h.changes[h.cursor]
-		e, err := s.cfg.Undo(ctx, c.ID)
+		cfg, err := s.config()
+		var e core.ConfigEntry
+		if err == nil {
+			e, err = cfg.Undo(ctx, c.ID)
+		}
 		if err != nil {
 			s.err = err.Error()
 			return nil
