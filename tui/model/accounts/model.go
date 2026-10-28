@@ -139,7 +139,11 @@ func (s *state) load(ctx context.Context, refresh bool) tea.Cmd {
 		label = "Fetching the accounts"
 	}
 	return base.Load(ctx, label, func(ctx context.Context) ([]core.Account, error) {
-		return core.NewAccounts().List(ctx, core.AccountsOptions{Refresh: refresh})
+		svc, err := base.Services()
+		if err != nil {
+			return nil, err
+		}
+		return svc.Accounts.List(ctx, core.AccountsOptions{Refresh: refresh})
 	}, func(entries []core.Account) tea.Msg { return loadedMsg(entries) })
 }
 
