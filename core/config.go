@@ -82,6 +82,9 @@ type ConfigEntry struct {
 	Restart bool `json:"restart,omitempty"`
 	// Risky keys weaken access when changed: only an admin sees them over HTTP.
 	Risky bool `json:"risky,omitempty"`
+	// Side is "local" for a key each machine keeps (a remote TUI uses its own), else
+	// "server".
+	Side string `json:"side"`
 }
 
 // WithWho says who changes the config (in the settings' history) or the library (the
@@ -125,7 +128,7 @@ func configEntry(key string) (ConfigEntry, error) {
 	e := ConfigEntry{Key: key, Value: config.Masked(key, value), Default: config.Masked(key, def), Description: description,
 		Kind: configKinds[config.KindOf(key)], Secret: config.IsSecret(key), Values: config.Values(key),
 		Stored: string(config.StoredIn(key)), Source: config.SourceOf(key), Provider: config.ProviderOf(key),
-		Applies: config.Applies(key), Restart: slices.Contains(config.RestartNeeded(), key), Risky: config.IsRisky(key)}
+		Applies: config.Applies(key), Restart: slices.Contains(config.RestartNeeded(), key), Risky: config.IsRisky(key), Side: config.Side(key)}
 	if name, set := config.EnvVar(key); set {
 		e.Env = name
 	}

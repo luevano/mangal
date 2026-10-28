@@ -211,9 +211,13 @@ func configOf(e apiv1.ConfigEntry) core.ConfigEntry {
 	out := core.ConfigEntry{Key: e.Key, Value: e.Value, Default: e.Default, Description: e.Description, Secret: e.Secret,
 		Values: deref(e.Values), Env: deref(e.Env), Stored: string(e.Stored), Provider: deref(e.Provider),
 		Source: config.Source{Kind: string(e.Source.Kind), Name: deref(e.Source.Name)}, Applies: string(e.Applies),
-		Restart: deref(e.Restart), Risky: deref(e.Risky)}
+		Restart: deref(e.Restart), Risky: deref(e.Risky), Side: config.Side(e.Key)}
 	if e.Kind != nil {
 		out.Kind = string(*e.Kind)
+	}
+	// a server before API 1.2 doesn't say: this mangal's rule
+	if e.Side != nil {
+		out.Side = string(*e.Side)
 	}
 	return out
 }

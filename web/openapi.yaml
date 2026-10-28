@@ -1,6 +1,6 @@
 openapi: "3.0.0"
 info:
-  version: 1.2.0
+  version: 1.3.0
   title: mangal API
   description: |
     The HTTP API v1 of `mangal serve` and `mangal web` under /api/v1 (tag v1). Paths are
@@ -4433,6 +4433,10 @@ components:
           description: an enum's accepted values
           items:
             type: string
+        side:
+          type: string
+          enum: [server, local]
+          description: "local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with (API 1.2)"
     ConfigSource:
       type: object
       required: [kind]

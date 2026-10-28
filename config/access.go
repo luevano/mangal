@@ -43,6 +43,19 @@ func IsRisky(key string) bool {
 	return ok && (f.setting.Kind == libmangal.SettingPath || f.mangal && f.setting.Key == "mirror")
 }
 
+// localPrefixes are each machine's own keys: its terminal's look and the serve it uses. A
+// remote TUI keeps its own, the server's other keys are what it runs with.
+var localPrefixes = []string{"tui.", "icons", "cli.", "remote."}
+
+// Side is "local" for a key each machine keeps for itself (a remote frontend uses its own),
+// "server" for one a remote frontend takes from the server.
+func Side(key string) string {
+	if hasPrefix(key, localPrefixes) {
+		return "local"
+	}
+	return "server"
+}
+
 // startupPrefixes are read once when mangal starts: where the databases are, the log, the
 // keyring, how serve listens.
 var startupPrefixes = []string{"data.path", "cache.path", "log.", "auth.", "serve."}

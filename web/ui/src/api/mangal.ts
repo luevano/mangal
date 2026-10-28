@@ -2914,6 +2914,11 @@ export interface components {
             kind?: "string" | "bool" | "int" | "map";
             /** @description an enum's accepted values */
             values?: string[];
+            /**
+             * @description local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with (API 1.2)
+             * @enum {string}
+             */
+            side?: "server" | "local";
         };
         ConfigSource: {
             /**

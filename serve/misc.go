@@ -364,6 +364,9 @@ func toAPIConfig(e core.ConfigEntry) apiv1.ConfigEntry {
 	out := apiv1.ConfigEntry{Key: e.Key, Value: e.Value, Default: e.Default, Description: e.Description, Secret: e.Secret,
 		Applies: apiv1.ConfigEntryApplies(e.Applies), Stored: apiv1.ConfigEntryStored(e.Stored),
 		Source: apiv1.ConfigSource{Kind: apiv1.ConfigSourceKind(e.Source.Kind)}}
+	if e.Side != "" {
+		out.Side = new(apiv1.ConfigEntrySide(e.Side))
+	}
 	if e.Env != "" {
 		out.Env = &e.Env
 	}

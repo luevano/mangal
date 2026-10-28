@@ -82,6 +82,16 @@ func TestV1ConfigAdmin(t *testing.T) {
 				t.Errorf("the %s doesn't see %s", name, key)
 			}
 		}
+		sides := map[string]string{"icons": "local", "tui.skip_home": "local", "cli.colored_help": "local", "download.format": "server", "watch.schedule": "server"}
+		for _, e := range some {
+			if want, ok := sides[e.Key]; ok && (e.Side == nil || string(*e.Side) != want) {
+				t.Errorf("%s: side %v, want %s", e.Key, e.Side, want)
+			}
+			delete(sides, e.Key)
+		}
+		if len(sides) != 0 {
+			t.Errorf("the %s doesn't see %v", name, sides)
+		}
 		// no change of any setting, risky or not, a setting-like one neither
 		for _, put := range []struct{ method, path, body string }{
 			{"PUT", "/api/v1/config/download.skip_if_exists", `{"value":false}`},

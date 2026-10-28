@@ -58,6 +58,24 @@ func (e ConfigEntryKind) Valid() bool {
 	}
 }
 
+// Defines values for ConfigEntrySide.
+const (
+	ConfigEntrySideLocal  ConfigEntrySide = "local"
+	ConfigEntrySideServer ConfigEntrySide = "server"
+)
+
+// Valid indicates whether the value is a known member of the ConfigEntrySide enum.
+func (e ConfigEntrySide) Valid() bool {
+	switch e {
+	case ConfigEntrySideLocal:
+		return true
+	case ConfigEntrySideServer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConfigEntryStored.
 const (
 	ConfigEntryStoredDb   ConfigEntryStored = "db"
@@ -383,9 +401,12 @@ type ConfigEntry struct {
 	Restart *bool `json:"restart,omitempty"`
 
 	// Risky a path, network, security, log or secret key: only an admin sees it
-	Risky  *bool        `json:"risky,omitempty"`
-	Secret bool         `json:"secret"`
-	Source ConfigSource `json:"source"`
+	Risky  *bool `json:"risky,omitempty"`
+	Secret bool  `json:"secret"`
+
+	// Side local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with (API 1.2)
+	Side   *ConfigEntrySide `json:"side,omitempty"`
+	Source ConfigSource     `json:"source"`
 
 	// Stored where the value is stored, mangal.toml of the server (file) or the database (db)
 	Stored ConfigEntryStored `json:"stored"`
@@ -402,6 +423,9 @@ type ConfigEntryApplies string
 
 // ConfigEntryKind the value's type
 type ConfigEntryKind string
+
+// ConfigEntrySide local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with (API 1.2)
+type ConfigEntrySide string
 
 // ConfigEntryStored where the value is stored, mangal.toml of the server (file) or the database (db)
 type ConfigEntryStored string
@@ -747,13 +771,10 @@ type Job struct {
 	Id       int64      `json:"id"`
 
 	// Kind download, check, scan, urls, sources or health
-	Kind    string  `json:"kind"`
-	MangaId *string `json:"manga_id,omitempty"`
-	Message *string `json:"message,omitempty"`
-	Note    *string `json:"note,omitempty"`
-
-	// Origin who started it ("api: user david", "mangal serve")
-	Origin    *string  `json:"origin,omitempty"`
+	Kind      string   `json:"kind"`
+	MangaId   *string  `json:"manga_id,omitempty"`
+	Message   *string  `json:"message,omitempty"`
+	Note      *string  `json:"note,omitempty"`
 	Part      *float64 `json:"part,omitempty"`
 	Providers []string `json:"providers"`
 
