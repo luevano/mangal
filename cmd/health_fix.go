@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"errors"
+
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/spf13/cobra"
@@ -39,25 +41,32 @@ what would happen unless --apply is set.`,
   mangal health fix M6/manga/3 --choice 4 --apply`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		c, err := newCore()
+		t, err := newTarget(cmd)
 		if err != nil {
 			return err
 		}
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := changeCtx(cmd, st)
-		st.Set("checking")
-		f, err := c.Finding(ctx, args[0], healthFixArgs.Network)
-		if err != nil {
-			return err
+		// a server looks the finding up itself (an offline check, else its last network one)
+		f := health.Finding{Key: args[0]}
+		if t.local != nil {
+			st.Set("checking")
+			if f, err = t.local.Finding(ctx, args[0], healthFixArgs.Network); err != nil {
+				return err
+			}
+		} else if healthFixArgs.Network {
+			return errors.New("--network: a server uses its last network check (\"mangal health --network\" there)")
 		}
-		plan, err := c.Changes.Plan(ctx, core.HealthFixReq{Finding: f, Choice: healthFixArgs.Choice})
+		plan, err := t.Plan(ctx, core.HealthFixReq{Finding: f, Choice: healthFixArgs.Choice})
 		st.Clear()
 		if err != nil {
 			return err
 		}
 		fix := plan.Detail.(health.FixResult)
-		cmd.Printf("%s: %s\n", findingTitle(f), f.Message)
+		if f.Message != "" {
+			cmd.Printf("%s: %s\n", findingTitle(f), f.Message)
+		}
 		if plan.Nothing {
 			cmd.Println(fix.Message)
 			return nil
@@ -73,7 +82,7 @@ what would happen unless --apply is set.`,
 			cmd.Println("run with --apply to fix it")
 			return nil
 		}
-		res, err := c.Changes.ApplyPlan(ctx, plan, applyOpts(st))
+		res, err := t.ApplyPlan(ctx, plan, applyOpts(st))
 		st.Done()
 		undoHint(cmd, res.Snapshot, err)
 		if err != nil {

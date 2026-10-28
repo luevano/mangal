@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
@@ -240,6 +241,13 @@ func (c *Client) Status(ctx context.Context) (apiv1.Status, error) {
 		return st, fmt.Errorf("the server speaks API %s, this mangal %s: update the older one", st.ApiVersion, APIMajor)
 	}
 	return st, nil
+}
+
+// Watches are the server's watches (watch.Remote) over the client's HTTP.
+func (c *Client) Watches() *watch.Remote {
+	w := watch.NewRemote(c.URL, c.token)
+	w.Client = c.HTTP
+	return w
 }
 
 // Me is who the server takes the token for.

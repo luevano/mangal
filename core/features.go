@@ -160,6 +160,8 @@ var Features = []Feature{
 		TUI: "K (home): users and API tokens after the accounts", TUIKey: "K",
 		CLI:           []string{"user add", "user passwd", "user perms", "user logout", "user rm", "user ls", "token add", "token ls", "token rm"},
 		NotApplicable: map[Mode]string{ModeScript: "scripts use the server's key or an API token"}},
+	{Name: "remote server", CLI: []string{"remote login", "remote logout", "remote status"},
+		NotApplicable: map[Mode]string{ModeTUI: "the remote TUI comes later (docs/remote.md R2)", ModeWeb: "the web UI is the server's", ModeAPI: "the client side of the API", ModeScript: cliEnough}},
 }
 
 // ModeCommands are the commands of no feature: the modes themselves and cobra's own.
@@ -172,6 +174,7 @@ var ModeCommands = map[string]string{
 	"user":        "the users (its subcommands are the logins feature)",
 	"token":       "the API tokens (its subcommands are the logins feature)",
 	"api":         "the serve API's client",
+	"remote":      "a remote server's token (its subcommands are the remote server feature)",
 	"web":         "the web mode",
 	"version":     "mangal's version",
 	"help":        "cobra's help",

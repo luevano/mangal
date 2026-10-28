@@ -37,12 +37,12 @@ is set (the default).`,
 	Args:              cobra.MaximumNArgs(2),
 	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		c, err := newCore()
+		t, err := newTarget(cmd)
 		if err != nil {
 			return err
 		}
 		provider, mangaID := providerManga(args)
-		reads, err := c.Library.History(ctxOf(cmd), provider, mangaID)
+		reads, err := t.history(ctxOf(cmd), provider, mangaID)
 		if err != nil {
 			return err
 		}
@@ -103,12 +103,12 @@ var historyClearCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(2),
 	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		c, err := newCore()
+		t, err := newTarget(cmd)
 		if err != nil {
 			return err
 		}
 		provider, mangaID := providerManga(args)
-		plan, err := c.Changes.Plan(ctxOf(cmd), core.HistoryClearReq{Provider: provider, MangaID: mangaID})
+		plan, err := t.Plan(ctxOf(cmd), core.HistoryClearReq{Provider: provider, MangaID: mangaID})
 		if err != nil {
 			return err
 		}
@@ -123,7 +123,7 @@ var historyClearCmd = &cobra.Command{
 		}
 		st := newStatus(cmd)
 		defer st.Done()
-		res, err := c.Changes.ApplyPlan(ctxOf(cmd), plan, applyOpts(st))
+		res, err := t.ApplyPlan(ctxOf(cmd), plan, applyOpts(st))
 		st.Done()
 		undoHint(cmd, res.Snapshot, err)
 		if err != nil {

@@ -44,12 +44,12 @@ library. Emptying the trash can't be undone.
 Only lists what would happen unless --apply is set.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		c, err := newCore()
+		t, err := newTarget(cmd)
 		if err != nil {
 			return err
 		}
 		if libraryUndoArgs.List {
-			return listOperations(cmd, c)
+			return listOperations(cmd, t)
 		}
 		var id int64
 		if len(args) == 1 {
@@ -60,7 +60,7 @@ Only lists what would happen unless --apply is set.`,
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := changeCtx(cmd, st)
-		plan, err := c.Changes.Plan(ctx, core.UndoReq{ID: id})
+		plan, err := t.Plan(ctx, core.UndoReq{ID: id})
 		if errors.Is(err, library.ErrNothingToUndo) {
 			cmd.Println("nothing to undo")
 			return nil
@@ -83,7 +83,7 @@ Only lists what would happen unless --apply is set.`,
 		}
 		opts := applyOpts(st)
 		opts.Force = libraryUndoArgs.Force
-		res, err := c.Changes.ApplyPlan(ctx, plan, opts)
+		res, err := t.ApplyPlan(ctx, plan, opts)
 		st.Done()
 		if res.Snapshot != "" {
 			cmd.PrintErrf("database snapshot before the undo: %s\n", res.Snapshot)
@@ -97,8 +97,8 @@ Only lists what would happen unless --apply is set.`,
 	},
 }
 
-func listOperations(cmd *cobra.Command, c *core.Core) error {
-	ops, err := c.Library.Ops(cmd.Context(), 0)
+func listOperations(cmd *cobra.Command, t target) error {
+	ops, err := t.ops(cmd.Context())
 	if err != nil {
 		return err
 	}

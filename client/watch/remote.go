@@ -399,7 +399,7 @@ func (r *Remote) events(ctx context.Context, since uint64) (*http.Response, erro
 	// no timeout: the stream stays open
 	client := &http.Client{}
 	if r.Client != nil {
-		client.Transport = r.Client.Transport
+		client.Transport, client.CheckRedirect = r.Client.Transport, r.Client.CheckRedirect
 	}
 	resp, err := client.Do(req)
 	if err != nil {
