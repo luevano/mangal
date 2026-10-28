@@ -34,14 +34,14 @@ skips them until a check finds the manga ("mangal watch check <id>") or they're 
 Only lists what would change unless --apply is set.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		t, err := newTarget(cmd)
+		svc, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
 		status := newStatus(cmd)
 		defer status.Done()
 		ctx := changeCtx(cmd, status)
-		plan, err := t.Plan(ctx, core.MigrateReq{})
+		plan, err := svc.Changes.Plan(ctx, core.MigrateReq{})
 		status.Clear()
 		if err != nil {
 			return err
@@ -57,21 +57,21 @@ Only lists what would change unless --apply is set.`,
 			cmd.Println("run with --apply to migrate")
 			return nil
 		}
-		res, err := t.ApplyPlan(ctx, plan, applyOpts(status))
+		res, err := svc.Changes.ApplyPlan(ctx, plan, applyOpts(status))
 		status.Done()
 		undoHint(cmd, res.Snapshot, err)
 		if err != nil {
 			return err
 		}
 		cmd.Println("migrated")
-		return relinkWarning(cmd, t)
+		return relinkWarning(cmd, svc)
 	},
 }
 
 // relinkWarning lists the watches that need a re-link (e.g. moved from an old provider
 // id whose site changed) and how to fix them.
-func relinkWarning(cmd *cobra.Command, t target) error {
-	watches, err := t.watches(ctxOf(cmd))
+func relinkWarning(cmd *cobra.Command, svc core.Services) error {
+	watches, err := svc.Watches(ctxOf(cmd))
 	if err != nil {
 		return err
 	}

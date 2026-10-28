@@ -2,17 +2,14 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/remote"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 )
@@ -92,49 +89,21 @@ func connectRemote(cmd *cobra.Command) (*remote.Client, error) {
 	return rc, nil
 }
 
-// target is where a command's library changes go: this machine's core, or a server.
-type target struct {
-	core.Changes
-	// local is nil for a server, remote nil for this machine
-	local  *core.Core
-	remote *remote.Client
-}
-
-// newTarget is the command's target (--remote, remote.url, --local).
-func newTarget(cmd *cobra.Command) (target, error) {
+// newServices are the command's services: this machine's core, or a server's (--remote,
+// remote.url, --local).
+func newServices(cmd *cobra.Command) (core.Services, error) {
 	rc, err := connectRemote(cmd)
 	if err != nil {
-		return target{}, err
+		return core.Services{}, err
 	}
 	if rc != nil {
-		return target{Changes: rc.Changes(), remote: rc}, nil
+		return rc.Services(), nil
 	}
 	c, err := newCore()
 	if err != nil {
-		return target{}, err
+		return core.Services{}, err
 	}
-	return target{Changes: c.Changes, local: c}, nil
-}
-
-func (t target) ops(ctx context.Context) ([]storage.Op, error) {
-	if t.remote != nil {
-		return t.remote.Ops(ctx, 0)
-	}
-	return t.local.Journal.Ops(ctx, 0)
-}
-
-func (t target) history(ctx context.Context, provider, mangaID string) ([]storage.Read, error) {
-	if t.remote != nil {
-		return t.remote.History(ctx, provider, mangaID)
-	}
-	return t.local.History.List(ctx, provider, mangaID)
-}
-
-func (t target) watches(ctx context.Context) (watch.Manager, error) {
-	if t.remote != nil {
-		return t.remote.Watches(), nil
-	}
-	return t.local.Watches(ctx)
+	return c.Services, nil
 }
 
 func init() {

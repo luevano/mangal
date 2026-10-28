@@ -41,7 +41,7 @@ what would happen unless --apply is set.`,
   mangal health fix M6/manga/3 --choice 4 --apply`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		t, err := newTarget(cmd)
+		svc, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
@@ -50,15 +50,15 @@ what would happen unless --apply is set.`,
 		ctx := changeCtx(cmd, st)
 		// a server looks the finding up itself (an offline check, else its last network one)
 		f := health.Finding{Key: args[0]}
-		if t.local != nil {
+		if svc.Remote == "" {
 			st.Set("checking")
-			if f, err = t.local.Finding(ctx, args[0], healthFixArgs.Network); err != nil {
+			if f, err = svc.Health.Finding(ctx, args[0], healthFixArgs.Network); err != nil {
 				return err
 			}
 		} else if healthFixArgs.Network {
 			return errors.New("--network: a server uses its last network check (\"mangal health --network\" there)")
 		}
-		plan, err := t.Plan(ctx, core.HealthFixReq{Finding: f, Choice: healthFixArgs.Choice})
+		plan, err := svc.Changes.Plan(ctx, core.HealthFixReq{Finding: f, Choice: healthFixArgs.Choice})
 		st.Clear()
 		if err != nil {
 			return err
@@ -82,7 +82,7 @@ what would happen unless --apply is set.`,
 			cmd.Println("run with --apply to fix it")
 			return nil
 		}
-		res, err := t.ApplyPlan(ctx, plan, applyOpts(st))
+		res, err := svc.Changes.ApplyPlan(ctx, plan, applyOpts(st))
 		st.Done()
 		undoHint(cmd, res.Snapshot, err)
 		if err != nil {

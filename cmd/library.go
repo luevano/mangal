@@ -67,12 +67,12 @@ the year and the id tags) and is listed as a warning; --fallback renames it anyw
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
 		defer st.Done()
-		t, err := newTarget(cmd)
+		svc, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
 		ctx := changeCtx(cmd, st)
-		p, err := t.Plan(ctx, core.RenameReq{
+		p, err := svc.Changes.Plan(ctx, core.RenameReq{
 			Refresh:  libraryRenameArgs.Refresh,
 			Chapters: libraryRenameArgs.Chapters,
 			Fallback: libraryRenameArgs.Fallback,
@@ -117,7 +117,7 @@ the year and the id tags) and is listed as a warning; --fallback renames it anyw
 		}
 		opts := applyOpts(st)
 		opts.OnLine = func(l core.Line) { st.Print(func() { printResultLines(cmd, []core.Line{l}) }) }
-		res, err := t.ApplyPlan(ctx, p, opts)
+		res, err := svc.Changes.ApplyPlan(ctx, p, opts)
 		st.Done()
 		undoHint(cmd, res.Snapshot, err)
 		return err
@@ -473,14 +473,14 @@ other sources; one that agrees is left. Only lists what it would write unless --
 			}
 			ids = append(ids, id)
 		}
-		t, err := newTarget(cmd)
+		svc, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := changeCtx(cmd, st)
-		plan, err := t.Plan(ctx, core.MarkReq{Mangas: ids})
+		plan, err := svc.Changes.Plan(ctx, core.MarkReq{Mangas: ids})
 		st.Clear()
 		if err != nil {
 			return err
@@ -500,7 +500,7 @@ other sources; one that agrees is left. Only lists what it would write unless --
 		}
 		opts := applyOpts(st)
 		opts.OnLine = func(l core.Line) { st.Print(func() { cmd.Println(l.Text) }) }
-		res, err := t.ApplyPlan(ctx, plan, opts)
+		res, err := svc.Changes.ApplyPlan(ctx, plan, opts)
 		st.Done()
 		undoHint(cmd, res.Snapshot, err)
 		return err
@@ -547,14 +547,14 @@ Only lists what would happen unless --apply is set.`,
 			}
 			ids[i] = id
 		}
-		t, err := newTarget(cmd)
+		svc, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := changeCtx(cmd, st)
-		plan, err := t.Plan(ctx, core.MergeReq{Keep: ids[0], Other: ids[1]})
+		plan, err := svc.Changes.Plan(ctx, core.MergeReq{Keep: ids[0], Other: ids[1]})
 		if err != nil {
 			return err
 		}
@@ -563,14 +563,14 @@ Only lists what would happen unless --apply is set.`,
 			cmd.Println("run with --apply to merge")
 			return nil
 		}
-		res, err := t.ApplyPlan(ctx, plan, applyOpts(st))
+		res, err := svc.Changes.ApplyPlan(ctx, plan, applyOpts(st))
 		st.Done()
 		undoHint(cmd, res.Snapshot, err)
 		if err != nil {
 			return err
 		}
 		cmd.Println("merged")
-		if t.local != nil {
+		if svc.Remote == "" {
 			printTrash(cmd)
 		}
 		return nil
@@ -702,13 +702,13 @@ undone after it ("mangal library undo"): they're listed before asking (--yes doe
 without a terminal it's needed).`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		t, err := newTarget(cmd)
+		svc, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
 		st := newStatus(cmd)
 		defer st.Done()
-		plan, err := t.Plan(ctxOf(cmd), core.EmptyTrashReq{})
+		plan, err := svc.Changes.Plan(ctxOf(cmd), core.EmptyTrashReq{})
 		if err != nil {
 			return err
 		}
@@ -721,7 +721,7 @@ without a terminal it's needed).`,
 		if !libraryTrashEmptyArgs.Yes && !confirm(cmd, fmt.Sprintf("Delete the %d files in the trash?", trash.Files)) {
 			return nil
 		}
-		res, err := t.ApplyPlan(ctxOf(cmd), plan, applyOpts(st))
+		res, err := svc.Changes.ApplyPlan(ctxOf(cmd), plan, applyOpts(st))
 		st.Done()
 		if res.Snapshot != "" {
 			cmd.PrintErrf("database snapshot: %s\n", res.Snapshot)

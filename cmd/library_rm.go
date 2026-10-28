@@ -38,14 +38,14 @@ Only lists what would happen unless --apply is set.`,
 		if len(args) == 2 {
 			req.Chapter = args[1]
 		}
-		t, err := newTarget(cmd)
+		svc, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := changeCtx(cmd, st)
-		plan, err := t.Plan(ctx, req)
+		plan, err := svc.Changes.Plan(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -54,7 +54,7 @@ Only lists what would happen unless --apply is set.`,
 			cmd.Println("run with --apply to delete")
 			return nil
 		}
-		res, err := t.ApplyPlan(ctx, plan, applyOpts(st))
+		res, err := svc.Changes.ApplyPlan(ctx, plan, applyOpts(st))
 		st.Done()
 		undoHint(cmd, res.Snapshot, err)
 		if err != nil {

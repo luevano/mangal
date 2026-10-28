@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/luevano/mangal/v5/client/watch"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
@@ -53,4 +55,17 @@ func (c *Client) History(ctx context.Context, provider, mangaID string) ([]stora
 			Count: rd.Count, First: rd.First, Last: rd.Last}
 	}
 	return reads, nil
+}
+
+// Services are the core services over the server, those built so far: Changes, History,
+// Journal and Watches; the rest are nil.
+func (c *Client) Services() core.Services {
+	return core.Services{Remote: c.URL, Changes: c.Changes(), History: history{c}, Journal: c,
+		Watches: func(context.Context) (watch.Manager, error) { return c.Watches(), nil }}
+}
+
+type history struct{ c *Client }
+
+func (h history) List(ctx context.Context, provider, mangaID string) ([]storage.Read, error) {
+	return h.c.History(ctx, provider, mangaID)
 }

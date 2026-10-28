@@ -196,12 +196,12 @@ func connectWatches(ctx context.Context) (watch.Manager, error) {
 	return m, nil
 }
 
-// Core is the services over an Env. Each is an interface whose methods take a ctx and
-// deal in plain data, so a remote implementation (the serve API's client) can stand in;
-// the watches are watch.Manager's and the jobs whoever runs them (LocalJobs).
-type Core struct {
-	env Env
-	ops client.Ops
+// Services are the app's services, one interface per domain whose methods take a ctx and
+// deal in plain data: a Core's (this machine), or a mangal serve's elsewhere
+// (core/remote, which leaves nil what it doesn't have yet).
+type Services struct {
+	// Remote is the mangal serve's address, "" for this machine.
+	Remote string
 	// Changes plans and applies the destructive changes.
 	Changes Changes
 	// Library reads the library.
@@ -214,6 +214,16 @@ type Core struct {
 	Providers Providers
 	Config    Config
 	Accounts  Accounts
+	// Watches are the watches: the running mangal serve's, else the local service.
+	Watches func(ctx context.Context) (watch.Manager, error)
+}
+
+// Core is the services over an Env, this machine's; the jobs are whoever runs them
+// (LocalJobs).
+type Core struct {
+	env Env
+	ops client.Ops
+	Services
 }
 
 // New is the services over env (its zero fields mangal's own).
@@ -233,6 +243,7 @@ func New(_ context.Context, env Env) (*Core, error) {
 	c.Providers = NewProviders(env.Loaders)
 	c.Config = NewConfig()
 	c.Accounts = NewAccounts()
+	c.Watches = env.Watches
 	return c, nil
 }
 
@@ -243,9 +254,6 @@ var defaultCore = sync.OnceValues(func() (*Core, error) { return New(context.Bac
 func Default() (*Core, error) {
 	return defaultCore()
 }
-
-// Watches are the watches: the running mangal serve's, else the local service.
-func (c *Core) Watches(ctx context.Context) (watch.Manager, error) { return c.env.Watches(ctx) }
 
 // Env is the environment the services work on (the defaults filled in).
 func (c *Core) Env() Env { return c.env }
