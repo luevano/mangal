@@ -333,6 +333,10 @@ var manageKinds = []core.Kind{core.KindMerge, core.KindMove, core.KindLink, core
 
 // canUndo refuses undoing an operation that isn't manage's to whoever isn't an admin.
 func (a *API) canUndo(ctx context.Context, id int64) error {
+	if id < 1 {
+		// 0 would be the last operation, whatever its kind
+		return badRequest("id: an operation's id (1 or more)")
+	}
 	if who, ok := identityOf(ctx); !ok || who.admin() {
 		return nil
 	}

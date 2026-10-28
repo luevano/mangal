@@ -20,6 +20,7 @@ import (
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web"
@@ -375,7 +376,7 @@ func errorBody(err error) (int, ErrorResponse) {
 	case errors.As(err, &refused):
 		body.Code, body.Reasons = CodeRefused, refused.Reasons
 		return http.StatusConflict, body
-	case errors.Is(err, core.ErrNothingToDo):
+	case errors.Is(err, core.ErrNothingToDo), errors.Is(err, library.ErrNothingToUndo):
 		body.Code = CodeNothingToDo
 		return http.StatusConflict, body
 	case errors.Is(err, config.ErrNoFile):
