@@ -48,11 +48,26 @@ func (l remoteLibrary) list(ctx context.Context, params *apiv1.ListLibraryMangas
 	return mangas, nil
 }
 
-// Mangas are the server's mangas; it keeps their statuses itself (its scans), and the
-// list doesn't say which folders are gone.
-func (l remoteLibrary) Mangas(ctx context.Context, _ core.MangasOptions) (core.MangaList, error) {
-	mangas, err := l.list(ctx, nil)
-	return core.MangaList{Mangas: mangas}, err
+// Mangas are the server's mangas; it keeps their statuses itself (its scans). The
+// missing folders need API 1.2 (an older server's list says none).
+func (l remoteLibrary) Mangas(ctx context.Context, opts core.MangasOptions) (core.MangaList, error) {
+	if !opts.Missing || l.c.needsAPI(ctx, 2, "") != nil {
+		mangas, err := l.list(ctx, nil)
+		return core.MangaList{Mangas: mangas}, err
+	}
+	r, err := l.c.API.ListLibraryMangasWithResponse(ctx, &apiv1.ListLibraryMangasParams{Missing: &opts.Missing})
+	if err != nil {
+		return core.MangaList{}, fmt.Errorf("mangal serve: %w", err)
+	}
+	list, err := answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
+	if err != nil {
+		return core.MangaList{}, err
+	}
+	out := core.MangaList{Mangas: make([]storage.Manga, len(list.Mangas)), Missing: deref(list.Missing)}
+	for i, m := range list.Mangas {
+		out.Mangas[i] = mangaOf(m)
+	}
+	return out, nil
 }
 
 func (l remoteLibrary) detail(ctx context.Context, id int64) (apiv1.LibraryMangaDetail, error) {
@@ -87,8 +102,11 @@ func (l remoteLibrary) MangaBySource(ctx context.Context, provider, mangaID stri
 	return *found, true, nil
 }
 
-func (remoteLibrary) MangaFor(context.Context, libmangal.ProviderInfo, string, []lmmeta.ID) (storage.Manga, bool, error) {
-	return storage.Manga{}, false, unsupported("finding a provider manga's library manga by its metadata ids")
+// MangaFor is the library manga the provider's manga was downloaded into.
+// shortcut: not a folder sharing a metadata id (no endpoint for the library's match),
+// add one if a remote TUI should mark chapters another provider downloaded.
+func (l remoteLibrary) MangaFor(ctx context.Context, provider libmangal.ProviderInfo, mangaID string, _ []lmmeta.ID) (storage.Manga, bool, error) {
+	return l.MangaBySource(ctx, provider.ID, mangaID)
 }
 
 func (l remoteLibrary) Downloads(ctx context.Context, manga int64) ([]storage.Download, error) {
@@ -127,16 +145,60 @@ func (l remoteLibrary) ProviderDownloads(ctx context.Context, provider, mangaID 
 	return out, nil
 }
 
-func (remoteLibrary) ChapterFiles(context.Context, core.ChapterFilesReq) (core.ChapterFiles, error) {
-	return core.ChapterFiles{}, unsupported("a provider manga's chapters in the library")
+// ChapterFiles are the downloads of the provider's manga's library manga (MangaFor) and
+// the reads of the provider's manga, the token's user's. Scan isn't done (the server's
+// scans keep the rows).
+func (l remoteLibrary) ChapterFiles(ctx context.Context, req core.ChapterFilesReq) (core.ChapterFiles, error) {
+	var out core.ChapterFiles
+	var err error
+	if out.Manga, out.Found, err = l.MangaFor(ctx, req.Provider, req.MangaID, req.MetadataIDs); err != nil {
+		out.Errors = append(out.Errors, fmt.Sprintf("library manga: %s", err))
+	}
+	if out.Found {
+		if out.Downloads, err = l.Downloads(ctx, out.Manga.ID); err != nil {
+			out.Errors = append(out.Errors, fmt.Sprintf("library: %s", err))
+		}
+	}
+	reads, err := l.c.History(ctx, req.Provider.ID, req.MangaID)
+	if err != nil {
+		out.Errors = append(out.Errors, fmt.Sprintf("read history: %s", err))
+	}
+	for _, r := range reads {
+		if !slices.Contains(out.Read, r.Chapter) {
+			out.Read = append(out.Read, r.Chapter)
+		}
+	}
+	slices.Sort(out.Read)
+	return out, nil
 }
 
-func (remoteLibrary) Links(context.Context, int64) (library.LinkInfo, error) {
-	return library.LinkInfo{}, unsupported("the links of a library manga")
+func (l remoteLibrary) links(ctx context.Context, id int64) (apiv1.LibraryLinks, error) {
+	if err := l.c.needsAPI(ctx, 2, "a library manga's links"); err != nil {
+		return apiv1.LibraryLinks{}, err
+	}
+	r, err := l.c.API.GetLibraryLinksWithResponse(ctx, id)
+	if err != nil {
+		return apiv1.LibraryLinks{}, fmt.Errorf("mangal serve: %w", err)
+	}
+	return answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
 }
 
-func (remoteLibrary) LinkPick(context.Context, int64, lmmeta.IDCode) (storage.LinkPick, bool, error) {
-	return storage.LinkPick{}, false, unsupported("a link pick")
+func (l remoteLibrary) Links(ctx context.Context, id int64) (library.LinkInfo, error) {
+	links, err := l.links(ctx, id)
+	return links.Info, err
+}
+
+func (l remoteLibrary) LinkPick(ctx context.Context, id int64, source lmmeta.IDCode) (storage.LinkPick, bool, error) {
+	links, err := l.links(ctx, id)
+	if err != nil {
+		return storage.LinkPick{}, false, err
+	}
+	for _, p := range links.Picks {
+		if p.Source == source {
+			return p, true, nil
+		}
+	}
+	return storage.LinkPick{}, false, nil
 }
 
 func (l remoteLibrary) Trash(ctx context.Context) ([]library.TrashBatch, error) {
@@ -195,11 +257,18 @@ func (l remoteLibrary) Scan(ctx context.Context, opts core.ScanOptions) (core.Sc
 	return core.ScanReport{Summary: j.Message}, nil
 }
 
-// ScanManga is the server's manga as it is.
-// shortcut: no single-manga scan in the API (R3: POST /library/mangas/{id}/scan), the rows aren't reconciled.
+// ScanManga is the server's scan of the manga (API 1.2), the manga as it is on an older
+// server.
 func (l remoteLibrary) ScanManga(ctx context.Context, id int64) (core.MangaScan, error) {
-	m, err := l.Manga(ctx, id)
-	return core.MangaScan{Manga: m}, err
+	if l.c.needsAPI(ctx, 2, "") != nil {
+		m, err := l.Manga(ctx, id)
+		return core.MangaScan{Manga: m}, err
+	}
+	r, err := l.c.API.ScanLibraryMangaWithResponse(ctx, id)
+	if err != nil {
+		return core.MangaScan{}, fmt.Errorf("mangal serve: %w", err)
+	}
+	return answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
 }
 
 func (remoteLibrary) CheckIDs(context.Context) ([]library.IDCheck, error) {

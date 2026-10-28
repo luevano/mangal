@@ -28,13 +28,16 @@ type Jobs struct {
 	cache map[int64]core.Job
 	// live is how many Subscribes feed the cache
 	live int
+	// origins are the Origin of the downloads this client started (the API has the
+	// server's: who asked)
+	origins map[int64]string
 }
 
 var _ core.Jobs = (*Jobs)(nil)
 
 // Jobs are the server's jobs, one cache per client.
 func (c *Client) Jobs() *Jobs {
-	c.jobsOnce.Do(func() { c.jobs = &Jobs{c: c, cache: map[int64]core.Job{}} })
+	c.jobsOnce.Do(func() { c.jobs = &Jobs{c: c, cache: map[int64]core.Job{}, origins: map[int64]string{}} })
 	return c.jobs
 }
 
@@ -42,7 +45,7 @@ func (c *Client) Jobs() *Jobs {
 func jobOf(j apiv1.Job) core.Job {
 	out := core.Job{ID: j.Id, Title: j.Title, Providers: j.Providers, MangaID: deref(j.MangaId), Message: deref(j.Message),
 		Note: deref(j.Note), Done: deref(j.Done), Total: deref(j.Total), Part: deref(j.Part), Error: deref(j.Error),
-		Added: j.Added, Started: deref(j.Started), Finished: deref(j.Finished), Ahead: deref(j.Ahead), Behind: deref(j.Behind)}
+		Added: j.Added, Started: deref(j.Started), Finished: deref(j.Finished), Ahead: deref(j.Ahead), Behind: deref(j.Behind), Read: deref(j.Read)}
 	// an unknown kind or status (a newer server's) stays the zero one
 	_ = out.Kind.UnmarshalText([]byte(j.Kind))
 	_ = out.Status.UnmarshalText([]byte(j.Status))
@@ -58,6 +61,7 @@ func jobOf(j apiv1.Job) core.Job {
 func (j *Jobs) keep(job core.Job, requeued bool) core.Job {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	job.Origin = j.origins[job.ID]
 	if old, ok := j.cache[job.ID]; ok && !requeued && !old.Status.Active() && job.Status.Active() {
 		return old
 	}
@@ -69,6 +73,7 @@ func (j *Jobs) drop(id int64) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	delete(j.cache, id)
+	delete(j.origins, id)
 }
 
 // job is the job with the id on the server.
@@ -96,14 +101,15 @@ func (j *Jobs) List(ctx context.Context) ([]core.Job, error) {
 	}
 	out := make([]core.Job, len(list))
 	cache := make(map[int64]core.Job, len(list))
+	j.mu.Lock()
 	for i, job := range list {
 		out[i] = jobOf(job)
+		out[i].Origin = j.origins[out[i].ID]
 		cache[out[i].ID] = out[i]
 	}
-	slices.SortFunc(out, func(a, b core.Job) int { return cmp.Compare(a.ID, b.ID) })
-	j.mu.Lock()
 	j.cache = cache
 	j.mu.Unlock()
+	slices.SortFunc(out, func(a, b core.Job) int { return cmp.Compare(a.ID, b.ID) })
 	return out, nil
 }
 
@@ -177,9 +183,21 @@ func (j *Jobs) ClearQueue(ctx context.Context, provider string) (int, error) {
 	return n.Count, err
 }
 
-// CancelAll cancels the active jobs one by one.
-// shortcut: no cancel-all in the API (R3: POST /jobs/cancel-all), a job added meanwhile goes on.
+// CancelAll cancels the server's active jobs (the token's, everyone's with manage); on a
+// server before API 1.2 one by one, a job added meanwhile goes on.
 func (j *Jobs) CancelAll(ctx context.Context) (int, error) {
+	if j.c.needsAPI(ctx, 2, "") == nil {
+		r, err := j.c.API.CancelAllJobsWithResponse(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("mangal serve: %w", err)
+		}
+		n, err := answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
+		if err == nil {
+			// the cancelled ones' events follow, a List refreshes the cache meanwhile
+			_, _ = j.List(ctx)
+		}
+		return n.Count, err
+	}
 	list, err := j.List(ctx)
 	if err != nil {
 		return 0, err
@@ -201,7 +219,8 @@ func (j *Jobs) CancelAll(ctx context.Context) (int, error) {
 }
 
 // Download queues the download on the server, with its providers and download settings:
-// Have is only read for the manga's id and the chapters, Read isn't on the API (R3).
+// Have is only read for the manga's id and the chapters. Read isn't on the API: a
+// remote frontend reads from the server's files or pages (Reader).
 func (j *Jobs) Download(ctx context.Context, req core.DownloadReq) (core.Job, error) {
 	if req.Read {
 		return core.Job{}, unsupported("downloading for reading")
@@ -233,6 +252,11 @@ func (j *Jobs) Download(ctx context.Context, req core.DownloadReq) (core.Job, er
 	job, err := answer(r.StatusCode(), r.Body, r.JSON202, r.JSONDefault)
 	if err != nil {
 		return core.Job{}, err
+	}
+	if req.Origin != "" {
+		j.mu.Lock()
+		j.origins[job.Id] = req.Origin
+		j.mu.Unlock()
 	}
 	return j.keep(jobOf(job), true), nil
 }

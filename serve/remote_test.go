@@ -144,8 +144,17 @@ func TestRemoteServices(t *testing.T) {
 	if _, err := svc.Library.Scan(ctx, core.ScanOptions{}); err == nil || !strings.Contains(err.Error(), "drive not mounted") {
 		t.Errorf("scan: %v", err)
 	}
-	if _, err := svc.Library.Links(ctx, opm.ID); !errors.Is(err, errors.ErrUnsupported) {
-		t.Errorf("links: %v", err)
+	if info, err := svc.Library.Links(ctx, opm.ID); err != nil || info.Manga.ID != opm.ID {
+		t.Errorf("links %+v %v", info, err)
+	}
+	if _, found, err := svc.Library.LinkPick(ctx, opm.ID, "kt"); err != nil || found {
+		t.Errorf("link pick %v %v", found, err)
+	}
+	if list, err := svc.Library.Mangas(ctx, core.MangasOptions{Missing: true}); err != nil || !list.IsMissing(opm.ID) {
+		t.Errorf("missing %+v %v", list.Missing, err)
+	}
+	if _, err := svc.Library.ScanManga(ctx, opm.ID); err == nil || !strings.Contains(err.Error(), "drive not mounted") {
+		t.Errorf("scan one: %v", err)
 	}
 	if report, err := svc.Health.Report(ctx, health.Options{}); err != nil || report.Network {
 		t.Errorf("health %+v %v", report, err)

@@ -18,8 +18,9 @@ import (
 // busyRetry is how often an apply is tried again while the server's library is busy.
 var busyRetry = 2 * time.Second
 
-// Changes are the server's: each change is planned and applied by its API endpoint (move
-// and retitle aren't yet: the provider's manga is found locally). A plan's Change is the
+// Changes are the server's: each change is planned and applied by its API endpoint (a
+// move or retitle by the provider's and manga's ids: the server finds the manga again,
+// the titles of a retitle are its listing's). A plan's Change is the
 // request, its Detail and the result's as the local ones (core.detailTypes). Variant plans
 // the change anew; an apply needs the plan's hash (Apply without Expect plans it first).
 func (c *Client) Changes() core.Changes { return changes{c} }
@@ -76,6 +77,15 @@ func (r changes) send(ctx context.Context, ch core.Change, apply bool, f apiv1.A
 		}
 		resp, err = sent(api.LinkLibraryMangaWithResponse(ctx, &apiv1.LinkLibraryMangaParams{Apply: p},
 			apiv1.LinkRequest{Manga: ch.Manga, Links: links, Rename: opt(ch.Rename), Watches: opt(ch.Watches), Expect: f.Expect, Force: f.Force, Confirm: f.Confirm}))
+	case core.MoveReq:
+		if ch.To == nil || ch.Provider.ID == "" {
+			return resp, fmt.Errorf("no manga to move to: %w", core.ErrInvalid)
+		}
+		resp, err = sent(api.MoveLibraryMangaWithResponse(ctx, &apiv1.MoveLibraryMangaParams{Apply: p},
+			apiv1.MoveRequest{Manga: ch.Manga, Provider: ch.Provider.ID, MangaId: opt(ch.To.Info().ID), Full: opt(ch.Full), Expect: f.Expect, Force: f.Force, Confirm: f.Confirm}))
+	case core.RetitleReq:
+		resp, err = sent(api.RetitleLibraryMangaWithResponse(ctx, ch.Manga, &apiv1.RetitleLibraryMangaParams{Apply: p},
+			apiv1.RetitleRequest{Provider: opt(ch.Provider.ID), MangaId: opt(ch.From.ID), Expect: f.Expect, Force: f.Force, Confirm: f.Confirm}))
 	case core.DismissPickReq:
 		resp, err = sent(api.DismissLinkPickWithResponse(ctx, &apiv1.DismissLinkPickParams{Apply: p},
 			apiv1.DismissPickRequest{Manga: ch.Manga, Source: string(ch.Source), Expect: f.Expect, Force: f.Force, Confirm: f.Confirm}))
