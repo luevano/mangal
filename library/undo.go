@@ -64,6 +64,41 @@ type UndoPlan struct {
 	SnapshotErr error
 }
 
+// undoPlanJSON is an UndoPlan with its errors as their messages.
+type undoPlanJSON struct {
+	undoPlan
+	ChangedErr  string `json:",omitempty"`
+	SnapshotErr string `json:",omitempty"`
+}
+
+type undoPlan UndoPlan
+
+func (p UndoPlan) MarshalJSON() ([]byte, error) {
+	v := undoPlanJSON{undoPlan: undoPlan(p)}
+	if p.ChangedErr != nil {
+		v.ChangedErr = p.ChangedErr.Error()
+	}
+	if p.SnapshotErr != nil {
+		v.SnapshotErr = p.SnapshotErr.Error()
+	}
+	return json.Marshal(v)
+}
+
+func (p *UndoPlan) UnmarshalJSON(b []byte) error {
+	var v undoPlanJSON
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*p = UndoPlan(v.undoPlan)
+	if v.ChangedErr != "" {
+		p.ChangedErr = errors.New(v.ChangedErr)
+	}
+	if v.SnapshotErr != "" {
+		p.SnapshotErr = errors.New(v.SnapshotErr)
+	}
+	return nil
+}
+
 // ErrNothingToUndo is an empty journal, or every operation in it undone.
 var ErrNothingToUndo = errors.New("nothing to undo")
 

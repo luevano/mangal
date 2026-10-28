@@ -3279,6 +3279,8 @@ components:
           type: boolean
         hash:
           type: string
+        detail:
+          description: the kind's own plan as mangal's Go type (core.detailTypes), for mangal's clients, not a stable API
     OpResult:
       type: object
       x-go-type: core.OpResult
@@ -3304,6 +3306,8 @@ components:
                 type: string
               warn:
                 type: boolean
+        detail:
+          description: the kind's own result as mangal's Go type (core.detailTypes), for mangal's clients, not a stable API
     ChangeResponse:
       type: object
       required: [applied]

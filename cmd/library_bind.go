@@ -136,10 +136,10 @@ differs is only replaced when you say so (with --apply). Every change can be und
 		detail := plan.Detail.(core.LinkDetail)
 		for _, checked := range detail.Checked {
 			src, _ := client.MetadataSourceOf(checked.Code)
-			if checked.Meta == nil {
+			if checked.Found == "" {
 				cmd.Printf("%s %s (not checked: no MyAnimeList API client)\n", src.Name, checked.ID)
 			} else {
-				cmd.Printf("%s %s: %s\n", src.Name, checked.ID, checked.Meta)
+				cmd.Printf("%s %s: %s\n", src.Name, checked.ID, checked.Found)
 			}
 		}
 		lp := detail.Plan

@@ -51,7 +51,7 @@ type Migration struct {
 	OldIDs  []storage.OldID
 	Markers []OldMarker
 	// OnProgress, if set, is told what ApplyTo does.
-	OnProgress func(Progress)
+	OnProgress func(Progress) `json:"-"`
 }
 
 // FindMigration finds the data under old provider ids: library entries, downloads and

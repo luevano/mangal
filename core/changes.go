@@ -65,8 +65,8 @@ type Plan struct {
 	// Change is the request planned.
 	Change Change `json:"-"`
 	// Detail is the kind's own plan (library.MergePlan, library.MovePlan, ...), for the
-	// UIs that show more than the lines.
-	Detail any `json:"-"`
+	// UIs that show more than the lines (decoded by kind from the API's JSON).
+	Detail any `json:"detail,omitempty"`
 
 	prep *prepared
 	// fp is the fingerprint of the tables it was planned from
@@ -104,7 +104,7 @@ type OpResult struct {
 	Summary  string `json:"summary,omitempty"`
 	Lines    []Line `json:"lines,omitempty"`
 	// Detail is the kind's own result (library.MarkResult, client.RenameResult, ...).
-	Detail any `json:"-"`
+	Detail any `json:"detail,omitempty"`
 }
 
 // Changes plans and applies the destructive changes of the library.

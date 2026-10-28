@@ -2271,6 +2271,8 @@ export interface components {
             nothing?: boolean;
             irreversible?: boolean;
             hash: string;
+            /** @description the kind's own plan as mangal's Go type (core.detailTypes), for mangal's clients, not a stable API */
+            detail?: unknown;
         };
         OpResult: {
             kind: string;
@@ -2282,6 +2284,8 @@ export interface components {
                 text?: string;
                 warn?: boolean;
             }[];
+            /** @description the kind's own result as mangal's Go type (core.detailTypes), for mangal's clients, not a stable API */
+            detail?: unknown;
         };
         ChangeResponse: {
             applied: boolean;

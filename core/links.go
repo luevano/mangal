@@ -89,7 +89,9 @@ func (LinkReq) Kind() Kind { return KindLink }
 type LinkChecked struct {
 	Code lmmeta.IDCode
 	ID   string
-	Meta lmmeta.Metadata
+	Meta lmmeta.Metadata `json:"-"`
+	// Found is Meta's String, empty when not checked (Meta isn't sent over the API).
+	Found string
 }
 
 // LinkDetail is a link's plan: the ids checked and the library's plan.
@@ -126,7 +128,11 @@ func (r LinkReq) plan(ctx context.Context, c *Core) (*prepared, error) {
 		if err != nil {
 			return nil, err
 		}
-		d.Checked = append(d.Checked, LinkChecked{Code: src.Code, ID: id, Meta: meta})
+		checked := LinkChecked{Code: src.Code, ID: id, Meta: meta}
+		if meta != nil {
+			checked.Found = meta.String()
+		}
+		d.Checked = append(d.Checked, checked)
 	}
 	linker, err := c.linker(ctx)
 	if err != nil {
