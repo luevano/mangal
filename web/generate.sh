@@ -10,11 +10,12 @@ OPENAPI_SCHEMA="$DIR/openapi.yaml"
 
 main() {
 	pushd "$DIR"
-	# the API v1 (tag v1) in apiv1
+	# the API v1 (tag v1) in apiv1: server, types and the Go client
 	for pkg in apiv1; do
 		pushd "$pkg"
 		go tool oapi-codegen --config server.cfg.yaml "$OPENAPI_SCHEMA"
 		go tool oapi-codegen --config types.cfg.yaml "$OPENAPI_SCHEMA"
+		go tool oapi-codegen --config client.cfg.yaml "$OPENAPI_SCHEMA"
 		popd
 	done
 

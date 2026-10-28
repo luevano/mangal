@@ -1,0 +1,6 @@
+package: apiv1
+generate:
+  client: true
+output-options:
+  include-tags: [v1]
+output: client.gen.go
