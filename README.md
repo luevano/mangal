@@ -13,7 +13,7 @@ Version 5 is now based on metafates' [mangalorg](https://github.com/mangalorg) s
 
 ## Features
 
-- Search one provider or several at once, by title or by id; download as CBZ, PDF, ZIP, TAR, images, with ComicInfo.xml/series.json metadata from AniList, Kitsu or MyAnimeList.
+- Search one provider or several at once, by title or by id; download as CBZ, PDF, EPUB, ZIP, TAR, images (optionally as WebP, `download.webp`), with ComicInfo.xml/series.json metadata from AniList, Kitsu, MyAnimeList or MangaUpdates.
 - Four ways to use it: the [TUI](#usage), the CLI ([inline](#inline), most commands), Lua [scripts](#script) and the [web UI](#web) (with a reader), all on the same data.
 - A [library](#library) of what's downloaded, from any provider: scan, merge, move to another provider, rename, link metadata ids, hold marks, trash and undo.
 - [Unavailable and retired chapters](#unavailable-and-retired-chapters): list them, get them from another provider, give the files the right titles.
@@ -205,9 +205,9 @@ mangal library fill <id> --from <provider> --apply           # get unavailable c
 mangal library urls [--all]                # look the sources' web pages up (on the provider, by manga id); a source the provider lost is marked gone
 mangal library hold <id> hiatus|ended|provider  # pause its watches (after a last check), or mark it as needing another provider; --clear
 mangal library rm <id> [chapter] --apply   # delete a library manga (or one of its chapters) to the trash
-mangal library bind <id> [--anilist N] [--kitsu N] [--mal N] [--rename] [--watches] --apply  # link a library manga (also without a provider source)
+mangal library bind <id> [--anilist N] [--kitsu N] [--mal N] [--mangaupdates N] [--rename] [--watches] --apply  # link a library manga (also without a provider source)
 mangal library bind <id>                   # its links, where each comes from, and a Kitsu id to pick
-mangal library bind [id] --backups --apply # fill the Kitsu and MyAnimeList links from AniList
+mangal library bind [id] --backups --apply # fill the Kitsu, MyAnimeList and MangaUpdates links from AniList and MangaDex
 mangal library bind <id> --dismiss         # link neither of the Kitsu ids to pick from
 mangal library trash [empty]               # see or empty the trash
 mangal library undo [--list] [--apply]     # undo the last operation: files moved back, database restored from its snapshot
@@ -278,9 +278,9 @@ mangal accounts
 
 Shows every account mangal can use, logged in or not: Anilist, Kitsu, MyAnimeList and the provider accounts (e.g. the MangaPlus subscription), `K` on the TUI home. The Anilist, Kitsu and MyAnimeList logins are this machine's [user](#users)'s: each user has their own (on the web UI: Accounts, "Your trackers"). From there you can log into Anilist, Kitsu or MyAnimeList, set the MangaPlus secret or the Discord webhook. mangal tells you when the Anilist login expires. Without a browser on the same machine, `mangal anilist login` and `mangal myanimelist login` print the URL to open and take the redirected URL pasted back. `mangal anilist login --pin` (or `metadata.anilist.redirect = "pin"`) needs no callback server at all: AniList shows the code to paste, for an Anilist API client registered with the redirect URL `https://anilist.co/api/v2/oauth/pin`.
 
-Metadata comes from [Anilist](https://anilist.co), then [Kitsu](https://kitsu.app) when Anilist finds nothing (`metadata.kitsu.enabled`), then MyAnimeList when configured (below), or the provider, and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config (AniList tags less relevant than `metadata.anilist.tag_rank_min`, 60 by default, are left out). Log in with `mangal anilist` to also sync the reading progress when reading from the TUI; `mangal kitsu` and `read.history.kitsu = true` do the same for Kitsu. MyAnimeList needs an API client id of your own: register an app at https://myanimelist.net/apiconfig (App Type "other", redirect URL `http://localhost:6969/oauth/mal/callback`), save its client id with `mangal myanimelist client` (or from `mangal myanimelist`, which asks for it), log in with `mangal myanimelist` and set `read.history.myanimelist = true`. Chapters read from the TUI are kept in a local history (`mangal history`, `read.history.local`).
+Metadata comes from [Anilist](https://anilist.co), then [Kitsu](https://kitsu.app) when Anilist finds nothing (`metadata.kitsu.enabled`), then MyAnimeList when configured (below), then [MangaUpdates](https://www.mangaupdates.com) (`metadata.mangaupdates.enabled`, off by default: a search takes about 6 seconds), or the provider, and can be written as `ComicInfo.xml` (in CBZ files), `series.json`, cover and banner, see the `download.metadata.*` config (AniList tags less relevant than `metadata.anilist.tag_rank_min`, 60 by default, are left out). Log in with `mangal anilist` to also sync the reading progress when reading from the TUI; `mangal kitsu` and `read.history.kitsu = true` do the same for Kitsu. MyAnimeList needs an API client id of your own: register an app at https://myanimelist.net/apiconfig (App Type "other", redirect URL `http://localhost:6969/oauth/mal/callback`), save its client id with `mangal myanimelist client` (or from `mangal myanimelist`, which asks for it), log in with `mangal myanimelist` and set `read.history.myanimelist = true`. Chapters read from the TUI are kept in a local history (`mangal history`, `read.history.local`).
 
-A provider's manga can be bound to its Anilist, Kitsu and MyAnimeList ids (`A` on a manga in the TUI, or `mangal bind`; watches and the library share them). Downloads use the metadata of the first bound source in the order Anilist, Kitsu, MyAnimeList, the others are backups used when it can't be fetched; every bound id gets the reading progress.
+A provider's manga can be bound to its Anilist, Kitsu, MyAnimeList and MangaUpdates ids (`A` on a manga in the TUI, or `mangal bind`; watches and the library share them). Downloads use the metadata of the first bound source in the order Anilist, Kitsu, MyAnimeList, MangaUpdates, the others are backups used when it can't be fetched; every bound id gets the reading progress.
 
 ```sh
 mangal bind mango-mangapill "One-Punch Man" --anilist 74347 --kitsu 24147
