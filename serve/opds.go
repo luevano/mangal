@@ -222,7 +222,8 @@ func chapterEntry(svcFS pagesOpener, m storage.Manga, d storage.Download) opdsEn
 		Content: &opdsContent{Type: "text", Text: m.Title}}
 	format, _ := libmangal.FormatOf(d.Path)
 	contentType := map[libmangal.Format]string{libmangal.FormatCBZ: "application/vnd.comicbook+zip", libmangal.FormatPDF: "application/pdf",
-		libmangal.FormatZIP: "application/zip", libmangal.FormatTAR: "application/x-tar", libmangal.FormatTARGZ: "application/gzip"}[format]
+		libmangal.FormatZIP: "application/zip", libmangal.FormatTAR: "application/x-tar", libmangal.FormatTARGZ: "application/gzip",
+		libmangal.FormatEPUB: "application/epub+zip"}[format]
 	if contentType == "" {
 		// a folder, sent as a zip
 		contentType = "application/zip"

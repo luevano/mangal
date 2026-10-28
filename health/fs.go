@@ -252,10 +252,8 @@ func hasChapters(s *snapshot, dir string) bool {
 		if e.IsDir() {
 			return true
 		}
-		for _, ext := range []string{".cbz", ".zip", ".pdf", ".tar", ".tar.gz"} {
-			if strings.HasSuffix(name, ext) {
-				return true
-			}
+		if _, ok := libmangal.FormatOf(name); ok {
+			return true
 		}
 	}
 	return false

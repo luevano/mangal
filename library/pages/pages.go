@@ -1,5 +1,5 @@
 // Package pages reads the pages of a downloaded chapter straight from its file (CBZ, ZIP,
-// TAR, TAR.GZ or a folder of images), without extracting it, for the web reader.
+// EPUB, TAR, TAR.GZ or a folder of images), without extracting it, for the web reader.
 package pages
 
 import (
@@ -106,7 +106,9 @@ func Open(fsys afero.Fs, p string) (*Chapter, error) {
 				c.Pages = append(c.Pages, Page{Name: e.Name(), Size: e.Size()})
 			}
 		}
-	case libmangal.FormatCBZ, libmangal.FormatZIP:
+	case libmangal.FormatCBZ, libmangal.FormatZIP, libmangal.FormatEPUB:
+		// shortcut: an epub's images by name, not its spine: libmangal's are numbered in
+		// reading order, an epub made elsewhere may be out of order or have extra images
 		err = c.withZip(func(r *zip.Reader) error {
 			for _, f := range r.File {
 				if !f.FileInfo().IsDir() && isImage(f.Name) {
@@ -210,7 +212,7 @@ func (c *Chapter) Read(i int) (io.ReadCloser, Page, error) {
 	case libmangal.FormatImages:
 		f, err := c.FS.Open(filepath.Join(c.Path, p.Name))
 		return f, p, err
-	case libmangal.FormatCBZ, libmangal.FormatZIP:
+	case libmangal.FormatCBZ, libmangal.FormatZIP, libmangal.FormatEPUB:
 		f, err := c.FS.Open(c.Path)
 		if err != nil {
 			return nil, p, err
@@ -306,6 +308,8 @@ func (c *Chapter) ContentType() string {
 		return "application/pdf"
 	case libmangal.FormatCBZ:
 		return "application/vnd.comicbook+zip"
+	case libmangal.FormatEPUB:
+		return "application/epub+zip"
 	case libmangal.FormatImages, libmangal.FormatZIP:
 		return "application/zip"
 	case libmangal.FormatTAR:

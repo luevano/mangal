@@ -390,7 +390,7 @@ func (s Scanner) walkChapters(dir string, depth int, files *[]chapterFile) error
 			continue
 		}
 		f := chapterFile{path: path, format: format, modTime: e.ModTime()}
-		if format == libmangal.FormatCBZ || format == libmangal.FormatZIP {
+		if format == libmangal.FormatCBZ || format == libmangal.FormatZIP || format == libmangal.FormatEPUB {
 			s.readZip(&f)
 		}
 		if !f.hasNumber {

@@ -59,6 +59,7 @@ func TestOpen(t *testing.T) {
 		afero.WriteFile(fs, filepath.Join("/lib/m/[0005.0] e", name), []byte(data), 0o644)
 	}
 	afero.WriteFile(fs, "/lib/m/[0006.0] f.pdf", []byte("%PDF"), 0o644)
+	writeZip(t, fs, "/lib/m/[0007.0] g.epub")
 
 	for _, tc := range []struct {
 		path   string
@@ -69,6 +70,7 @@ func TestOpen(t *testing.T) {
 		{"/lib/m/[0003.0] c.tar", libmangal.FormatTAR},
 		{"/lib/m/[0004.0] d.tar.gz", libmangal.FormatTARGZ},
 		{"/lib/m/[0005.0] e", libmangal.FormatImages},
+		{"/lib/m/[0007.0] g.epub", libmangal.FormatEPUB},
 	} {
 		c, err := Open(fs, tc.path)
 		if err != nil {
