@@ -126,6 +126,13 @@ type Client struct {
 	token    string
 	warn     func(string)
 	warnOnce sync.Once
+
+	jobsOnce sync.Once
+	jobs     *Jobs
+
+	mu sync.Mutex
+	// last is the last status the server answered
+	last *apiv1.Status
 }
 
 // NormalizeURL is the address as the saved tokens are keyed: lowercase scheme and host,
@@ -240,7 +247,21 @@ func (c *Client) Status(ctx context.Context) (apiv1.Status, error) {
 	if major, _, _ := strings.Cut(st.ApiVersion, "."); major != APIMajor {
 		return st, fmt.Errorf("the server speaks API %s, this mangal %s: update the older one", st.ApiVersion, APIMajor)
 	}
+	c.mu.Lock()
+	c.last = &st
+	c.mu.Unlock()
 	return st, nil
+}
+
+// status is the status the server last answered, asked for when there's none.
+func (c *Client) status(ctx context.Context) (apiv1.Status, error) {
+	c.mu.Lock()
+	last := c.last
+	c.mu.Unlock()
+	if last != nil {
+		return *last, nil
+	}
+	return c.Status(ctx)
 }
 
 // Watches are the server's watches (watch.Remote) over the client's HTTP.

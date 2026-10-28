@@ -1,12 +1,17 @@
 package serve
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/core/remote"
+	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 )
@@ -86,4 +91,151 @@ func TestRemoteChanges(t *testing.T) {
 	if _, err := bad.Status(ctx); !errors.Is(err, remote.ErrUnauthorized) {
 		t.Errorf("a wrong token: %v", err)
 	}
+}
+
+// TestRemoteServices: core/remote's read services over this API answer as the local ones,
+// and what the API doesn't have is errors.ErrUnsupported.
+func TestRemoteServices(t *testing.T) {
+	s, _, _ := newHealthServer(t)
+	m := jobs.New(context.Background())
+	defer m.Shutdown(time.Second)
+	s.api.Jobs = m
+	ctx := t.Context()
+	rc, err := remote.New(remote.Options{URL: s.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := rc.Services()
+
+	list, err := svc.Library.Mangas(ctx, core.MangasOptions{})
+	if err != nil || len(list.Mangas) != 1 {
+		t.Fatalf("mangas %+v %v", list, err)
+	}
+	opm := list.Mangas[0]
+	if opm.Title != "One-Punch Man" || opm.Path() != "/lib/One-Punch Man" || len(opm.Sources) != 1 || opm.Sources[0].MangaID != "opm" {
+		t.Errorf("manga %+v", opm)
+	}
+	if m, err := svc.Library.Manga(ctx, opm.ID); err != nil || m.Title != opm.Title {
+		t.Errorf("manga %d: %+v %v", opm.ID, m, err)
+	}
+	if _, err := svc.Library.Manga(ctx, 999); !errors.Is(err, core.ErrNotFound) {
+		t.Errorf("missing manga: %v", err)
+	}
+	if m, ok, err := svc.Library.MangaBySource(ctx, "fake", "opm"); err != nil || !ok || m.ID != opm.ID {
+		t.Errorf("by source %+v %v %v", m, ok, err)
+	}
+	downloads, err := svc.Library.Downloads(ctx, opm.ID)
+	if err != nil || len(downloads) != 3 || downloads[2].Chapter != 4 {
+		t.Errorf("downloads %+v %v", downloads, err)
+	}
+	if pd, err := svc.Library.ProviderDownloads(ctx, "fake", "opm"); err != nil || len(pd) != 3 || pd[0].Chapter != 1 {
+		t.Errorf("provider downloads %+v %v", pd, err)
+	}
+	if _, err := svc.Library.Trash(ctx); err != nil {
+		t.Errorf("trash: %v", err)
+	}
+	if _, err := svc.Library.Duplicates(ctx); err != nil {
+		t.Errorf("duplicates: %v", err)
+	}
+	if _, err := svc.Bindings.OfManga(ctx, opm.ID); err != nil {
+		t.Errorf("bindings: %v", err)
+	}
+	// the server's scan job runs (its library has no folder)
+	if _, err := svc.Library.Scan(ctx, core.ScanOptions{}); err == nil || !strings.Contains(err.Error(), "drive not mounted") {
+		t.Errorf("scan: %v", err)
+	}
+	if _, err := svc.Library.Links(ctx, opm.ID); !errors.Is(err, errors.ErrUnsupported) {
+		t.Errorf("links: %v", err)
+	}
+	if report, err := svc.Health.Report(ctx, health.Options{}); err != nil || report.Network {
+		t.Errorf("health %+v %v", report, err)
+	}
+	if providers, err := svc.Providers.List(ctx); err != nil || len(providers) != 1 || providers[0].ID != "fake" {
+		t.Errorf("providers %+v %v", providers, err)
+	}
+	if entries, err := svc.Config.List(ctx); err != nil || len(entries) == 0 {
+		t.Errorf("config: %d %v", len(entries), err)
+	}
+	if e, err := svc.Config.Get(ctx, "download.format"); err != nil || e.Key != "download.format" {
+		t.Errorf("config key %+v %v", e, err)
+	}
+}
+
+// TestRemoteJobs: core/remote's Jobs list, cancel and remove the server's jobs, their
+// events keep the marks' cache.
+func TestRemoteJobs(t *testing.T) {
+	s, _, _ := newHealthServer(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	m := jobs.New(context.Background())
+	defer m.Shutdown(time.Second)
+	s.api.Jobs = m
+	go s.api.Events.forwardJobs(ctx, m)
+	rc, err := remote.New(remote.Options{URL: s.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rj := rc.Jobs()
+	events, err := rj.Subscribe(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the stream is open once the server's hub has its subscriber
+	for deadline := time.Now().Add(5 * time.Second); subscribers(s.api.Events) == 0 && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	release := make(chan struct{})
+	job := m.Add(jobs.Spec{Kind: jobs.KindDownload, Title: "wait", Providers: []string{"fake"}, MangaID: "opm",
+		Run: func(ctx context.Context, p *jobs.Progress) error {
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			return nil
+		}})
+	select {
+	case e := <-events:
+		if e.Kind != core.JobAdded || e.Job.ID != job.ID {
+			t.Errorf("event %+v", e)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no added event")
+	}
+	if _, ok := rj.MangaStatus("fake", "opm"); !ok {
+		t.Error("no mark of the active download")
+	}
+	if got, err := rj.Get(ctx, job.ID); err != nil || got.Title != "wait" {
+		t.Errorf("get %+v %v", got, err)
+	}
+	if ok, err := rj.Remove(ctx, job.ID); err != nil || ok {
+		t.Errorf("remove an active job: %v %v", ok, err)
+	}
+	if ok, err := rj.Cancel(ctx, job.ID); err != nil || !ok {
+		t.Fatalf("cancel: %v %v", ok, err)
+	}
+	for e := range events {
+		if e.Kind == core.JobFinished && e.Job.ID == job.ID {
+			break
+		}
+	}
+	if _, ok := rj.MangaStatus("fake", "opm"); ok {
+		t.Error("a mark after the job ended")
+	}
+	if ok, err := rj.Cancel(ctx, job.ID); err != nil || ok {
+		t.Errorf("cancel again: %v %v", ok, err)
+	}
+	if ok, err := rj.Remove(ctx, job.ID); err != nil || !ok {
+		t.Errorf("remove: %v %v", ok, err)
+	}
+	if _, err := rj.Download(ctx, core.DownloadReq{Provider: "nope", MangaID: "x", ChapterRefs: []core.ChapterRef{{Number: 1}}}); !errors.Is(err, core.ErrNotFound) {
+		t.Errorf("download from a missing provider: %v", err)
+	}
+	close(release)
+}
+
+func subscribers(h *Events) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.subs)
 }

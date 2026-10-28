@@ -391,6 +391,9 @@ func progressOf(ctx context.Context) func(library.Progress) {
 	return f
 }
 
+// ReportProgress tells the ctx's progress func (WithProgress) p, if any.
+func ReportProgress(ctx context.Context, p library.Progress) { report(ctx, p) }
+
 // report tells the ctx's progress func p, if any.
 func report(ctx context.Context, p library.Progress) {
 	if f := progressOf(ctx); f != nil {

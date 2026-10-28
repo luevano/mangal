@@ -33,6 +33,8 @@ type ScanReport struct {
 	Checked  bool
 	Checks   []library.IDCheck
 	CheckErr error
+	// Summary is a remote scan's (a mangal serve's job): the rest is zero.
+	Summary string
 }
 
 // Scan reconciles the library with the download directory (an error when it doesn't

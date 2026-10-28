@@ -981,6 +981,9 @@ func SourceURLsSummary(rep SourceURLsReport) string {
 
 // ScanSummary is what a scan found, in a line.
 func ScanSummary(rep ScanReport) string {
+	if rep.Summary != "" {
+		return rep.Summary
+	}
 	r := rep.Result
 	parts := []string{fmt.Sprintf("%d chapters added, %d moved, %d removed, %d new folders", r.Added, r.Moved, r.Removed, r.New)}
 	if len(r.Missing) != 0 {
