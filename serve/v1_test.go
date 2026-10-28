@@ -398,3 +398,26 @@ func TestOpWatch(t *testing.T) {
 		t.Errorf("nothing new: %q", got)
 	}
 }
+
+// TestV1DismissPick: a pick is dismissed through plan and apply, then there's nothing to
+// dismiss.
+func TestV1DismissPick(t *testing.T) {
+	s, _, _ := newHealthServer(t)
+	if _, err := s.src.library.SetLinkPick(storage.LinkPick{Manga: 1, Source: "kt", Candidates: []storage.LinkCandidate{{ID: "1", From: "kitsu"}, {ID: "2", From: "fake"}}}); err != nil {
+		t.Fatal(err)
+	}
+	var plan apiv1.ChangeResponse
+	if code := s.call(t, "POST", "/api/v1/library/picks/dismiss", `{"manga":1,"source":"kt"}`, &plan); code != http.StatusOK || plan.Plan == nil || plan.Plan.Nothing {
+		t.Fatalf("plan %d %+v", code, plan)
+	}
+	var applied apiv1.ChangeResponse
+	if code := s.call(t, "POST", "/api/v1/library/picks/dismiss?apply=1", fmt.Sprintf(`{"manga":1,"source":"kt","expect":%q}`, plan.Plan.Hash), &applied); code != http.StatusOK || !applied.Applied {
+		t.Fatalf("apply %d %+v", code, applied)
+	}
+	if pick, _, err := s.src.library.LinkPick(1, "kt"); err != nil || !pick.Dismissed {
+		t.Errorf("pick %+v %v", pick, err)
+	}
+	if code := s.call(t, "POST", "/api/v1/library/picks/dismiss", `{"manga":1,"source":"kt"}`, &plan); code != http.StatusOK || !plan.Plan.Nothing {
+		t.Errorf("again %d %+v", code, plan)
+	}
+}

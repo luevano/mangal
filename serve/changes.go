@@ -170,6 +170,17 @@ func (a *API) LinkLibraryManga(ctx context.Context, request apiv1.LinkLibraryMan
 	return apiv1.LinkLibraryManga200JSONResponse{ChangeJSONResponse: resp}, nil
 }
 
+// DismissLinkPick implements apiv1.StrictServerInterface.
+func (a *API) DismissLinkPick(ctx context.Context, request apiv1.DismissLinkPickRequestObject) (apiv1.DismissLinkPickResponseObject, error) {
+	b := deref(request.Body)
+	resp, err := changeResponse(a.change(ctx, core.DismissPickReq{Manga: b.Manga, Source: lmmeta.IDCode(b.Source)},
+		deref(request.Params.Apply), applyFields{b.Expect, b.Force, b.Confirm}))
+	if err != nil {
+		return nil, err
+	}
+	return apiv1.DismissLinkPick200JSONResponse{ChangeJSONResponse: resp}, nil
+}
+
 // FillBackupLinks implements apiv1.StrictServerInterface.
 func (a *API) FillBackupLinks(ctx context.Context, request apiv1.FillBackupLinksRequestObject) (apiv1.FillBackupLinksResponseObject, error) {
 	b := deref(request.Body)

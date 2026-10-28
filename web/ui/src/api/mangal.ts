@@ -660,6 +660,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/library/picks/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss a library manga's link pick (the ids its sources disagree on)
+         * @description Nothing is linked and it isn't asked again until other ids are found (the TUI's d on a pick, a health pick finding's other way out).
+         */
+        post: operations["dismissLinkPick"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/library/backups": {
         parameters: {
             query?: never;
@@ -2316,6 +2336,12 @@ export interface components {
             };
             rename?: boolean;
             watches?: boolean;
+        };
+        DismissPickRequest: components["schemas"]["ApplyFields"] & {
+            /** Format: int64 */
+            manga: number;
+            /** @description the metadata source's code (al, kt, mal, mu) */
+            source: string;
         };
         BackupsRequest: components["schemas"]["ApplyFields"] & {
             mangas?: number[];
@@ -4007,6 +4033,26 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LinkRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Change"];
+            default: components["responses"]["Error"];
+        };
+    };
+    dismissLinkPick: {
+        parameters: {
+            query?: {
+                /** @description apply the change (needs `expect`, the hash of the plan confirmed), else only plan it */
+                apply?: components["parameters"]["ApplyParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DismissPickRequest"];
             };
         };
         responses: {

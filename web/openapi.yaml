@@ -806,6 +806,27 @@ paths:
           $ref: '#/components/responses/Change'
         default:
           $ref: '#/components/responses/Error'
+  /v1/library/picks/dismiss:
+    post:
+      summary: Dismiss a library manga's link pick (the ids its sources disagree on)
+      description: Nothing is linked and it isn't asked again until other ids are found (the TUI's d on a pick, a health pick finding's other way out).
+      operationId: dismissLinkPick
+      tags: [v1, library, changes]
+      x-mangal-scope: manage
+      x-mangal-plan: true
+      parameters:
+        - $ref: '#/components/parameters/ApplyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DismissPickRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Change'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/library/backups:
     post:
       summary: Fill the Kitsu and MyAnimeList links of mangas linked to AniList
@@ -3378,6 +3399,18 @@ components:
               type: boolean
             watches:
               type: boolean
+    DismissPickRequest:
+      allOf:
+        - $ref: '#/components/schemas/ApplyFields'
+        - type: object
+          required: [manga, source]
+          properties:
+            manga:
+              type: integer
+              format: int64
+            source:
+              type: string
+              description: the metadata source's code (al, kt, mal, mu)
     BackupsRequest:
       allOf:
         - $ref: '#/components/schemas/ApplyFields'

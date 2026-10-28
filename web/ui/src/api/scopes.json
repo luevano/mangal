@@ -85,6 +85,7 @@
   "POST /v1/library/merge": "manage",
   "POST /v1/library/migrate": "admin",
   "POST /v1/library/move": "manage",
+  "POST /v1/library/picks/dismiss": "manage",
   "POST /v1/library/rename": "admin",
   "POST /v1/library/scan": "manage",
   "POST /v1/library/trash/empty": "admin",

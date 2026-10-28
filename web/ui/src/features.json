@@ -205,7 +205,10 @@
     },
     {
       "name": "dismiss a link pick",
-      "not_applicable": "not in the API yet (docs/core.md Progress)"
+      "api": [
+        "dismissLinkPick"
+      ],
+      "not_applicable": "the health page's dismiss hides a pick's finding"
     },
     {
       "name": "backup links",

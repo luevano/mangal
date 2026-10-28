@@ -435,6 +435,22 @@ type DeleteRequest struct {
 	Manga int64 `json:"manga"`
 }
 
+// DismissPickRequest defines model for DismissPickRequest.
+type DismissPickRequest struct {
+	// Confirm empty-trash for an irreversible plan, force-undo for a forced undo
+	Confirm *string `json:"confirm,omitempty"`
+
+	// Expect the hash of the plan confirmed, needed with apply
+	Expect *string `json:"expect,omitempty"`
+
+	// Force apply a forceable plan with blocked reasons
+	Force *bool `json:"force,omitempty"`
+	Manga int64 `json:"manga"`
+
+	// Source the metadata source's code (al, kt, mal, mu)
+	Source string `json:"source"`
+}
+
 // DismissRequest defines model for DismissRequest.
 type DismissRequest struct {
 	// Dismiss keys of findings there now
@@ -1731,6 +1747,12 @@ type MoveLibraryMangaParams struct {
 	Apply *ApplyParam `form:"apply,omitempty" json:"apply,omitempty"`
 }
 
+// DismissLinkPickParams defines parameters for DismissLinkPick.
+type DismissLinkPickParams struct {
+	// Apply apply the change (needs `expect`, the hash of the plan confirmed), else only plan it
+	Apply *ApplyParam `form:"apply,omitempty" json:"apply,omitempty"`
+}
+
 // RenameLibraryParams defines parameters for RenameLibrary.
 type RenameLibraryParams struct {
 	// Apply apply the change (needs `expect`, the hash of the plan confirmed), else only plan it
@@ -1934,6 +1956,9 @@ type MigrateLibraryJSONRequestBody = ApplyFields
 
 // MoveLibraryMangaJSONRequestBody defines body for MoveLibraryManga for application/json ContentType.
 type MoveLibraryMangaJSONRequestBody = MoveRequest
+
+// DismissLinkPickJSONRequestBody defines body for DismissLinkPick for application/json ContentType.
+type DismissLinkPickJSONRequestBody = DismissPickRequest
 
 // RenameLibraryJSONRequestBody defines body for RenameLibrary for application/json ContentType.
 type RenameLibraryJSONRequestBody = RenameRequest
