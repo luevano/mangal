@@ -421,3 +421,42 @@ func TestV1DismissPick(t *testing.T) {
 		t.Errorf("again %d %+v", code, plan)
 	}
 }
+
+// TestV1R3Endpoints: the missing folders in the list, a manga's links with its picks,
+// a single manga's scan, cancel-all.
+func TestV1R3Endpoints(t *testing.T) {
+	s, _, _ := newHealthServer(t)
+	var mangas apiv1.LibraryMangaList
+	if code := s.call(t, "GET", "/api/v1/library/mangas?missing=true", "", &mangas); code != http.StatusOK || mangas.Missing == nil || !slices.Contains(*mangas.Missing, int64(1)) {
+		t.Errorf("missing %d %+v", code, mangas.Missing)
+	}
+	var plain apiv1.LibraryMangaList
+	if code := s.call(t, "GET", "/api/v1/library/mangas", "", &plain); code != http.StatusOK || plain.Missing != nil {
+		t.Errorf("missing without asking %d %+v", code, plain.Missing)
+	}
+	if _, err := s.src.library.SetLinkPick(storage.LinkPick{Manga: 1, Source: "kt", Candidates: []storage.LinkCandidate{{ID: "1", From: "kitsu"}}}); err != nil {
+		t.Fatal(err)
+	}
+	var links apiv1.LibraryLinks
+	if code := s.call(t, "GET", "/api/v1/library/mangas/1/links", "", &links); code != http.StatusOK || links.Info.Manga.ID != 1 || len(links.Picks) != 1 || links.Picks[0].Source != "kt" {
+		t.Errorf("links %d %+v", code, links)
+	}
+	if code := s.call(t, "GET", "/api/v1/library/mangas/99/links", "", nil); code != http.StatusNotFound {
+		t.Errorf("links of no manga %d", code)
+	}
+	var scan apiv1.MangaScan
+	if code := s.call(t, "POST", "/api/v1/library/mangas/1/scan", "", &scan); code != http.StatusUnprocessableEntity {
+		// the memory file system has no /lib: the drive isn't there
+		t.Errorf("scan %d %+v", code, scan)
+	}
+	if code := s.call(t, "POST", "/api/v1/library/mangas/99/scan", "", nil); code != http.StatusNotFound {
+		t.Errorf("scan of no manga %d", code)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.api.Jobs = jobs.New(ctx)
+	var n apiv1.Count
+	if code := s.call(t, "POST", "/api/v1/jobs/cancel-all", "", &n); code != http.StatusOK || n.Count != 0 {
+		t.Errorf("cancel-all %d %+v", code, n)
+	}
+}

@@ -349,6 +349,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/library/mangas/{id}/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan one library manga
+         * @description Reconciles the manga's chapters with its folder (a missing folder is looked for under the download directory), as a library scan does for every manga. No operation, nothing to undo.
+         */
+        post: operations["scanLibraryManga"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/mangas/{id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A library manga's metadata links
+         * @description Each source's ids from its sources' bindings, the library's own ids and the folder's (marker, tag), and the picks a link check left to choose from (dismissed ones too).
+         */
+        get: operations["getLibraryLinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/library/mangas/{id}/hold": {
         parameters: {
             query?: never;
@@ -926,6 +966,23 @@ export interface paths {
         get: operations["listJobs"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/cancel-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel every active job (yours; everyone's with manage) */
+        post: operations["cancelAllJobs"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2178,6 +2235,32 @@ export interface components {
             /** @description how many match, before limit and offset */
             total: number;
             mangas: components["schemas"]["LibraryManga"][];
+            /** @description the ids of the mangas (of all, not only this page) whose folder is gone, with missing=true */
+            missing?: number[];
+        };
+        /** @description mangal's (core.MangaScan), not a stable API */
+        MangaScan: Record<string, never>;
+        LibraryLinks: {
+            info: components["schemas"]["LinkInfo"];
+            picks: components["schemas"]["LinkPick"][];
+        };
+        /** @description mangal's (library.LinkInfo, Go field names), not a stable API */
+        LinkInfo: Record<string, never>;
+        LinkPick: {
+            /** Format: int64 */
+            manga: number;
+            /** @description the metadata source to link (kt) */
+            source: string;
+            /** @description the AniList id the candidates were found for */
+            anilist?: string;
+            candidates: {
+                id: string;
+                /** @description a provider id (its links), or kitsu (Kitsu's mapping) */
+                from: string;
+            }[];
+            /** Format: date-time */
+            found: string;
+            dismissed?: boolean;
         };
         LibraryMangaDetail: {
             manga: components["schemas"]["LibraryManga"];
@@ -2487,6 +2570,8 @@ export interface components {
             manga_id?: string;
             /** @description queued, waiting, running, done, failed, cancelled */
             status: string;
+            /** @description a download for reading */
+            read?: boolean;
             message?: string;
             note?: string;
             done?: number;
@@ -3593,6 +3678,8 @@ export interface operations {
                 duplicates?: boolean;
                 /** @description only the watched mangas (true) or the others (false) */
                 watched?: boolean;
+                /** @description also say which mangas' folders are gone (missing) */
+                missing?: boolean;
                 /** @description at most this many (0 for all) */
                 limit?: components["parameters"]["LimitParam"];
                 /** @description skip this many first */
@@ -3634,6 +3721,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryMangaDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    scanLibraryManga: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description what the scan found, and the manga after it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MangaScan"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getLibraryLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the links */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryLinks"];
                 };
             };
             default: components["responses"]["Error"];
@@ -4382,6 +4515,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Job"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    cancelAllJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description how many were cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Count"];
                 };
             };
             default: components["responses"]["Error"];

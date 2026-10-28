@@ -333,6 +333,11 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/jobs (the `ListJobs` operationId).
 	ListJobs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CancelAllJobs Cancel every active job (yours; everyone's with manage)
+	//
+	// Corresponds with POST /v1/jobs/cancel-all (the `CancelAllJobs` operationId).
+	CancelAllJobs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ClearJobQueueWithBody Cancel the queued jobs (of a provider)
 	//
 	// Takes any type of body and a specified content type.
@@ -534,6 +539,13 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/library/mangas/{id}/hold (the `HoldLibraryManga` operationId).
 	HoldLibraryManga(ctx context.Context, id IDParam, body HoldLibraryMangaJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetLibraryLinks A library manga's metadata links
+	//
+	// Each source's ids from its sources' bindings, the library's own ids and the folder's (marker, tag), and the picks a link check left to choose from (dismissed ones too).
+	//
+	// Corresponds with GET /v1/library/mangas/{id}/links (the `GetLibraryLinks` operationId).
+	GetLibraryLinks(ctx context.Context, id IDParam, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListChapterPages The pages of a downloaded chapter, read from its file (no extraction)
 	//
 	// CBZ, ZIP, EPUB, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
@@ -564,6 +576,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/library/mangas/{id}/retitle (the `RetitleLibraryManga` operationId).
 	RetitleLibraryManga(ctx context.Context, id IDParam, params *RetitleLibraryMangaParams, body RetitleLibraryMangaJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ScanLibraryManga Scan one library manga
+	//
+	// Reconciles the manga's chapters with its folder (a missing folder is looked for under the download directory), as a library scan does for every manga. No operation, nothing to undo.
+	//
+	// Corresponds with POST /v1/library/mangas/{id}/scan (the `ScanLibraryManga` operationId).
+	ScanLibraryManga(ctx context.Context, id IDParam, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetLibrarySourceURL The web page of a library manga's source
 	//
@@ -1705,6 +1724,21 @@ func (c *Client) ListJobs(ctx context.Context, reqEditors ...RequestEditorFn) (*
 	return c.Client.Do(req)
 }
 
+// CancelAllJobs Cancel every active job (yours; everyone's with manage)
+//
+// Corresponds with POST /v1/jobs/cancel-all (the `CancelAllJobs` operationId).
+func (c *Client) CancelAllJobs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelAllJobsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ClearJobQueueWithBody Cancel the queued jobs (of a provider)
 //
 // Takes any type of body and a specified content type.
@@ -2216,6 +2250,23 @@ func (c *Client) HoldLibraryManga(ctx context.Context, id IDParam, body HoldLibr
 	return c.Client.Do(req)
 }
 
+// GetLibraryLinks A library manga's metadata links
+//
+// Each source's ids from its sources' bindings, the library's own ids and the folder's (marker, tag), and the picks a link check left to choose from (dismissed ones too).
+//
+// Corresponds with GET /v1/library/mangas/{id}/links (the `GetLibraryLinks` operationId).
+func (c *Client) GetLibraryLinks(ctx context.Context, id IDParam, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetLibraryLinksRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListChapterPages The pages of a downloaded chapter, read from its file (no extraction)
 //
 // CBZ, ZIP, EPUB, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
@@ -2277,6 +2328,23 @@ func (c *Client) RetitleLibraryMangaWithBody(ctx context.Context, id IDParam, pa
 // Corresponds with POST /v1/library/mangas/{id}/retitle (the `RetitleLibraryManga` operationId).
 func (c *Client) RetitleLibraryManga(ctx context.Context, id IDParam, params *RetitleLibraryMangaParams, body RetitleLibraryMangaJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRetitleLibraryMangaRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ScanLibraryManga Scan one library manga
+//
+// Reconciles the manga's chapters with its folder (a missing folder is looked for under the download directory), as a library scan does for every manga. No operation, nothing to undo.
+//
+// Corresponds with POST /v1/library/mangas/{id}/scan (the `ScanLibraryManga` operationId).
+func (c *Client) ScanLibraryManga(ctx context.Context, id IDParam, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewScanLibraryMangaRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -4858,6 +4926,33 @@ func NewListJobsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewCancelAllJobsRequest constructs an http.Request for the CancelAllJobs method
+func NewCancelAllJobsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/jobs/cancel-all")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewClearJobQueueRequest calls the generic ClearJobQueue builder with application/json body
 func NewClearJobQueueRequest(server string, body ClearJobQueueJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -5730,6 +5825,18 @@ func NewListLibraryMangasRequest(server string, params *ListLibraryMangasParams)
 
 		}
 
+		if params.Missing != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "missing", *params.Missing, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
@@ -5986,6 +6093,40 @@ func NewHoldLibraryMangaRequestWithBody(server string, id IDParam, contentType s
 	return req, nil
 }
 
+// NewGetLibraryLinksRequest constructs an http.Request for the GetLibraryLinks method
+func NewGetLibraryLinksRequest(server string, id IDParam) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/library/mangas/%s/links", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListChapterPagesRequest constructs an http.Request for the ListChapterPages method
 func NewListChapterPagesRequest(server string, id IDParam, params *ListChapterPagesParams) (*http.Request, error) {
 	var err error
@@ -6177,6 +6318,40 @@ func NewRetitleLibraryMangaRequestWithBody(server string, id IDParam, params *Re
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewScanLibraryMangaRequest constructs an http.Request for the ScanLibraryManga method
+func NewScanLibraryMangaRequest(server string, id IDParam) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/library/mangas/%s/scan", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -9323,6 +9498,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/jobs (the `ListJobs` operationId).
 	ListJobsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListJobsResponse, error)
 
+	// CancelAllJobsWithResponse Cancel every active job (yours; everyone's with manage)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/jobs/cancel-all (the `CancelAllJobs` operationId).
+	CancelAllJobsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*CancelAllJobsResponse, error)
+
 	// ClearJobQueueWithBodyWithResponse Cancel the queued jobs (of a provider)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -9554,6 +9736,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/library/mangas/{id}/hold (the `HoldLibraryManga` operationId).
 	HoldLibraryMangaWithResponse(ctx context.Context, id IDParam, body HoldLibraryMangaJSONRequestBody, reqEditors ...RequestEditorFn) (*HoldLibraryMangaResponse, error)
 
+	// GetLibraryLinksWithResponse A library manga's metadata links
+	//
+	// Each source's ids from its sources' bindings, the library's own ids and the folder's (marker, tag), and the picks a link check left to choose from (dismissed ones too).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/library/mangas/{id}/links (the `GetLibraryLinks` operationId).
+	GetLibraryLinksWithResponse(ctx context.Context, id IDParam, reqEditors ...RequestEditorFn) (*GetLibraryLinksResponse, error)
+
 	// ListChapterPagesWithResponse The pages of a downloaded chapter, read from its file (no extraction)
 	//
 	// CBZ, ZIP, EPUB, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
@@ -9588,6 +9779,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/library/mangas/{id}/retitle (the `RetitleLibraryManga` operationId).
 	RetitleLibraryMangaWithResponse(ctx context.Context, id IDParam, params *RetitleLibraryMangaParams, body RetitleLibraryMangaJSONRequestBody, reqEditors ...RequestEditorFn) (*RetitleLibraryMangaResponse, error)
+
+	// ScanLibraryMangaWithResponse Scan one library manga
+	//
+	// Reconciles the manga's chapters with its folder (a missing folder is looked for under the download directory), as a library scan does for every manga. No operation, nothing to undo.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/library/mangas/{id}/scan (the `ScanLibraryManga` operationId).
+	ScanLibraryMangaWithResponse(ctx context.Context, id IDParam, reqEditors ...RequestEditorFn) (*ScanLibraryMangaResponse, error)
 
 	// GetLibrarySourceURLWithResponse The web page of a library manga's source
 	//
@@ -11387,6 +11587,54 @@ func (r ListJobsResponse) ContentType() string {
 	return ""
 }
 
+type CancelAllJobsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Count
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CancelAllJobsResponse) GetJSON200() *Count {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CancelAllJobsResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CancelAllJobsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelAllJobsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelAllJobsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CancelAllJobsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ClearJobQueueResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -12484,6 +12732,54 @@ func (r HoldLibraryMangaResponse) ContentType() string {
 	return ""
 }
 
+type GetLibraryLinksResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LibraryLinks
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetLibraryLinksResponse) GetJSON200() *LibraryLinks {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetLibraryLinksResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetLibraryLinksResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetLibraryLinksResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetLibraryLinksResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetLibraryLinksResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListChapterPagesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -12622,6 +12918,54 @@ func (r RetitleLibraryMangaResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r RetitleLibraryMangaResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ScanLibraryMangaResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MangaScan
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ScanLibraryMangaResponse) GetJSON200() *MangaScan {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ScanLibraryMangaResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ScanLibraryMangaResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ScanLibraryMangaResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ScanLibraryMangaResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ScanLibraryMangaResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -15876,6 +16220,19 @@ func (c *ClientWithResponses) ListJobsWithResponse(ctx context.Context, reqEdito
 	return ParseListJobsResponse(rsp)
 }
 
+// CancelAllJobsWithResponse Cancel every active job (yours; everyone's with manage)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/jobs/cancel-all (the `CancelAllJobs` operationId).
+func (c *ClientWithResponses) CancelAllJobsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*CancelAllJobsResponse, error) {
+	rsp, err := c.CancelAllJobs(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelAllJobsResponse(rsp)
+}
+
 // ClearJobQueueWithBodyWithResponse Cancel the queued jobs (of a provider)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -16293,6 +16650,21 @@ func (c *ClientWithResponses) HoldLibraryMangaWithResponse(ctx context.Context, 
 	return ParseHoldLibraryMangaResponse(rsp)
 }
 
+// GetLibraryLinksWithResponse A library manga's metadata links
+//
+// Each source's ids from its sources' bindings, the library's own ids and the folder's (marker, tag), and the picks a link check left to choose from (dismissed ones too).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/library/mangas/{id}/links (the `GetLibraryLinks` operationId).
+func (c *ClientWithResponses) GetLibraryLinksWithResponse(ctx context.Context, id IDParam, reqEditors ...RequestEditorFn) (*GetLibraryLinksResponse, error) {
+	rsp, err := c.GetLibraryLinks(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetLibraryLinksResponse(rsp)
+}
+
 // ListChapterPagesWithResponse The pages of a downloaded chapter, read from its file (no extraction)
 //
 // CBZ, ZIP, EPUB, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
@@ -16350,6 +16722,21 @@ func (c *ClientWithResponses) RetitleLibraryMangaWithResponse(ctx context.Contex
 		return nil, err
 	}
 	return ParseRetitleLibraryMangaResponse(rsp)
+}
+
+// ScanLibraryMangaWithResponse Scan one library manga
+//
+// Reconciles the manga's chapters with its folder (a missing folder is looked for under the download directory), as a library scan does for every manga. No operation, nothing to undo.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/library/mangas/{id}/scan (the `ScanLibraryManga` operationId).
+func (c *ClientWithResponses) ScanLibraryMangaWithResponse(ctx context.Context, id IDParam, reqEditors ...RequestEditorFn) (*ScanLibraryMangaResponse, error) {
+	rsp, err := c.ScanLibraryManga(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseScanLibraryMangaResponse(rsp)
 }
 
 // GetLibrarySourceURLWithResponse The web page of a library manga's source
@@ -18278,6 +18665,39 @@ func ParseListJobsResponse(rsp *http.Response) (*ListJobsResponse, error) {
 	return response, nil
 }
 
+// ParseCancelAllJobsResponse parses an HTTP response from a CancelAllJobsWithResponse call
+func ParseCancelAllJobsResponse(rsp *http.Response) (*CancelAllJobsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelAllJobsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Count
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseClearJobQueueResponse parses an HTTP response from a ClearJobQueueWithResponse call
 func ParseClearJobQueueResponse(rsp *http.Response) (*ClearJobQueueResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -19045,6 +19465,39 @@ func ParseHoldLibraryMangaResponse(rsp *http.Response) (*HoldLibraryMangaRespons
 	return response, nil
 }
 
+// ParseGetLibraryLinksResponse parses an HTTP response from a GetLibraryLinksWithResponse call
+func ParseGetLibraryLinksResponse(rsp *http.Response) (*GetLibraryLinksResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetLibraryLinksResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LibraryLinks
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListChapterPagesResponse parses an HTTP response from a ListChapterPagesWithResponse call
 func ParseListChapterPagesResponse(rsp *http.Response) (*ListChapterPagesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -19133,6 +19586,39 @@ func ParseRetitleLibraryMangaResponse(rsp *http.Response) (*RetitleLibraryMangaR
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Change
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseScanLibraryMangaResponse parses an HTTP response from a ScanLibraryMangaWithResponse call
+func ParseScanLibraryMangaResponse(rsp *http.Response) (*ScanLibraryMangaResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ScanLibraryMangaResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MangaScan
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

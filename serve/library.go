@@ -2,11 +2,13 @@ package serve
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/luevano/libmangal"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
@@ -78,7 +80,8 @@ func (a *API) ListLibraryMangas(ctx context.Context, request apiv1.ListLibraryMa
 	if err != nil {
 		return nil, err
 	}
-	ml, err := c.Library.Mangas(ctx, core.MangasOptions{})
+	p := request.Params
+	ml, err := c.Library.Mangas(ctx, core.MangasOptions{Missing: deref(p.Missing)})
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +90,6 @@ func (a *API) ListLibraryMangas(ctx context.Context, request apiv1.ListLibraryMa
 	if err != nil {
 		return nil, err
 	}
-	p := request.Params
 	duplicates := map[int64]bool{}
 	if deref(p.Duplicates) {
 		dups, err := c.Library.Duplicates(ctx)
@@ -118,7 +120,11 @@ func (a *API) ListLibraryMangas(ctx context.Context, request apiv1.ListLibraryMa
 		}
 		list = append(list, toAPILibraryManga(m, isWatched))
 	}
-	return apiv1.ListLibraryMangas200JSONResponse{Total: len(list), Mangas: orEmpty(page(list, p.Limit, p.Offset))}, nil
+	out := apiv1.ListLibraryMangas200JSONResponse{Total: len(list), Mangas: orEmpty(page(list, p.Limit, p.Offset))}
+	if deref(p.Missing) {
+		out.Missing = &ml.Missing
+	}
+	return out, nil
 }
 
 func mangaMatches(m storage.Manga, q string) bool {
@@ -177,6 +183,47 @@ func (a *API) GetLibraryManga(ctx context.Context, request apiv1.GetLibraryManga
 		Marker:   markerErr == nil,
 		Missing:  statErr != nil,
 	}, nil
+}
+
+// ScanLibraryManga implements apiv1.StrictServerInterface: the library manga screen's
+// scan on open.
+func (a *API) ScanLibraryManga(ctx context.Context, request apiv1.ScanLibraryMangaRequestObject) (apiv1.ScanLibraryMangaResponseObject, error) {
+	c, err := a.services(ctx)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.Library.ScanManga(ctx, request.Id)
+	if err != nil {
+		if !errors.Is(err, core.ErrNotFound) {
+			// the drive not mounted, a folder that can't be read
+			err = unprocessable(err)
+		}
+		return nil, err
+	}
+	return apiv1.ScanLibraryManga200JSONResponse(res), nil
+}
+
+// GetLibraryLinks implements apiv1.StrictServerInterface.
+func (a *API) GetLibraryLinks(ctx context.Context, request apiv1.GetLibraryLinksRequestObject) (apiv1.GetLibraryLinksResponseObject, error) {
+	c, err := a.services(ctx)
+	if err != nil {
+		return nil, err
+	}
+	info, err := c.Library.Links(ctx, request.Id)
+	if err != nil {
+		return nil, err
+	}
+	out := apiv1.GetLibraryLinks200JSONResponse{Info: info, Picks: []storage.LinkPick{}}
+	for _, src := range client.MetadataSources {
+		pick, ok, err := c.Library.LinkPick(ctx, request.Id, src.Code)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out.Picks = append(out.Picks, pick)
+		}
+	}
+	return out, nil
 }
 
 // GetLibrarySourceURL implements apiv1.StrictServerInterface.

@@ -9,6 +9,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
+	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
 )
 
@@ -746,14 +747,20 @@ type Job struct {
 	Id       int64      `json:"id"`
 
 	// Kind download, check, scan, urls, sources or health
-	Kind      string       `json:"kind"`
-	MangaId   *string      `json:"manga_id,omitempty"`
-	Message   *string      `json:"message,omitempty"`
-	Note      *string      `json:"note,omitempty"`
-	Part      *float64     `json:"part,omitempty"`
-	Providers []string     `json:"providers"`
-	Results   *[]JobResult `json:"results,omitempty"`
-	Started   *time.Time   `json:"started,omitempty"`
+	Kind    string  `json:"kind"`
+	MangaId *string `json:"manga_id,omitempty"`
+	Message *string `json:"message,omitempty"`
+	Note    *string `json:"note,omitempty"`
+
+	// Origin who started it ("api: user david", "mangal serve")
+	Origin    *string  `json:"origin,omitempty"`
+	Part      *float64 `json:"part,omitempty"`
+	Providers []string `json:"providers"`
+
+	// Read a download for reading
+	Read    *bool        `json:"read,omitempty"`
+	Results *[]JobResult `json:"results,omitempty"`
+	Started *time.Time   `json:"started,omitempty"`
 
 	// Status queued, waiting, running, done, failed, cancelled
 	Status string `json:"status"`
@@ -825,6 +832,13 @@ type LibraryChapter struct {
 	Reads int `json:"reads"`
 }
 
+// LibraryLinks defines model for LibraryLinks.
+type LibraryLinks struct {
+	// Info mangal's (library.LinkInfo, Go field names), not a stable API
+	Info  LinkInfo   `json:"info"`
+	Picks []LinkPick `json:"picks"`
+}
+
 // LibraryManga defines model for LibraryManga.
 type LibraryManga struct {
 	Chapters int `json:"chapters"`
@@ -868,6 +882,9 @@ type LibraryMangaDetail struct {
 type LibraryMangaList struct {
 	Mangas []LibraryManga `json:"mangas"`
 
+	// Missing the ids of the mangas (of all, not only this page) whose folder is gone, with missing=true
+	Missing *[]int64 `json:"missing,omitempty"`
+
 	// Total how many match, before limit and offset
 	Total int `json:"total"`
 }
@@ -886,6 +903,12 @@ type LibrarySource struct {
 	// Url the manga's web page (http or https), absent when unknown
 	Url *string `json:"url,omitempty"`
 }
+
+// LinkInfo mangal's (library.LinkInfo, Go field names), not a stable API
+type LinkInfo = library.LinkInfo
+
+// LinkPick defines model for LinkPick.
+type LinkPick = storage.LinkPick
 
 // LinkRequest defines model for LinkRequest.
 type LinkRequest struct {
@@ -938,6 +961,9 @@ type Manga struct {
 	Title  string  `json:"title"`
 	Url    *string `json:"url,omitempty"`
 }
+
+// MangaScan mangal's (core.MangaScan), not a stable API
+type MangaScan = core.MangaScan
 
 // MarkRequest defines model for MarkRequest.
 type MarkRequest struct {
@@ -1691,6 +1717,9 @@ type ListLibraryMangasParams struct {
 
 	// Watched only the watched mangas (true) or the others (false)
 	Watched *bool `form:"watched,omitempty" json:"watched,omitempty"`
+
+	// Missing also say which mangas' folders are gone (missing)
+	Missing *bool `form:"missing,omitempty" json:"missing,omitempty"`
 
 	// Limit at most this many (0 for all)
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`

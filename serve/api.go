@@ -27,7 +27,7 @@ import (
 )
 
 // APIVersion is the version of the API v1 (the spec's).
-const APIVersion = "1.1.0"
+const APIVersion = "1.2.0"
 
 // runs tracks the check runs of the server: the running ones and how to cancel the ones
 // asked through the API.

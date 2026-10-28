@@ -1,6 +1,6 @@
 openapi: "3.0.0"
 info:
-  version: 1.1.0
+  version: 1.2.0
   title: mangal API
   description: |
     The HTTP API v1 of `mangal serve` and `mangal web` under /api/v1 (tag v1). Paths are
@@ -411,6 +411,11 @@ paths:
           description: only the watched mangas (true) or the others (false)
           schema:
             type: boolean
+        - name: missing
+          in: query
+          description: also say which mangas' folders are gone (missing)
+          schema:
+            type: boolean
         - $ref: '#/components/parameters/LimitParam'
         - $ref: '#/components/parameters/OffsetParam'
       responses:
@@ -437,6 +442,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LibraryMangaDetail'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}/scan:
+    post:
+      summary: Scan one library manga
+      description: Reconciles the manga's chapters with its folder (a missing folder is looked for under the download directory), as a library scan does for every manga. No operation, nothing to undo.
+      operationId: scanLibraryManga
+      tags: [v1, library]
+      x-mangal-scope: manage
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '200':
+          description: what the scan found, and the manga after it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MangaScan'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/library/mangas/{id}/links:
+    get:
+      summary: A library manga's metadata links
+      description: Each source's ids from its sources' bindings, the library's own ids and the folder's (marker, tag), and the picks a link check left to choose from (dismissed ones too).
+      operationId: getLibraryLinks
+      tags: [v1, library]
+      x-mangal-scope: read
+      parameters:
+        - $ref: '#/components/parameters/IDParam'
+      responses:
+        '200':
+          description: the links
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LibraryLinks'
         default:
           $ref: '#/components/responses/Error'
   /v1/library/mangas/{id}/hold:
@@ -1121,6 +1162,21 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Job'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/jobs/cancel-all:
+    post:
+      summary: Cancel every active job (yours; everyone's with manage)
+      operationId: cancelAllJobs
+      tags: [v1, jobs]
+      x-mangal-scope: download
+      responses:
+        '200':
+          description: how many were cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Count'
         default:
           $ref: '#/components/responses/Error'
   /v1/jobs/clear:
@@ -3096,6 +3152,66 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LibraryManga'
+        missing:
+          type: array
+          description: the ids of the mangas (of all, not only this page) whose folder is gone, with missing=true
+          items:
+            type: integer
+            format: int64
+    MangaScan:
+      type: object
+      description: mangal's (core.MangaScan), not a stable API
+      x-go-type: core.MangaScan
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/core
+    LibraryLinks:
+      type: object
+      required: [info, picks]
+      properties:
+        info:
+          $ref: '#/components/schemas/LinkInfo'
+        picks:
+          type: array
+          items:
+            $ref: '#/components/schemas/LinkPick'
+    LinkInfo:
+      type: object
+      description: mangal's (library.LinkInfo, Go field names), not a stable API
+      x-go-type: library.LinkInfo
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/library
+    LinkPick:
+      type: object
+      x-go-type: storage.LinkPick
+      x-go-type-import:
+        path: github.com/luevano/mangal/v5/storage
+      required: [manga, source, candidates, found]
+      properties:
+        manga:
+          type: integer
+          format: int64
+        source:
+          type: string
+          description: the metadata source to link (kt)
+        anilist:
+          type: string
+          description: the AniList id the candidates were found for
+        candidates:
+          type: array
+          items:
+            type: object
+            required: [id, from]
+            properties:
+              id:
+                type: string
+              from:
+                type: string
+                description: a provider id (its links), or kitsu (Kitsu's mapping)
+        found:
+          type: string
+          format: date-time
+        dismissed:
+          type: boolean
     LibraryMangaDetail:
       type: object
       required: [manga, bindings, watches, marker, missing]
@@ -3729,6 +3845,9 @@ components:
         status:
           type: string
           description: queued, waiting, running, done, failed, cancelled
+        read:
+          type: boolean
+          description: a download for reading
         message:
           type: string
         note:

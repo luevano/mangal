@@ -21,6 +21,9 @@ import (
 func toAPIJob(j core.Job) apiv1.Job {
 	job := apiv1.Job{Id: j.ID, Kind: j.Kind.String(), Title: j.Title, Providers: orEmpty(j.Providers), Status: j.Status.String(),
 		Added: j.Added, Started: optTime(j.Started), Finished: optTime(j.Finished)}
+	if j.Read {
+		job.Read = &j.Read
+	}
 	for _, f := range []struct {
 		v string
 		p **string
@@ -194,6 +197,42 @@ func (a *API) RemoveJob(ctx context.Context, request apiv1.RemoveJobRequestObjec
 		return nil, newAPIError(http.StatusConflict, CodeRefused, "job %d is %s, cancel it first", j.ID, j.Status)
 	}
 	return apiv1.RemoveJob204Response{}, nil
+}
+
+// CancelAllJobs implements apiv1.StrictServerInterface: the caller's active jobs, every
+// one with manage.
+func (a *API) CancelAllJobs(ctx context.Context, _ apiv1.CancelAllJobsRequestObject) (apiv1.CancelAllJobsResponseObject, error) {
+	svc, err := a.jobService(ctx)
+	if err != nil {
+		return nil, err
+	}
+	n := 0
+	if who, _ := identityOf(ctx); who.has(ScopeManage) {
+		if n, err = svc.CancelAll(ctx); err != nil {
+			return nil, err
+		}
+	} else {
+		list, err := svc.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, j := range list {
+			if !j.Status.Active() || j.Origin != jobOrigin(ctx) {
+				continue
+			}
+			ok, err := svc.Cancel(ctx, j.ID)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				n++
+			}
+		}
+	}
+	if n > 0 {
+		log.Info("%s cancelled through the API", stringutil.Quantify(n, "job", "jobs"))
+	}
+	return apiv1.CancelAllJobs200JSONResponse{Count: n}, nil
 }
 
 // ClearJobQueue implements apiv1.StrictServerInterface.
