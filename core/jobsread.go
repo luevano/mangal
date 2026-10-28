@@ -77,8 +77,10 @@ type Job struct {
 type JobResult struct {
 	Chapter float32 `json:"chapter"`
 	Title   string  `json:"title"`
-	// Path is the downloaded file, Skipped why it wasn't written (it exists).
+	// Path is the downloaded file, Status libmangal's status of it (new, exists, ...),
+	// Skipped why it wasn't written (it exists).
 	Path    string `json:"path,omitempty"`
+	Status  string `json:"status,omitempty"`
 	Skipped string `json:"skipped,omitempty"`
 	// Unavailable is why it wasn't tried (the provider can't download it).
 	Unavailable string `json:"unavailable,omitempty"`
@@ -87,6 +89,9 @@ type JobResult struct {
 
 // Failed is true when it failed to download.
 func (r JobResult) Failed() bool { return r.Error != "" }
+
+// Succeed is true once it downloaded.
+func (r JobResult) Succeed() bool { return !r.Failed() && r.Path != "" }
 
 // ToDownload is true while it's yet to be downloaded.
 func (r JobResult) ToDownload() bool { return !r.Failed() && r.Path == "" && r.Unavailable == "" }
@@ -119,7 +124,7 @@ func JobOf(j jobs.Job) Job {
 		info := r.Chapter.Info()
 		jr := JobResult{Chapter: info.Number, Title: info.Title, Unavailable: r.Unavailable}
 		if r.Down != nil {
-			jr.Path, jr.Skipped = r.Down.Path(), r.Down.Skipped
+			jr.Path, jr.Status, jr.Skipped = r.Down.Path(), string(r.Down.ChapterStatus), r.Down.Skipped
 		}
 		if r.Err != nil {
 			jr.Error = r.Err.Error()
