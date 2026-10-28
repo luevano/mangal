@@ -7,15 +7,15 @@ default: run
 
 # just run without compiling/installling
 run *args='': ui-dist
-    go run -tags webui . $@
+    go run -tags webui,nodynamic . $@
 
 # build the web UI and install mangal to $GOBIN (~/go/bin)
 install: ui
-    go install -tags webui -trimpath -ldflags "-s -w" .
+    go install -tags webui,nodynamic -trimpath -ldflags "-s -w" .
 
 # build the web UI and mangal
 build: ui
-    go build -tags webui -trimpath -ldflags "-s -w" .
+    go build -tags webui,nodynamic -trimpath -ldflags "-s -w" .
 
 # build the web UI (web/ui/dist, embedded by the webui tag), needs node ^22.18 or >=24.12
 ui:
@@ -29,7 +29,7 @@ ui-dist:
 
 # run tests
 test:
-    go test -race ./...
+    go test -race -tags nodynamic ./...
 
 # generate assets
 generate: ui-dist

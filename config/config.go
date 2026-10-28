@@ -335,6 +335,10 @@ var Download = configDownload{
 	ModeFile:  modeEntry("download.mode_file_decimal", 0o644, "Permission bits used for all files created. Encodes into `int64` (decimal)."),
 	SkipIfExists: boolEntry("download.skip_if_exists", true,
 		"Skip downloading chapter if its already downloaded (exists at path). Metadata will still be created if needed."),
+	WebP: boolEntry("download.webp", false,
+		"Convert the pages to lossy WebP (smaller files, download.webp_quality), not for PDF. Pages already in WebP or that can't be decoded are kept as they are."),
+	WebPQuality: intEntry("download.webp_quality", libmangal.DefaultWebPQuality, 1, 100,
+		"Quality of the WebP pages (download.webp), 1 to 100."),
 	Provider: configDownloadProvider{
 		CreateDir: boolEntry("download.provider.create_dir", false, "Create provider directory."),
 		NameTemplate: templateEntry("download.provider.name_template", "{{ .Name | sanitize }}",

@@ -54,6 +54,8 @@ type configDownload struct {
 	ModeDir      *entry[int64, fs.FileMode]
 	ModeFile     *entry[int64, fs.FileMode]
 	SkipIfExists *entry[bool, bool]
+	WebP         *entry[bool, bool]
+	WebPQuality  *entry[int64, int]
 	Provider     configDownloadProvider
 	Manga        configDownloadManga
 	Volume       configDownloadVolume
