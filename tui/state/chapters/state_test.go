@@ -270,6 +270,9 @@ func TestDownloadQueues(t *testing.T) {
 	t.Cleanup(func() { _ = config.Download.Metadata.Strict.Set(old) })
 
 	got := base.Drain(s.Update(ctx, downloadMsg{chapters: list[:2]}))
+	if len(got) == 1 {
+		got = base.Drain(s.Update(ctx, got[0]))
+	}
 	if len(got) != 1 {
 		t.Fatalf("the batch sent %v, want a notice", got)
 	}

@@ -110,7 +110,10 @@ func (s *state) Subtitle() string {
 	return strings.Join(parts, s.sep)
 }
 
-// load takes the job as it is now.
+// retriedMsg is the job queued again.
+type retriedMsg struct{}
+
+// load takes the job as it is now (a remote server's from the jobs' cache).
 func (s *state) load(ctx context.Context) {
 	job, err := tuijobs.Service().Get(ctx, s.id)
 	if err != nil {
@@ -156,21 +159,26 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, s.cancel):
-			if ok, err := tuijobs.Service().Cancel(ctx, s.id); err != nil {
-				return func() tea.Msg { return err }
-			} else if ok {
-				return base.Notify("Cancelling " + s.job.Title)
-			}
-			return nil
+			id, title := s.id, s.job.Title
+			return base.Load(ctx, "", func(ctx context.Context) (bool, error) {
+				return tuijobs.Service().Cancel(ctx, id)
+			}, func(ok bool) tea.Msg {
+				if ok {
+					return base.NotificationMsg{Message: "Cancelling " + title}
+				}
+				return nil
+			})
 		case key.Matches(msg, s.open):
 			return s.openCmd()
 		case key.Matches(msg, s.retry):
-			if _, err := tuijobs.Service().Retry(ctx, s.id); err != nil {
-				return func() tea.Msg { return err }
-			}
-			s.load(ctx)
-			return tea.Batch(s.spinner.Tick, s.Resize(s.size))
+			id := s.id
+			return base.Load(ctx, "", func(ctx context.Context) (core.Job, error) {
+				return tuijobs.Service().Retry(ctx, id)
+			}, func(core.Job) tea.Msg { return retriedMsg{} })
 		}
+	case retriedMsg:
+		s.load(ctx)
+		return tea.Batch(s.spinner.Tick, s.Resize(s.size))
 	case spinner.TickMsg:
 		if !s.job.Status.Active() {
 			return nil

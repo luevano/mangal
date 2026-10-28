@@ -244,6 +244,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return nil
 	case downloadMsg:
 		return s.download(ctx, msg)
+	case queuedMsg:
+		return s.onQueued(msg)
 	case tuijobs.ChangedMsg:
 		return s.onJobs(ctx, msg)
 	case readMsg:

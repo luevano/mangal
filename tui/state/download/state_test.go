@@ -120,7 +120,9 @@ func TestJobView(t *testing.T) {
 
 	// r queues the failed chapter again
 	fail = false
-	s.Update(ctx, press("r"))
+	for _, msg := range base.Drain(s.Update(ctx, press("r"))) {
+		s.Update(ctx, msg)
+	}
 	waitStatus(t, m, job.ID, jobs.Done)
 	s.Update(ctx, tuijobs.ChangedMsg{})
 	if _, succ, _ := getEach(s.job.Results); len(succ) != 2 {
@@ -145,7 +147,9 @@ func TestJobViewCancel(t *testing.T) {
 	if got := ansi.Strip(s.View()); !strings.Contains(got, "Downloading chapter 1 (1/1)") {
 		t.Errorf("running view:\n%s", got)
 	}
-	s.Update(ctx, press("d"))
+	if got := base.Drain(s.Update(ctx, press("d"))); len(got) != 1 {
+		t.Errorf("cancel sent %v, want a notice", got)
+	}
 	waitStatus(t, m, job.ID, jobs.Cancelled)
 	s.Update(ctx, tuijobs.ChangedMsg{})
 	if got := ansi.Strip(s.View()); !strings.Contains(got, "Cancelled.") {

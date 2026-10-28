@@ -152,19 +152,31 @@ func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
 	for i, c := range fresh {
 		refs[i] = core.ChapterRefOf(c)
 	}
-	job, err := tuijobs.Download(ctx, core.DownloadReq{Provider: provider, MangaID: mangaID, ChapterRefs: refs, Read: msg.read, Origin: s.Key(),
-		Have: &core.DownloadHave{Client: s.client, Manga: s.manga, Chapters: fresh}}, batch)
-	if err != nil {
-		return func() tea.Msg { return err }
-	}
+	req := core.DownloadReq{Provider: provider, MangaID: mangaID, ChapterRefs: refs, Read: msg.read, Origin: s.Key(),
+		Have: &core.DownloadHave{Client: s.client, Manga: s.manga, Chapters: fresh}}
+	// a remote server's jobs answer over the network: not in Update
+	return base.Load(ctx, "", func(ctx context.Context) (queuedMsg, error) {
+		job, err := tuijobs.Download(ctx, req, batch)
+		return queuedMsg{job: job, read: msg.read, batch: batch, first: fresh[0]}, err
+	}, func(m queuedMsg) tea.Msg { return m })
+}
+
+// queuedMsg is a download queued.
+type queuedMsg struct {
+	job         core.Job
+	read, batch bool
+	first       mangadata.Chapter
+}
+
+func (s *state) onQueued(msg queuedMsg) tea.Cmd {
 	if msg.read {
-		s.reading, s.readChapter = job.ID, fresh[0]
+		s.reading, s.readChapter = msg.job.ID, msg.first
 		return nil
 	}
-	if batch {
+	if msg.batch {
 		// they're queued, the marks show them
 		s.unselectAll()
-		return base.NotifyWithDuration(batchNotice(job), batchNoticeDuration)
+		return base.NotifyWithDuration(batchNotice(msg.job), batchNoticeDuration)
 	}
 	return nil
 }

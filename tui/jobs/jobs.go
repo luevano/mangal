@@ -243,9 +243,16 @@ func capitalize(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
+// cached are jobs that keep their list (a remote server's): drawn on every view, no
+// request each time.
+type cached interface{ Active() []core.Job }
+
 // active are the active jobs.
 func (a *activity) active() []core.Job {
-	// shortcut: drawn on every view; the local jobs answer at once, a remote one (R2) wants a cached list
+	if c, ok := a.svc.(cached); ok {
+		return c.Active()
+	}
+	// the local jobs answer at once
 	list, err := a.svc.List(context.Background())
 	if err != nil {
 		log.Warn("tui: list the jobs: %s", err)
