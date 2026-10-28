@@ -335,7 +335,7 @@ func (s *state) load(ctx context.Context, network bool) tea.Cmd {
 	}
 	all := s.all
 	return base.LoadWithStatus(ctx, label, func(ctx context.Context, status func(string)) (loadedMsg, error) {
-		c, err := base.Core()
+		c, err := base.Services()
 		if err != nil {
 			return loadedMsg{}, err
 		}

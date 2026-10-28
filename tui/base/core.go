@@ -12,22 +12,25 @@ import (
 // Core is the app's services (core.Default). Swapped in tests.
 var Core = core.Default
 
-// Library is the core's Library.
-func Library() (core.Library, error) {
+// Services are the core's services.
+func Services() (core.Services, error) {
 	c, err := Core()
 	if err != nil {
-		return nil, err
+		return core.Services{}, err
 	}
-	return c.Library, nil
+	return c.Services, nil
 }
 
-// Changes is the core's Changes.
+// Library is the services' Library.
+func Library() (core.Library, error) {
+	s, err := Services()
+	return s.Library, err
+}
+
+// Changes is the services' Changes.
 func Changes() (core.Changes, error) {
-	c, err := Core()
-	if err != nil {
-		return nil, err
-	}
-	return c.Changes, nil
+	s, err := Services()
+	return s.Changes, err
 }
 
 // WithStatus is ctx telling status where a change's plan or apply is.

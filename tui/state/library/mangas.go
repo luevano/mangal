@@ -283,7 +283,7 @@ func (s *mangasState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case setRootMsg:
 		// in Update, the config isn't safe to write from the background; there may be no
 		// file yet
-		c, err := base.Core()
+		c, err := base.Services()
 		if err == nil {
 			_, err = c.Config.Set(ctx, config.Download.Path.Key, msg.dir)
 		}
@@ -425,7 +425,7 @@ func (s *mangasState) scanCmd(ctx context.Context, check bool) tea.Cmd {
 
 // scan scans the library (core's Library.Scan), check checks the ids and the statuses too.
 func scan(ctx context.Context, check bool, status func(string)) (scannedMsg, error) {
-	c, err := base.Core()
+	c, err := base.Services()
 	if err != nil {
 		return scannedMsg{}, err
 	}

@@ -182,7 +182,7 @@ func capitalize(s string) string {
 
 // scanLibrary scans the library, the notification says what it found.
 func scanLibrary(ctx context.Context, status func(string)) (string, error) {
-	c, err := base.Core()
+	c, err := base.Services()
 	if err != nil {
 		return "", err
 	}
@@ -213,7 +213,7 @@ func (s *state) dismiss(ctx context.Context, f health.Finding) tea.Cmd {
 		return base.Notify("This finding can't be dismissed")
 	}
 	return base.Load(ctx, "", func(ctx context.Context) (dismissedMsg, error) {
-		c, err := base.Core()
+		c, err := base.Services()
 		if err != nil {
 			return dismissedMsg{}, err
 		}

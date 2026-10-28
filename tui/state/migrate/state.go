@@ -92,7 +92,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			if _, err := base.ApplyPlan(ctx, plan, status); err != nil {
 				return migratedMsg{}, err
 			}
-			c, err := base.Core()
+			c, err := base.Services()
 			if err != nil {
 				return migratedMsg{}, err
 			}

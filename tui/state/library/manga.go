@@ -126,7 +126,7 @@ func (s *mangaState) mangaCmd(ctx context.Context) tea.Cmd {
 func (s *mangaState) bindingsCmd(ctx context.Context) tea.Cmd {
 	id := s.manga.ID
 	return base.Load(ctx, "", func(ctx context.Context) (mangaBindingsMsg, error) {
-		c, err := base.Core()
+		c, err := base.Services()
 		if err != nil {
 			return nil, err
 		}

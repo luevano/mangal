@@ -81,7 +81,7 @@ func (s *state) Init(ctx context.Context) tea.Cmd { return s.reload(ctx) }
 
 func (s *state) reload(ctx context.Context) tea.Cmd {
 	return base.Load(ctx, "", func(context.Context) (loadedMsg, error) {
-		c, err := base.Core()
+		c, err := base.Services()
 		if err != nil {
 			return nil, err
 		}
