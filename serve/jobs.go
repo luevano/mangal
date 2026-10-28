@@ -9,10 +9,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/luevano/libmangal"
-	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/mangal/v5/client"
-	"github.com/luevano/mangal/v5/client/selector"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
@@ -71,17 +67,21 @@ func (a *API) jobs() (*jobs.Manager, error) {
 }
 
 // jobService is the server's jobs as the core's service.
-func (a *API) jobService() (core.Jobs, error) {
+func (a *API) jobService(ctx context.Context) (core.Jobs, error) {
 	m, err := a.jobs()
 	if err != nil {
 		return nil, err
 	}
-	return core.LocalJobs(m), nil
+	c, err := a.services(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return core.NewJobs(m, core.JobsOptions{Find: c.Env().ProviderChapters}), nil
 }
 
 // ListJobs implements apiv1.StrictServerInterface: the active ones first, then the newest.
 func (a *API) ListJobs(ctx context.Context, _ apiv1.ListJobsRequestObject) (apiv1.ListJobsResponseObject, error) {
-	svc, err := a.jobService()
+	svc, err := a.jobService(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func (a *API) ownJob(ctx context.Context, id int64) (core.Job, core.Jobs, error)
 }
 
 func (a *API) job(ctx context.Context, id int64) (core.Job, core.Jobs, error) {
-	svc, err := a.jobService()
+	svc, err := a.jobService(ctx)
 	if err != nil {
 		return core.Job{}, nil, err
 	}
@@ -198,7 +198,7 @@ func (a *API) RemoveJob(ctx context.Context, request apiv1.RemoveJobRequestObjec
 
 // ClearJobQueue implements apiv1.StrictServerInterface.
 func (a *API) ClearJobQueue(ctx context.Context, request apiv1.ClearJobQueueRequestObject) (apiv1.ClearJobQueueResponseObject, error) {
-	svc, err := a.jobService()
+	svc, err := a.jobService(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -221,67 +221,29 @@ func (a *API) StartDownload(ctx context.Context, request apiv1.StartDownloadRequ
 		return nil, err
 	}
 	b := deref(request.Body)
-	if deref(b.MangaId) == "" && deref(b.Query) == "" {
-		return nil, badRequest("manga_id or query is needed")
-	}
-	if b.Chapters == "" {
-		return nil, badRequest("chapters: a chapter selector is needed (all, last, 12, 10-20, 30-)")
-	}
-	options := config.DownloadOptions()
 	if f := deref(b.Format); f != "" {
 		if who, _ := identityOf(ctx); !who.has(ScopeManage) {
-			return nil, newAPIError(http.StatusForbidden, CodeForbidden, "picking the format needs the manage permission, the server's (%s) is used without it", options.Format)
+			return nil, newAPIError(http.StatusForbidden, CodeForbidden, "picking the format needs the manage permission, the server's (%s) is used without it", config.DownloadOptions().Format)
 		}
-		format, err := libmangal.FormatString(strings.ToUpper(f))
-		if err != nil {
-			return nil, badRequest("format: %q isn't one of %s", f, strings.Join(libmangal.FormatStrings(), ", "))
-		}
-		options.Format = format
 	}
-	loader, err := a.loader(b.Provider)
+	if _, err := a.loader(b.Provider); err != nil {
+		return nil, err
+	}
+	svc, err := a.jobService(ctx)
 	if err != nil {
 		return nil, err
 	}
-	c, release, err := client.Hold(ctx, loader)
+	j, err := svc.Download(ctx, core.DownloadReq{Provider: b.Provider, MangaID: deref(b.MangaId), Query: deref(b.Query),
+		Selector: deref(b.Selector), Chapters: b.Chapters, Format: deref(b.Format), Origin: jobOrigin(ctx)})
 	if err != nil {
-		return nil, unprocessable(err)
+		if !errors.Is(err, core.ErrNotFound) && !errors.Is(err, core.ErrInvalid) {
+			err = unprocessable(err)
+		}
+		return nil, err
 	}
-	defer release()
-	manga, err := selector.Find(ctx, client.Searcher(c), deref(b.MangaId), deref(b.Query), deref(b.Selector))
-	if err != nil {
-		return nil, unprocessable(err)
-	}
-	all, err := client.MangaChapters(ctx, c, manga)
-	if err != nil {
-		return nil, unprocessable(err)
-	}
-	chapters, err := selector.Chapters(b.Chapters, all)
-	if err != nil {
-		return nil, badRequest("chapters: %w", err)
-	}
-	if len(chapters) == 0 {
-		return nil, badRequest("chapters: %q matches none", b.Chapters)
-	}
-	// a bound manga gets its metadata now, a search would replace it
-	if bound, err := client.ApplyBinding(ctx, c, manga); err != nil {
-		log.Warn("binding of %q: %s", manga, err)
-	} else if bound {
-		options.SearchMetadata = false
-	}
-	title := fmt.Sprintf("%s: %s", manga.Info().Title, chaptersTitle(chapters))
-	job := m.Add(jobs.DownloadSpec(c, manga, chapters, options, title, jobOrigin(ctx)))
-	go a.logDownload(m, job.ID)
-	log.Info("download %d (asked through the API): %s from %s", job.ID, title, c.Info().ID)
-	return apiv1.StartDownload202JSONResponse(toAPIJob(core.JobOf(job))), nil
-}
-
-// chaptersTitle is "chapter 3" or "chapters 1-5 (4)".
-func chaptersTitle(chapters []mangadata.Chapter) string {
-	first, last := chapters[0].Info().Number, chapters[len(chapters)-1].Info().Number
-	if len(chapters) == 1 {
-		return "chapter " + stringutil.FormatFloat32(first)
-	}
-	return fmt.Sprintf("chapters %s-%s (%d)", stringutil.FormatFloat32(first), stringutil.FormatFloat32(last), len(chapters))
+	go a.logDownload(m, j.ID)
+	log.Info("download %d (asked through the API): %s from %s", j.ID, j.Title, strings.Join(j.Providers, ", "))
+	return apiv1.StartDownload202JSONResponse(toAPIJob(j)), nil
 }
 
 // ScanLibrary implements apiv1.StrictServerInterface: the scan runs as a job.
