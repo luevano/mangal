@@ -1,17 +1,17 @@
-// Package jobs is the TUI's background downloads and checks: one core/jobs.Manager for
-// the process, its line in the header, its notices, the quit question (base.Activity) and
-// the marks of the lists.
+// Package jobs is the TUI's background downloads and checks: the process's core.Jobs (over
+// one core/jobs.Manager), its line in the header, its notices, the quit question
+// (base.Activity) and the marks of the lists.
 package jobs
 
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
@@ -19,10 +19,8 @@ import (
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/notify"
-	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui/base"
-	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 var (
@@ -38,14 +36,14 @@ var (
 
 // Start makes the process's manager, its jobs run with ctx; it's the TUI's base.Activity.
 func Start(ctx context.Context) base.Activity {
-	mu.Lock()
-	defer mu.Unlock()
-	manager = jobs.New(ctx)
-	return &activity{m: manager}
+	m := jobs.New(ctx)
+	SetManager(m)
+	return &activity{svc: Service(), shutdown: m.Shutdown}
 }
 
 // Manager is the process's manager (one with a background ctx if Start wasn't called, for
-// tests and the standalone screens).
+// tests and the standalone screens): it runs the jobs Service doesn't take yet (watch
+// checks, fills, the maintenance kinds).
 func Manager() *jobs.Manager {
 	mu.Lock()
 	defer mu.Unlock()
@@ -55,8 +53,10 @@ func Manager() *jobs.Manager {
 	return manager
 }
 
-// Service is the process's jobs as the core's service.
-func Service() core.Jobs { return core.LocalJobs(Manager()) }
+// Service is the process's jobs as the core's service: the screens go through it.
+func Service() core.Jobs {
+	return core.NewJobs(Manager(), core.JobsOptions{Finally: notifyDone})
+}
 
 // SetManager replaces the manager, for tests.
 func SetManager(m *jobs.Manager) {
@@ -65,51 +65,37 @@ func SetManager(m *jobs.Manager) {
 	manager = m
 }
 
-// Download adds the download of the chapters of the manga as a job: origin is the window
-// key of the screen that starts it, silent if it tells the user itself (no "downloading"
-// notice). A desktop notification goes when it ends (notification.tui).
-func Download(c *libmangal.Client, manga mangadata.Manga, chapters []mangadata.Chapter, options libmangal.DownloadOptions, read bool, origin string, silent bool) jobs.Job {
-	title := manga.String() + ": " + chaptersTitle(chapters)
-	spec := jobs.DownloadSpec(c, manga, chapters, options, title, origin)
-	spec.Read = read
-	if options.Directory == path.Temp() {
-		run := spec.Run
-		spec.Run = func(ctx context.Context, p *jobs.Progress) error {
-			if _, err := path.EnsureTemp(); err != nil {
-				return err
-			}
-			return run(ctx, p)
-		}
-	}
-	spec.Finally = notifyDone(read)
+// Download queues the download (req.Origin is the window key of the screen that starts
+// it), silent if the screen tells the user itself (no "downloading" notice). A desktop
+// notification goes when it ends (notification.tui).
+func Download(ctx context.Context, req core.DownloadReq, silent bool) (core.Job, error) {
 	if !silent {
-		return Manager().Add(spec)
+		return Service().Download(ctx, req)
 	}
-	m := Manager()
 	quietMu.Lock()
 	defer quietMu.Unlock()
-	job := m.Add(spec)
-	quiet[job.ID] = true
-	return job
+	job, err := Service().Download(ctx, req)
+	if err == nil {
+		quiet[job.ID] = true
+	}
+	return job, err
 }
 
 // Queue adds a download job made elsewhere (a fill's, core.FillPlan.Job), with Download's
 // desktop notification when it ends.
 func Queue(spec jobs.Spec) jobs.Job {
-	spec.Finally = notifyDone(false)
+	spec.Finally = notifyDone
 	return Manager().Add(spec)
 }
 
 // notifyDone sends the desktop notification of a download that ended (notification.tui),
 // not for reading.
-func notifyDone(read bool) func(context.Context, jobs.Job) {
-	return func(ctx context.Context, j jobs.Job) {
-		if j.Status == jobs.Cancelled || read || !config.Notification.TUI.Get() {
-			return
-		}
-		if err := notify.SendContext(ctx, j.Results); err != nil {
-			log.Warn("send the notification: %s", err)
-		}
+func notifyDone(ctx context.Context, j jobs.Job) {
+	if j.Status == jobs.Cancelled || j.Read || !config.Notification.TUI.Get() {
+		return
+	}
+	if err := notify.SendContext(ctx, j.Results); err != nil {
+		log.Warn("send the notification: %s", err)
 	}
 }
 
@@ -122,13 +108,6 @@ func silenced(id int64) bool {
 	return ok
 }
 
-func chaptersTitle(chapters []mangadata.Chapter) string {
-	if len(chapters) == 1 {
-		return "chapter " + stringutil.FormatFloat32(chapters[0].Info().Number)
-	}
-	return stringutil.Quantify(len(chapters), "chapter", "chapters")
-}
-
 // Check adds a check of the watches with the ids (of the providers) through m as a job.
 func Check(m watch.Manager, ids []int64, providers []string, opts watch.CheckOptions, title, origin string, summary func(watch.Report) string) jobs.Job {
 	return Manager().Add(jobs.CheckSpec(m, ids, providers, opts, title, origin, summary))
@@ -137,7 +116,7 @@ func Check(m watch.Manager, ids []int64, providers []string, opts watch.CheckOpt
 // ChangedMsg is jobs changing: Finished are the ones over since the last one. Every
 // screen gets it while shown (base.Activity).
 type ChangedMsg struct {
-	Finished []jobs.Job
+	Finished []core.Job
 	notice   string
 }
 
@@ -154,16 +133,33 @@ func (m ChangedMsg) FinishedFor(provider, mangaID string) bool {
 }
 
 type activity struct {
-	m    *jobs.Manager
-	seen uint64
+	svc      core.Jobs
+	shutdown func(time.Duration) bool
+
+	subscribe sync.Once
+	events    <-chan core.JobEvent
 }
 
 // coalesce is how long changes are gathered into one msg (a page progress is many).
 const coalesce = 100 * time.Millisecond
 
 func (a *activity) Wait(ctx context.Context) tea.Msg {
+	a.subscribe.Do(func() {
+		var err error
+		if a.events, err = a.svc.Subscribe(ctx, 0); err != nil {
+			log.Warn("tui: jobs' events: %s", err)
+		}
+	})
+	if a.events == nil {
+		return nil
+	}
+	var events []core.JobEvent
 	select {
-	case <-a.m.Changed():
+	case e, ok := <-a.events:
+		if !ok {
+			return nil
+		}
+		events = append(events, e)
 	case <-ctx.Done():
 		return nil
 	}
@@ -172,15 +168,25 @@ func (a *activity) Wait(ctx context.Context) tea.Msg {
 	case <-ctx.Done():
 		return nil
 	}
-	events, seen := a.m.Events(a.seen)
-	a.seen = seen
+more:
+	for {
+		select {
+		case e, ok := <-a.events:
+			if !ok {
+				break more
+			}
+			events = append(events, e)
+		default:
+			break more
+		}
+	}
 	var msg ChangedMsg
 	var notices []string
 	for _, e := range events {
-		if e.Kind == jobs.EventFinished {
+		if e.Kind == core.JobFinished {
 			msg.Finished = append(msg.Finished, e.Job)
 		}
-		if e.Kind == jobs.EventAdded && silenced(e.Job.ID) {
+		if e.Kind == core.JobAdded && silenced(e.Job.ID) {
 			continue
 		}
 		if n := Notice(e); n != "" {
@@ -198,9 +204,12 @@ func (a *activity) Wait(ctx context.Context) tea.Msg {
 }
 
 // Notice is what the user is told of a job added or finished.
-func Notice(e jobs.Event) string {
+func Notice(e core.JobEvent) string {
 	j := e.Job
-	if e.Kind == jobs.EventAdded {
+	if e.Kind == core.JobChanged {
+		return ""
+	}
+	if e.Kind == core.JobAdded {
 		if j.Status == jobs.Queued {
 			return fmt.Sprintf("Queued %s behind %s (%s: %d ahead)", j.Title, j.Behind, strings.Join(j.Providers, ", "), j.Ahead)
 		}
@@ -214,7 +223,7 @@ func Notice(e jobs.Event) string {
 	case jobs.Cancelled:
 		return "Cancelled " + j.Title
 	case jobs.Failed:
-		return j.Title + ": " + j.Err.Error()
+		return j.Title + ": " + j.Error
 	case jobs.Done:
 		if j.Read {
 			return "Ready to read: " + j.Title
@@ -234,9 +243,19 @@ func capitalize(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
+// active are the active jobs.
+func (a *activity) active() []core.Job {
+	// shortcut: drawn on every view; the local jobs answer at once, a remote one (R2) wants a cached list
+	list, err := a.svc.List(context.Background())
+	if err != nil {
+		log.Warn("tui: list the jobs: %s", err)
+	}
+	return slices.DeleteFunc(list, func(j core.Job) bool { return !j.Status.Active() })
+}
+
 func (a *activity) Status() string {
 	running, queued := 0, 0
-	for _, j := range a.m.Active() {
+	for _, j := range a.active() {
 		if j.Status == jobs.Queued {
 			queued++
 		} else {
@@ -258,20 +277,20 @@ func (a *activity) Status() string {
 
 func (a *activity) Running() []string {
 	var lines []string
-	for _, j := range a.m.Active() {
+	for _, j := range a.active() {
 		lines = append(lines, Line(j))
 	}
 	return lines
 }
 
 func (a *activity) Shutdown(timeout time.Duration) {
-	if !a.m.Shutdown(timeout) {
+	if !a.shutdown(timeout) {
 		log.Warn("tui: background jobs still running after %s", timeout)
 	}
 }
 
 // Line is the job in a line: "download One Piece: 3 chapters (queued)".
-func Line(j jobs.Job) string {
+func Line(j core.Job) string {
 	return fmt.Sprintf("%s %s (%s)", j.Kind, j.Title, j.Status)
 }
 
@@ -285,7 +304,7 @@ func Mark(status jobs.Status) string {
 
 // ChapterMark is the mark of a chapter in an active download, empty if it isn't.
 func ChapterMark(provider, mangaID string, chapter mangadata.Chapter) string {
-	if st, ok := Manager().ChapterStatus(provider, mangaID, chapter); ok {
+	if st, ok := Service().ChapterStatus(provider, mangaID, core.ChapterRefOf(chapter)); ok {
 		return Mark(st)
 	}
 	return ""
@@ -293,7 +312,7 @@ func ChapterMark(provider, mangaID string, chapter mangadata.Chapter) string {
 
 // MangaMark is the mark of a manga with an active download, empty without one.
 func MangaMark(provider, mangaID string) string {
-	if st, ok := Manager().MangaStatus(provider, mangaID); ok {
+	if st, ok := Service().MangaStatus(provider, mangaID); ok {
 		return Mark(st)
 	}
 	return ""

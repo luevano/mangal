@@ -52,8 +52,9 @@ type state struct {
 	fullMeta bool
 	// watched is the manga's watch, empty when it isn't
 	watched []watch.Watch
-	// reading is the job downloading a chapter to read, 0 if none
-	reading int64
+	// reading is the job downloading readChapter to read, 0 if none
+	reading     int64
+	readChapter mangadata.Chapter
 
 	renderedSep,
 	renderedSubtitleFormats string
@@ -268,7 +269,7 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case base.RestoredMsg:
 		// e.g. after the download screen
 		s.updateSubtitleFormats()
-		if j, ok := tuijobs.Manager().Get(s.reading); !ok || !j.Status.Active() {
+		if j, err := tuijobs.Service().Get(ctx, s.reading); err != nil || !j.Status.Active() {
 			// over while away: not opened, the marks say it's there
 			s.reading = 0
 		}

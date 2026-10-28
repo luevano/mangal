@@ -2,6 +2,8 @@ package download
 
 import (
 	"fmt"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -10,7 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luevano/libmangal/metadata"
-	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -70,16 +72,31 @@ func capitalize(s string) string {
 	return string(unicode.ToUpper(r)) + s[size:]
 }
 
+// getEach are the results to download, downloaded and failed.
+func getEach(results []core.JobResult) (d, s, f []core.JobResult) {
+	for _, r := range results {
+		switch {
+		case r.ToDownload():
+			d = append(d, r)
+		case r.Succeed():
+			s = append(s, r)
+		case r.Failed():
+			f = append(f, r)
+		}
+	}
+	return d, s, f
+}
+
 func (s *state) viewDownloaded() string {
-	down, succ, fail := s.job.Results.GetEach()
+	down, succ, fail := getEach(s.job.Results)
 	var lines []string
 	switch {
 	case s.gone:
 		lines = append(lines, s.styles.warning.Render("This download isn't listed anymore."))
 	case s.job.Status == jobs.Cancelled:
 		lines = append(lines, s.styles.warning.Render("Cancelled."))
-	case s.job.Err != nil:
-		lines = append(lines, s.styles.failed.Render(capitalize(s.job.Err.Error())))
+	case s.job.Error != "":
+		lines = append(lines, s.styles.failed.Render(capitalize(s.job.Error)))
 	case s.job.Status == jobs.Done:
 		lines = append(lines, s.styles.succeed.Render(capitalize(s.job.Message)))
 	}
@@ -92,7 +109,8 @@ func (s *state) viewDownloaded() string {
 	if len(fail) != 0 {
 		lines = append(lines, s.viewChapterList("Failed:", s.styles.failed, fail))
 	}
-	if unavailable := s.job.Results.Unavailable(); len(unavailable) != 0 {
+	unavailable := slices.DeleteFunc(slices.Clone(s.job.Results), func(r core.JobResult) bool { return r.Unavailable == "" })
+	if len(unavailable) != 0 {
 		lines = append(lines, s.viewChapterList("Unavailable:", s.styles.warning, unavailable))
 	}
 	expl := "\nThe lists follow the template:\n" +
@@ -101,7 +119,7 @@ func (s *state) viewDownloaded() string {
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
-func (s *state) viewChapterList(header string, headerStyle lipgloss.Style, chaps client.Results) string {
+func (s *state) viewChapterList(header string, headerStyle lipgloss.Style, chaps []core.JobResult) string {
 	var sb strings.Builder
 	sb.Grow(200)
 
@@ -112,8 +130,8 @@ func (s *state) viewChapterList(header string, headerStyle lipgloss.Style, chaps
 	subItm := s.styles.subItemEnum.Foreground(headerStyle.GetForeground()).Render(icon.SubItem.Raw())
 	var lastDir string
 	for i, ch := range chaps {
-		if ch.Down != nil && ch.Down.Directory != lastDir {
-			lastDir = ch.Down.Directory
+		if dir := filepath.Dir(ch.Path); ch.Path != "" && dir != lastDir {
+			lastDir = dir
 			sb.WriteString(item)
 			sb.WriteString(s.styles.toDownload.Render(lastDir))
 			sb.WriteByte('\n')
@@ -129,21 +147,21 @@ func (s *state) viewChapterList(header string, headerStyle lipgloss.Style, chaps
 }
 
 // renderChapter is the chapter with its download status and file.
-func renderChapter(c *client.Result, normal, toDownload, succeed, failed, warning lipgloss.Style) string {
-	str := stringutil.FormatFloat32(c.Chapter.Info().Number) + " - " + c.Chapter.Info().Title
+func renderChapter(c core.JobResult, normal, toDownload, succeed, failed, warning lipgloss.Style) string {
+	str := stringutil.FormatFloat32(c.Chapter) + " - " + c.Title
 	if c.Unavailable != "" {
 		return toDownload.Render(str + " - " + c.Unavailable)
 	}
-	if c.Err != nil {
-		return toDownload.Render(str+" - ") + failed.Render(c.Err.Error())
+	if c.Failed() {
+		return toDownload.Render(str+" - ") + failed.Render(c.Error)
 	}
-	if c.Down == nil {
+	if c.Path == "" {
 		return toDownload.Render(str)
 	}
 
 	s := toDownload
-	status := "s: " + string(c.Down.ChapterStatus)
-	switch c.Down.ChapterStatus {
+	status := "s: " + c.Status
+	switch metadata.DownloadStatus(c.Status) {
 	case metadata.DownloadStatusNew:
 		s = normal
 		status = succeed.Render(status)
@@ -154,8 +172,8 @@ func renderChapter(c *client.Result, normal, toDownload, succeed, failed, warnin
 	default: // exists or other
 		status = toDownload.Render(status)
 	}
-	if c.Down.Skipped != "" {
-		status = warning.Render("s: skipped, " + c.Down.Skipped)
+	if c.Skipped != "" {
+		status = warning.Render("s: skipped, " + c.Skipped)
 	}
-	return s.Render(str+" - ") + status + s.Render(" - f: "+c.Down.Filename)
+	return s.Render(str+" - ") + status + s.Render(" - f: "+filepath.Base(c.Path))
 }

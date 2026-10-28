@@ -123,8 +123,8 @@ func TestJobView(t *testing.T) {
 	s.Update(ctx, press("r"))
 	waitStatus(t, m, job.ID, jobs.Done)
 	s.Update(ctx, tuijobs.ChangedMsg{})
-	if n := len(s.job.Results.Succeed()); n != 2 {
-		t.Errorf("%d succeeded after the retry, want 2", n)
+	if _, succ, _ := getEach(s.job.Results); len(succ) != 2 {
+		t.Errorf("%d succeeded after the retry, want 2", len(succ))
 	}
 }
 

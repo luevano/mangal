@@ -5,6 +5,7 @@ package download
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"charm.land/bubbles/v2/help"
@@ -14,6 +15,7 @@ import (
 	bviewport "charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/theme/style"
@@ -33,7 +35,7 @@ type state struct {
 	viewport *viewport.Model
 
 	id  int64
-	job jobs.Job
+	job core.Job
 	// gone is the job no longer listed (removed)
 	gone bool
 
@@ -75,7 +77,7 @@ func New(id int64) base.State {
 		km.HalfPageUp.SetHelp("ctrl+u", "½ page up")
 	}
 	s.viewport.KeyMap.Back.SetEnabled(false)
-	s.load()
+	s.load(context.Background())
 	return s
 }
 
@@ -94,7 +96,7 @@ func (s *state) KeyMap() help.KeyMap {
 }
 
 func (s *state) Subtitle() string {
-	down, succ, fail := s.job.Results.GetEach()
+	down, succ, fail := getEach(s.job.Results)
 	parts := []string{s.styles.accent.Render(s.job.Title)}
 	if len(down) != 0 {
 		parts = append(parts, s.styles.toDownload.Render(stringutil.Quantify(len(down), "chapter", "chapters")+" to download"))
@@ -109,18 +111,18 @@ func (s *state) Subtitle() string {
 }
 
 // load takes the job as it is now.
-func (s *state) load() {
-	job, ok := tuijobs.Manager().Get(s.id)
-	if !ok {
+func (s *state) load(ctx context.Context) {
+	job, err := tuijobs.Service().Get(ctx, s.id)
+	if err != nil {
 		s.gone = true
 		s.job.Status = jobs.Cancelled
 	} else {
 		s.job = job
 	}
-	active := s.job.Status.Active()
-	s.cancel.SetEnabled(active)
-	s.open.SetEnabled(len(s.job.Results.Succeed()) != 0)
-	s.retry.SetEnabled(!active && !s.gone && (len(s.job.Results.Failed()) != 0 || len(s.job.Results.ToDownload()) != 0))
+	_, succ, _ := getEach(s.job.Results)
+	s.cancel.SetEnabled(s.job.Status.Active())
+	s.open.SetEnabled(len(succ) != 0)
+	s.retry.SetEnabled(!s.gone && s.job.Retryable())
 	s.viewport.SetContent(s.viewDownloaded())
 }
 
@@ -135,18 +137,18 @@ func (s *state) Resize(size base.Size) tea.Cmd {
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	s.load()
+	s.load(ctx)
 	return tea.Batch(s.spinner.Tick, s.Resize(s.size))
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case base.RestoredMsg:
-		s.load()
+		s.load(ctx)
 		return tea.Batch(s.spinner.Tick, s.Resize(s.size))
 	case tuijobs.ChangedMsg:
 		wasActive := s.job.Status.Active()
-		s.load()
+		s.load(ctx)
 		if wasActive != s.job.Status.Active() {
 			return s.Resize(s.size)
 		}
@@ -154,17 +156,19 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, s.cancel):
-			if tuijobs.Manager().Cancel(s.id) {
+			if ok, err := tuijobs.Service().Cancel(ctx, s.id); err != nil {
+				return func() tea.Msg { return err }
+			} else if ok {
 				return base.Notify("Cancelling " + s.job.Title)
 			}
 			return nil
 		case key.Matches(msg, s.open):
 			return s.openCmd()
 		case key.Matches(msg, s.retry):
-			if _, err := tuijobs.Manager().Retry(s.id); err != nil {
+			if _, err := tuijobs.Service().Retry(ctx, s.id); err != nil {
 				return func() tea.Msg { return err }
 			}
-			s.load()
+			s.load(ctx)
 			return tea.Batch(s.spinner.Tick, s.Resize(s.size))
 		}
 	case spinner.TickMsg:
@@ -180,8 +184,11 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 
 // openCmd opens the directory of the first downloaded chapter.
 func (s *state) openCmd() tea.Cmd {
-	for _, r := range s.job.Results.Succeed() {
-		dir := r.Down.Directory
+	for _, r := range s.job.Results {
+		if !r.Succeed() {
+			continue
+		}
+		dir := filepath.Dir(r.Path)
 		return func() tea.Msg {
 			if err := open.Start(dir); err != nil {
 				return fmt.Errorf("open %s: %w", dir, err)

@@ -137,7 +137,7 @@ func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
 	provider, mangaID := s.client.Info().ID, s.manga.Info().ID
 	var fresh []mangadata.Chapter
 	for _, c := range chapters {
-		if _, ok := tuijobs.Manager().ChapterStatus(provider, mangaID, c); !ok {
+		if _, ok := tuijobs.Service().ChapterStatus(provider, mangaID, core.ChapterRefOf(c)); !ok {
 			fresh = append(fresh, c)
 		}
 	}
@@ -148,9 +148,17 @@ func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
 		return base.Notify("Those chapters are already being downloaded")
 	}
 	batch := msg.item == nil && !msg.read
-	job := tuijobs.Download(s.client, s.manga, fresh, options, msg.read, s.Key(), batch)
+	refs := make([]core.ChapterRef, len(fresh))
+	for i, c := range fresh {
+		refs[i] = core.ChapterRefOf(c)
+	}
+	job, err := tuijobs.Download(ctx, core.DownloadReq{Provider: provider, MangaID: mangaID, ChapterRefs: refs, Read: msg.read, Origin: s.Key(),
+		Have: &core.DownloadHave{Client: s.client, Manga: s.manga, Chapters: fresh}}, batch)
+	if err != nil {
+		return func() tea.Msg { return err }
+	}
 	if msg.read {
-		s.reading = job.ID
+		s.reading, s.readChapter = job.ID, fresh[0]
 		return nil
 	}
 	if batch {
@@ -166,7 +174,7 @@ const batchNoticeDuration = 4 * time.Second
 
 // batchNotice says the batch is queued and how to open its view: the Downloads screen
 // selects the job just added.
-func batchNotice(job jobs.Job) string {
+func batchNotice(job core.Job) string {
 	what := "Queued " + stringutil.Quantify(job.Total, "chapter", "chapters")
 	if job.Status == jobs.Queued && job.Behind != "" {
 		what += " behind " + job.Behind
@@ -189,9 +197,11 @@ func (s *state) onJobs(ctx context.Context, msg tuijobs.ChangedMsg) tea.Cmd {
 		if j.Status != jobs.Done {
 			break
 		}
-		for _, r := range j.Results.Succeed() {
-			log.Info("downloaded chapter %q at %q", r.Chapter, r.Down.Path())
-			cmds = append(cmds, s.readCmd(ctx, r.Down.Path(), r.Chapter))
+		for _, r := range j.Results {
+			if r.Succeed() {
+				log.Info("downloaded chapter %q at %q", s.readChapter, r.Path)
+				cmds = append(cmds, s.readCmd(ctx, r.Path, s.readChapter))
+			}
 		}
 	}
 	return tea.Batch(cmds...)

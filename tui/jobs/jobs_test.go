@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 )
 
@@ -13,7 +14,7 @@ import (
 func TestSilencedNotice(t *testing.T) {
 	m := jobs.New(context.Background())
 	t.Cleanup(func() { m.Shutdown(time.Second) })
-	a := &activity{m: m}
+	a := &activity{svc: core.LocalJobs(m), shutdown: m.Shutdown}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	spec := jobs.Spec{Kind: jobs.KindDownload, Title: "Berserk: 2 chapters", Providers: []string{"p"}}
