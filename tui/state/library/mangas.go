@@ -108,6 +108,8 @@ type scannedMsg struct {
 	checks    []library.IDCheck
 	checkErr  error
 	dups      []library.Duplicate
+	// summary is a remote server's scan's, the rest is zero then
+	summary string
 }
 
 type mergePlannedMsg struct {
@@ -433,10 +435,13 @@ func scan(ctx context.Context, check bool, status func(string)) (scannedMsg, err
 	if err != nil {
 		return scannedMsg{}, err
 	}
-	return scannedMsg{root: rep.Root, result: rep.Result, otherRoot: rep.OtherRoot, checked: check, checks: rep.Checks, checkErr: rep.CheckErr, dups: rep.Duplicates}, nil
+	return scannedMsg{root: rep.Root, result: rep.Result, otherRoot: rep.OtherRoot, checked: check, checks: rep.Checks, checkErr: rep.CheckErr, dups: rep.Duplicates, summary: rep.Summary}, nil
 }
 
 func (s *mangasState) onScanned(msg scannedMsg) tea.Cmd {
+	if msg.summary != "" {
+		return base.Viewport("Library scan", "The server's scan: "+msg.summary+".", color.Accent)
+	}
 	if dir := msg.otherRoot; dir != "" {
 		message := fmt.Sprintf("%d mangas are in %s, but download.path is %s. Use %s as download.path?", len(msg.result.Missing), dir, msg.root, dir)
 		s.Confirm.Ask("Download path", message, s.View(), func() tea.Msg { return setRootMsg{dir: dir, check: msg.checked} })

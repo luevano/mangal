@@ -28,11 +28,17 @@ func RunStandalone(ctx context.Context, state State) error {
 
 func run(ctx context.Context, m *model) error {
 	p := tea.NewProgram(m, tea.WithContext(ctx))
-	// other processes' changes reach the shown State (DBChangedMsg)
-	if st, err := cache.Storage(); err == nil {
-		wctx, stop := context.WithCancel(ctx)
-		defer stop()
-		go core.NewDBWatcher(st.Data).Run(wctx, func(topics []string) { p.Send(DBChangedMsg{Topics: topics}) })
+	// other processes' changes reach the shown State (DBChangedMsg), a remote server's
+	// from its events
+	wctx, stop := context.WithCancel(ctx)
+	defer stop()
+	send := func(topics []string) { p.Send(DBChangedMsg{Topics: topics}) }
+	if r := CurrentRemote; r != nil {
+		if r.Events != nil {
+			go r.Events(wctx, send)
+		}
+	} else if st, err := cache.Storage(); err == nil {
+		go core.NewDBWatcher(st.Data).Run(wctx, send)
 	}
 	_, err := p.Run()
 	m.shutdown(shutdownTimeout)

@@ -62,15 +62,15 @@ func newServices(cmd *cobra.Command) (core.Services, error) {
 func init() {
 	rootCmd.AddCommand(remoteCmd)
 	remoteCmd.AddCommand(remoteLoginCmd, remoteLogoutCmd, remoteStatusCmd)
-	remoteFlags(libraryRenameCmd, libraryMarkCmd, libraryMergeCmd, libraryRmCmd, libraryTrashEmptyCmd, migrateCmd,
+	remoteFlags(rootCmd, libraryRenameCmd, libraryMarkCmd, libraryMergeCmd, libraryRmCmd, libraryTrashEmptyCmd, migrateCmd,
 		libraryUndoCmd, healthFixCmd, historyCmd, historyClearCmd)
 }
 
 var remoteCmd = &cobra.Command{
 	Use:   "remote",
 	Short: "Log in to a mangal serve on another machine",
-	Long: `The library changes ("library rename", "mark", "merge", "rm", "trash empty", "migrate",
-"undo"), "health fix" and "history" can run on a mangal serve elsewhere: --remote <address>,
+	Long: `The TUI, the library changes ("library rename", "mark", "merge", "rm", "trash empty",
+"migrate", "undo"), "health fix" and "history" can run on a mangal serve elsewhere: --remote <address>,
 or remote.url for every run (--local for this machine's). They send an API token of that
 server ("mangal token add <name> --perms ..." there): "mangal remote login" saves it for the
 address (with auth.keyring in the OS keyring), remote.token (MANGAL_REMOTE_TOKEN) is

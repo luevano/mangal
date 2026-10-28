@@ -158,6 +158,11 @@ func (m *model) updateKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, m.keyMap.downloads):
 		return m.pushState(NewDownloads())
 	}
+	if r := CurrentRemote; r != nil && !m.state.Inputting() {
+		if why := r.keyRefusal(keyOf(m.state), m.state.KeyMap(), msg); why != "" {
+			return NotifyWarning(why)
+		}
+	}
 	return m.state.Update(m.ctx, msg)
 }
 
@@ -232,6 +237,12 @@ func (m *model) restore(request State) tea.Cmd {
 // first (aheadAsk): yes closes them and shows it, no drops it.
 func (m *model) pushState(state State) tea.Cmd {
 	key := keyOf(state)
+	if r := CurrentRemote; r != nil {
+		if why := r.screenRefusal(key); why != "" {
+			destroy(state)
+			return NotifyWarning(why)
+		}
+	}
 	for i, s := range m.windows() {
 		if s == state || (key != "" && keyOf(s) == key) {
 			return m.jump(i, state)

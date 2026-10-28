@@ -12,8 +12,11 @@ import (
 // Core is the app's services (core.Default). Swapped in tests.
 var Core = core.Default
 
-// Services are the core's services.
+// Services are the core's services, a remote server's when the TUI runs on one.
 func Services() (core.Services, error) {
+	if CurrentRemote != nil {
+		return CurrentRemote.Services, nil
+	}
 	c, err := Core()
 	if err != nil {
 		return core.Services{}, err

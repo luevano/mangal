@@ -96,6 +96,9 @@ func (m *model) viewHeader() string {
 	}
 
 	header.WriteString(newline)
+	if r := CurrentRemote; r != nil {
+		header.WriteString(style.Normal.Secondary.Render(r.Header()) + "  ")
+	}
 	label := m.loadingLabel()
 	if label != "" {
 		header.WriteString(m.spinner.View())
@@ -160,7 +163,11 @@ func (m *model) viewFooter() string {
 	if m.inViewport {
 		return m.styles.footer.Render(m.help.View(CombinedKeyMap(m.viewport.KeyMap, m.keyMap)))
 	}
-	return m.styles.footer.Render(m.help.View(CombinedKeyMap(m.state.KeyMap(), m.keyMap)))
+	keys := m.state.KeyMap()
+	if r := CurrentRemote; r != nil {
+		keys = gatedKeyMap{keys: keys, screen: keyOf(m.state), r: r}
+	}
+	return m.styles.footer.Render(m.help.View(CombinedKeyMap(keys, m.keyMap)))
 }
 
 // restartNotice says which settings changed since mangal started that it reads only then,

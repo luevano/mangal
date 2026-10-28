@@ -121,6 +121,10 @@ func healthLine(report health.Report, key string) string {
 }
 
 func (s *state) load(ctx context.Context) tea.Cmd {
+	if base.CurrentRemote != nil {
+		// the server's providers aren't browsed yet (docs/remote.md R3)
+		return nil
+	}
 	return base.Load(ctx, "Loading providers", func(context.Context) (loadedMsg, error) {
 		loaders, problems, err := manager.Load()
 		if err != nil {

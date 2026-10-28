@@ -61,6 +61,13 @@ var rootCmd = &cobra.Command{
 	SilenceUsage:      true,
 	PersistentPreRunE: setup,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		rc, err := connectRemote(cmd)
+		if err != nil {
+			return err
+		}
+		if rc != nil {
+			return tui.RunRemote(cmd.Context(), rc)
+		}
 		return tui.Run(cmd.Context())
 	},
 }

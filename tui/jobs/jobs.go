@@ -26,6 +26,8 @@ import (
 var (
 	mu      sync.Mutex
 	manager *jobs.Manager
+	// remote are a mangal serve's jobs (StartRemote), nil for the process's
+	remote core.Jobs
 
 	// quiet are the jobs whose screen told the user they were added, the activity skips
 	// their added notice. quietMu is held across the Add, so the activity can't see the
@@ -39,6 +41,16 @@ func Start(ctx context.Context) base.Activity {
 	m := jobs.New(ctx)
 	SetManager(m)
 	return &activity{svc: Service(), shutdown: m.Shutdown}
+}
+
+// StartRemote is Start on a mangal serve's jobs: the downloads are the server's (they go
+// on when the TUI quits), the manager runs the rest (the watch checks it asks for).
+func StartRemote(ctx context.Context, svc core.Jobs) base.Activity {
+	m := jobs.New(ctx)
+	mu.Lock()
+	manager, remote = m, svc
+	mu.Unlock()
+	return &activity{svc: svc, shutdown: m.Shutdown, remote: true}
 }
 
 // Manager is the process's manager (one with a background ctx if Start wasn't called, for
@@ -55,6 +67,12 @@ func Manager() *jobs.Manager {
 
 // Service is the process's jobs as the core's service: the screens go through it.
 func Service() core.Jobs {
+	mu.Lock()
+	r := remote
+	mu.Unlock()
+	if r != nil {
+		return r
+	}
 	return core.NewJobs(Manager(), core.JobsOptions{Finally: notifyDone})
 }
 
@@ -135,6 +153,8 @@ func (m ChangedMsg) FinishedFor(provider, mangaID string) bool {
 type activity struct {
 	svc      core.Jobs
 	shutdown func(time.Duration) bool
+	// remote: svc's jobs are a server's, quitting doesn't stop them
+	remote bool
 
 	subscribe sync.Once
 	events    <-chan core.JobEvent
@@ -228,10 +248,14 @@ func Notice(e core.JobEvent) string {
 		if j.Read {
 			return "Ready to read: " + j.Title
 		}
-		if j.Kind == jobs.KindCheck {
+		switch j.Kind {
+		case jobs.KindCheck:
 			return capitalize(j.Message)
+		case jobs.KindDownload:
+			return "Downloaded " + j.Title + ": " + j.Message
 		}
-		return "Downloaded " + j.Title + ": " + j.Message
+		// a remote server's scans, lookups
+		return capitalize(j.Title) + ": " + j.Message
 	}
 	return ""
 }
@@ -283,8 +307,15 @@ func (a *activity) Status() string {
 }
 
 func (a *activity) Running() []string {
+	list := a.active()
+	if a.remote {
+		list = nil
+		for _, j := range Manager().Active() {
+			list = append(list, core.JobOf(j))
+		}
+	}
 	var lines []string
-	for _, j := range a.active() {
+	for _, j := range list {
 		lines = append(lines, Line(j))
 	}
 	return lines

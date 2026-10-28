@@ -18,7 +18,7 @@ var Remote = configRemote{
 	URL: reg(entry[string, string]{
 		Key:         "remote.url",
 		Default:     "",
-		Description: "The `mangal serve` (http://nas.lan:6977, https://mangal.example.com) that the library changes, `library undo`, `health fix` and `history` of the CLI use instead of this machine's library, as `--remote` does (`--local` for this machine's). Its token: remote.token, else the one `mangal remote login` saved. Empty: this machine's.",
+		Description: "The `mangal serve` (http://nas.lan:6977, https://mangal.example.com) that the TUI and the CLI's library changes, `library undo`, `health fix` and `history` use instead of this machine's library, as `--remote` does (`--local` for this machine's). Its token: remote.token, else the one `mangal remote login` saved. Empty: this machine's.",
 		Validate: func(s string) error {
 			if s == "" {
 				return nil
