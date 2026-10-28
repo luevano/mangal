@@ -3,6 +3,7 @@ package base
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -10,7 +11,10 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/core/remote"
+	"github.com/luevano/mangal/v5/path"
 )
 
 // Remote is the mangal serve the TUI runs on (--remote, remote.url).
@@ -30,6 +34,8 @@ type Remote struct {
 	Services core.Services
 	// Loaders are the server's providers, browsed through it.
 	Loaders func(ctx context.Context) ([]libmangal.ProviderLoader, error)
+	// Client is the server's API: reading fetches the chapters with it.
+	Client *remote.Client
 	// Events tells fn the topics (storage.Rev*) the server says changed, until ctx is
 	// done: the shown State's DBChangedMsg.
 	Events func(ctx context.Context, fn func(topics []string))
@@ -38,6 +44,16 @@ type Remote struct {
 // CurrentRemote is the server the TUI runs on (set by the tui package), nil for this
 // machine.
 var CurrentRemote *Remote
+
+// ReadCache is where the chapters read from the server go (remote.read_cache). It reads
+// the config: not from a background goroutine.
+func ReadCache() remote.ReadCache {
+	dir := config.Remote.ReadCache.Get()
+	if dir == "" {
+		dir = filepath.Join(path.Cache(), "remote")
+	}
+	return remote.ReadCache{Dir: dir, Max: config.Remote.ReadCacheSize.Get()}
+}
 
 // Has is true when the server allows the permission.
 func (r *Remote) Has(perm string) bool { return slices.Contains(r.Perms, perm) }
@@ -87,6 +103,8 @@ var remoteGates = map[string]gate{
 	"library:hold / new provider": {perm: core.ScopeManage, feature: "hold marks"},
 
 	"library/:open":                {feature: "read"},
+
+	"chapters/:download": {perm: core.ScopeDownload, feature: "download"},
 	"library/:scan":                {perm: core.ScopeManage, feature: "library scan"},
 	"library/:delete":              {perm: core.ScopeManage, feature: "delete"},
 	"library/:watch":               {perm: core.ScopeManage, feature: "watches"},

@@ -53,7 +53,7 @@ func RunRemote(ctx context.Context, rc *remote.Client) error {
 	}
 	svc := rc.Services()
 	r := &base.Remote{URL: rc.URL, Version: "?", Features: st.Features, Perms: st.Scopes, Who: string(me.Kind) + " " + me.Name,
-		ShowAll: !me.HideUnavailable, Services: svc, Loaders: rc.Loaders}
+		ShowAll: !me.HideUnavailable, Services: svc, Loaders: rc.Loaders, Client: rc}
 	if st.Version != nil {
 		r.Version = *st.Version
 	}

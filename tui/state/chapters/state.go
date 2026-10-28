@@ -43,6 +43,8 @@ type state struct {
 
 	volume mangadata.Volume // nil when the chapters are the manga's
 	manga  mangadata.Manga
+	// libraryManga is the manga's library manga, 0 if none (yet)
+	libraryManga int64
 	client *libmangal.Client
 
 	selected map[*item]struct{}
@@ -87,6 +89,8 @@ type keyMap struct {
 // filesMsg is where the chapters are downloaded: in the library by number and format,
 // and in the temp dir (aligned with items); and which were read, by number.
 type filesMsg struct {
+	// manga is the library manga, 0 if none
+	manga     int64
 	downloads map[float32]map[libmangal.Format]string
 	read      map[float32]bool
 	items     []*item
@@ -426,11 +430,15 @@ func (s *state) refresh(ctx context.Context, scan bool) tea.Cmd {
 			log.Error("%q: %s", manga, e)
 		}
 		msg.downloads, msg.read = downloadPaths(files.Downloads), readSet(files.Read)
+		if files.Found {
+			msg.manga = files.Manga.ID
+		}
 		return msg
 	}
 }
 
 func (s *state) setFiles(msg filesMsg) {
+	s.libraryManga = msg.manga
 	readFormat := config.Read.Format.Get()
 	for i, it := range msg.items {
 		it.setFiles(msg.downloads[it.chapter.Info().Number], msg.temp[i], readFormat)

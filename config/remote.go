@@ -12,6 +12,9 @@ type configRemote struct {
 	Token   *entry[string, string]
 	CAFile  *entry[string, string]
 	Timeout *entry[string, string]
+	// ReadCache is where the chapters fetched to read go, ReadCacheSize its limit.
+	ReadCache     *entry[string, string]
+	ReadCacheSize *entry[string, int64]
 }
 
 var Remote = configRemote{
@@ -39,4 +42,8 @@ var Remote = configRemote{
 		"A CA or certificate file (PEM) to trust for the remote server's HTTPS besides the system's (a self-signed or private CA).", false),
 	Timeout: durationEntry("remote.timeout", "30s",
 		"How long a request to the remote server may take (0 for no limit).", false),
+	ReadCache: pathEntry("remote.read_cache", "",
+		"Where a remote TUI keeps the chapters it fetches from the server to read (a private folder). Empty: `remote` in the cache directory (cache.path).", false),
+	ReadCacheSize: sizeEntry("remote.read_cache_size", "1GB",
+		"How much remote.read_cache keeps: the chapters read longest ago are removed past it (0 for no limit)."),
 }

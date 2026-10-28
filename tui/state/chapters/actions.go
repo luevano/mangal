@@ -18,6 +18,7 @@ import (
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/tui/base"
 	tuijobs "github.com/luevano/mangal/v5/tui/jobs"
 	"github.com/luevano/mangal/v5/tui/state/downloads"
@@ -87,6 +88,9 @@ func (s *state) askRead(ctx context.Context, hovered *item) tea.Cmd {
 	i := s.target(hovered)
 	if reason := i.unavailable(); reason != "" {
 		return base.Notify("Chapter unavailable: " + reason)
+	}
+	if base.CurrentRemote != nil {
+		return s.readRemoteCmd(ctx, i)
 	}
 	if i.readPath != "" {
 		log.Debug("read format of %q already downloaded", i.chapter)
@@ -230,6 +234,46 @@ func (s *state) readCmd(ctx context.Context, path string, chapter mangadata.Chap
 		return readMsg{err: client.ReadChapter(ctx, c, path, chapter)}, nil
 	}, func(msg readMsg) tea.Msg { return msg })
 }
+
+// readRemoteCmd fetches the chapter from the server into the read cache (its file in the
+// library, else its pages), opens it and records the read there.
+func (s *state) readRemoteCmd(ctx context.Context, i *item) tea.Cmd {
+	rc, cache := base.CurrentRemote.Client, base.ReadCache()
+	file := i.readPath
+	if file == "" {
+		for _, p := range i.downloaded {
+			file = p
+			break
+		}
+	}
+	chapter, manga, provider, libraryManga := i.chapter, s.manga.Info(), s.client.Info().ID, s.libraryManga
+	info, volume := chapter.Info(), chapter.Volume().Info().Number
+	return base.Load(ctx, fmt.Sprintf("Fetching %q for reading", chapter), func(ctx context.Context) (readMsg, error) {
+		var path string
+		var err error
+		if file != "" && libraryManga != 0 {
+			path, err = rc.ChapterFile(ctx, cache, libraryManga, file)
+		} else {
+			path, err = rc.OnlineChapter(ctx, cache, provider, manga.ID, volume, info.Number, manga.Title+" "+stringutil.FormatFloat32(info.Number))
+		}
+		if err != nil {
+			return readMsg{}, err
+		}
+		log.Info("opening chapter %q from %s", chapter, path)
+		if err := openFile(path); err != nil {
+			return readMsg{}, fmt.Errorf("open %s: %w", path, err)
+		}
+		err = rc.RecordRead(ctx, storage.Read{Provider: provider, MangaID: manga.ID, MangaTitle: manga.Title, Volume: volume,
+			Chapter: info.Number, ChapterTitle: info.Title, ChapterURL: info.URL, LibraryManga: libraryManga})
+		if err != nil {
+			err = fmt.Errorf("opened, but the read isn't recorded on the server: %w", err)
+		}
+		return readMsg{err: err}, nil
+	}, func(msg readMsg) tea.Msg { return msg })
+}
+
+// openFile opens a chapter with the default app. Swapped in tests.
+var openFile = open.Run
 
 // openURLCmd opens the chapter's page in the browser. Only a web url: the provider says
 // what it is, a path or a UNC share would be opened as well.

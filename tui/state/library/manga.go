@@ -329,6 +329,9 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		case key.Matches(msg, s.open):
 			if item, ok := s.List.SelectedItem().(*downloadItem); ok {
 				p := item.download.Path
+				if r := base.CurrentRemote; r != nil {
+					return fetchCmd(ctx, r, s.manga.ID, item)
+				}
 				return func() tea.Msg {
 					if err := open.Start(p); err != nil {
 						return fmt.Errorf("open %s: %w", p, err)
@@ -339,6 +342,21 @@ func (s *mangaState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 	}
 	return s.List.Update(msg)
+}
+
+// fetchCmd fetches the server's chapter file into the read cache and opens it.
+func fetchCmd(ctx context.Context, r *base.Remote, manga int64, item *downloadItem) tea.Cmd {
+	cache, file, title := base.ReadCache(), item.download.Path, item.Title()
+	return base.Load(ctx, fmt.Sprintf("Fetching %q", title), func(ctx context.Context) (struct{}, error) {
+		p, err := r.Client.ChapterFile(ctx, cache, manga, file)
+		if err != nil {
+			return struct{}{}, err
+		}
+		if err := open.Start(p); err != nil {
+			return struct{}{}, fmt.Errorf("open %s: %w", p, err)
+		}
+		return struct{}{}, nil
+	}, func(struct{}) tea.Msg { return nil })
 }
 
 // openURLCmd opens the web page of the manga's current source, looked up (and recorded)
