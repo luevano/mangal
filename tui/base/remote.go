@@ -22,6 +22,9 @@ type Remote struct {
 	// whose they are ("token claude").
 	Perms []string
 	Who   string
+	// ShowAll shows the actions the permissions don't allow, the server refuses them
+	// (serve.hide_unavailable false, as the web UI does).
+	ShowAll bool
 	// Services are the server's.
 	Services core.Services
 	// Events tells fn the topics (storage.Rev*) the server says changed, until ctx is
@@ -171,7 +174,7 @@ func (r *Remote) refusal(g gate) string {
 		return capitalize(g.unsupported) + " isn't on a remote server yet (mangal without --remote does it)"
 	case g.feature != "" && !slices.Contains(r.Features, g.feature):
 		return fmt.Sprintf("The server (mangal %s) doesn't have %s: update it", r.Version, g.feature)
-	case g.perm != "" && !r.Has(g.perm):
+	case g.perm != "" && !r.Has(g.perm) && !r.ShowAll:
 		return fmt.Sprintf("That needs the %s permission on %s", g.perm, r.Host())
 	}
 	return ""
