@@ -32,7 +32,7 @@ const (
 var (
 	dbPrefixes = []string{"download.", "read.history.", "watch.", "jobs.", "notification.", "providers.filter.", "providers.headless."}
 	dbKeys     = []string{
-		"metadata.anilist.tag_rank_min", "metadata.kitsu.enabled", "metadata.myanimelist.enabled",
+		"metadata.anilist.tag_rank_min", "metadata.kitsu.enabled", "metadata.myanimelist.enabled", "metadata.mangaupdates.enabled",
 		"cache.ttl", "cache.mirror_ttl", "data.backups", "providers.parallelism", "providers.mirrors",
 		"health.source_check_interval",
 	}

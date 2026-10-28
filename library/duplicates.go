@@ -13,9 +13,10 @@ import (
 )
 
 var duplicateNames = map[metadata.IDCode]string{
-	metadata.IDCodeAnilist:     "AniList",
-	metadata.IDCodeKitsu:       "Kitsu",
-	metadata.IDCodeMyAnimeList: "MyAnimeList",
+	metadata.IDCodeAnilist:      "AniList",
+	metadata.IDCodeKitsu:        "Kitsu",
+	metadata.IDCodeMyAnimeList:  "MyAnimeList",
+	metadata.IDCodeMangaUpdates: "MangaUpdates",
 }
 
 // DuplicateManga is a library manga of a Duplicate.

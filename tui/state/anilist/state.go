@@ -66,6 +66,8 @@ func sourceColor(code lmmeta.IDCode) gocolor.Color {
 		return color.Kitsu
 	case lmmeta.IDCodeMyAnimeList:
 		return color.MyAnimeList
+	case lmmeta.IDCodeMangaUpdates:
+		return color.MangaUpdates
 	}
 	return color.Anilist
 }

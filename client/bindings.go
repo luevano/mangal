@@ -24,10 +24,37 @@ import (
 type MetadataSource struct {
 	Code   metadata.IDCode
 	Source metadata.IDSource
-	// Name is for display, Key for flags and arguments (anilist, kitsu, mal).
+	// Name is for display, Key for flags and arguments (anilist, kitsu, mal, mangaupdates).
 	Name, Key string
-	// URL is the page of a manga of the source.
+	// URL is the page of a manga of the source without its id, see MangaURL.
 	URL string
+}
+
+// MangaURL is the page of the source's manga with the id. MangaUpdates' pages have its
+// ids in base 36.
+func (s MetadataSource) MangaURL(id string) string {
+	if s.Code == metadata.IDCodeMangaUpdates {
+		if n, err := strconv.ParseInt(id, 10, 64); err == nil {
+			id = strconv.FormatInt(n, 36)
+		}
+	}
+	return s.URL + id
+}
+
+// ParseID is the source's id of what a user gives: an integer, or for MangaUpdates also
+// the id in its page's url (base 36).
+func (s MetadataSource) ParseID(id string) (string, error) {
+	id = strings.TrimSpace(id)
+	if n, err := strconv.Atoi(id); err == nil && n > 0 {
+		return id, nil
+	}
+	if s.Code == metadata.IDCodeMangaUpdates {
+		if mu, ok := metadata.MangaUpdatesID(id); ok {
+			return mu.Raw, nil
+		}
+		return "", fmt.Errorf("MangaUpdates id %q isn't an integer or the id of its page (mangaupdates.com/series/<id>)", id)
+	}
+	return "", fmt.Errorf("%s id %q isn't a positive integer", s.Name, id)
 }
 
 // MetadataSources are the sources a manga can be bound to, in their order of priority (the
@@ -36,6 +63,7 @@ var MetadataSources = []MetadataSource{
 	{Code: metadata.IDCodeAnilist, Source: metadata.IDSourceAnilist, Name: "AniList", Key: "anilist", URL: "https://anilist.co/manga/"},
 	{Code: metadata.IDCodeKitsu, Source: metadata.IDSourceKitsu, Name: "Kitsu", Key: "kitsu", URL: "https://kitsu.app/manga/"},
 	{Code: metadata.IDCodeMyAnimeList, Source: metadata.IDSourceMyAnimeList, Name: "MyAnimeList", Key: "mal", URL: "https://myanimelist.net/manga/"},
+	{Code: metadata.IDCodeMangaUpdates, Source: metadata.IDSourceMangaUpdates, Name: "MangaUpdates", Key: "mangaupdates", URL: "https://www.mangaupdates.com/series/"},
 }
 
 // MetadataSourceOf is the source with the code.
@@ -49,7 +77,7 @@ func MetadataSourceOf(code metadata.IDCode) (MetadataSource, bool) {
 }
 
 // ParseMetadataSource is a source by key, code or name (anilist/al, kitsu/kt,
-// mal/myanimelist), any case.
+// mal/myanimelist, mangaupdates/mu), any case.
 func ParseMetadataSource(s string) (MetadataSource, error) {
 	s = strings.ToLower(strings.TrimSpace(s))
 	for _, src := range MetadataSources {
@@ -57,7 +85,7 @@ func ParseMetadataSource(s string) (MetadataSource, error) {
 			return src, nil
 		}
 	}
-	return MetadataSource{}, fmt.Errorf("unknown metadata source %q (anilist, kitsu or mal)", s)
+	return MetadataSource{}, fmt.Errorf("unknown metadata source %q (anilist, kitsu, mal or mangaupdates)", s)
 }
 
 // SourceName is the name of the source with the code, the code if unknown.

@@ -174,7 +174,7 @@ func TestV1MetadataSearch(t *testing.T) {
 		t.Errorf("unknown source %d", code)
 	}
 	var sources []apiv1.MetadataSource
-	if code := s.call(t, "GET", "/api/v1/metadata/sources", "", &sources); code != http.StatusOK || len(sources) != 3 ||
+	if code := s.call(t, "GET", "/api/v1/metadata/sources", "", &sources); code != http.StatusOK || len(sources) != 4 ||
 		!sources[0].Enabled || sources[1].Enabled || sources[1].Reason == nil {
 		t.Errorf("sources %d %+v", code, sources)
 	}

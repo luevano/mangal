@@ -33,8 +33,8 @@ func TestBindFlags(t *testing.T) {
 }
 
 func TestFormatBindings(t *testing.T) {
-	got := formatBindings([]storage.Binding{{Source: "kt", ID: "11", Default: true}, {Source: "al", ID: "30013"}, {Source: "mu", ID: "5"}})
-	if want := "Kitsu 11 (default), AniList 30013 (backup), mu 5 (backup)"; got != want {
+	got := formatBindings([]storage.Binding{{Source: "kt", ID: "11", Default: true}, {Source: "al", ID: "30013"}, {Source: "ap", ID: "5"}})
+	if want := "Kitsu 11 (default), AniList 30013 (backup), ap 5 (backup)"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }

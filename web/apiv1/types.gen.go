@@ -278,7 +278,7 @@ type ChapterPage struct {
 
 // ChapterPages defines model for ChapterPages.
 type ChapterPages struct {
-	// Format the chapter's format, libmangal's (CBZ, ZIP, TAR, TARGZ, Images, PDF), ONLINE for a provider's
+	// Format the chapter's format, libmangal's (CBZ, ZIP, EPUB, TAR, TARGZ, Images, PDF), ONLINE for a provider's
 	Format string        `json:"format"`
 	Pages  []ChapterPage `json:"pages"`
 
@@ -1005,7 +1005,7 @@ type MetadataResult struct {
 
 // MetadataSource defines model for MetadataSource.
 type MetadataSource struct {
-	// Code al, kt, mal (Binding.source)
+	// Code al, kt, mal, mu (Binding.source)
 	Code    string `json:"code"`
 	Enabled bool   `json:"enabled"`
 	Key     string `json:"key"`
@@ -1536,7 +1536,7 @@ type RemoveBindingParams struct {
 	// MangaId the provider's manga id
 	MangaId MangaIDRequiredParam `form:"manga_id" json:"manga_id"`
 
-	// Source the metadata source's code (al, kt, mal)
+	// Source the metadata source's code (al, kt, mal, mu)
 	Source string `form:"source" json:"source"`
 
 	// Expect the hash of the plan confirmed (needed with apply)

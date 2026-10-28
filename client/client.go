@@ -11,6 +11,7 @@ import (
 	"github.com/luevano/libmangal/progress"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/kitsu"
+	"github.com/luevano/mangal/v5/client/mangaupdates"
 	"github.com/luevano/mangal/v5/client/myanimelist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
@@ -446,6 +447,13 @@ func metadataProviders() ([]*metadata.ProviderWithCache, error) {
 			return nil, err
 		}
 		metas = append(metas, m)
+	}
+	if config.Metadata.MangaUpdates.Enabled.Get() {
+		mu, err := mangaupdates.MangaUpdates()
+		if err != nil {
+			return nil, err
+		}
+		metas = append(metas, mu)
 	}
 	return metas, nil
 }

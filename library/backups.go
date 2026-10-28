@@ -11,9 +11,9 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 )
 
-// Backup is the Kitsu and MyAnimeList links a library manga linked to AniList can get from
-// it: AniList's MyAnimeList id, the Kitsu id of its sources' links (MangaDex has them), else
-// the one Kitsu maps the AniList id to.
+// Backup is the Kitsu, MyAnimeList and MangaUpdates links a library manga linked to AniList
+// can get from it: AniList's MyAnimeList id, the Kitsu and MangaUpdates ids of its sources'
+// links (MangaDex has them), else the Kitsu id Kitsu maps the AniList id to.
 type Backup struct {
 	Manga   storage.Manga
 	AniList string
@@ -46,6 +46,9 @@ type BackupFinder struct {
 	// Nil looks nothing up on Kitsu.
 	KitsuIDs func(ctx context.Context, anilist []int) (map[int]int, error)
 }
+
+// backupCodes are the sources backups fill, in the order they're shown.
+var backupCodes = []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList, metadata.IDCodeMangaUpdates}
 
 // kitsuBatch is how many AniList ids each KitsuIDs call gets, for the progress.
 const kitsuBatch = 20
@@ -129,6 +132,9 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 				if mal := idOf(pids, metadata.IDCodeMyAnimeList); mal != "" && found[metadata.IDCodeMyAnimeList] == "" {
 					found[metadata.IDCodeMyAnimeList] = mal
 				}
+				if mu := idOf(pids, metadata.IDCodeMangaUpdates); mu != "" && found[metadata.IDCodeMangaUpdates] == "" {
+					found[metadata.IDCodeMangaUpdates] = mu
+				}
 			}
 		}
 		mapped := kitsuIDs[t.al]
@@ -165,12 +171,13 @@ func (b BackupFinder) Find(ctx context.Context, mangas []storage.Manga) ([]Backu
 			pick = nil
 		}
 		backup := Backup{Manga: t.info.Manga, AniList: t.al, Fill: Links{}, Disagree: disagree, Pick: pick, Failed: failed}
-		for _, code := range []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList} {
+		for _, code := range backupCodes {
 			s := t.info.Source(code)
 			id := found[code]
 			switch {
 			case id == "":
-				if !s.Linked() && (code != metadata.IDCodeKitsu || kitsuProvider == "") {
+				// only MangaDex sources give MangaUpdates ids, none isn't counted
+				if code != metadata.IDCodeMangaUpdates && !s.Linked() && (code != metadata.IDCodeKitsu || kitsuProvider == "") {
 					if code == metadata.IDCodeKitsu {
 						backup.NoKitsu = true
 					} else {
@@ -260,7 +267,7 @@ func (b Backup) Links(replace bool) Links {
 // Lines describe the backup: what it fills and what disagrees.
 func (b Backup) Lines() []string {
 	var lines []string
-	for _, code := range []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList} {
+	for _, code := range backupCodes {
 		if id, ok := b.Fill[code]; ok {
 			lines = append(lines, fmt.Sprintf("%d %q: %s %s", b.Manga.ID, b.Manga.Title, sourceName(code), id))
 		}

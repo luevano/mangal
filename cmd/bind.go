@@ -22,9 +22,10 @@ func init() {
 	f.StringVar(&bindArgs.Anilist, "anilist", "", "Bind the AniList manga with this id")
 	f.StringVar(&bindArgs.Kitsu, "kitsu", "", "Bind the Kitsu manga with this id")
 	f.StringVar(&bindArgs.MyAnimeList, "mal", "", "Bind the MyAnimeList manga with this id")
+	f.StringVar(&bindArgs.MangaUpdates, "mangaupdates", "", "Bind the MangaUpdates manga with this id (or the one in its url)")
 	f.StringVar(&bindArgs.Default, "default", "", "")
 	_ = f.MarkHidden("default")
-	f.StringSliceVar(&bindArgs.Remove, "remove", nil, "Remove the binding of these sources (anilist|kitsu|mal)")
+	f.StringSliceVar(&bindArgs.Remove, "remove", nil, "Remove the binding of these sources (anilist|kitsu|mal|mangaupdates)")
 	f.BoolVarP(&bindArgs.JSON, "json", "j", false, "Print JSON")
 
 	bindCmd.AddCommand(bindLsCmd)
@@ -35,6 +36,7 @@ var bindArgs = struct {
 	ID                          string
 	Selector                    string
 	Anilist, Kitsu, MyAnimeList string
+	MangaUpdates                string
 	Default                     string
 	Remove                      []string
 	JSON                        bool
@@ -42,11 +44,12 @@ var bindArgs = struct {
 
 var bindCmd = &cobra.Command{
 	Use:   "bind <provider> [title]",
-	Short: "Bind a manga to its AniList, Kitsu or MyAnimeList manga",
+	Short: "Bind a manga to its AniList, Kitsu, MyAnimeList or MangaUpdates manga",
 	Long: `Bind a provider's manga (the one the selector picks from a search of the title, or the
 manga with the --id) to metadata sources: the default binding's metadata is what
 its downloads use (ComicInfo.xml, folder names), every bound id is used to sync the reading
-progress. The default is the first bound source in the order AniList, Kitsu, MyAnimeList;
+progress. The default is the first bound source in the order AniList, Kitsu, MyAnimeList,
+MangaUpdates (no progress there, metadata.mangaupdates.enabled);
 the others are its backups, used in that order when the default's metadata can't be fetched.
 Without flags it prints the manga's bindings. Watches, the library and the TUI (A on a
 manga) share the bindings.`,
@@ -71,12 +74,16 @@ manga) share the bindings.`,
 		var sets []set
 		for _, s := range []struct {
 			key, id string
-		}{{"anilist", bindArgs.Anilist}, {"kitsu", bindArgs.Kitsu}, {"mal", bindArgs.MyAnimeList}} {
+		}{{"anilist", bindArgs.Anilist}, {"kitsu", bindArgs.Kitsu}, {"mal", bindArgs.MyAnimeList}, {"mangaupdates", bindArgs.MangaUpdates}} {
 			if s.id == "" {
 				continue
 			}
 			src, _ := client.ParseMetadataSource(s.key)
-			sets = append(sets, set{src: src, id: strings.TrimSpace(s.id)})
+			id, err := src.ParseID(s.id)
+			if err != nil {
+				return err
+			}
+			sets = append(sets, set{src: src, id: id})
 		}
 		if cmd.Flags().Changed("default") {
 			return errors.New("--default is gone: the default is the first bound source of AniList, Kitsu, MyAnimeList (remove the ones before the one you want with --remove)")

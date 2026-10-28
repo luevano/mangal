@@ -10,6 +10,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/kitsu"
+	"github.com/luevano/mangal/v5/client/mangaupdates"
 	"github.com/luevano/mangal/v5/client/myanimelist"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/library"
@@ -39,7 +40,7 @@ func LibraryLinker() (library.Linker, error) {
 }
 
 // MetadataProvider is the metadata source's provider without a provider's client (the
-// library's links): AniList, Kitsu when enabled, MyAnimeList when configured.
+// library's links): AniList, Kitsu and MangaUpdates when enabled, MyAnimeList when configured.
 func MetadataProvider(source metadata.IDSource) (*metadata.ProviderWithCache, error) {
 	switch source {
 	case metadata.IDSourceAnilist:
@@ -54,6 +55,11 @@ func MetadataProvider(source metadata.IDSource) (*metadata.ProviderWithCache, er
 			return nil, errors.New("myanimelist has no API client (mangal myanimelist client)")
 		}
 		return myanimelist.MyAnimeList()
+	case metadata.IDSourceMangaUpdates:
+		if !config.Metadata.MangaUpdates.Enabled.Get() {
+			return nil, errors.New("mangaupdates isn't enabled (metadata.mangaupdates.enabled)")
+		}
+		return mangaupdates.MangaUpdates()
 	}
 	return nil, fmt.Errorf("no metadata provider %v", source)
 }

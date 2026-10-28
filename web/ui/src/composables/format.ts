@@ -57,7 +57,8 @@ export function sourceURL(source: string, id: string): string {
     case 'kt':
       return `https://kitsu.app/manga/${id}`
     case 'mu':
-      return `https://www.mangaupdates.com/series/${id}`
+      // the api's ids are the pages' in base 36
+      return /^\d+$/.test(id) ? `https://www.mangaupdates.com/series/${BigInt(id).toString(36)}` : ''
   }
   return ''
 }

@@ -29,9 +29,14 @@ type configReadHistory struct {
 }
 
 type configMetadata struct {
-	Anilist     configMetadataAnilist
-	Kitsu       configMetadataKitsu
-	MyAnimeList configMetadataMyAnimeList
+	Anilist      configMetadataAnilist
+	Kitsu        configMetadataKitsu
+	MyAnimeList  configMetadataMyAnimeList
+	MangaUpdates configMetadataMangaUpdates
+}
+
+type configMetadataMangaUpdates struct {
+	Enabled *entry[bool, bool]
 }
 
 type configMetadataAnilist struct {

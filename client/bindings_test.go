@@ -278,3 +278,20 @@ func TestFirstBoundRateLimited(t *testing.T) {
 		t.Errorf("%v, kitsu asked %v", err, kitsu.ids)
 	}
 }
+
+func TestMangaUpdatesIDs(t *testing.T) {
+	mu, _ := ParseMetadataSource("mu")
+	for in, want := range map[string]string{"55099564912": "55099564912", "pb8uwds": "55099564912", " pb8uwds ": "55099564912", "x!": ""} {
+		got, err := mu.ParseID(in)
+		if got != want || (err == nil) != (want != "") {
+			t.Errorf("ParseID(%q) = %q, %v, want %q", in, got, err, want)
+		}
+	}
+	if got := mu.MangaURL("55099564912"); got != "https://www.mangaupdates.com/series/pb8uwds" {
+		t.Errorf("MangaURL %s", got)
+	}
+	al, _ := ParseMetadataSource("anilist")
+	if _, err := al.ParseID("pb8uwds"); err == nil {
+		t.Error("an AniList id in base 36")
+	}
+}

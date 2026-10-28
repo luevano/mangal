@@ -127,7 +127,7 @@ func toAPIMetadata(src client.MetadataSource, m lmmeta.Metadata, score float64) 
 	r := apiv1.MetadataResult{Source: string(src.Code), Id: m.ID().Raw, Title: m.Title(), Url: m.URL(), Score: score,
 		Bad: score < lmmeta.GoodMatchScore}
 	if r.Url == "" {
-		r.Url = src.URL + r.Id
+		r.Url = src.MangaURL(r.Id)
 	}
 	if y := m.StartDate().Year; y != 0 {
 		r.Year = &y

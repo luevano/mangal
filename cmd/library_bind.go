@@ -20,6 +20,7 @@ import (
 
 var libraryBindArgs = struct {
 	Anilist, Kitsu, MyAnimeList string
+	MangaUpdates                string
 	Remove                      []string
 	Rename, Watches             bool
 	Backups, Yes, Apply         bool
@@ -32,10 +33,11 @@ func init() {
 	f.StringVar(&libraryBindArgs.Anilist, "anilist", "", "Link the AniList manga with this id")
 	f.StringVar(&libraryBindArgs.Kitsu, "kitsu", "", "Link the Kitsu manga with this id")
 	f.StringVar(&libraryBindArgs.MyAnimeList, "mal", "", "Link the MyAnimeList manga with this id")
-	f.StringSliceVar(&libraryBindArgs.Remove, "remove", nil, "Remove the links of these sources (anilist|kitsu|mal)")
+	f.StringVar(&libraryBindArgs.MangaUpdates, "mangaupdates", "", "Link the MangaUpdates manga with this id (or the one in its url)")
+	f.StringSliceVar(&libraryBindArgs.Remove, "remove", nil, "Remove the links of these sources (anilist|kitsu|mal|mangaupdates)")
 	f.BoolVar(&libraryBindArgs.Rename, "rename", false, "Also rename the folder to the name the template gives with the links")
 	f.BoolVar(&libraryBindArgs.Watches, "watches", false, "Also bind the manga's watches (of other provider mangas) to the links")
-	f.BoolVar(&libraryBindArgs.Backups, "backups", false, "Fill the missing Kitsu and MyAnimeList links from AniList (all mangas without an id)")
+	f.BoolVar(&libraryBindArgs.Backups, "backups", false, "Fill the missing Kitsu, MyAnimeList and MangaUpdates links from AniList and MangaDex (all mangas without an id)")
 	f.BoolVarP(&libraryBindArgs.Yes, "yes", "y", false, "With --backups --apply, set them without asking (ids that differ are still only replaced when asked)")
 	f.BoolVar(&libraryBindArgs.Apply, "apply", false, "Link (rename, bind, fill), instead of only listing what would happen")
 	f.BoolVar(&libraryBindArgs.Dismiss, "dismiss", false, "Link neither of the Kitsu ids to pick from (not asked again until others are found)")
@@ -43,7 +45,7 @@ func init() {
 
 var libraryBindCmd = &cobra.Command{
 	Use:   "bind [library-id]",
-	Short: "Link a library manga to its AniList, Kitsu or MyAnimeList manga",
+	Short: "Link a library manga to its AniList, Kitsu, MyAnimeList or MangaUpdates manga",
 	Long: `Link a library manga (id from "mangal library ls") to metadata sources, also one without
 a provider source (a folder adopted by a scan). A link replaces the source's old id
 everywhere: the manga's own ids, the bindings of its provider sources and the metadata ids
@@ -57,8 +59,9 @@ another id (--watches binds it), another library manga with the id (merge them).
 
 Only lists what would happen (the ids are checked) unless --apply is set.
 
---backups fills the Kitsu and MyAnimeList links of the mangas linked to AniList (the given
-one, else all): MyAnimeList from AniList (batched), Kitsu from the links of a MangaDex
+--backups fills the Kitsu, MyAnimeList and MangaUpdates links of the mangas linked to AniList
+(the given one, else all): MyAnimeList from AniList (batched), MangaUpdates from the links of
+a MangaDex source, Kitsu from the links of a MangaDex
 source, else from Kitsu's own AniList mappings (batched; when both exist and disagree,
 neither is set and the two are saved: "mangal library bind <id>" lists them, linking any
 Kitsu id settles it, --dismiss keeps neither). A link that
@@ -206,13 +209,15 @@ func libraryBindLinks(cmd *cobra.Command) (library.Links, error) {
 		{metadata.IDCodeAnilist, "anilist", libraryBindArgs.Anilist},
 		{metadata.IDCodeKitsu, "kitsu", libraryBindArgs.Kitsu},
 		{metadata.IDCodeMyAnimeList, "mal", libraryBindArgs.MyAnimeList},
+		{metadata.IDCodeMangaUpdates, "mangaupdates", libraryBindArgs.MangaUpdates},
 	} {
 		if !cmd.Flags().Changed(s.flag) {
 			continue
 		}
-		id := strings.TrimSpace(s.id)
-		if n, err := strconv.Atoi(id); err != nil || n <= 0 {
-			return nil, fmt.Errorf("--%s %q isn't a positive integer", s.flag, s.id)
+		src, _ := client.MetadataSourceOf(s.code)
+		id, err := src.ParseID(s.id)
+		if err != nil {
+			return nil, fmt.Errorf("--%s: %w", s.flag, err)
 		}
 		links[s.code] = id
 	}

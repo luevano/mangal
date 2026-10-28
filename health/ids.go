@@ -17,13 +17,14 @@ import (
 
 // removeNames are library bind --remove's names of the sources.
 var removeNames = map[metadata.IDCode]string{
-	metadata.IDCodeAnilist:     "anilist",
-	metadata.IDCodeKitsu:       "kitsu",
-	metadata.IDCodeMyAnimeList: "mal",
+	metadata.IDCodeAnilist:      "anilist",
+	metadata.IDCodeKitsu:        "kitsu",
+	metadata.IDCodeMyAnimeList:  "mal",
+	metadata.IDCodeMangaUpdates: "mangaupdates",
 }
 
 // backupCodes are the sources M2 fills, in the order they're shown.
-var backupCodes = []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList}
+var backupCodes = []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList, metadata.IDCodeMangaUpdates}
 
 // linked are the ids each library manga is linked to (a binding or its own), by source.
 func (s *snapshot) linked() map[int64]library.Links {
@@ -142,7 +143,7 @@ func (c Checker) loadBackups(ctx context.Context, s *snapshot) error {
 func (s *snapshot) backupLinks(b library.Backup) library.Links {
 	links := library.Links{}
 	for code, id := range b.Fill {
-		if code == metadata.IDCodeKitsu || code == metadata.IDCodeMyAnimeList && s.mal {
+		if code == metadata.IDCodeKitsu || code == metadata.IDCodeMangaUpdates || code == metadata.IDCodeMyAnimeList && s.mal {
 			links[code] = id
 		}
 	}

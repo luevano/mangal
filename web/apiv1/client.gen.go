@@ -425,14 +425,14 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/jobs/{id}/retry (the `RetryJob` operationId).
 	RetryJob(ctx context.Context, id IDParam, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// FillBackupLinksWithBody Fill the Kitsu and MyAnimeList links of mangas linked to AniList
+	// FillBackupLinksWithBody Fill the Kitsu, MyAnimeList and MangaUpdates links of mangas linked to AniList
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /v1/library/backups (the `FillBackupLinks` operationId).
 	FillBackupLinksWithBody(ctx context.Context, params *FillBackupLinksParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// FillBackupLinks Fill the Kitsu and MyAnimeList links of mangas linked to AniList
+	// FillBackupLinks Fill the Kitsu, MyAnimeList and MangaUpdates links of mangas linked to AniList
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -536,7 +536,7 @@ type ClientInterface interface {
 
 	// ListChapterPages The pages of a downloaded chapter, read from its file (no extraction)
 	//
-	// CBZ, ZIP, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
+	// CBZ, ZIP, EPUB, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
 	// it's read whole from getChapterFile.
 	//
 	// Corresponds with GET /v1/library/mangas/{id}/pages (the `ListChapterPages` operationId).
@@ -764,7 +764,7 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/me/accounts/{source}/logout (the `LogoutMyAccount` operationId).
 	LogoutMyAccount(ctx context.Context, source LogoutMyAccountParamsSource, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListMetadataSources The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList)
+	// ListMetadataSources The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList, MangaUpdates)
 	//
 	// Corresponds with GET /v1/metadata/sources (the `ListMetadataSources` operationId).
 	ListMetadataSources(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1937,7 +1937,7 @@ func (c *Client) RetryJob(ctx context.Context, id IDParam, reqEditors ...Request
 	return c.Client.Do(req)
 }
 
-// FillBackupLinksWithBody Fill the Kitsu and MyAnimeList links of mangas linked to AniList
+// FillBackupLinksWithBody Fill the Kitsu, MyAnimeList and MangaUpdates links of mangas linked to AniList
 //
 // Takes any type of body and a specified content type.
 //
@@ -1954,7 +1954,7 @@ func (c *Client) FillBackupLinksWithBody(ctx context.Context, params *FillBackup
 	return c.Client.Do(req)
 }
 
-// FillBackupLinks Fill the Kitsu and MyAnimeList links of mangas linked to AniList
+// FillBackupLinks Fill the Kitsu, MyAnimeList and MangaUpdates links of mangas linked to AniList
 //
 // Takes a body of the `application/json` content type.
 //
@@ -2218,7 +2218,7 @@ func (c *Client) HoldLibraryManga(ctx context.Context, id IDParam, body HoldLibr
 
 // ListChapterPages The pages of a downloaded chapter, read from its file (no extraction)
 //
-// CBZ, ZIP, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
+// CBZ, ZIP, EPUB, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
 // it's read whole from getChapterFile.
 //
 // Corresponds with GET /v1/library/mangas/{id}/pages (the `ListChapterPages` operationId).
@@ -2756,7 +2756,7 @@ func (c *Client) LogoutMyAccount(ctx context.Context, source LogoutMyAccountPara
 	return c.Client.Do(req)
 }
 
-// ListMetadataSources The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList)
+// ListMetadataSources The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList, MangaUpdates)
 //
 // Corresponds with GET /v1/metadata/sources (the `ListMetadataSources` operationId).
 func (c *Client) ListMetadataSources(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -9431,14 +9431,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/jobs/{id}/retry (the `RetryJob` operationId).
 	RetryJobWithResponse(ctx context.Context, id IDParam, reqEditors ...RequestEditorFn) (*RetryJobResponse, error)
 
-	// FillBackupLinksWithBodyWithResponse Fill the Kitsu and MyAnimeList links of mangas linked to AniList
+	// FillBackupLinksWithBodyWithResponse Fill the Kitsu, MyAnimeList and MangaUpdates links of mangas linked to AniList
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /v1/library/backups (the `FillBackupLinks` operationId).
 	FillBackupLinksWithBodyWithResponse(ctx context.Context, params *FillBackupLinksParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FillBackupLinksResponse, error)
 
-	// FillBackupLinksWithResponse Fill the Kitsu and MyAnimeList links of mangas linked to AniList
+	// FillBackupLinksWithResponse Fill the Kitsu, MyAnimeList and MangaUpdates links of mangas linked to AniList
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -9556,7 +9556,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListChapterPagesWithResponse The pages of a downloaded chapter, read from its file (no extraction)
 	//
-	// CBZ, ZIP, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
+	// CBZ, ZIP, EPUB, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
 	// it's read whole from getChapterFile.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -9802,7 +9802,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/me/accounts/{source}/logout (the `LogoutMyAccount` operationId).
 	LogoutMyAccountWithResponse(ctx context.Context, source LogoutMyAccountParamsSource, reqEditors ...RequestEditorFn) (*LogoutMyAccountResponse, error)
 
-	// ListMetadataSourcesWithResponse The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList)
+	// ListMetadataSourcesWithResponse The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList, MangaUpdates)
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -16068,7 +16068,7 @@ func (c *ClientWithResponses) RetryJobWithResponse(ctx context.Context, id IDPar
 	return ParseRetryJobResponse(rsp)
 }
 
-// FillBackupLinksWithBodyWithResponse Fill the Kitsu and MyAnimeList links of mangas linked to AniList
+// FillBackupLinksWithBodyWithResponse Fill the Kitsu, MyAnimeList and MangaUpdates links of mangas linked to AniList
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16081,7 +16081,7 @@ func (c *ClientWithResponses) FillBackupLinksWithBodyWithResponse(ctx context.Co
 	return ParseFillBackupLinksResponse(rsp)
 }
 
-// FillBackupLinksWithResponse Fill the Kitsu and MyAnimeList links of mangas linked to AniList
+// FillBackupLinksWithResponse Fill the Kitsu, MyAnimeList and MangaUpdates links of mangas linked to AniList
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16295,7 +16295,7 @@ func (c *ClientWithResponses) HoldLibraryMangaWithResponse(ctx context.Context, 
 
 // ListChapterPagesWithResponse The pages of a downloaded chapter, read from its file (no extraction)
 //
-// CBZ, ZIP, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
+// CBZ, ZIP, EPUB, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
 // it's read whole from getChapterFile.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -16727,7 +16727,7 @@ func (c *ClientWithResponses) LogoutMyAccountWithResponse(ctx context.Context, s
 	return ParseLogoutMyAccountResponse(rsp)
 }
 
-// ListMetadataSourcesWithResponse The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList)
+// ListMetadataSourcesWithResponse The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList, MangaUpdates)
 //
 // Returns a wrapper object for the known response body format(s).
 //

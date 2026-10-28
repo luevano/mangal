@@ -452,7 +452,7 @@ export interface paths {
         };
         /**
          * The pages of a downloaded chapter, read from its file (no extraction)
-         * @description CBZ, ZIP, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
+         * @description CBZ, ZIP, EPUB, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
          *     it's read whole from getChapterFile.
          */
         get: operations["listChapterPages"];
@@ -689,7 +689,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Fill the Kitsu and MyAnimeList links of mangas linked to AniList */
+        /** Fill the Kitsu, MyAnimeList and MangaUpdates links of mangas linked to AniList */
         post: operations["fillBackupLinks"];
         delete?: never;
         options?: never;
@@ -1475,7 +1475,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList) */
+        /** The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList, MangaUpdates) */
         get: operations["listMetadataSources"];
         put?: never;
         post?: never;
@@ -1991,7 +1991,7 @@ export interface components {
             error?: string;
         };
         MetadataSource: {
-            /** @description al, kt, mal (Binding.source) */
+            /** @description al, kt, mal, mu (Binding.source) */
             code: string;
             key: string;
             name: string;
@@ -2726,7 +2726,7 @@ export interface components {
             reads: components["schemas"]["Read"][];
         };
         ChapterPages: {
-            /** @description the chapter's format, libmangal's (CBZ, ZIP, TAR, TARGZ, Images, PDF), ONLINE for a provider's */
+            /** @description the chapter's format, libmangal's (CBZ, ZIP, EPUB, TAR, TARGZ, Images, PDF), ONLINE for a provider's */
             format: string;
             /** @description no pages, the file is read whole (getChapterFile with inline) */
             pdf?: boolean;
@@ -5195,7 +5195,7 @@ export interface operations {
                 provider: string;
                 /** @description the provider's manga id */
                 manga_id: components["parameters"]["MangaIDRequiredParam"];
-                /** @description the metadata source's code (al, kt, mal) */
+                /** @description the metadata source's code (al, kt, mal, mu) */
                 source: string;
                 /** @description the hash of the plan confirmed (needed with apply) */
                 expect?: string;
@@ -5263,7 +5263,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description the source's key or code (anilist/al, kitsu/kt, mal) */
+                /** @description the source's key or code (anilist/al, kitsu/kt, mal, mangaupdates/mu) */
                 source: string;
             };
             cookie?: never;

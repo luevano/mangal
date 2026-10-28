@@ -797,15 +797,17 @@ func checkRetry(s *snapshot) []Finding {
 }
 
 var linkFlags = map[metadata.IDCode]string{
-	metadata.IDCodeAnilist:     "--anilist",
-	metadata.IDCodeKitsu:       "--kitsu",
-	metadata.IDCodeMyAnimeList: "--mal",
+	metadata.IDCodeAnilist:      "--anilist",
+	metadata.IDCodeKitsu:        "--kitsu",
+	metadata.IDCodeMyAnimeList:  "--mal",
+	metadata.IDCodeMangaUpdates: "--mangaupdates",
 }
 
 var linkNames = map[metadata.IDCode]string{
-	metadata.IDCodeAnilist:     "AniList",
-	metadata.IDCodeKitsu:       "Kitsu",
-	metadata.IDCodeMyAnimeList: "MyAnimeList",
+	metadata.IDCodeAnilist:      "AniList",
+	metadata.IDCodeKitsu:        "Kitsu",
+	metadata.IDCodeMyAnimeList:  "MyAnimeList",
+	metadata.IDCodeMangaUpdates: "MangaUpdates",
 }
 
 // anilistSuggestion is the AniList id to link the manga to (the folder tag's, else a
@@ -840,7 +842,7 @@ func checkNoAnilist(s *snapshot) []Finding {
 		f := Finding{Severity: Warning, Subject: mangaSubject(m), Message: "no AniList link",
 			Fix: Fix{TUI: tuiLibrary + ": links (AniList search)"}}
 		var others []string
-		for _, code := range []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList} {
+		for _, code := range []metadata.IDCode{metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList, metadata.IDCodeMangaUpdates} {
 			if src := info.Source(code); src.Linked() {
 				others = append(others, linkNames[code]+" "+src.Current())
 			}

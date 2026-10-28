@@ -186,7 +186,8 @@ func TestBackups(t *testing.T) {
 		ProviderIDs: func(_ context.Context, src storage.Source) ([]metadata.ID, error) {
 			switch src.MangaID {
 			case "OPM":
-				return []metadata.ID{alID("74347"), {Raw: "24147", Source: metadata.IDSourceKitsu, Code: metadata.IDCodeKitsu}}, nil
+				return []metadata.ID{alID("74347"), {Raw: "24147", Source: metadata.IDSourceKitsu, Code: metadata.IDCodeKitsu},
+					{Raw: "55099564912", Source: metadata.IDSourceMangaUpdates, Code: metadata.IDCodeMangaUpdates}}, nil
 			case "Berserk":
 				// one provider failing doesn't stop the others
 				return nil, errors.New("mangadex down")
@@ -205,7 +206,7 @@ func TestBackups(t *testing.T) {
 	for _, b := range backups {
 		byTitle[b.Manga.Title] = b
 	}
-	if b := byTitle["OPM"]; b.Fill[metadata.IDCodeKitsu] != "24147" || b.Fill[metadata.IDCodeMyAnimeList] != "44347" || b.NoKitsu {
+	if b := byTitle["OPM"]; b.Fill[metadata.IDCodeKitsu] != "24147" || b.Fill[metadata.IDCodeMyAnimeList] != "44347" || b.Fill[metadata.IDCodeMangaUpdates] != "55099564912" || b.NoKitsu {
 		t.Errorf("OPM %+v", b)
 	}
 	if b := byTitle["Berserk"]; len(b.Fill) != 0 || len(b.Conflicts) != 1 || b.Conflicts[0].New != "2" || !b.NoKitsu {

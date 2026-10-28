@@ -325,6 +325,10 @@ var Metadata = configMetadata{
 		Enabled: boolEntry("metadata.myanimelist.enabled", true,
 			"Search MyAnimeList for metadata when Anilist and Kitsu find none (or fail). Only with a MyAnimeList API client (mangal myanimelist client)."),
 	},
+	MangaUpdates: configMetadataMangaUpdates{
+		Enabled: boolEntry("metadata.mangaupdates.enabled", false,
+			"Search MangaUpdates for metadata when the others find none (or fail), and allow MangaUpdates links and bindings. Off by default: a search takes about 6 seconds (one request a second)."),
+	},
 }
 
 var Download = configDownload{

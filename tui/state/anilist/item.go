@@ -40,7 +40,7 @@ func (i *item) Title() string {
 
 // Description implements list.Item.
 func (i *item) Description() string {
-	url := i.src.URL + i.meta.ID().Raw
+	url := i.src.MangaURL(i.meta.ID().Raw)
 	if i.bad {
 		return fmt.Sprintf("%s · bad match (%.0f%%)", url, i.score*100)
 	}
@@ -85,5 +85,5 @@ func (i *sourceItem) Description() string {
 	case i.meta == nil:
 		return i.binding.ID
 	}
-	return fmt.Sprintf("%s · %s", i.meta, i.src.URL+i.binding.ID)
+	return fmt.Sprintf("%s · %s", i.meta, i.src.MangaURL(i.binding.ID))
 }

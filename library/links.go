@@ -20,7 +20,7 @@ import (
 )
 
 // LinkSources are the metadata sources a library manga links to, by priority.
-var LinkSources = []metadata.IDCode{metadata.IDCodeAnilist, metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList}
+var LinkSources = []metadata.IDCode{metadata.IDCodeAnilist, metadata.IDCodeKitsu, metadata.IDCodeMyAnimeList, metadata.IDCodeMangaUpdates}
 
 // Links are metadata ids by source; "" is none (removes it in a change).
 type Links map[metadata.IDCode]string

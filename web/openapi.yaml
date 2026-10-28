@@ -560,7 +560,7 @@ paths:
     get:
       summary: The pages of a downloaded chapter, read from its file (no extraction)
       description: |
-        CBZ, ZIP, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
+        CBZ, ZIP, EPUB, TAR, TAR.GZ and folders of images have pages; a PDF has none (`pdf`),
         it's read whole from getChapterFile.
       operationId: listChapterPages
       tags: [v1, library, reader]
@@ -829,7 +829,7 @@ paths:
           $ref: '#/components/responses/Error'
   /v1/library/backups:
     post:
-      summary: Fill the Kitsu and MyAnimeList links of mangas linked to AniList
+      summary: Fill the Kitsu, MyAnimeList and MangaUpdates links of mangas linked to AniList
       operationId: fillBackupLinks
       tags: [v1, library, changes]
       x-mangal-scope: manage
@@ -1830,7 +1830,7 @@ paths:
         - name: source
           in: query
           required: true
-          description: the metadata source's code (al, kt, mal)
+          description: the metadata source's code (al, kt, mal, mu)
           schema:
             type: string
         - name: expect
@@ -1846,7 +1846,7 @@ paths:
 
   /v1/metadata/sources:
     get:
-      summary: The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList)
+      summary: The metadata sources mangas are bound or linked to (AniList, Kitsu, MyAnimeList, MangaUpdates)
       operationId: listMetadataSources
       tags: [v1, metadata]
       x-mangal-scope: read
@@ -1900,7 +1900,7 @@ paths:
         - name: source
           in: path
           required: true
-          description: the source's key or code (anilist/al, kitsu/kt, mal)
+          description: the source's key or code (anilist/al, kitsu/kt, mal, mangaupdates/mu)
           schema:
             type: string
         - name: q
@@ -2746,7 +2746,7 @@ components:
       properties:
         code:
           type: string
-          description: al, kt, mal (Binding.source)
+          description: al, kt, mal, mu (Binding.source)
         key:
           type: string
         name:
@@ -4160,7 +4160,7 @@ components:
       properties:
         format:
           type: string
-          description: the chapter's format, libmangal's (CBZ, ZIP, TAR, TARGZ, Images, PDF), ONLINE for a provider's
+          description: the chapter's format, libmangal's (CBZ, ZIP, EPUB, TAR, TARGZ, Images, PDF), ONLINE for a provider's
         pdf:
           type: boolean
           description: no pages, the file is read whole (getChapterFile with inline)
