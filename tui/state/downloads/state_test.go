@@ -68,6 +68,15 @@ func titles(s *state) []string {
 
 func press(k string) tea.KeyPressMsg { return util.KeyPress(k) }
 
+// run runs cmd and feeds the jobs it listed back, as the program would.
+func run(ctx context.Context, s *state, cmd tea.Cmd) {
+	for _, msg := range base.Drain(cmd) {
+		if l, ok := msg.(listedMsg); ok {
+			s.Update(ctx, l)
+		}
+	}
+}
+
 func TestGroupedByQueue(t *testing.T) {
 	m := withManager(t)
 	a := m.Add(blocked(t, "A", "chapters/p/1", "p"))
@@ -80,7 +89,7 @@ func TestGroupedByQueue(t *testing.T) {
 
 	s := New().(*state)
 	ctx := context.Background()
-	s.Init(ctx)
+	run(ctx, s, s.Init(ctx))
 	s.Resize(base.Size{Width: 120, Height: 40})
 	if j, _ := s.selected(); j.Title != "D" {
 		t.Errorf("selected %q, want the newest active job", j.Title)
@@ -104,15 +113,15 @@ func TestGroupedByQueue(t *testing.T) {
 		t.Fatal("o did nothing")
 	}
 	// backspace clears p's queue, not the running one
-	s.Update(ctx, util.KeyPress("backspace"))
+	run(ctx, s, s.Update(ctx, util.KeyPress("backspace")))
 	waitStatus(t, m, c.ID, jobs.Cancelled)
 	if j, _ := m.Get(a.ID); j.Status != jobs.Running {
 		t.Errorf("A is %s", j.Status)
 	}
 	// d cancels the running one
-	s.Update(ctx, press("d"))
+	run(ctx, s, s.Update(ctx, press("d")))
 	waitStatus(t, m, a.ID, jobs.Cancelled)
-	s.Update(ctx, tuijobs.ChangedMsg{})
+	run(ctx, s, s.Update(ctx, tuijobs.ChangedMsg{}))
 	if titles(s)[0] != "B" {
 		t.Errorf("order after cancelling %q", titles(s))
 	}
@@ -124,7 +133,7 @@ func TestGroupedByQueue(t *testing.T) {
 	}
 	confirm := s.Update(ctx, press("y"))
 	for _, msg := range base.Drain(confirm) {
-		s.Update(ctx, msg)
+		run(ctx, s, s.Update(ctx, msg))
 	}
 	if len(m.Active()) != 0 {
 		// running jobs stop in the background
@@ -140,11 +149,11 @@ func TestRemoveFinished(t *testing.T) {
 	waitStatus(t, m, done.ID, jobs.Done)
 	s := New().(*state)
 	ctx := context.Background()
-	s.Init(ctx)
+	run(ctx, s, s.Init(ctx))
 	if s.keys.cancel.Help().Desc != "remove" {
 		t.Errorf("d on a finished job: %q", s.keys.cancel.Help().Desc)
 	}
-	s.Update(ctx, press("d"))
+	run(ctx, s, s.Update(ctx, press("d")))
 	if len(s.List.Items()) != 0 || len(m.Jobs()) != 0 {
 		t.Error("d didn't remove the finished job")
 	}
@@ -160,7 +169,7 @@ func TestKeys(t *testing.T) {
 			for _, j := range m.Jobs() {
 				waitStatus(t, m, j.ID, jobs.Cancelled)
 			}
-			s.Update(context.Background(), tuijobs.ChangedMsg{})
+			run(context.Background(), s, s.Update(context.Background(), tuijobs.ChangedMsg{}))
 		}
 		if c := base.KeyCollisions(s.keyMap(), s.List.KeyMap.Browsing()...); len(c) != 0 {
 			t.Errorf("finished %v: %q", finished, c)
@@ -175,15 +184,15 @@ func TestSelectsTheNewJob(t *testing.T) {
 	m.Add(blocked(t, "A", "", "p"))
 	s := New().(*state)
 	ctx := context.Background()
-	s.Init(ctx)
+	run(ctx, s, s.Init(ctx))
 	m.Add(blocked(t, "B", "", "p"))
 	// shown: the cursor stays
-	s.Update(ctx, tuijobs.ChangedMsg{})
+	run(ctx, s, s.Update(ctx, tuijobs.ChangedMsg{}))
 	if j, _ := s.selected(); j.Title != "A" {
 		t.Errorf("selected %q while shown, want A", j.Title)
 	}
 	m.Add(blocked(t, "C", "", "q"))
-	s.Update(ctx, base.RestoredMsg{})
+	run(ctx, s, s.Update(ctx, base.RestoredMsg{}))
 	if j, _ := s.selected(); j.Title != "C" {
 		t.Errorf("selected %q, want the new job C", j.Title)
 	}

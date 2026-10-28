@@ -122,7 +122,6 @@ func New() base.State {
 	}}
 	s.Screen = list.NewScreen(list.New(2, 1, "job", "jobs", []*item{}, func(i *item) _list.DefaultItem { return i }), s.keyMap)
 	s.Confirm = confirm.NewDialog(40, color.Warning)
-	s.setItems(context.Background(), true)
 	return s
 }
 
@@ -154,17 +153,44 @@ func (s *state) Subtitle() string {
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
-	return s.setItems(ctx, true)
+	return s.list(ctx, true)
 }
 
-// setItems lists the jobs: the active ones by queue (providers, in the order their first
+// listedMsg is the jobs listed, for setItems.
+type listedMsg struct {
+	all       []core.Job
+	selectNew bool
+}
+
+// list lists the jobs off Update.
+func (s *state) list(ctx context.Context, selectNew bool) tea.Cmd {
+	return s.do(ctx, func(context.Context, core.Jobs) (string, error) { return "", nil }, selectNew)
+}
+
+// do runs f with the jobs off Update: the notice it returns is shown, else (empty) the
+// jobs are listed again.
+func (s *state) do(ctx context.Context, f func(context.Context, core.Jobs) (string, error), selectNew bool) tea.Cmd {
+	return func() tea.Msg {
+		svc := tuijobs.Service()
+		notice, err := f(ctx, svc)
+		switch {
+		case err != nil:
+			return err
+		case notice != "":
+			return base.NotificationMsg{Message: notice}
+		}
+		all, err := svc.List(ctx)
+		if err != nil {
+			return err
+		}
+		return listedMsg{all: all, selectNew: selectNew}
+	}
+}
+
+// setItems shows the jobs: the active ones by queue (providers, in the order their first
 // job came; the running one first, then the queue in order), then the finished ones, the
 // latest first. selectNew selects the newest active job if it's newer than the ones seen.
-func (s *state) setItems(ctx context.Context, selectNew bool) tea.Cmd {
-	all, err := tuijobs.Service().List(ctx)
-	if err != nil {
-		return func() tea.Msg { return err }
-	}
+func (s *state) setItems(all []core.Job, selectNew bool) tea.Cmd {
 	order := map[string]int{}
 	var active, finished []*item
 	for _, j := range all {
@@ -242,18 +268,21 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	if cmd, ok := s.Answer(msg); ok {
 		return cmd
 	}
-	svc := tuijobs.Service()
 	switch msg := msg.(type) {
+	case listedMsg:
+		return s.setItems(msg.all, msg.selectNew)
 	case tuijobs.ChangedMsg:
-		return s.setItems(ctx, false)
+		return s.list(ctx, false)
 	case base.RestoredMsg:
-		return s.setItems(ctx, true)
+		return s.list(ctx, true)
 	case cancelAllMsg:
-		n, err := svc.CancelAll(ctx)
-		if err != nil {
-			return func() tea.Msg { return err }
-		}
-		return base.Notify("Cancelled " + stringutil.Quantify(n, "job", "jobs"))
+		return s.do(ctx, func(ctx context.Context, svc core.Jobs) (string, error) {
+			n, err := svc.CancelAll(ctx)
+			if err != nil {
+				return "", err
+			}
+			return "Cancelled " + stringutil.Quantify(n, "job", "jobs"), nil
+		}, false)
 	case tea.KeyPressMsg:
 		if s.List.Filtering() {
 			break
@@ -275,11 +304,13 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			s.Confirm.Ask("Cancel all", "Cancel "+stringutil.Quantify(active, "job", "jobs")+"? The running ones stop, the queues are cleared; the chapters downloaded stay.", s.View(), func() tea.Msg { return cancelAllMsg{} })
 			return nil
 		case key.Matches(msg, k.clearQueues):
-			n, err := svc.ClearQueue(ctx, "")
-			if err != nil {
-				return func() tea.Msg { return err }
-			}
-			return base.Notify("Cleared " + stringutil.Quantify(n, "queued job", "queued jobs"))
+			return s.do(ctx, func(ctx context.Context, svc core.Jobs) (string, error) {
+				n, err := svc.ClearQueue(ctx, "")
+				if err != nil {
+					return "", err
+				}
+				return "Cleared " + stringutil.Quantify(n, "queued job", "queued jobs"), nil
+			}, false)
 		}
 		j, ok := s.selected()
 		if !ok {
@@ -297,32 +328,34 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		case key.Matches(msg, k.origin):
 			return base.JumpTo(j.Origin)
 		case key.Matches(msg, k.cancel) && !j.Status.Active():
-			if _, err := svc.Remove(ctx, j.ID); err != nil {
-				return func() tea.Msg { return err }
-			}
-			return s.setItems(ctx, false)
+			return s.do(ctx, func(ctx context.Context, svc core.Jobs) (string, error) {
+				_, err := svc.Remove(ctx, j.ID)
+				return "", err
+			}, false)
 		case key.Matches(msg, k.cancel):
-			if ok, err := svc.Cancel(ctx, j.ID); err != nil {
-				return func() tea.Msg { return err }
-			} else if ok {
-				return base.Notify("Cancelling " + j.Title)
-			}
-			return nil
-		case key.Matches(msg, k.retry):
-			if _, err := svc.Retry(ctx, j.ID); err != nil {
-				return func() tea.Msg { return err }
-			}
-			return s.setItems(ctx, false)
-		case key.Matches(msg, k.clearQueue):
-			var cleared int
-			for _, p := range j.Providers {
-				n, err := svc.ClearQueue(ctx, p)
-				if err != nil {
-					return func() tea.Msg { return err }
+			return s.do(ctx, func(ctx context.Context, svc core.Jobs) (string, error) {
+				if ok, err := svc.Cancel(ctx, j.ID); err != nil || !ok {
+					return "", err
 				}
-				cleared += n
-			}
-			return base.Notify("Cleared " + stringutil.Quantify(cleared, "queued job", "queued jobs") + " of " + strings.Join(j.Providers, ", "))
+				return "Cancelling " + j.Title, nil
+			}, false)
+		case key.Matches(msg, k.retry):
+			return s.do(ctx, func(ctx context.Context, svc core.Jobs) (string, error) {
+				_, err := svc.Retry(ctx, j.ID)
+				return "", err
+			}, false)
+		case key.Matches(msg, k.clearQueue):
+			return s.do(ctx, func(ctx context.Context, svc core.Jobs) (string, error) {
+				var cleared int
+				for _, p := range j.Providers {
+					n, err := svc.ClearQueue(ctx, p)
+					if err != nil {
+						return "", err
+					}
+					cleared += n
+				}
+				return "Cleared " + stringutil.Quantify(cleared, "queued job", "queued jobs") + " of " + strings.Join(j.Providers, ", "), nil
+			}, false)
 		}
 	}
 	cmd := s.List.Update(msg)
