@@ -46,7 +46,7 @@ func toAPIJob(j core.Job) apiv1.Job {
 			for _, f := range []struct {
 				v string
 				p **string
-			}{{r.Path, &jr.Path}, {r.Skipped, &jr.Skipped}, {r.Unavailable, &jr.Unavailable}, {r.Error, &jr.Error}} {
+			}{{r.Path, &jr.Path}, {r.Status, &jr.Status}, {r.Skipped, &jr.Skipped}, {r.Unavailable, &jr.Unavailable}, {r.Error, &jr.Error}} {
 				if f.v != "" {
 					v := f.v
 					*f.p = &v
@@ -233,8 +233,12 @@ func (a *API) StartDownload(ctx context.Context, request apiv1.StartDownloadRequ
 	if err != nil {
 		return nil, err
 	}
+	var refs []core.ChapterRef
+	for _, r := range deref(b.ChapterRefs) {
+		refs = append(refs, core.ChapterRef{Number: r.Number, Title: deref(r.Title), URL: deref(r.Url)})
+	}
 	j, err := svc.Download(ctx, core.DownloadReq{Provider: b.Provider, MangaID: deref(b.MangaId), Query: deref(b.Query),
-		Selector: deref(b.Selector), Chapters: b.Chapters, Format: deref(b.Format), Origin: jobOrigin(ctx)})
+		Selector: deref(b.Selector), Chapters: deref(b.Chapters), ChapterRefs: refs, Format: deref(b.Format), Origin: jobOrigin(ctx)})
 	if err != nil {
 		if !errors.Is(err, core.ErrNotFound) && !errors.Is(err, core.ErrInvalid) {
 			err = unprocessable(err)

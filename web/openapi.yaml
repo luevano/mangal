@@ -1,6 +1,6 @@
 openapi: "3.0.0"
 info:
-  version: 1.0.0
+  version: 1.1.0
   title: mangal API
   description: |
     The HTTP API v1 of `mangal serve` and `mangal web` under /api/v1 (tag v1). Paths are
@@ -3897,6 +3897,9 @@ components:
           type: string
         skipped:
           type: string
+        status:
+          type: string
+          description: what the download did (new, exists, ...; API 1.1)
         unavailable:
           type: string
         error:
@@ -3914,7 +3917,7 @@ components:
           type: integer
     DownloadRequest:
       type: object
-      required: [provider, chapters]
+      required: [provider]
       properties:
         provider:
           type: string
@@ -3928,10 +3931,27 @@ components:
           description: the manga selector of the search (exact by default)
         chapters:
           type: string
-          description: a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...)
+          description: a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...); this or chapter_refs is needed
+        chapter_refs:
+          type: array
+          description: the chapters (as the provider lists them), instead of a selector (API 1.1)
+          items:
+            $ref: '#/components/schemas/ChapterRef'
         format:
           type: string
           description: the download format, download.format by default; picking one needs manage
+    ChapterRef:
+      type: object
+      required: [number]
+      properties:
+        number:
+          type: number
+          format: float
+        title:
+          type: string
+        url:
+          type: string
+          description: the chapter's address, which picks it when set
 
     FillRequest:
       type: object

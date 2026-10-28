@@ -286,6 +286,15 @@ type ChapterPages struct {
 	Pdf *bool `json:"pdf,omitempty"`
 }
 
+// ChapterRef defines model for ChapterRef.
+type ChapterRef struct {
+	Number float32 `json:"number"`
+	Title  *string `json:"title,omitempty"`
+
+	// Url the chapter's address, which picks it when set
+	Url *string `json:"url,omitempty"`
+}
+
 // CheckReport a check's report (client/watch.Report)
 type CheckReport = watch.Report
 
@@ -499,8 +508,11 @@ type DownloadList struct {
 
 // DownloadRequest defines model for DownloadRequest.
 type DownloadRequest struct {
-	// Chapters a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...)
-	Chapters string `json:"chapters"`
+	// ChapterRefs the chapters (as the provider lists them), instead of a selector (API 1.1)
+	ChapterRefs *[]ChapterRef `json:"chapter_refs,omitempty"`
+
+	// Chapters a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...); this or chapter_refs is needed
+	Chapters *string `json:"chapters,omitempty"`
 
 	// Format the download format, download.format by default; picking one needs manage
 	Format   *string `json:"format,omitempty"`
@@ -775,10 +787,13 @@ type JobProvider struct {
 
 // JobResult defines model for JobResult.
 type JobResult struct {
-	Chapter     float32 `json:"chapter"`
-	Error       *string `json:"error,omitempty"`
-	Path        *string `json:"path,omitempty"`
-	Skipped     *string `json:"skipped,omitempty"`
+	Chapter float32 `json:"chapter"`
+	Error   *string `json:"error,omitempty"`
+	Path    *string `json:"path,omitempty"`
+	Skipped *string `json:"skipped,omitempty"`
+
+	// Status what the download did (new, exists, ...; API 1.1)
+	Status      *string `json:"status,omitempty"`
 	Title       string  `json:"title"`
 	Unavailable *string `json:"unavailable,omitempty"`
 }

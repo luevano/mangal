@@ -2584,6 +2584,8 @@ export interface components {
             title: string;
             path?: string;
             skipped?: string;
+            /** @description what the download did (new, exists, ...; API 1.1) */
+            status?: string;
             unavailable?: string;
             error?: string;
         };
@@ -2600,10 +2602,19 @@ export interface components {
             query?: string;
             /** @description the manga selector of the search (exact by default) */
             selector?: string;
-            /** @description a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...) */
-            chapters: string;
+            /** @description a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...); this or chapter_refs is needed */
+            chapters?: string;
+            /** @description the chapters (as the provider lists them), instead of a selector (API 1.1) */
+            chapter_refs?: components["schemas"]["ChapterRef"][];
             /** @description the download format, download.format by default; picking one needs manage */
             format?: string;
+        };
+        ChapterRef: {
+            /** Format: float */
+            number: number;
+            title?: string;
+            /** @description the chapter's address, which picks it when set */
+            url?: string;
         };
         FillRequest: {
             /** @description the provider's manga */
