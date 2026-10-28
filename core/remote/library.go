@@ -258,17 +258,20 @@ func (l remoteLibrary) Scan(ctx context.Context, opts core.ScanOptions) (core.Sc
 }
 
 // ScanManga is the server's scan of the manga (API 1.2), the manga as it is on an older
-// server.
+// server or without the manage permission (the server's scans keep it then).
 func (l remoteLibrary) ScanManga(ctx context.Context, id int64) (core.MangaScan, error) {
-	if l.c.needsAPI(ctx, 2, "") != nil {
-		m, err := l.Manga(ctx, id)
-		return core.MangaScan{Manga: m}, err
+	if l.c.needsAPI(ctx, 2, "") == nil {
+		r, err := l.c.API.ScanLibraryMangaWithResponse(ctx, id)
+		if err != nil {
+			return core.MangaScan{}, fmt.Errorf("mangal serve: %w", err)
+		}
+		scan, err := answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
+		if !errors.Is(err, ErrForbidden) {
+			return scan, err
+		}
 	}
-	r, err := l.c.API.ScanLibraryMangaWithResponse(ctx, id)
-	if err != nil {
-		return core.MangaScan{}, fmt.Errorf("mangal serve: %w", err)
-	}
-	return answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
+	m, err := l.Manga(ctx, id)
+	return core.MangaScan{Manga: m}, err
 }
 
 func (remoteLibrary) CheckIDs(context.Context) ([]library.IDCheck, error) {
