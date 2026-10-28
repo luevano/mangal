@@ -108,7 +108,7 @@ func (a *API) NewApp(opts AppOptions) (*echo.Echo, error) {
 	apiv1.RegisterHandlersWithOptions(apiGroup{e, apiRoute}, strict, apiv1.RegisterHandlersOptions{BaseURL: "/api"})
 	e.GET("/api/v1", func(c *echo.Context) error { return c.Redirect(http.StatusMovedPermanently, "/api/v1/") }, apiRoute)
 
-	// the routes before the API v1, for watch.Remote and the TUI
+	// the routes before the API v1, for older mangal clients (watch.Remote is on v1)
 	w := &apiv1.ServerInterfaceWrapper{Handler: strict}
 	g := apiGroup{e, apiRoute}
 	g.GET("/api/status", w.GetStatus)

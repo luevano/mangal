@@ -241,7 +241,7 @@ type ClientInterface interface {
 	// `id:` is the event's seq, `data:` the Event JSON, `: ping` every 30 s. The recent
 	// events come first, after `since` or Last-Event-ID. A subscriber too far behind is
 	// disconnected (it reconnects from its last seq). GET /api/events stays the watch
-	// events only, as watch.LiveEvent (watch.Remote). The health topic needs manage, the
+	// events only, as watch.LiveEvent (older clients). The health topic needs manage, the
 	// log admin: left out for who hasn't. library, history, settings and watches send a
 	// "changed" event when another process (the CLI, the TUI, a watch check) or this server
 	// changed them: reload what shows them. A stream ends when its login does (logout, a new
@@ -970,7 +970,7 @@ type ClientInterface interface {
 
 	// GetStatus The server, its checks, the API version and features
 	//
-	// Also GET /api/status (what watch.Remote reads).
+	// Also GET /api/status (older clients).
 	//
 	// Corresponds with GET /v1/status (the `GetStatus` operationId).
 	GetStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1483,7 +1483,7 @@ func (c *Client) StartDownload(ctx context.Context, body StartDownloadJSONReques
 // `id:` is the event's seq, `data:` the Event JSON, `: ping` every 30 s. The recent
 // events come first, after `since` or Last-Event-ID. A subscriber too far behind is
 // disconnected (it reconnects from its last seq). GET /api/events stays the watch
-// events only, as watch.LiveEvent (watch.Remote). The health topic needs manage, the
+// events only, as watch.LiveEvent (older clients). The health topic needs manage, the
 // log admin: left out for who hasn't. library, history, settings and watches send a
 // "changed" event when another process (the CLI, the TUI, a watch check) or this server
 // changed them: reload what shows them. A stream ends when its login does (logout, a new
@@ -3252,7 +3252,7 @@ func (c *Client) CancelRun(ctx context.Context, id IDParam, reqEditors ...Reques
 
 // GetStatus The server, its checks, the API version and features
 //
-// Also GET /api/status (what watch.Remote reads).
+// Also GET /api/status (older clients).
 //
 // Corresponds with GET /v1/status (the `GetStatus` operationId).
 func (c *Client) GetStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -9217,7 +9217,7 @@ type ClientWithResponsesInterface interface {
 	// `id:` is the event's seq, `data:` the Event JSON, `: ping` every 30 s. The recent
 	// events come first, after `since` or Last-Event-ID. A subscriber too far behind is
 	// disconnected (it reconnects from its last seq). GET /api/events stays the watch
-	// events only, as watch.LiveEvent (watch.Remote). The health topic needs manage, the
+	// events only, as watch.LiveEvent (older clients). The health topic needs manage, the
 	// log admin: left out for who hasn't. library, history, settings and watches send a
 	// "changed" event when another process (the CLI, the TUI, a watch check) or this server
 	// changed them: reload what shows them. A stream ends when its login does (logout, a new
@@ -10046,7 +10046,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetStatusWithResponse The server, its checks, the API version and features
 	//
-	// Also GET /api/status (what watch.Remote reads).
+	// Also GET /api/status (older clients).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -15692,7 +15692,7 @@ func (c *ClientWithResponses) StartDownloadWithResponse(ctx context.Context, bod
 // `id:` is the event's seq, `data:` the Event JSON, `: ping` every 30 s. The recent
 // events come first, after `since` or Last-Event-ID. A subscriber too far behind is
 // disconnected (it reconnects from its last seq). GET /api/events stays the watch
-// events only, as watch.LiveEvent (watch.Remote). The health topic needs manage, the
+// events only, as watch.LiveEvent (older clients). The health topic needs manage, the
 // log admin: left out for who hasn't. library, history, settings and watches send a
 // "changed" event when another process (the CLI, the TUI, a watch check) or this server
 // changed them: reload what shows them. A stream ends when its login does (logout, a new
@@ -17145,7 +17145,7 @@ func (c *ClientWithResponses) CancelRunWithResponse(ctx context.Context, id IDPa
 
 // GetStatusWithResponse The server, its checks, the API version and features
 //
-// Also GET /api/status (what watch.Remote reads).
+// Also GET /api/status (older clients).
 //
 // Returns a wrapper object for the known response body format(s).
 //

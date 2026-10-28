@@ -47,7 +47,7 @@ export interface paths {
         };
         /**
          * The server, its checks, the API version and features
-         * @description Also GET /api/status (what watch.Remote reads).
+         * @description Also GET /api/status (older clients).
          */
         get: operations["getStatus"];
         put?: never;
@@ -299,7 +299,7 @@ export interface paths {
          * @description `id:` is the event's seq, `data:` the Event JSON, `: ping` every 30 s. The recent
          *     events come first, after `since` or Last-Event-ID. A subscriber too far behind is
          *     disconnected (it reconnects from its last seq). GET /api/events stays the watch
-         *     events only, as watch.LiveEvent (watch.Remote). The health topic needs manage, the
+         *     events only, as watch.LiveEvent (older clients). The health topic needs manage, the
          *     log admin: left out for who hasn't. library, history, settings and watches send a
          *     "changed" event when another process (the CLI, the TUI, a watch check) or this server
          *     changed them: reload what shows them. A stream ends when its login does (logout, a new

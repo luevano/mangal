@@ -94,18 +94,18 @@ func (r *Remote) do(ctx context.Context, method, path string, body, out any) err
 }
 
 func watchPath(id int64) string {
-	return "/api/watches/" + strconv.FormatInt(id, 10)
+	return "/api/v1/watches/" + strconv.FormatInt(id, 10)
 }
 
 func (r *Remote) Add(ctx context.Context, opts AddOptions) (Watch, error) {
 	var w Watch
-	err := r.do(ctx, http.MethodPost, "/api/watches", addRequest(opts), &w)
+	err := r.do(ctx, http.MethodPost, "/api/v1/watches", addRequest(opts), &w)
 	return w, err
 }
 
 func (r *Remote) List(ctx context.Context) ([]Watch, error) {
 	var list []Watch
-	err := r.do(ctx, http.MethodGet, "/api/watches", nil, &list)
+	err := r.do(ctx, http.MethodGet, "/api/v1/watches", nil, &list)
 	return list, err
 }
 
@@ -198,7 +198,7 @@ func (r *Remote) holdWatches(ctx context.Context, opts HoldOptions) ([]int64, er
 
 func (r *Remote) Stale(ctx context.Context, since time.Duration) ([]Watch, error) {
 	var list []Watch
-	err := r.do(ctx, http.MethodGet, "/api/watches/stale?since="+url.QueryEscape(since.String()), nil, &list)
+	err := r.do(ctx, http.MethodGet, "/api/v1/watches/stale?since="+url.QueryEscape(since.String()), nil, &list)
 	return list, err
 }
 
@@ -219,7 +219,7 @@ func (r *Remote) Runs(ctx context.Context, filter RunFilter) ([]CheckRun, error)
 	if filter.Limit != 0 {
 		q.Set("limit", strconv.Itoa(filter.Limit))
 	}
-	path := "/api/runs"
+	path := "/api/v1/runs"
 	if len(q) > 0 {
 		path += "?" + q.Encode()
 	}
@@ -230,19 +230,19 @@ func (r *Remote) Runs(ctx context.Context, filter RunFilter) ([]CheckRun, error)
 
 func (r *Remote) RunDetails(ctx context.Context, id int64) (CheckRun, error) {
 	var run CheckRun
-	err := r.do(ctx, http.MethodGet, "/api/runs/"+strconv.FormatInt(id, 10), nil, &run)
+	err := r.do(ctx, http.MethodGet, "/api/v1/runs/"+strconv.FormatInt(id, 10), nil, &run)
 	return run, err
 }
 
 func (r *Remote) RemoveRun(ctx context.Context, id int64) (RemovedRun, error) {
 	var removed RemovedRun
-	err := r.do(ctx, http.MethodDelete, "/api/watch-runs/"+strconv.FormatInt(id, 10), nil, &removed)
+	err := r.do(ctx, http.MethodDelete, "/api/v1/watch-runs/"+strconv.FormatInt(id, 10), nil, &removed)
 	return removed, err
 }
 
 func (r *Remote) Status(ctx context.Context) (Status, error) {
 	var st Status
-	err := r.do(ctx, http.MethodGet, "/api/status", nil, &st)
+	err := r.do(ctx, http.MethodGet, "/api/v1/status", nil, &st)
 	return st, err
 }
 
@@ -251,11 +251,11 @@ func (r *Remote) Check(ctx context.Context, ids []int64, opts CheckOptions) (Rep
 	req := CheckRequest{IDs: ids, Gaps: opts.Gaps, Hold: opts.Kind == KindHold, DryRun: opts.DryRun}
 	if opts.DryRun {
 		var report Report
-		err := r.do(ctx, http.MethodPost, "/api/check", req, &report)
+		err := r.do(ctx, http.MethodPost, "/api/v1/check", req, &report)
 		return report, err
 	}
 	var started CheckResponse
-	if err := r.do(ctx, http.MethodPost, "/api/check", req, &started); err != nil {
+	if err := r.do(ctx, http.MethodPost, "/api/v1/check", req, &started); err != nil {
 		return Report{}, err
 	}
 	if opts.OnLive != nil {
@@ -266,7 +266,7 @@ func (r *Remote) Check(ctx context.Context, ids []int64, opts CheckOptions) (Rep
 		// like a local check: cancelled, what was done is recorded and reported
 		stop, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		path := "/api/runs/" + strconv.FormatInt(started.Run, 10) + "/cancel"
+		path := "/api/v1/runs/" + strconv.FormatInt(started.Run, 10) + "/cancel"
 		if err := r.do(stop, http.MethodPost, path, nil, nil); err != nil && !errors.Is(err, ErrNotFound) {
 			return Report{}, err
 		}
@@ -347,7 +347,7 @@ func reportOf(run CheckRun) Report {
 	return report
 }
 
-// Subscribe streams `GET /api/events` (server-sent events). The first connection is made
+// Subscribe streams the watch and health events of `GET /api/v1/events` (server-sent events). The first connection is made
 // here (its error returned); when it drops it's made again (from the last event seen)
 // until ctx is done.
 func (r *Remote) Subscribe(ctx context.Context) (<-chan LiveEvent, error) {
@@ -384,9 +384,9 @@ func (r *Remote) Subscribe(ctx context.Context) (<-chan LiveEvent, error) {
 
 // events opens the event stream, the events after the Seq since.
 func (r *Remote) events(ctx context.Context, since uint64) (*http.Response, error) {
-	path := "/api/events"
+	path := "/api/v1/events?topics=watch,health"
 	if since > 0 {
-		path += "?since=" + strconv.FormatUint(since, 10)
+		path += "&since=" + strconv.FormatUint(since, 10)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.Address+path, nil)
 	if err != nil {
@@ -417,8 +417,8 @@ func (r *Remote) events(ctx context.Context, since uint64) (*http.Response, erro
 	return resp, nil
 }
 
-// readEvents sends the events of the stream to out until it ends, returns the last Seq
-// (the server replays what came after it on a reconnection).
+// readEvents sends the events of the stream to out until it ends, returns the last
+// event's seq (the server replays what came after it on a reconnection).
 func readEvents(ctx context.Context, body io.Reader, out chan<- LiveEvent, last uint64) uint64 {
 	sc := bufio.NewScanner(body)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
@@ -433,13 +433,16 @@ func readEvents(ctx context.Context, body io.Reader, out chan<- LiveEvent, last 
 			// comments (keep-alives) and the blank line between events
 			continue
 		}
-		var e LiveEvent
+		var e struct {
+			Seq  uint64    `json:"seq"`
+			Data LiveEvent `json:"data"`
+		}
 		if err := json.Unmarshal([]byte(strings.TrimSpace(data)), &e); err != nil {
 			continue
 		}
 		last = e.Seq
 		select {
-		case out <- e:
+		case out <- e.Data:
 		case <-ctx.Done():
 			return last
 		}

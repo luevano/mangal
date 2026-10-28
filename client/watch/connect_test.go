@@ -39,7 +39,7 @@ func TestFind(t *testing.T) {
 			_, _ = w.Write([]byte(`{"error":"missing or wrong token (serve.token)"}`))
 			return
 		}
-		if r.URL.Path != "/api/status" {
+		if r.URL.Path != "/api/v1/status" {
 			http.NotFound(w, r)
 			return
 		}

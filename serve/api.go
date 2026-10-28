@@ -582,7 +582,7 @@ func (a *API) CancelRun(_ context.Context, request apiv1.CancelRunRequestObject)
 var eventsPing = 30 * time.Second
 
 // legacyEvents is GET /api/events: the live events of the checks (watch.LiveEvent, what
-// watch.Remote reads) as server-sent events (id: the event's Seq, data: its JSON): the
+// older watch.Remote reads) as server-sent events (id: the event's Seq, data: its JSON): the
 // recent ones of the running checks first, after the Seq in ?since= or Last-Event-ID (a
 // reconnection), then each one as it happens.
 func (a *API) legacyEvents(c *echo.Context) error {
