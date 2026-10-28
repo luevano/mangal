@@ -54,8 +54,8 @@ func TestRemoteRefusals(t *testing.T) {
 	if len(shown) != 1 || shown[0].Help().Desc != KeyItsWatch.Help().Desc {
 		t.Errorf("reader's keys: %v", shown)
 	}
-	if why := admin.screenRefusal("mirrors/p"); !strings.Contains(why, "isn't on a remote server yet") {
-		t.Errorf("the mirrors screen on a remote server: %q", why)
+	if why := admin.screenRefusal("jobs"); !strings.Contains(why, "isn't on a remote server yet") {
+		t.Errorf("the jobs screen on a remote server: %q", why)
 	}
 	if why := admin.screenRefusal("chapters/p/m"); why != "" {
 		t.Errorf("the chapters screen: %q", why)

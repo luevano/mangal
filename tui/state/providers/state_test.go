@@ -13,7 +13,7 @@ import (
 // TestKeys: no key means two things on the screen (its keys, the list's, the global ones).
 func TestKeys(t *testing.T) {
 	s := New(nil).(*state)
-	m := newMirrors(libmangal.ProviderInfo{ID: "mango-mangapill"})
+	m := newMirrors(fakeLoader{libmangal.ProviderInfo{ID: "mango-mangapill"}})
 	for name, keys := range map[string][]string{
 		"providers": base.KeyCollisions(s.keyMap(), s.List.KeyMap.Browsing()...),
 		"mirrors":   base.KeyCollisions(m.keyMap(), m.List.KeyMap.Browsing()...),

@@ -39,8 +39,13 @@ func (i mirrorItem) Description() string {
 	return i.kind
 }
 
-func newMirrors(info libmangal.ProviderInfo) *mirrorsState {
+func newMirrors(loader libmangal.ProviderLoader) *mirrorsState {
+	info := loader.Info()
 	preferred := config.Providers.Mirrors.Get()[info.ID]
+	if l, ok := loader.(interface{ Preferred() string }); ok {
+		// a server's
+		preferred = l.Preferred()
+	}
 	if preferred == "" {
 		preferred = info.Website
 	}
@@ -75,6 +80,15 @@ func (s *mirrorsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if mirror == s.info.Website {
 			// the default, no need to keep it in the config
 			mirror = ""
+		}
+		if r := base.CurrentRemote; r != nil {
+			id := s.info.ID
+			return base.Load(ctx, "", func(ctx context.Context) (struct{}, error) {
+				return struct{}{}, r.Client.SetMirror(ctx, id, mirror)
+			}, func(struct{}) tea.Msg {
+				base.ReloadProviders()
+				return tea.Sequence(base.Back, base.Notify(fmt.Sprintf("%s prefers %s on %s", s.info.Name, i.url, r.Host())))()
+			})
 		}
 		// in Update, the providers list reads the config to render
 		if err := config.SetMirror(s.info.ID, mirror); err != nil {

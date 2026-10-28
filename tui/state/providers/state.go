@@ -166,7 +166,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			if len(info.Mirrors) == 0 {
 				return base.Notify(info.Name + " has no mirrors")
 			}
-			return func() tea.Msg { return newMirrors(info) }
+			loader := i.loader
+			return func() tea.Msg { return newMirrors(loader) }
 		}
 	}
 	return s.List.Update(msg)

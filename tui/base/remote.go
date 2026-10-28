@@ -102,9 +102,11 @@ var remoteGates = map[string]gate{
 	"library:rename":              {perm: core.ScopeAdmin, feature: "rename"},
 	"library:hold / new provider": {perm: core.ScopeManage, feature: "hold marks"},
 
-	"library/:open":                {feature: "read"},
+	"library/:open": {feature: "read"},
 
-	"chapters/:download": {perm: core.ScopeDownload, feature: "download"},
+	"providers:mirrors": {perm: core.ScopeAdmin, feature: "mirrors"},
+
+	"chapters/:download":           {perm: core.ScopeDownload, feature: "download"},
 	"library/:scan":                {perm: core.ScopeManage, feature: "library scan"},
 	"library/:delete":              {perm: core.ScopeManage, feature: "delete"},
 	"library/:watch":               {perm: core.ScopeManage, feature: "watches"},
@@ -154,7 +156,6 @@ var remoteGates = map[string]gate{
 // "what's left").
 var remoteScreens = map[string]string{
 	"chapters-fill": "getting chapters from another provider",
-	"mirrors":       "the providers' mirrors",
 	"accounts":      "the accounts, users and tokens (the web UI's Users page has them)",
 	"jobs":          "the maintenance jobs",
 	"jobs-settings": "the maintenance jobs",

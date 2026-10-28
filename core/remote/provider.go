@@ -19,21 +19,39 @@ import (
 // the server (its search, chapters and pages endpoints, with its rate limits and
 // logins). Downloads don't go through them (Jobs.Download).
 func (c *Client) Loaders(ctx context.Context) ([]libmangal.ProviderLoader, error) {
-	infos, err := remoteProviders{c}.List(ctx)
+	r, err := c.API.ListProvidersWithResponse(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("mangal serve: %w", err)
+	}
+	list, err := answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
 	if err != nil {
 		return nil, err
 	}
-	loaders := make([]libmangal.ProviderLoader, len(infos))
-	for i, info := range infos {
-		loaders[i] = Loader{c: c, info: info}
+	loaders := make([]libmangal.ProviderLoader, len(list))
+	for i, p := range list {
+		loaders[i] = Loader{c: c, info: providerOf(p), preferred: deref(p.Preferred)}
 	}
 	return loaders, nil
 }
 
 // Loader is a provider of the server.
 type Loader struct {
-	c    *Client
-	info libmangal.ProviderInfo
+	c         *Client
+	info      libmangal.ProviderInfo
+	preferred string
+}
+
+// Preferred is the website the server's provider uses first (its providers.mirrors).
+func (l Loader) Preferred() string { return l.preferred }
+
+// SetMirror makes the server's provider use the mirror first (its website: "").
+func (c *Client) SetMirror(ctx context.Context, provider, mirror string) error {
+	r, err := c.API.SetProviderMirrorWithResponse(ctx, provider, apiv1.MirrorRequest{Mirror: mirror})
+	if err != nil {
+		return fmt.Errorf("mangal serve: %w", err)
+	}
+	_, err = answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
+	return err
 }
 
 var _ libmangal.ProviderLoader = Loader{}
