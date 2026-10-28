@@ -12,7 +12,6 @@ import (
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/log"
-	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/list"
 	"github.com/luevano/mangal/v5/tui/state/mangas"
@@ -93,14 +92,14 @@ func (s *state) refresh(ctx context.Context, reload bool) tea.Cmd {
 	if reload {
 		label = "Reloading providers"
 	}
-	return base.Load(ctx, label, func(context.Context) (reloadedMsg, error) {
+	return base.Load(ctx, label, func(ctx context.Context) (reloadedMsg, error) {
 		if err := client.CloseAll(); err != nil {
 			return reloadedMsg{}, err
 		}
 		if !reload {
 			return reloadedMsg{}, nil
 		}
-		loaders, err := manager.Loaders()
+		loaders, _, err := base.ProviderLoaders(ctx)
 		return reloadedMsg{loaders: loaders}, err
 	}, func(msg reloadedMsg) tea.Msg { return msg })
 }

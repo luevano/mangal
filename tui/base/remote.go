@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/core"
 )
 
@@ -27,6 +28,8 @@ type Remote struct {
 	ShowAll bool
 	// Services are the server's.
 	Services core.Services
+	// Loaders are the server's providers, browsed through it.
+	Loaders func(ctx context.Context) ([]libmangal.ProviderLoader, error)
 	// Events tells fn the topics (storage.Rev*) the server says changed, until ctx is
 	// done: the shown State's DBChangedMsg.
 	Events func(ctx context.Context, fn func(topics []string))
@@ -65,7 +68,6 @@ type gate struct {
 // key up to its first slash, with the slash: "library/" is a library manga's), else
 // "*:help". The server enforces the permissions anyway: these hide what it would refuse.
 var remoteGates = map[string]gate{
-	"home:providers":    {unsupported: "browsing the server's providers"},
 	"home:accounts":     {unsupported: "the accounts, users and tokens"},
 	"home:health":       {perm: core.ScopeManage, feature: "health"},
 	"home:migrate":      {perm: core.ScopeAdmin, feature: "migrate"},
@@ -74,23 +76,23 @@ var remoteGates = map[string]gate{
 	"library:scan":                {perm: core.ScopeManage, feature: "library scan"},
 	"library:scan and check ids":  {perm: core.ScopeManage, feature: "library scan"},
 	"library:merge":               {perm: core.ScopeManage, feature: "merge"},
-	"library:move to a provider":  {unsupported: "moving a library manga to a provider"},
+	"library:move to a provider":  {perm: core.ScopeManage, feature: "move"},
 	"library:trash":               {perm: core.ScopeManage, feature: "trash"},
 	"library:delete":              {perm: core.ScopeManage, feature: "delete"},
 	"library:undo":                {perm: core.ScopeManage, feature: "undo"},
 	"library:duplicates only":     {perm: core.ScopeManage, feature: "merge"},
-	"library:bindings":            {unsupported: "a library manga's links"},
+	"library:bindings":            {feature: "links"},
 	"library:fill backups":        {perm: core.ScopeManage, feature: "backup links"},
 	"library:rename":              {perm: core.ScopeAdmin, feature: "rename"},
 	"library:hold / new provider": {perm: core.ScopeManage, feature: "hold marks"},
 
-	"library/:open":                {unsupported: "reading the server's chapter files"},
-	"library/:scan":                {unsupported: "scanning one manga"},
+	"library/:open":                {feature: "read"},
+	"library/:scan":                {perm: core.ScopeManage, feature: "library scan"},
 	"library/:delete":              {perm: core.ScopeManage, feature: "delete"},
-	"library/:watch":               {unsupported: "adding a watch (it looks the manga up on a provider)"},
-	"library/:bindings":            {unsupported: "a library manga's links"},
+	"library/:watch":               {perm: core.ScopeManage, feature: "watches"},
+	"library/:bindings":            {feature: "links"},
 	"library/:hold / new provider": {perm: core.ScopeManage, feature: "hold marks"},
-	"library/:retitle chapters":    {unsupported: "retitling chapters"},
+	"library/:retitle chapters":    {perm: core.ScopeManage, feature: "retitle"},
 
 	"trash:empty": {perm: core.ScopeAdmin, feature: "empty the trash"},
 
@@ -108,7 +110,7 @@ var remoteGates = map[string]gate{
 	"*:check provider":            {perm: core.ScopeManage, feature: "watch check"},
 	"*:fill gaps":                 {perm: core.ScopeManage, feature: "watch check"},
 	"*:stop watching":             {perm: core.ScopeManage, feature: "watches"},
-	"*:re-link manga":             {unsupported: "re-linking a watch (it searches a provider)"},
+	"*:re-link manga":             {perm: core.ScopeManage, feature: "watches"},
 	"watches:pause/resume":        {perm: core.ScopeManage, feature: "watches"},
 	"watches:edit":                {perm: core.ScopeManage, feature: "watches"},
 	"watch/:pause/resume":         {perm: core.ScopeManage, feature: "watches"},
@@ -130,24 +132,15 @@ var remoteGates = map[string]gate{
 }
 
 // remoteScreens are the screens a remote server can't show yet, by their key up to its
-// first slash: they need this machine's providers, files or accounts (docs/remote.md R3).
+// first slash: they need this machine's providers, files or accounts (docs/remote.md R3
+// "what's left").
 var remoteScreens = map[string]string{
-	"providers":       "browsing the server's providers",
-	"mangas":          "browsing the server's providers",
-	"volumes":         "browsing the server's providers",
-	"chapters":        "browsing the server's providers",
-	"chapters-fill":   "getting chapters from another provider",
-	"mirrors":         "the providers' mirrors",
-	"bindings":        "the metadata bindings",
-	"library-links":   "a library manga's links",
-	"library-move":    "moving a library manga to a provider",
-	"library-retitle": "retitling chapters",
-	"watch-add":       "adding a watch",
-	"watch-relink":    "re-linking a watch",
-	"accounts":        "the accounts, users and tokens (the web UI's Users page has them)",
-	"jobs":            "the maintenance jobs",
-	"jobs-settings":   "the maintenance jobs",
-	"login":           "the logins",
+	"chapters-fill": "getting chapters from another provider",
+	"mirrors":       "the providers' mirrors",
+	"accounts":      "the accounts, users and tokens (the web UI's Users page has them)",
+	"jobs":          "the maintenance jobs",
+	"jobs-settings": "the maintenance jobs",
+	"login":         "the logins",
 }
 
 // screenClass is the key up to its first slash, with the slash.

@@ -309,7 +309,8 @@ func (s *state) openCmd(ctx context.Context, i *item, note string) tea.Cmd {
 func openCmd(ctx context.Context, c *libmangal.Client, i *item, note string) tea.Cmd {
 	manga := i.manga
 	// the metadata is read here, it's only changed in Update
-	searchMeta := config.Download.Metadata.Search.Get() && !hasMetadata(manga.Metadata())
+	// a server's downloads look its metadata up there
+	searchMeta := config.Download.Metadata.Search.Get() && !hasMetadata(manga.Metadata()) && base.CurrentRemote == nil
 	// the config isn't read from the background (viper isn't safe for it)
 	expandAll, expandSingle := config.TUI.ExpandAllVolumes.Get(), config.TUI.ExpandSingleVolume.Get()
 	label := fmt.Sprintf("Searching volumes for %q", manga)

@@ -243,7 +243,7 @@ func libraryLast(ctx context.Context, provider libmangal.ProviderInfo, manga man
 // id, a title search when the provider can't), the client held while the screen is.
 func AddCmd(ctx context.Context, provider, mangaID, title string) tea.Cmd {
 	return base.Load(ctx, "Looking up "+title+" on "+provider, func(ctx context.Context) (*addState, error) {
-		c, _, release, err := client.HoldByID(ctx, provider)
+		c, release, err := base.HoldProvider(ctx, provider)
 		if err != nil {
 			return nil, err
 		}

@@ -108,7 +108,8 @@ func downloadOptions(read bool) libmangal.DownloadOptions {
 // checkMetadata fails like libmangal would without valid metadata in strict mode, saying
 // what to do.
 func checkMetadata(manga mangadata.Manga, options libmangal.DownloadOptions) error {
-	if !options.Strict {
+	// a server's download looks it up and checks it there
+	if !options.Strict || base.CurrentRemote != nil {
 		return nil
 	}
 	if err := lmmeta.Validate(manga.Metadata()); err != nil {

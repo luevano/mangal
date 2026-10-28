@@ -14,7 +14,6 @@ import (
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/meta"
-	"github.com/luevano/mangal/v5/provider/manager"
 	"github.com/luevano/mangal/v5/theme/color"
 	"github.com/luevano/mangal/v5/theme/style"
 	"github.com/luevano/mangal/v5/tui/base"
@@ -121,12 +120,8 @@ func healthLine(report health.Report, key string) string {
 }
 
 func (s *state) load(ctx context.Context) tea.Cmd {
-	if base.CurrentRemote != nil {
-		// the server's providers aren't browsed yet (docs/remote.md R3)
-		return nil
-	}
-	return base.Load(ctx, "Loading providers", func(context.Context) (loadedMsg, error) {
-		loaders, problems, err := manager.Load()
+	return base.Load(ctx, "Loading providers", func(ctx context.Context) (loadedMsg, error) {
+		loaders, problems, err := base.ProviderLoaders(ctx)
 		if err != nil {
 			return loadedMsg{}, err
 		}
@@ -139,8 +134,11 @@ func (s *state) load(ctx context.Context) tea.Cmd {
 			}
 			notices = append(notices, fmt.Sprintf("Skipped %s that can't be loaded:\n%s", stringutil.Quantify(len(problems), "provider", "providers"), strings.Join(lines, "\n")))
 		}
-		if _, notice, err := cache.OldIDsNotice(loaders); err == nil && notice != "" {
-			notices = append(notices, notice)
+		// a server's old ids are its data's
+		if base.CurrentRemote == nil {
+			if _, notice, err := cache.OldIDsNotice(loaders); err == nil && notice != "" {
+				notices = append(notices, notice)
+			}
 		}
 		return loadedMsg{providers: providers.New(loaders), notices: notices}, nil
 	}, func(msg loadedMsg) tea.Msg { return msg })

@@ -10,7 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/storage"
@@ -22,7 +21,7 @@ import (
 
 // acquireInfo is the provider's info (its current id). Swapped in tests.
 var acquireInfo = func(ctx context.Context, provider string) (libmangal.ProviderInfo, error) {
-	c, _, release, err := client.HoldByID(ctx, provider)
+	c, release, err := base.HoldProvider(ctx, provider)
 	if err != nil {
 		return libmangal.ProviderInfo{}, err
 	}

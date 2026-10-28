@@ -43,8 +43,8 @@ func TestRemoteRefusals(t *testing.T) {
 	if why := admin.keyRefusal("library", screen, press); why != "" {
 		t.Errorf("admin's merge: %q", why)
 	}
-	if why := admin.keyRefusal("library", screen, tea.KeyPressMsg{Code: 'X', Text: "X"}); !strings.Contains(why, "isn't on a remote server yet") {
-		t.Errorf("move: %q", why)
+	if why := reader.keyRefusal("library", screen, tea.KeyPressMsg{Code: 'X', Text: "X"}); !strings.Contains(why, "manage permission") {
+		t.Errorf("reader's move: %q", why)
 	}
 	old := &Remote{URL: reader.URL, Version: "5.20.0", Perms: core.Scopes}
 	if why := old.keyRefusal("library", screen, press); !strings.Contains(why, "mangal 5.20.0) doesn't have merge") {
@@ -54,8 +54,11 @@ func TestRemoteRefusals(t *testing.T) {
 	if len(shown) != 1 || shown[0].Help().Desc != KeyItsWatch.Help().Desc {
 		t.Errorf("reader's keys: %v", shown)
 	}
-	if why := admin.screenRefusal("chapters/p/m"); why == "" {
-		t.Error("the chapters screen on a remote server")
+	if why := admin.screenRefusal("mirrors/p"); !strings.Contains(why, "isn't on a remote server yet") {
+		t.Errorf("the mirrors screen on a remote server: %q", why)
+	}
+	if why := admin.screenRefusal("chapters/p/m"); why != "" {
+		t.Errorf("the chapters screen: %q", why)
 	}
 	if why := admin.screenRefusal("library/12"); why != "" {
 		t.Errorf("a library manga: %q", why)

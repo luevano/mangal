@@ -8,6 +8,7 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
+	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/storage"
@@ -20,6 +21,14 @@ import (
 // planRetitle plans retitling the library manga from the provider's manga. Swapped in
 // tests.
 var planRetitle = func(ctx context.Context, m storage.Manga, provider string, from mangadata.Manga) (core.Plan, error) {
+	if base.CurrentRemote != nil {
+		// the server lists the manga's chapters itself
+		svc, err := base.Services()
+		if err != nil {
+			return core.Plan{}, err
+		}
+		return svc.Changes.Plan(ctx, core.RetitleReq{Manga: m.ID, Provider: libmangal.ProviderInfo{ID: provider}, From: from.Info()})
+	}
 	c, err := base.Core()
 	if err != nil {
 		return core.Plan{}, err

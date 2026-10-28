@@ -28,7 +28,7 @@ import (
 // SearchProvider searches the provider's mangas, or gets the one with the id
 // (selector.Search), current is its current id. Swapped in tests.
 var SearchProvider = func(ctx context.Context, provider, id, query string) (mangas []mangadata.Manga, current string, err error) {
-	c, _, release, err := client.HoldByID(ctx, provider)
+	c, release, err := base.HoldProvider(ctx, provider)
 	if err != nil {
 		return nil, "", err
 	}

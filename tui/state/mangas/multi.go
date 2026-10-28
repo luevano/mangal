@@ -7,7 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
-	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/state/pick"
 )
@@ -64,7 +63,7 @@ func (s *multiState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 // holdCmd holds the provider's client, then opens the manga with it.
 func (s *multiState) holdCmd(ctx context.Context, provider string, manga mangadata.Manga) tea.Cmd {
 	return base.Load(ctx, fmt.Sprintf("Loading provider %q", provider), func(ctx context.Context) (heldMsg, error) {
-		c, _, release, err := client.HoldByID(ctx, provider)
+		c, release, err := base.HoldProvider(ctx, provider)
 		return heldMsg{client: c, release: release, manga: manga}, err
 	}, func(msg heldMsg) tea.Msg {
 		// left meanwhile: nobody gets it
