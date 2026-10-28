@@ -2,6 +2,8 @@ package config
 
 import (
 	"context"
+	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -10,6 +12,10 @@ import (
 	"github.com/luevano/libmangal"
 	mconfig "github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/tui/base"
+	"github.com/luevano/mangal/v5/tui/util"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestStartupKeyNeedsRestart(t *testing.T) {
@@ -91,5 +97,87 @@ func TestHistoryUndo(t *testing.T) {
 	press(s, "esc")
 	if s.mode != browsing {
 		t.Error("esc didn't close the history")
+	}
+}
+
+// serverConfig is a server's config in memory.
+type serverConfig struct {
+	core.Config
+	entries map[string]core.ConfigEntry
+	sets    []string
+}
+
+func (f *serverConfig) List(context.Context) ([]core.ConfigEntry, error) {
+	return slices.Collect(maps.Values(f.entries)), nil
+}
+
+func (f *serverConfig) Set(_ context.Context, key string, value any) (core.ConfigEntry, error) {
+	e := f.entries[key]
+	e.Value = value
+	f.entries[key] = e
+	f.sets = append(f.sets, fmt.Sprintf("%s=%v", key, value))
+	return e, nil
+}
+
+// update gives the window msg and what its cmds bring, as the TUI would.
+func update(s *state, msg tea.Msg) {
+	for _, m := range base.Drain(s.Update(context.Background(), msg)) {
+		if _, ok := m.(serverMsg); ok {
+			s.Update(context.Background(), m)
+		}
+	}
+}
+
+func TestRemoteSplit(t *testing.T) {
+	newTest(t, "tui.skip_home")
+	server := &serverConfig{entries: map[string]core.ConfigEntry{
+		"download.skip_if_exists": {Key: "download.skip_if_exists", Value: true, Default: true, Kind: "bool", Side: "server", Stored: "file"},
+		"providers.parallelism":   {Key: "providers.parallelism", Value: float64(3), Default: float64(15), Kind: "int", Side: "server", Stored: "db"},
+		"tui.skip_home":           {Key: "tui.skip_home", Value: false, Kind: "bool", Side: "local"},
+	}}
+	base.CurrentRemote = &base.Remote{URL: "http://nas.lan:6977", Perms: []string{core.ScopeRead}}
+	t.Cleanup(func() { base.CurrentRemote = nil })
+	s := New("").(*state)
+	s.cfg = server
+	s.Resize(base.Size{Width: 100, Height: 30})
+	for _, m := range base.Drain(s.Init(context.Background())) {
+		s.Update(context.Background(), m)
+	}
+	var keys []string
+	for _, i := range s.items() {
+		keys = append(keys, i.key)
+	}
+	if !slices.Contains(keys, "download.skip_if_exists") || !slices.Contains(keys, "tui.skip_home") || slices.Contains(keys, "download.format") {
+		t.Fatalf("keys %v", keys)
+	}
+	if i := s.itemOf("providers.parallelism"); i.displayValue() != "3" || i.isDefault() {
+		t.Errorf("parallelism %q", i.displayValue())
+	}
+	// the local one is this machine's, the server's needs admin
+	if i := s.itemOf("tui.skip_home"); i.e != nil || i.displayValue() != "true" {
+		t.Errorf("tui.skip_home %+v", i)
+	}
+	s.Filter("download.skip_if_exists")
+	update(s, util.KeyPress("enter"))
+	if len(server.sets) != 0 || !strings.Contains(s.err, "admin permission on nas.lan:6977") {
+		t.Fatalf("a reader set %v, err %q", server.sets, s.err)
+	}
+	base.CurrentRemote.Perms = core.Scopes
+	s.Filter("download.skip_if_exists")
+	update(s, util.KeyPress("enter"))
+	if !slices.Equal(server.sets, []string{"download.skip_if_exists=false"}) || s.err != "" {
+		t.Fatalf("sets %v, err %q", server.sets, s.err)
+	}
+	if raw, _ := s.itemOf("download.skip_if_exists").raw(); raw != false {
+		t.Errorf("shown %v", raw)
+	}
+	if raw, _ := mconfig.Get("download.skip_if_exists"); raw != true {
+		t.Errorf("this machine's changed to %v", raw)
+	}
+	// this machine's key is still set here
+	s.Filter("tui.skip_home")
+	update(s, util.KeyPress("enter"))
+	if raw, _ := mconfig.Get("tui.skip_home"); raw != false || len(server.sets) != 1 {
+		t.Errorf("tui.skip_home %v, server sets %v", raw, server.sets)
 	}
 }

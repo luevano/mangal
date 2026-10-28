@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"maps"
+	"math"
 	"reflect"
 	"slices"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	"github.com/charmbracelet/x/ansi"
 	mconfig "github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 )
 
 var _ list.DefaultItem = item{}
@@ -43,9 +45,72 @@ var summaries = map[string]string{
 type item struct {
 	key    string
 	prefix string
+	// e is the server's key on a remote, nil for this machine's
+	e *core.ConfigEntry
 }
 
-func (i item) section() string { return sectionOf(i.key) }
+func (i item) section() string {
+	if i.e != nil && i.e.Provider != "" {
+		return "providers." + i.e.Provider
+	}
+	return sectionOf(i.key)
+}
+
+// fromJSON is a whole JSON number as an int, as this machine's keys have it.
+func fromJSON(v any) any {
+	if f, ok := v.(float64); ok && f == math.Trunc(f) && math.Abs(f) < math.MaxInt32 {
+		return int(f)
+	}
+	return v
+}
+
+// kinds are the API's kinds of a key.
+var kinds = map[string]mconfig.Kind{"string": mconfig.KindString, "bool": mconfig.KindBool, "int": mconfig.KindInt, "map": mconfig.KindMap}
+
+// The key's value, default, description, kind, values and secrecy: the server's for its key.
+func (i item) raw() (any, error) {
+	if i.e != nil {
+		return fromJSON(i.e.Value), nil
+	}
+	return mconfig.Get(i.key)
+}
+
+func (i item) def() any {
+	if i.e != nil {
+		return fromJSON(i.e.Default)
+	}
+	def, _ := mconfig.Default(i.key)
+	return def
+}
+
+func (i item) description() string {
+	if i.e != nil {
+		return i.e.Description
+	}
+	description, _ := mconfig.Description(i.key)
+	return description
+}
+
+func (i item) kind() mconfig.Kind {
+	if i.e != nil {
+		return kinds[i.e.Kind]
+	}
+	return mconfig.KindOf(i.key)
+}
+
+func (i item) values() []string {
+	if i.e != nil {
+		return i.e.Values
+	}
+	return mconfig.Values(i.key)
+}
+
+func (i item) secret() bool {
+	if i.e != nil {
+		return i.e.Secret
+	}
+	return mconfig.IsSecret(i.key)
+}
 
 // sectionOf is the key's section: its first part, or providers.<id> for a provider's
 // setting.
@@ -67,11 +132,13 @@ func (i item) Title() string {
 	if i.prefix != "" {
 		title = "  " + strings.TrimPrefix(i.key, i.prefix)
 	}
-	title += " = " + displayValue(i.key)
-	if isDefault(i.key) {
+	title += " = " + i.displayValue()
+	if i.isDefault() {
 		title += "  (default)"
 	}
-	if name, set := mconfig.EnvVar(i.key); set {
+	if i.e != nil && i.e.Env != "" {
+		title += "  (from " + i.e.Env + " on the server)"
+	} else if name, set := mconfig.EnvVar(i.key); set && i.e == nil {
 		title += "  (from " + name + ")"
 	}
 	return title
@@ -79,7 +146,7 @@ func (i item) Title() string {
 
 // Description implements list.DefaultItem.
 func (i item) Description() string {
-	description, _ := mconfig.Description(i.key)
+	description := i.description()
 	if i.prefix != "" {
 		description = "  " + description
 	}
@@ -89,7 +156,7 @@ func (i item) Description() string {
 // sectionItem is a section's header, its keys listed under it when expanded.
 type sectionItem struct {
 	name     string
-	keys     []string
+	items    []item
 	expanded bool
 }
 
@@ -103,13 +170,13 @@ func (i sectionItem) Title() string {
 		arrow = "▾ "
 	}
 	changed := 0
-	for _, key := range i.keys {
-		if !isDefault(key) {
+	for _, key := range i.items {
+		if !key.isDefault() {
 			changed++
 		}
 	}
-	title := fmt.Sprintf("%s%s  (%d keys", arrow, i.name, len(i.keys))
-	if len(i.keys) == 1 {
+	title := fmt.Sprintf("%s%s  (%d keys", arrow, i.name, len(i.items))
+	if len(i.items) == 1 {
 		title = fmt.Sprintf("%s%s  (1 key", arrow, i.name)
 	}
 	if changed > 0 {
@@ -127,14 +194,17 @@ func (i sectionItem) Description() string {
 }
 
 // sectionItems are the sections in order, with their keys.
-func sectionItems(keys []string) []sectionItem {
+func sectionItems(keys []string) []sectionItem { return sectionsOf(sortedItems(keys)) }
+
+// sectionsOf are the sections of the sorted items.
+func sectionsOf(items []item) []sectionItem {
 	var sections []sectionItem
-	for _, i := range sortedItems(keys) {
+	for _, i := range items {
 		if n := len(sections); n > 0 && sections[n-1].name == i.section() {
-			sections[n-1].keys = append(sections[n-1].keys, i.key)
+			sections[n-1].items = append(sections[n-1].items, i)
 			continue
 		}
-		sections = append(sections, sectionItem{name: i.section(), keys: []string{i.key}})
+		sections = append(sections, sectionItem{name: i.section(), items: []item{i}})
 	}
 	return sections
 }
@@ -145,6 +215,11 @@ func sortedItems(keys []string) []item {
 	for n, key := range keys {
 		items[n] = item{key: key}
 	}
+	return sortItems(items)
+}
+
+// sortItems sorts the items by section.
+func sortItems(items []item) []item {
 	rank := func(i item) int {
 		// a provider's section after the providers'
 		top, _, _ := strings.Cut(i.section(), ".")
@@ -168,12 +243,12 @@ func sortedItems(keys []string) []item {
 const maxValueWidth = 50
 
 // displayValue is the key's value as shown, secrets masked.
-func displayValue(key string) string {
-	raw, err := mconfig.Get(key)
+func (i item) displayValue() string {
+	raw, err := i.raw()
 	if err != nil {
 		return "(invalid)"
 	}
-	if mconfig.IsSecret(key) {
+	if i.secret() {
 		if raw == "" {
 			return `""`
 		}
@@ -195,14 +270,14 @@ func displayValue(key string) string {
 	return ansi.Truncate(s, maxValueWidth, "…")
 }
 
-func isDefault(key string) bool {
-	raw, err := mconfig.Get(key)
+func (i item) isDefault() bool {
+	raw, err := i.raw()
 	if err != nil {
 		return false
 	}
-	def, _ := mconfig.Default(key)
+	def := i.def()
 	if a, ok := raw.(string); ok {
-		if b, ok := def.(string); ok && mconfig.Values(key) != nil {
+		if b, ok := def.(string); ok && i.values() != nil {
 			return strings.EqualFold(a, b)
 		}
 	}
