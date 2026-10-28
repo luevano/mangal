@@ -228,6 +228,16 @@ func (p remoteProviders) Info(ctx context.Context, id string) (libmangal.Provide
 	return providerOf(info), err
 }
 
+// UpdateProviders updates the server's installed providers (git pull of each, an
+// admin's); nothing is installed.
+func (c *Client) UpdateProviders(ctx context.Context) (apiv1.ProvidersUpdate, error) {
+	r, err := c.API.UpdateProvidersWithResponse(ctx)
+	if err != nil {
+		return apiv1.ProvidersUpdate{}, fmt.Errorf("mangal serve: %w", err)
+	}
+	return answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
+}
+
 // remoteConfig is the server's config (core.Config): the keys an admin may change over
 // HTTP, secrets and the risky keys aren't there for the others.
 type remoteConfig struct{ c *Client }

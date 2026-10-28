@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core/remote"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/provider/info"
 	"github.com/luevano/mangal/v5/provider/install"
@@ -47,19 +49,50 @@ var providersAddCmd = &cobra.Command{
 
 func init() {
 	providersCmd.AddCommand(providersUpCmd)
+	remoteFlags(providersUpCmd)
 }
 
 var providersUpCmd = &cobra.Command{
 	Use:   "up",
 	Short: "Update providers",
-	Args:  cobra.NoArgs,
+	Long: `Update the installed providers: a git pull of each. With --remote (or remote.url) the
+server's, with an admin's token.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		rc, err := connectRemote(cmd)
+		if err != nil {
+			return err
+		}
+		if rc != nil {
+			return updateRemoteProviders(cmd, rc)
+		}
 		dir, err := path.Ensure(path.Providers())
 		if err != nil {
 			return err
 		}
 		return install.Update(cmd.Context(), dir, cmd.ErrOrStderr())
 	},
+}
+
+// updateRemoteProviders updates the server's providers, says what each did.
+func updateRemoteProviders(cmd *cobra.Command, rc *remote.Client) error {
+	res, err := rc.UpdateProviders(ctxOf(cmd))
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, p := range res.Providers {
+		cmd.Printf("%s: %s\n", p.Dir, p.Status)
+		if p.Error != nil {
+			errs = append(errs, fmt.Errorf("update %s: %s", p.Dir, *p.Error))
+		}
+	}
+	if res.Problems != nil {
+		for _, problem := range *res.Problems {
+			cmd.PrintErrln("warning: " + problem)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func init() {
