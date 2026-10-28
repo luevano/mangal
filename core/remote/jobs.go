@@ -53,9 +53,14 @@ func jobOf(j apiv1.Job) core.Job {
 	return out
 }
 
-func (j *Jobs) keep(job core.Job) core.Job {
+// keep caches the job, unless it's an older state of one over (an answer that came
+// after the job's finished event); a retry (requeued) makes it active again.
+func (j *Jobs) keep(job core.Job, requeued bool) core.Job {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if old, ok := j.cache[job.ID]; ok && !requeued && !old.Status.Active() && job.Status.Active() {
+		return old
+	}
 	j.cache[job.ID] = job
 	return job
 }
@@ -76,7 +81,7 @@ func (c *Client) job(ctx context.Context, id int64) (core.Job, error) {
 	if err != nil {
 		return core.Job{}, err
 	}
-	return c.Jobs().keep(jobOf(job)), nil
+	return c.Jobs().keep(jobOf(job), false), nil
 }
 
 // List is the server's jobs in the order they were added.
@@ -131,7 +136,7 @@ func (j *Jobs) Cancel(ctx context.Context, id int64) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	j.keep(jobOf(job))
+	j.keep(jobOf(job), false)
 	return true, nil
 }
 
@@ -144,7 +149,7 @@ func (j *Jobs) Retry(ctx context.Context, id int64) (core.Job, error) {
 	if err != nil {
 		return core.Job{}, err
 	}
-	return j.keep(jobOf(job)), nil
+	return j.keep(jobOf(job), true), nil
 }
 
 func (j *Jobs) Remove(ctx context.Context, id int64) (bool, error) {
@@ -229,7 +234,7 @@ func (j *Jobs) Download(ctx context.Context, req core.DownloadReq) (core.Job, er
 	if err != nil {
 		return core.Job{}, err
 	}
-	return j.keep(jobOf(job)), nil
+	return j.keep(jobOf(job), true), nil
 }
 
 // Active are the cached active jobs, in the order they were added.
@@ -302,7 +307,8 @@ func (j *Jobs) Subscribe(ctx context.Context, after uint64) (<-chan core.JobEven
 			if json.Unmarshal(e.Data, &api) != nil {
 				return
 			}
-			ev := core.JobEvent{Seq: e.Seq, Kind: core.JobEventKind(e.Kind), Job: j.keep(jobOf(api))}
+			kind := core.JobEventKind(e.Kind)
+			ev := core.JobEvent{Seq: e.Seq, Kind: kind, Job: j.keep(jobOf(api), kind == core.JobAdded)}
 			if ev.Kind == core.JobChanged {
 				// the job isn't sent: the local jobs' changed events have none
 				ev.Job = core.Job{}
