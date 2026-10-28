@@ -25,6 +25,18 @@ type Jobs interface {
 	ClearQueue(ctx context.Context, provider string) (int, error)
 	// CancelAll stops every active job, how many.
 	CancelAll(ctx context.Context) (int, error)
+	// Download queues the download in its provider's queue: ErrInvalid for a bad request,
+	// the provider's or the search's error when the manga isn't found.
+	Download(ctx context.Context, req DownloadReq) (Job, error)
+	// MangaStatus is the most advanced status of the active downloads of the provider's
+	// manga, false without any; ChapterStatus that of the one with the chapter yet to
+	// download. They're the lists' marks, drawn on every view: no ctx, no waiting.
+	MangaStatus(provider, mangaID string) (jobs.Status, bool)
+	ChapterStatus(provider, mangaID string, chapter ChapterRef) (jobs.Status, bool)
+	// Subscribe sends the events after the one with Seq after (0: every one kept) until
+	// ctx is done, then closes the channel. A JobChanged is dropped while the reader is
+	// behind, an added or finished one never is.
+	Subscribe(ctx context.Context, after uint64) (<-chan JobEvent, error)
 }
 
 // Job is a job as it was when asked for.
@@ -118,10 +130,11 @@ func JobOf(j jobs.Job) Job {
 }
 
 // LocalJobs are the jobs of the process's manager m.
-func LocalJobs(m *jobs.Manager) Jobs { return localJobs{m} }
+func LocalJobs(m *jobs.Manager) Jobs { return NewJobs(m, JobsOptions{}) }
 
 type localJobs struct {
-	m *jobs.Manager
+	m    *jobs.Manager
+	opts JobsOptions
 }
 
 func (l localJobs) List(context.Context) ([]Job, error) {

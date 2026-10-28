@@ -223,10 +223,15 @@ func New(ctx context.Context) *Manager {
 // ChapterKey is the chapter in a manga's jobs: its url, else its number and title.
 func ChapterKey(c mangadata.Chapter) string {
 	info := c.Info()
-	if info.URL != "" {
-		return info.URL
+	return Key(info.URL, info.Number, info.Title)
+}
+
+// Key is ChapterKey of the chapter with the url, number and title.
+func Key(url string, number float32, title string) string {
+	if url != "" {
+		return url
 	}
-	return fmt.Sprintf("%g\x00%s", info.Number, info.Title)
+	return fmt.Sprintf("%g\x00%s", number, title)
 }
 
 // resolveProvider is a provider's current id (client.CurrentProviderID), swapped in tests.
@@ -640,7 +645,11 @@ func (m *Manager) MangaStatus(provider, mangaID string) (Status, bool) {
 // ChapterStatus is the status of the active download that has the chapter of the
 // provider's manga yet to download, false without one.
 func (m *Manager) ChapterStatus(provider, mangaID string, chapter mangadata.Chapter) (Status, bool) {
-	key := ChapterKey(chapter)
+	return m.KeyStatus(provider, mangaID, ChapterKey(chapter))
+}
+
+// KeyStatus is ChapterStatus of the chapter with the key (Key).
+func (m *Manager) KeyStatus(provider, mangaID, key string) (Status, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, e := range m.entries {
