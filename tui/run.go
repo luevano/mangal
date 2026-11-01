@@ -159,9 +159,7 @@ func UseServer(ctx context.Context, rc *remote.Client) error {
 	if st.Version != nil {
 		r.Version = *st.Version
 	}
-	if r.MetadataSources, err = rc.MetadataSources(ctx); err != nil {
-		log.Warn("tui: the metadata sources of %s: %s", r.Name(), err)
-	}
+	r.RefreshMetadataSources(ctx)
 	var since uint64
 	if st.EventSeq != nil {
 		since = *st.EventSeq

@@ -1,6 +1,10 @@
 package base
 
 import (
+	"encoding/json"
+	"github.com/luevano/mangal/v5/core/remote"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -68,5 +72,32 @@ func TestRemoteRefusals(t *testing.T) {
 	browser := &Remote{URL: reader.URL, Perms: []string{core.ScopeRead}, Features: core.APIFeatures()}
 	if why := browser.keyRefusal("home", accounts, k); !strings.Contains(why, "one of the progress, tokens, admin permissions") {
 		t.Errorf("a read token's accounts: %q", why)
+	}
+}
+
+// a source an admin enables shows with the server's settings, no switch
+func TestMetadataSourcesRefresh(t *testing.T) {
+	enabled := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"key": "kitsu", "code": "kt", "name": "Kitsu", "enabled": enabled}})
+	}))
+	defer srv.Close()
+	rc, err := remote.New(remote.Options{URL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Remote{URL: srv.URL, Client: rc}
+	if r.metadataEnabled("kt") {
+		t.Error("enabled before it was read")
+	}
+	r.RefreshMetadataSources(t.Context())
+	if r.metadataEnabled("kt") {
+		t.Error("enabled while off")
+	}
+	enabled = true
+	r.RefreshMetadataSources(t.Context())
+	if !r.metadataEnabled("kt") {
+		t.Error("not enabled after the refresh")
 	}
 }

@@ -3,7 +3,6 @@ package base
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strconv"
 
 	lmmeta "github.com/luevano/libmangal/metadata"
@@ -15,7 +14,7 @@ import (
 // browse), else on this machine. An error when the source isn't enabled there.
 func MetadataSearcher(src client.MetadataSource) (client.MetadataSearcher, error) {
 	if r := CurrentRemote; r != nil {
-		if !slices.Contains(r.MetadataSources, string(src.Code)) {
+		if !r.metadataEnabled(string(src.Code)) {
 			return nil, fmt.Errorf("%s isn't enabled on %s", src.Name, r.Name())
 		}
 		return r.Client.Metadata(src), nil
@@ -26,7 +25,7 @@ func MetadataSearcher(src client.MetadataSource) (client.MetadataSearcher, error
 // RemoteMetadata is the source's manga with the id through the server. Without browse there it
 // asks nothing and has none: on a server only the links' ids are known then.
 func (r *Remote) RemoteMetadata(ctx context.Context, src client.MetadataSource, id string) (lmmeta.Metadata, error) {
-	if !r.Has(core.ScopeBrowse) || !slices.Contains(r.MetadataSources, string(src.Code)) {
+	if !r.Has(core.ScopeBrowse) || !r.metadataEnabled(string(src.Code)) {
 		return nil, nil
 	}
 	n, err := strconv.Atoi(id)

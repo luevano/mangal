@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -37,9 +38,9 @@ type Remote struct {
 	Loaders func(ctx context.Context) ([]libmangal.ProviderLoader, error)
 	// Client is the server's API: reading fetches the chapters with it.
 	Client *remote.Client
-	// MetadataSources are the codes of the metadata sources enabled on the server, when it
-	// connected: shortcut, one enabled later needs a switch back to it to show.
-	MetadataSources []string
+	// metadata are the codes of the metadata sources enabled on the server: read on connecting
+	// and with its settings (RefreshConfig).
+	metadata atomic.Pointer[[]string]
 	// Events tells fn the topics (storage.Rev*) the server says changed, until ctx is
 	// done: the shown State's DBChangedMsg.
 	Events func(ctx context.Context, fn func(topics []string))
@@ -92,6 +93,23 @@ func (r *Remote) RefreshConfig(ctx context.Context) {
 	if err := r.Client.Config.Refresh(ctx); err != nil {
 		log.Warn("tui: the settings of %s: %s", r.Name(), err)
 	}
+	r.RefreshMetadataSources(ctx)
+}
+
+// RefreshMetadataSources reads which metadata sources the server has enabled. Not for Update.
+func (r *Remote) RefreshMetadataSources(ctx context.Context) {
+	codes, err := r.Client.MetadataSources(ctx)
+	if err != nil {
+		log.Warn("tui: the metadata sources of %s: %s", r.Name(), err)
+		return
+	}
+	r.metadata.Store(&codes)
+}
+
+// metadataEnabled is whether the server has the metadata source with the code enabled.
+func (r *Remote) metadataEnabled(code string) bool {
+	codes := r.metadata.Load()
+	return codes != nil && slices.Contains(*codes, code)
 }
 
 // Header is the header's line: where the TUI runs and as whom.
