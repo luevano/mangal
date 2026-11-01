@@ -93,6 +93,7 @@ func Open(fsys afero.Fs, p string) (*Chapter, error) {
 		return nil, err
 	}
 	c := &Chapter{FS: fsys, Path: p, Format: format}
+	var spine []string
 	switch format {
 	case libmangal.FormatPDF:
 		return c, nil
@@ -107,13 +108,14 @@ func Open(fsys afero.Fs, p string) (*Chapter, error) {
 			}
 		}
 	case libmangal.FormatCBZ, libmangal.FormatZIP, libmangal.FormatEPUB:
-		// shortcut: an epub's images by name, not its spine: libmangal's are numbered in
-		// reading order, an epub made elsewhere may be out of order or have extra images
 		err = c.withZip(func(r *zip.Reader) error {
 			for _, f := range r.File {
 				if !f.FileInfo().IsDir() && isImage(f.Name) {
 					c.Pages = append(c.Pages, Page{Name: f.Name, Size: int64(f.UncompressedSize64)})
 				}
+			}
+			if format == libmangal.FormatEPUB {
+				spine = epubSpine(r)
 			}
 			return nil
 		})
@@ -127,6 +129,10 @@ func Open(fsys afero.Fs, p string) (*Chapter, error) {
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", filepath.Base(p), err)
+	}
+	if pages := inSpine(c.Pages, spine); len(pages) > 0 {
+		c.Pages = pages
+		return c, nil
 	}
 	// natural order: archives made elsewhere often don't pad the numbers (page2, page10)
 	slices.SortStableFunc(c.Pages, func(a, b Page) int { return natural.Compare(a.Name, b.Name) })

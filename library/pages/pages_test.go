@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"io"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/luevano/libmangal"
@@ -127,5 +128,48 @@ func TestOpen(t *testing.T) {
 
 	if _, err := Open(fs, "/lib/m/missing.cbz"); err == nil {
 		t.Error("a missing file opened")
+	}
+}
+
+// TestEpubSpine: an epub's pages are its spine's, whatever their names; what isn't shown
+// (a thumbnail) isn't a page; without a usable spine they go by name.
+func TestEpubSpine(t *testing.T) {
+	write := func(p string, files map[string]string) afero.Fs {
+		fs := afero.NewMemMapFs()
+		var buf bytes.Buffer
+		w := zip.NewWriter(&buf)
+		for name, data := range files {
+			f, _ := w.Create(name)
+			f.Write([]byte(data))
+		}
+		w.Close()
+		afero.WriteFile(fs, p, buf.Bytes(), 0o644)
+		return fs
+	}
+	fs := write("/c.epub", map[string]string{
+		"META-INF/container.xml": `<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>`,
+		"OEBPS/content.opf": `<package><manifest>
+			<item id="a" href="text/one.xhtml"/><item id="b" href="text/two.xhtml"/><item id="c" href="img/z%20cover.png"/>
+			<item id="thumb" href="img/thumb.png"/></manifest>
+			<spine><itemref idref="c"/><itemref idref="b"/><itemref idref="a"/><itemref idref="nope"/></spine></package>`,
+		"OEBPS/text/one.xhtml": `<html><body><img src="../img/a2.png"/></body></html>`,
+		"OEBPS/text/two.xhtml": `<html><body><svg><image xlink:href="../img/b1.png#x"/></svg><img src="http://site/x.png"/><img src="../img/z%20cover.png"/></body></html>`,
+		"OEBPS/img/a2.png":     "a", "OEBPS/img/b1.png": "b", "OEBPS/img/z cover.png": "c", "OEBPS/img/thumb.png": "t",
+	})
+	c, err := Open(fs, "/c.epub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, p := range c.Pages {
+		got = append(got, p.Name)
+	}
+	if want := []string{"OEBPS/img/z cover.png", "OEBPS/img/b1.png", "OEBPS/img/a2.png"}; !slices.Equal(got, want) {
+		t.Errorf("pages %q, want %q", got, want)
+	}
+
+	fs = write("/d.epub", map[string]string{"META-INF/container.xml": "not xml", "p10.png": "x", "p2.png": "y"})
+	if c, err = Open(fs, "/d.epub"); err != nil || len(c.Pages) != 2 || c.Pages[0].Name != "p2.png" {
+		t.Errorf("no spine: %+v %v", c, err)
 	}
 }
