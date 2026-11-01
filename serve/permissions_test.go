@@ -5,19 +5,89 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
+	"github.com/luevano/mangal/v5/web"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
 func basic(name, password string) string {
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+password))
+}
+
+// TestReaderRefused: a reader's token gets a 403 on every operation of the spec that needs
+// more than a reader has, plan or apply ("a reader shouldn't be able to rm").
+func TestReaderRefused(t *testing.T) {
+	s := newTestServer(t, "")
+	reader := core.Roles[0]
+	if reader.Name != "reader" {
+		t.Fatalf("the first role is %q", reader.Name)
+	}
+	s.api.Auth.Tokens = func() ([]cache.ServeTokenEntry, error) {
+		return []cache.ServeTokenEntry{
+			{Name: "reader", Hash: HashToken("r3ad"), Perms: reader.Perms},
+			{Name: "manager", Hash: HashToken("m4nage"), Perms: []string{ScopeRead, ScopeBrowse, ScopeDownload, ScopeManage}},
+		}, nil
+	}
+	h := s.handler(t)
+	doc, err := openapi3.NewLoader().LoadFromData(web.Spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops, err := web.Operations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const remote = "192.0.2.1:1"
+	refused := map[string]bool{}
+	for _, op := range ops {
+		if op.Scope == ScopePublic || slices.Contains(reader.Perms, op.Scope) {
+			continue
+		}
+		target := regexp.MustCompile(`\{[^}]+\}`).ReplaceAllString(op.Path, "1")
+		query := url.Values{}
+		if op.Plan {
+			query.Set("apply", "true")
+		}
+		// what's missing is refused before the permission is looked at
+		spec := doc.Paths.Find(strings.TrimPrefix(op.Path, "/api")).GetOperation(op.Method)
+		for _, p := range spec.Parameters {
+			if p.Value.In == "query" && p.Value.Required {
+				query.Set(p.Value.Name, "1")
+			}
+		}
+		if len(query) > 0 {
+			target += "?" + query.Encode()
+		}
+		body := ""
+		if spec.RequestBody != nil {
+			body = "{}"
+		}
+		if rec := do(h, op.Method, target, body, remote, "Bearer r3ad", nil); rec.Code != http.StatusForbidden {
+			t.Errorf("%s (%s %s, needs %s): %d %s", op.ID, op.Method, target, op.Scope, rec.Code, rec.Body)
+		}
+		refused[op.ID] = true
+	}
+	for _, id := range []string{"deleteLibraryManga", "forgetLibraryMangas", "scanLibrary", "undoOp", "emptyTrash", "startDownload"} {
+		if !refused[id] {
+			t.Errorf("%s wasn't checked", id)
+		}
+	}
+	// the check can tell: who may do it gets past it
+	rec := do(h, "POST", "/api/v1/library/delete?apply=true", `{}`, remote, "Bearer m4nage", nil)
+	if rec.Code == http.StatusForbidden {
+		t.Errorf("a manager: %d %s", rec.Code, rec.Body)
+	}
 }
 
 // TestOwnTokens: the tokens permission makes your own tokens, never with more than you
