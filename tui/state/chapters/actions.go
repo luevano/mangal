@@ -146,15 +146,10 @@ func checkMetadata(manga mangadata.Manga, options libmangal.DownloadOptions) err
 
 // download queues the download as a job (tui/jobs), it goes on in the background. A batch
 // stays here with a notice of how to see it; reading opens the reader when it's done, if
-// this screen is shown.
+// this screen is shown. While the manga's metadata search runs it waits for it past this
+// screen: the user confirmed the download, leaving doesn't drop it.
 func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
-	if cmd, waiting := s.afterLookup(ctx, msg); waiting {
-		return cmd
-	}
 	options := downloadOptions(msg.read)
-	if err := checkMetadata(s.manga, options); err != nil {
-		return func() tea.Msg { return err }
-	}
 	chapters := msg.chapters
 	if msg.item != nil {
 		chapter := msg.item.chapter
@@ -163,31 +158,48 @@ func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
 		}
 		chapters = []mangadata.Chapter{chapter}
 	}
-	provider, mangaID := s.client.Info().ID, s.manga.Info().ID
-	var fresh []mangadata.Chapter
-	for _, c := range chapters {
-		if _, ok := tuijobs.Service().ChapterStatus(provider, mangaID, core.ChapterRefOf(c)); !ok {
-			fresh = append(fresh, c)
-		}
-	}
-	switch {
-	case len(fresh) == 0 && len(chapters) == 1:
-		return base.Notify(fmt.Sprintf("Chapter %q is already being downloaded (%s: downloads)", chapters[0], base.KeyDownloads.Help().Key))
-	case len(fresh) == 0:
-		return base.Notify("Those chapters are already being downloaded")
-	}
 	batch := msg.item == nil && !msg.read
-	refs := make([]core.ChapterRef, len(fresh))
-	for i, c := range fresh {
-		refs[i] = core.ChapterRefOf(c)
-	}
-	req := core.DownloadReq{Provider: provider, MangaID: mangaID, ChapterRefs: refs, Read: msg.read, Origin: s.Key(),
-		Have: &core.DownloadHave{Client: s.client, Manga: s.manga, Chapters: fresh}}
 	// a remote server's jobs answer over the network: not in Update
-	return base.Load(ctx, "", func(ctx context.Context) (queuedMsg, error) {
-		job, err := tuijobs.Download(ctx, req, batch)
+	queue := func(ctx context.Context, silent bool) (tea.Msg, error) {
+		if err := checkMetadata(s.manga, options); err != nil {
+			return nil, err
+		}
+		provider, mangaID := s.client.Info().ID, s.manga.Info().ID
+		var fresh []mangadata.Chapter
+		for _, c := range chapters {
+			if _, ok := tuijobs.Service().ChapterStatus(provider, mangaID, core.ChapterRefOf(c)); !ok {
+				fresh = append(fresh, c)
+			}
+		}
+		switch {
+		case len(fresh) == 0 && len(chapters) == 1:
+			return base.NotificationMsg{Message: fmt.Sprintf("Chapter %q is already being downloaded (%s: downloads)", chapters[0], base.KeyDownloads.Help().Key)}, nil
+		case len(fresh) == 0:
+			return base.NotificationMsg{Message: "Those chapters are already being downloaded"}, nil
+		}
+		refs := make([]core.ChapterRef, len(fresh))
+		for i, c := range fresh {
+			refs[i] = core.ChapterRefOf(c)
+		}
+		req := core.DownloadReq{Provider: provider, MangaID: mangaID, ChapterRefs: refs, Read: msg.read, Origin: s.Key(),
+			Have: &core.DownloadHave{Client: s.client, Manga: s.manga, Chapters: fresh}}
+		job, err := tuijobs.Download(ctx, req, silent)
 		return queuedMsg{job: job, read: msg.read, batch: batch, first: fresh[0]}, err
-	}, func(m queuedMsg) tea.Msg { return m })
+	}
+	same := func(m tea.Msg) tea.Msg { return m }
+	pending := base.PendingLookup(s.manga)
+	if pending == nil {
+		return base.Load(ctx, "", func(ctx context.Context) (tea.Msg, error) { return queue(ctx, batch) }, same)
+	}
+	return base.Load(base.Background(ctx), fmt.Sprintf("Waiting for the metadata of %q", s.manga), func(ctx context.Context) (tea.Msg, error) {
+		select {
+		case <-pending:
+			// the screen may be gone: the job's own notice says it's queued
+			return queue(ctx, false)
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}, same)
 }
 
 // queuedMsg is a download queued.

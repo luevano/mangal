@@ -107,7 +107,7 @@ func TestCheckMetadata(t *testing.T) {
 }
 
 // a download while the manga's metadata search runs waits for it, the strict check sees its
-// result
+// result; leaving the screen meanwhile doesn't drop it
 func TestDownloadWaitsForLookup(t *testing.T) {
 	manga, list := chapters(1)
 	c, err := libmangal.NewClient(fakeLoader{}, libmangal.DefaultClientOptions())
@@ -115,19 +115,28 @@ func TestDownloadWaitsForLookup(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(c, manga, nil, list).(*state)
-	ctx := context.Background()
-	lookup := base.LookupMetadata(ctx, manga, "looking", func(context.Context) (func(), string) { return func() {}, "" })
+	tuijobs.SetManager(jobs.New(context.Background()))
+	t.Cleanup(func() { tuijobs.SetManager(nil) })
+	old := config.Download.Metadata.Strict.Get()
+	if err := config.Download.Metadata.Strict.Set(false); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = config.Download.Metadata.Strict.Set(old) })
+	screen, left := context.WithCancel(context.Background())
+	defer left()
+	lookup := base.LookupMetadata(screen, manga, "looking", func(context.Context) (func(), string) { return func() {}, "" })
 	if lookup == nil {
 		t.Fatal("no lookup")
 	}
 	waited := make(chan []tea.Msg, 1)
-	wait := s.Update(ctx, downloadMsg{chapters: list})
+	wait := s.Update(screen, downloadMsg{chapters: list})
 	go func() { waited <- base.Drain(wait) }()
 	select {
 	case msgs := <-waited:
 		t.Fatalf("didn't wait: %v", msgs)
 	case <-time.After(100 * time.Millisecond):
 	}
+	left()
 	for _, msg := range base.Drain(lookup) {
 		msg.(base.LookupDoneMsg).Apply()
 	}
@@ -135,10 +144,13 @@ func TestDownloadWaitsForLookup(t *testing.T) {
 	if len(msgs) != 1 {
 		t.Fatalf("after the lookup: %v", msgs)
 	}
-	if _, ok := msgs[0].(downloadMsg); !ok {
-		t.Errorf("after the lookup: %#v, want the download again", msgs[0])
+	if _, ok := msgs[0].(queuedMsg); !ok {
+		t.Errorf("after the lookup: %#v, want it queued", msgs[0])
 	}
-	if cmd, waiting := s.afterLookup(ctx, nil); waiting || cmd != nil {
+	if list, _ := tuijobs.Service().List(context.Background()); len(list) != 1 {
+		t.Errorf("jobs after leaving the screen: %+v", list)
+	}
+	if cmd, waiting := s.afterLookup(screen, nil); waiting || cmd != nil {
 		t.Error("still waiting")
 	}
 }
