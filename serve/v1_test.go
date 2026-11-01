@@ -480,3 +480,17 @@ func TestV1R3Endpoints(t *testing.T) {
 		t.Errorf("cancel-all %d %+v", code, n)
 	}
 }
+
+// A download never comes in another format than the server's: the field is refused.
+func TestDownloadFormatRefused(t *testing.T) {
+	s := newTestServer(t, "")
+	var e struct {
+		Code, Error string
+	}
+	if code := s.call(t, "POST", "/api/v1/downloads", `{"provider":"fake","manga_id":"opm","chapters":"1","format":"pdf"}`, &e); code != http.StatusBadRequest {
+		t.Fatalf("%d, %+v", code, e)
+	}
+	if !strings.Contains(e.Error, "download.format") {
+		t.Errorf("error %q", e.Error)
+	}
+}

@@ -234,7 +234,7 @@ func (j *Jobs) Download(ctx context.Context, req core.DownloadReq) (core.Job, er
 		}
 	}
 	body := apiv1.DownloadRequest{Provider: req.Provider, MangaId: opt(req.MangaID), Query: opt(req.Query), Selector: opt(req.Selector),
-		Chapters: opt(req.Chapters), Format: opt(req.Format)}
+		Chapters: opt(req.Chapters)}
 	if len(req.ChapterRefs) != 0 {
 		if err := j.c.needsAPI(ctx, 1, "downloading chosen chapters"); err != nil {
 			return core.Job{}, err

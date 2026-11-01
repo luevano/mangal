@@ -4100,7 +4100,8 @@ components:
             $ref: '#/components/schemas/ChapterRef'
         format:
           type: string
-          description: the download format, download.format by default; picking one needs manage
+          deprecated: true
+          description: removed, sending one answers 400 (never the wrong format). Downloads use the server's download.format; an admin changes it, then download again
     ChapterRef:
       type: object
       required: [number]

@@ -255,15 +255,13 @@ func (a *API) ClearJobQueue(ctx context.Context, request apiv1.ClearJobQueueRequ
 // search), its chapters picked with the selector, and the download queued in the
 // provider's queue (the provider's lock: one download per provider in every mangal).
 func (a *API) StartDownload(ctx context.Context, request apiv1.StartDownloadRequestObject) (apiv1.StartDownloadResponseObject, error) {
+	b := deref(request.Body)
+	if b.Format != nil {
+		return nil, badRequest("format: no per-download format, downloads use the server's download.format (%s): an admin changes it, then download again", config.DownloadOptions().Format)
+	}
 	m, err := a.jobs()
 	if err != nil {
 		return nil, err
-	}
-	b := deref(request.Body)
-	if f := deref(b.Format); f != "" {
-		if who, _ := identityOf(ctx); !who.has(ScopeManage) {
-			return nil, newAPIError(http.StatusForbidden, CodeForbidden, "picking the format needs the manage permission, the server's (%s) is used without it", config.DownloadOptions().Format)
-		}
 	}
 	if _, err := a.loader(b.Provider); err != nil {
 		return nil, err
@@ -277,7 +275,7 @@ func (a *API) StartDownload(ctx context.Context, request apiv1.StartDownloadRequ
 		refs = append(refs, core.ChapterRef{Number: r.Number, Title: deref(r.Title), URL: deref(r.Url)})
 	}
 	j, err := svc.Download(ctx, core.DownloadReq{Provider: b.Provider, MangaID: deref(b.MangaId), Query: deref(b.Query),
-		Selector: deref(b.Selector), Chapters: deref(b.Chapters), ChapterRefs: refs, Format: deref(b.Format), Origin: jobOrigin(ctx)})
+		Selector: deref(b.Selector), Chapters: deref(b.Chapters), ChapterRefs: refs, Origin: jobOrigin(ctx)})
 	if err != nil {
 		if !errors.Is(err, core.ErrNotFound) && !errors.Is(err, core.ErrInvalid) {
 			err = unprocessable(err)

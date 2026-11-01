@@ -31,7 +31,6 @@ func TestDownloadReq(t *testing.T) {
 	for _, req := range []DownloadReq{
 		{Provider: "p", Chapters: "1"},
 		{Provider: "p", MangaID: "m"},
-		{Provider: "p", MangaID: "m", Chapters: "1", Format: "nope"},
 	} {
 		if _, err := l.downloadSpec(ctx, req); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%+v: %v", req, err)
@@ -55,7 +54,7 @@ func TestDownloadReq(t *testing.T) {
 		}
 	}
 
-	spec, err := l.downloadSpec(ctx, DownloadReq{Provider: "p", Origin: "o", Format: "cbz", Have: &DownloadHave{cl, manga, chapters[:1]}})
+	spec, err := l.downloadSpec(ctx, DownloadReq{Provider: "p", Origin: "o", Have: &DownloadHave{cl, manga, chapters[:1]}})
 	if err != nil || spec.Title != "Berserk: chapter 1" || spec.Origin != "o" || spec.MangaID != "m" {
 		t.Fatalf("spec %+v: %v", spec, err)
 	}

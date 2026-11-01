@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -17,7 +16,7 @@ import (
 
 // DownloadReq is a download to queue: the provider's manga (MangaID, else the search of
 // Query, Selector picking among its results), its chapters (the Chapters selector, else
-// ChapterRefs), in Format (the config's when empty), for reading if Read. It's plain data
+// ChapterRefs), for reading if Read. It's plain data
 // a remote jobs service sends as is; Have is the local shortcut.
 type DownloadReq struct {
 	Provider string `json:"provider"`
@@ -27,7 +26,6 @@ type DownloadReq struct {
 	// Chapters is a chapter selector: all, last, 12, 10-20, 30-.
 	Chapters    string       `json:"chapters,omitempty"`
 	ChapterRefs []ChapterRef `json:"chapter_refs,omitempty"`
-	Format      string       `json:"format,omitempty"`
 	// Read is a download for reading: in the read format and, without
 	// read.download_on_read, in the temp directory.
 	Read bool `json:"read,omitempty"`
@@ -111,13 +109,6 @@ func (l localJobs) downloadSpec(ctx context.Context, req DownloadReq) (jobs.Spec
 		}
 	}
 	options := DownloadOptions(req.Read)
-	if req.Format != "" {
-		format, err := libmangal.FormatString(strings.ToUpper(req.Format))
-		if err != nil {
-			return jobs.Spec{}, invalid("format: %q isn't one of %s", req.Format, strings.Join(libmangal.FormatStrings(), ", "))
-		}
-		options.Format = format
-	}
 	if have != nil {
 		options.SearchMetadata = false
 	} else {

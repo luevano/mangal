@@ -542,7 +542,8 @@ type DownloadRequest struct {
 	// Chapters a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...); this or chapter_refs is needed
 	Chapters *string `json:"chapters,omitempty"`
 
-	// Format the download format, download.format by default; picking one needs manage
+	// Format removed, sending one answers 400 (never the wrong format). Downloads use the server's download.format; an admin changes it, then download again
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Format   *string `json:"format,omitempty"`
 	MangaId  *string `json:"manga_id,omitempty"`
 	Provider string  `json:"provider"`

@@ -2706,7 +2706,10 @@ export interface components {
             chapters?: string;
             /** @description the chapters (as the provider lists them), instead of a selector */
             chapter_refs?: components["schemas"]["ChapterRef"][];
-            /** @description the download format, download.format by default; picking one needs manage */
+            /**
+             * @deprecated
+             * @description removed, sending one answers 400 (never the wrong format). Downloads use the server's download.format; an admin changes it, then download again
+             */
             format?: string;
         };
         ChapterRef: {
