@@ -10,6 +10,7 @@ import (
 
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/core/remote"
 	"github.com/luevano/mangal/v5/theme/style"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/spf13/cobra"
@@ -274,6 +275,11 @@ providers' settings, providers.<id>.<key>).`,
 	ValidArgsFunction: completionConfigKeys,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]
+		if key == config.Connection.Key {
+			if _, err := remote.Resolve(value); err != nil {
+				return err
+			}
+		}
 		cfg, onServer, err := configOf(cmd, key)
 		if err != nil {
 			return err
