@@ -1013,7 +1013,10 @@ type Me struct {
 	Kind MeKind `json:"kind"`
 
 	// Name the user's or the API token's name
-	Name   string   `json:"name"`
+	Name string `json:"name"`
+
+	// Owner the user an API token belongs to, none for the server's (it has no tracker accounts)
+	Owner  *string  `json:"owner,omitempty"`
 	Scopes []string `json:"scopes"`
 }
 
@@ -1431,6 +1434,13 @@ type Token struct {
 	// Role the role the permissions match, else custom
 	Role   string   `json:"role"`
 	Scopes []string `json:"scopes"`
+}
+
+// TokenChange defines model for TokenChange.
+type TokenChange struct {
+	// Role a role (reader, downloader, manager, admin); scopes are added to its
+	Role   *string   `json:"role,omitempty"`
+	Scopes *[]string `json:"scopes,omitempty"`
 }
 
 // TrackerAccount defines model for TrackerAccount.
@@ -2057,6 +2067,9 @@ type RecordReadJSONRequestBody = ReadRequest
 
 // AddTokenJSONRequestBody defines body for AddToken for application/json ContentType.
 type AddTokenJSONRequestBody = NewToken
+
+// UpdateTokenJSONRequestBody defines body for UpdateToken for application/json ContentType.
+type UpdateTokenJSONRequestBody = TokenChange
 
 // AddUserJSONRequestBody defines body for AddUser for application/json ContentType.
 type AddUserJSONRequestBody = NewUser

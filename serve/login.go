@@ -211,7 +211,11 @@ func meOf(id identity) apiv1.Me {
 	if scopes == nil {
 		scopes = []string{}
 	}
-	return apiv1.Me{Name: id.Name, Kind: apiv1.MeKind(id.Kind), Scopes: scopes, Admin: id.admin(), HideUnavailable: config.Serve.HideUnavailable.Get()}
+	me := apiv1.Me{Name: id.Name, Kind: apiv1.MeKind(id.Kind), Scopes: scopes, Admin: id.admin(), HideUnavailable: config.Serve.HideUnavailable.Get()}
+	if id.Owner != "" {
+		me.Owner = &id.Owner
+	}
+	return me
 }
 
 // loginResponse answers the login with its cookie.

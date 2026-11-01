@@ -60,6 +60,7 @@
   "GET /v1/watches": "read",
   "GET /v1/watches/stale": "read",
   "GET /v1/watches/{id}": "read",
+  "PATCH /v1/tokens/{name}": "tokens",
   "PATCH /v1/users/{name}": "admin",
   "PATCH /v1/watches/{id}": "manage",
   "POST /v1/auth/login": "public",

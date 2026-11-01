@@ -1022,6 +1022,24 @@ type ClientInterface interface {
 	// Corresponds with DELETE /v1/tokens/{name} (the `RemoveToken` operationId).
 	RemoveToken(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// UpdateTokenWithBody Change an API token's permissions (its secret stays)
+	//
+	// Yours only, with no permission you haven't; every token for an admin.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /v1/tokens/{name} (the `UpdateToken` operationId).
+	UpdateTokenWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateToken Change an API token's permissions (its secret stays)
+	//
+	// Yours only, with no permission you haven't; every token for an admin.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /v1/tokens/{name} (the `UpdateToken` operationId).
+	UpdateToken(ctx context.Context, name string, body UpdateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListUsers The users who log in
 	//
 	// Corresponds with GET /v1/users (the `ListUsers` operationId).
@@ -3393,6 +3411,44 @@ func (c *Client) AddToken(ctx context.Context, body AddTokenJSONRequestBody, req
 // Corresponds with DELETE /v1/tokens/{name} (the `RemoveToken` operationId).
 func (c *Client) RemoveToken(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRemoveTokenRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateTokenWithBody Change an API token's permissions (its secret stays)
+//
+// Yours only, with no permission you haven't; every token for an admin.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /v1/tokens/{name} (the `UpdateToken` operationId).
+func (c *Client) UpdateTokenWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateTokenRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateToken Change an API token's permissions (its secret stays)
+//
+// Yours only, with no permission you haven't; every token for an admin.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /v1/tokens/{name} (the `UpdateToken` operationId).
+func (c *Client) UpdateToken(ctx context.Context, name string, body UpdateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateTokenRequest(c.Server, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -8635,6 +8691,53 @@ func NewRemoveTokenRequest(server string, name string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewUpdateTokenRequest calls the generic UpdateToken builder with application/json body
+func NewUpdateTokenRequest(server string, name string, body UpdateTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateTokenRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewUpdateTokenRequestWithBody constructs an http.Request for the UpdateToken method, with any body, and a specified content type
+func NewUpdateTokenRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/tokens/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListUsersRequest constructs an http.Request for the ListUsers method
 func NewListUsersRequest(server string) (*http.Request, error) {
 	var err error
@@ -10284,6 +10387,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /v1/tokens/{name} (the `RemoveToken` operationId).
 	RemoveTokenWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*RemoveTokenResponse, error)
+
+	// UpdateTokenWithBodyWithResponse Change an API token's permissions (its secret stays)
+	//
+	// Yours only, with no permission you haven't; every token for an admin.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/tokens/{name} (the `UpdateToken` operationId).
+	UpdateTokenWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateTokenResponse, error)
+
+	// UpdateTokenWithResponse Change an API token's permissions (its secret stays)
+	//
+	// Yours only, with no permission you haven't; every token for an admin.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/tokens/{name} (the `UpdateToken` operationId).
+	UpdateTokenWithResponse(ctx context.Context, name string, body UpdateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateTokenResponse, error)
 
 	// ListUsersWithResponse The users who log in
 	//
@@ -15111,6 +15232,47 @@ func (r RemoveTokenResponse) ContentType() string {
 	return ""
 }
 
+type UpdateTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateTokenResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListUsersResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -17599,6 +17761,36 @@ func (c *ClientWithResponses) RemoveTokenWithResponse(ctx context.Context, name 
 		return nil, err
 	}
 	return ParseRemoveTokenResponse(rsp)
+}
+
+// UpdateTokenWithBodyWithResponse Change an API token's permissions (its secret stays)
+//
+// Yours only, with no permission you haven't; every token for an admin.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/tokens/{name} (the `UpdateToken` operationId).
+func (c *ClientWithResponses) UpdateTokenWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateTokenResponse, error) {
+	rsp, err := c.UpdateTokenWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateTokenResponse(rsp)
+}
+
+// UpdateTokenWithResponse Change an API token's permissions (its secret stays)
+//
+// Yours only, with no permission you haven't; every token for an admin.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/tokens/{name} (the `UpdateToken` operationId).
+func (c *ClientWithResponses) UpdateTokenWithResponse(ctx context.Context, name string, body UpdateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateTokenResponse, error) {
+	rsp, err := c.UpdateToken(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateTokenResponse(rsp)
 }
 
 // ListUsersWithResponse The users who log in
@@ -21113,6 +21305,35 @@ func ParseRemoveTokenResponse(rsp *http.Response) (*RemoveTokenResponse, error) 
 	}
 
 	response := &RemoveTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateTokenResponse parses an HTTP response from a UpdateTokenWithResponse call
+func ParseUpdateTokenResponse(rsp *http.Response) (*UpdateTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateTokenResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

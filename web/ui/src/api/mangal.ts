@@ -284,7 +284,11 @@ export interface paths {
         delete: operations["removeToken"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Change an API token's permissions (its secret stays)
+         * @description Yours only, with no permission you haven't; every token for an admin.
+         */
+        patch: operations["updateToken"];
         trace?: never;
     };
     "/v1/events": {
@@ -1959,6 +1963,11 @@ export interface components {
             role?: string;
             scopes?: string[];
         };
+        TokenChange: {
+            /** @description a role (reader, downloader, manager, admin); scopes are added to its */
+            role?: string;
+            scopes?: string[];
+        };
         NewTokenResponse: {
             token: components["schemas"]["Token"];
             /** @description Authorization Bearer, shown only here */
@@ -2007,6 +2016,8 @@ export interface components {
         Me: {
             /** @description the user's or the API token's name */
             name: string;
+            /** @description the user an API token belongs to, none for the server's (it has no tracker accounts) */
+            owner?: string;
             /**
              * @description a user, an API token, the server's own CLI and TUI (local), or serve.auth none
              * @enum {string}
@@ -3635,6 +3646,31 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenChange"];
+            };
+        };
+        responses: {
+            /** @description changed */
             204: {
                 headers: {
                     [name: string]: unknown;

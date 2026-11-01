@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/luevano/mangal/v5/core"
@@ -52,6 +53,21 @@ func TestOwnTokens(t *testing.T) {
 	}
 	if rec := do(h, "DELETE", "/api/v1/tokens/servers", "", remote, kid, nil); rec.Code != http.StatusNotFound {
 		t.Errorf("someone else's: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "PATCH", "/api/v1/tokens/servers", `{"scopes":["read"]}`, remote, kid, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("change someone else's: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "PATCH", "/api/v1/tokens/kids", `{"role":"downloader"}`, remote, kid, nil); rec.Code != http.StatusForbidden {
+		t.Errorf("change to more than kid has: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "PATCH", "/api/v1/tokens/kids", `{"scopes":["read"]}`, remote, kid, nil); rec.Code != http.StatusNoContent {
+		t.Errorf("change: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "GET", "/api/v1/tokens", "", remote, kid, nil); !strings.Contains(rec.Body.String(), `"scopes":["read"]`) {
+		t.Errorf("changed: %s", rec.Body)
+	}
+	if rec := do(h, "PATCH", "/api/v1/tokens/kids", `{"scopes":["read","browse"]}`, remote, kid, nil); rec.Code != http.StatusNoContent {
+		t.Errorf("change back: %d %s", rec.Code, rec.Body)
 	}
 	// the token works as kid, with browse at most
 	if rec := do(h, "GET", "/api/v1/watches", "", remote, "Bearer "+made.Secret, nil); rec.Code != http.StatusOK {

@@ -323,6 +323,29 @@ paths:
         default:
           $ref: '#/components/responses/Error'
   /v1/tokens/{name}:
+    patch:
+      summary: Change an API token's permissions (its secret stays)
+      description: Yours only, with no permission you haven't; every token for an admin.
+      operationId: updateToken
+      tags: [v1, auth]
+      x-mangal-scope: tokens
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenChange'
+      responses:
+        '204':
+          description: changed
+        default:
+          $ref: '#/components/responses/Error'
     delete:
       summary: Remove an API token
       operationId: removeToken
@@ -2631,6 +2654,16 @@ components:
           type: array
           items:
             type: string
+    TokenChange:
+      type: object
+      properties:
+        role:
+          type: string
+          description: a role (reader, downloader, manager, admin); scopes are added to its
+        scopes:
+          type: array
+          items:
+            type: string
     NewTokenResponse:
       type: object
       required: [token, secret]
@@ -2721,6 +2754,9 @@ components:
         name:
           type: string
           description: the user's or the API token's name
+        owner:
+          type: string
+          description: the user an API token belongs to, none for the server's (it has no tracker accounts)
         kind:
           type: string
           enum: [user, token, local, none]

@@ -479,6 +479,7 @@
         "endUserLogins",
         "listTokens",
         "addToken",
+        "updateToken",
         "removeToken",
         "listPermissions"
       ]

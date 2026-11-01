@@ -186,18 +186,8 @@ func (a *API) AddToken(ctx context.Context, request apiv1.AddTokenRequestObject)
 		return nil, badRequest("%w", err)
 	}
 	owner := tokenOwner(ctx)
-	if strings.HasPrefix(owner, "token:") {
-		return nil, newAPIError(http.StatusForbidden, CodeForbidden, "only a user's or an admin's tokens make tokens")
-	}
-	if owner != "" {
-		id, _ := identityOf(ctx)
-		want, err := core.NormalizeScopes(scopes)
-		if err != nil {
-			return nil, badRequest("%w", err)
-		}
-		if more := slices.DeleteFunc(want, id.has); len(more) != 0 {
-			return nil, newAPIError(http.StatusForbidden, CodeForbidden, "a token can't have more than %s: %s", id, strings.Join(more, ", "))
-		}
+	if err := checkTokenScopes(ctx, owner, scopes); err != nil {
+		return nil, err
 	}
 	t, secret, err := a.users().AddToken(ctx, b.Name, owner, scopes)
 	if err != nil {
@@ -207,16 +197,66 @@ func (a *API) AddToken(ctx context.Context, request apiv1.AddTokenRequestObject)
 	return apiv1.AddToken201JSONResponse{Token: tokenOut(t), Secret: secret}, nil
 }
 
+// checkTokenScopes refuses what a token of owner (tokenOwner) can't have: more than the
+// request's identity has, or being made by a token of nobody.
+func checkTokenScopes(ctx context.Context, owner string, scopes []string) error {
+	if strings.HasPrefix(owner, "token:") {
+		return newAPIError(http.StatusForbidden, CodeForbidden, "only a user's or an admin's tokens make tokens")
+	}
+	if owner == "" {
+		return nil
+	}
+	id, _ := identityOf(ctx)
+	want, err := core.NormalizeScopes(scopes)
+	if err != nil {
+		return badRequest("%w", err)
+	}
+	if more := slices.DeleteFunc(want, id.has); len(more) != 0 {
+		return newAPIError(http.StatusForbidden, CodeForbidden, "a token can't have more than %s: %s", id, strings.Join(more, ", "))
+	}
+	return nil
+}
+
+// checkTokenOwner refuses a token that isn't the request's to manage.
+func (a *API) checkTokenOwner(ctx context.Context, name string) error {
+	owner := tokenOwner(ctx)
+	if owner == "" {
+		return nil
+	}
+	list, err := a.users().Tokens(ctx)
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(list, func(t core.Token) bool { return t.Name == name && t.Owner == owner }) {
+		return &core.NotFoundError{What: fmt.Sprintf("no token %q of yours", name)}
+	}
+	return nil
+}
+
+// UpdateToken implements apiv1.StrictServerInterface.
+func (a *API) UpdateToken(ctx context.Context, request apiv1.UpdateTokenRequestObject) (apiv1.UpdateTokenResponseObject, error) {
+	if err := a.checkTokenOwner(ctx, request.Name); err != nil {
+		return nil, err
+	}
+	b := request.Body
+	scopes, err := core.WithRole(deref(b.Role), deref(b.Scopes))
+	if err != nil {
+		return nil, badRequest("%w", err)
+	}
+	if err := checkTokenScopes(ctx, tokenOwner(ctx), scopes); err != nil {
+		return nil, err
+	}
+	if err := a.users().SetTokenScopes(ctx, request.Name, scopes); err != nil {
+		return nil, err
+	}
+	a.authChanged()
+	return apiv1.UpdateToken204Response{}, nil
+}
+
 // RemoveToken implements apiv1.StrictServerInterface.
 func (a *API) RemoveToken(ctx context.Context, request apiv1.RemoveTokenRequestObject) (apiv1.RemoveTokenResponseObject, error) {
-	if owner := tokenOwner(ctx); owner != "" {
-		list, err := a.users().Tokens(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if !slices.ContainsFunc(list, func(t core.Token) bool { return t.Name == request.Name && t.Owner == owner }) {
-			return nil, &core.NotFoundError{What: fmt.Sprintf("no token %q of yours", request.Name)}
-		}
+	if err := a.checkTokenOwner(ctx, request.Name); err != nil {
+		return nil, err
 	}
 	if err := a.users().RemoveToken(ctx, request.Name); err != nil {
 		return nil, err
