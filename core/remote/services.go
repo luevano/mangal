@@ -250,7 +250,7 @@ func configOf(e apiv1.ConfigEntry) core.ConfigEntry {
 	if e.Kind != nil {
 		out.Kind = string(*e.Kind)
 	}
-	// a server before API 1.2 doesn't say: this mangal's rule
+	// a server before API 1.1 doesn't say: this mangal's rule
 	if e.Side != nil {
 		out.Side = string(*e.Side)
 	}

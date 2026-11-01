@@ -404,7 +404,7 @@ type ConfigEntry struct {
 	Risky  *bool `json:"risky,omitempty"`
 	Secret bool  `json:"secret"`
 
-	// Side local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with (API 1.2)
+	// Side local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with
 	Side   *ConfigEntrySide `json:"side,omitempty"`
 	Source ConfigSource     `json:"source"`
 
@@ -424,7 +424,7 @@ type ConfigEntryApplies string
 // ConfigEntryKind the value's type
 type ConfigEntryKind string
 
-// ConfigEntrySide local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with (API 1.2)
+// ConfigEntrySide local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with
 type ConfigEntrySide string
 
 // ConfigEntryStored where the value is stored, mangal.toml of the server (file) or the database (db)
@@ -533,7 +533,7 @@ type DownloadList struct {
 
 // DownloadRequest defines model for DownloadRequest.
 type DownloadRequest struct {
-	// ChapterRefs the chapters (as the provider lists them), instead of a selector (API 1.1)
+	// ChapterRefs the chapters (as the provider lists them), instead of a selector
 	ChapterRefs *[]ChapterRef `json:"chapter_refs,omitempty"`
 
 	// Chapters a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...); this or chapter_refs is needed
@@ -820,7 +820,7 @@ type JobResult struct {
 	Path    *string `json:"path,omitempty"`
 	Skipped *string `json:"skipped,omitempty"`
 
-	// Status what the download did (new, exists, ...; API 1.1)
+	// Status what the download did (new, exists, ...)
 	Status      *string `json:"status,omitempty"`
 	Title       string  `json:"title"`
 	Unavailable *string `json:"unavailable,omitempty"`

@@ -2669,7 +2669,7 @@ export interface components {
             title: string;
             path?: string;
             skipped?: string;
-            /** @description what the download did (new, exists, ...; API 1.1) */
+            /** @description what the download did (new, exists, ...) */
             status?: string;
             unavailable?: string;
             error?: string;
@@ -2689,7 +2689,7 @@ export interface components {
             selector?: string;
             /** @description a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...); this or chapter_refs is needed */
             chapters?: string;
-            /** @description the chapters (as the provider lists them), instead of a selector (API 1.1) */
+            /** @description the chapters (as the provider lists them), instead of a selector */
             chapter_refs?: components["schemas"]["ChapterRef"][];
             /** @description the download format, download.format by default; picking one needs manage */
             format?: string;
@@ -2915,7 +2915,7 @@ export interface components {
             /** @description an enum's accepted values */
             values?: string[];
             /**
-             * @description local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with (API 1.2)
+             * @description local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with
              * @enum {string}
              */
             side?: "server" | "local";

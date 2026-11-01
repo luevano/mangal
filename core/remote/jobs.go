@@ -184,9 +184,9 @@ func (j *Jobs) ClearQueue(ctx context.Context, provider string) (int, error) {
 }
 
 // CancelAll cancels the server's active jobs (the token's, everyone's with manage); on a
-// server before API 1.2 one by one, a job added meanwhile goes on.
+// server before API 1.1 one by one, a job added meanwhile goes on.
 func (j *Jobs) CancelAll(ctx context.Context) (int, error) {
-	if j.c.needsAPI(ctx, 2, "") == nil {
+	if j.c.needsAPI(ctx, 1, "") == nil {
 		r, err := j.c.API.CancelAllJobsWithResponse(ctx)
 		if err != nil {
 			return 0, fmt.Errorf("mangal serve: %w", err)

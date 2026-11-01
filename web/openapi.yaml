@@ -1,6 +1,6 @@
 openapi: "3.0.0"
 info:
-  version: 1.3.0
+  version: 1.1.0
   title: mangal API
   description: |
     The HTTP API v1 of `mangal serve` and `mangal web` under /api/v1 (tag v1). Paths are
@@ -4018,7 +4018,7 @@ components:
           type: string
         status:
           type: string
-          description: what the download did (new, exists, ...; API 1.1)
+          description: what the download did (new, exists, ...)
         unavailable:
           type: string
         error:
@@ -4053,7 +4053,7 @@ components:
           description: a chapter selector as `mangal inline -c` takes (all, first, last, 12, 10-20, 30-, @title@, ...); this or chapter_refs is needed
         chapter_refs:
           type: array
-          description: the chapters (as the provider lists them), instead of a selector (API 1.1)
+          description: the chapters (as the provider lists them), instead of a selector
           items:
             $ref: '#/components/schemas/ChapterRef'
         format:
@@ -4436,7 +4436,7 @@ components:
         side:
           type: string
           enum: [server, local]
-          description: "local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with (API 1.2)"
+          description: "local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with"
     ConfigSource:
       type: object
       required: [kind]

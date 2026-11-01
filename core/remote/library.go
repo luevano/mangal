@@ -49,9 +49,9 @@ func (l remoteLibrary) list(ctx context.Context, params *apiv1.ListLibraryMangas
 }
 
 // Mangas are the server's mangas; it keeps their statuses itself (its scans). The
-// missing folders need API 1.2 (an older server's list says none).
+// missing folders need API 1.1 (an older server's list says none).
 func (l remoteLibrary) Mangas(ctx context.Context, opts core.MangasOptions) (core.MangaList, error) {
-	if !opts.Missing || l.c.needsAPI(ctx, 2, "") != nil {
+	if !opts.Missing || l.c.needsAPI(ctx, 1, "") != nil {
 		mangas, err := l.list(ctx, nil)
 		return core.MangaList{Mangas: mangas}, err
 	}
@@ -173,7 +173,7 @@ func (l remoteLibrary) ChapterFiles(ctx context.Context, req core.ChapterFilesRe
 }
 
 func (l remoteLibrary) links(ctx context.Context, id int64) (apiv1.LibraryLinks, error) {
-	if err := l.c.needsAPI(ctx, 2, "a library manga's links"); err != nil {
+	if err := l.c.needsAPI(ctx, 1, "a library manga's links"); err != nil {
 		return apiv1.LibraryLinks{}, err
 	}
 	r, err := l.c.API.GetLibraryLinksWithResponse(ctx, id)
@@ -257,10 +257,10 @@ func (l remoteLibrary) Scan(ctx context.Context, opts core.ScanOptions) (core.Sc
 	return core.ScanReport{Summary: j.Message}, nil
 }
 
-// ScanManga is the server's scan of the manga (API 1.2), the manga as it is on an older
+// ScanManga is the server's scan of the manga (API 1.1), the manga as it is on an older
 // server or without the manage permission (the server's scans keep it then).
 func (l remoteLibrary) ScanManga(ctx context.Context, id int64) (core.MangaScan, error) {
-	if l.c.needsAPI(ctx, 2, "") == nil {
+	if l.c.needsAPI(ctx, 1, "") == nil {
 		r, err := l.c.API.ScanLibraryMangaWithResponse(ctx, id)
 		if err != nil {
 			return core.MangaScan{}, fmt.Errorf("mangal serve: %w", err)
