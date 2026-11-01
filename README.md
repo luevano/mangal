@@ -27,10 +27,10 @@ Version 5 is now based on metafates' [mangalorg](https://github.com/mangalorg) s
 Download a binary from the [releases](https://github.com/luevano/mangal/releases), or with Go:
 
 ```sh
-go install -tags nodynamic github.com/luevano/mangal/v5@latest
+go install github.com/luevano/mangal/v5@latest
 ```
 
-Built with `go install`, `mangal web` has no web UI; release binaries include it (see [Development](#development), `-tags webui`). `nodynamic` keeps the WebP encoder from loading a system libwebp.
+Built with `go install`, `mangal web` has no web UI; release binaries include it (see [Development](#development), `-tags webui`).
 
 ## Development
 

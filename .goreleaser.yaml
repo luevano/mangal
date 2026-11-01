@@ -16,8 +16,7 @@ builds:
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     flags: [-trimpath]
-    # nodynamic: gen2brain/webp never loads a system libwebp
-    tags: [webui, nodynamic]
+    tags: [webui]
     ldflags: [-s -w]
 
 archives:
