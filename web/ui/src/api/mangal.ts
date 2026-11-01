@@ -2089,6 +2089,8 @@ export interface components {
             score: number;
             /** @description too unlike the query to be used automatically (it can still be picked) */
             bad: boolean;
+            /** @description a search only answered part of it (no authors, status, tags); search `id:<id>` gets it whole */
+            partial?: boolean;
         };
         Manga: {
             id: string;

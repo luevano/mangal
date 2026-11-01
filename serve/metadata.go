@@ -94,6 +94,9 @@ func (a *API) SearchMetadata(ctx context.Context, request apiv1.SearchMetadataRe
 func toAPIMetadata(src client.MetadataSource, m lmmeta.Metadata, score float64) apiv1.MetadataResult {
 	r := apiv1.MetadataResult{Source: string(src.Code), Id: m.ID().Raw, Title: m.Title(), Url: m.URL(), Score: score,
 		Bad: score < lmmeta.GoodMatchScore}
+	if lmmeta.IsPartial(m) {
+		r.Partial = new(true)
+	}
 	if r.Url == "" {
 		r.Url = src.MangaURL(r.Id)
 	}

@@ -23,6 +23,7 @@ const all = ref<MetadataSource[]>([])
 const q = ref(props.query ?? '')
 const searches = ref<SourceResults[]>([])
 const error = ref('')
+const loadingDetails = ref<MetadataResult>()
 let abort: AbortController | undefined
 
 // the one asked for first
@@ -47,6 +48,20 @@ function search() {
     }
     s.loading = false
   })
+}
+
+// a result the search only answered part of, whole in its place (a binding's or a link's plan
+// fetches its own)
+async function details(s: SourceResults, r: MetadataResult) {
+  loadingDetails.value = r
+  try {
+    const [whole] = await ok(client.GET('/v1/metadata/{source}/search', { params: { path: { source: s.source.code }, query: { q: `id:${r.id}` } }, signal: abort?.signal }))
+    if (whole && s.results) s.results[s.results.indexOf(r)] = { ...whole, score: r.score, bad: r.bad }
+    else s.error = `${s.source.name} ${r.id} isn't there any more`
+  } catch (e) {
+    if (!abort?.signal.aborted) s.error = errorMessage(e)
+  }
+  loadingDetails.value = undefined
 }
 
 watch(
@@ -115,6 +130,10 @@ onScopeDispose(() => abort?.abort())
                       <span v-if="r.bad" class="badge text-bg-warning ms-2" title="too unlike the search to be used automatically">bad match {{ Math.round(r.score * 100) }}%</span>
                     </div>
                   </div>
+                  <button v-if="r.partial" class="btn btn-sm btn-outline-secondary" :disabled="!!loadingDetails" data-test="metadata-details" @click="details(s, r)">
+                    <span v-if="loadingDetails === r" class="spinner-border spinner-border-sm" role="status" aria-label="Loading" />
+                    <template v-else>Details</template>
+                  </button>
                   <button class="btn btn-sm btn-outline-primary" data-test="metadata-pick" @click="emit('pick', r, s.source)">Pick</button>
                 </div>
               </div>

@@ -35,6 +35,28 @@ function stubFetch(answer: (url: string, init: Request) => Promise<Response> | R
 describe('MetadataPicker', () => {
   afterEach(() => vi.unstubAllGlobals())
 
+  it('gets a partial result whole in its place, keeping its score', async () => {
+    const partial: MetadataResult = { source: 'mu', id: '55', title: 'Attack on Titan', url: 'https://www.mangaupdates.com/series/55', score: 0.4, bad: true, partial: true }
+    const whole: MetadataResult = { ...partial, status: 'ongoing', authors: ['Isayama'], score: 1, bad: false, partial: undefined }
+    const urls: string[] = []
+    stubFetch((url) => {
+      urls.push(url)
+      if (url.includes('/sources')) return json(sources)
+      if (url.includes('q=id%3A55') || url.includes('q=id:55')) return json([whole])
+      return json(url.includes('/mu/') ? [partial] : [])
+    })
+    const { default: MetadataPicker } = await import('../MetadataPicker.vue')
+    const w = mount(MetadataPicker, { props: { open: true, title: 'Bind', query: 'titan' } })
+    await flushPromises()
+    expect(urls.some((u) => u.includes('id'))).toBe(false)
+    await w.find('[data-test=metadata-details]').trigger('click')
+    await flushPromises()
+    const row = w.find('[data-test=metadata-result]')
+    expect(row.text()).toContain('Isayama')
+    expect(row.text()).toContain('bad match 40%')
+    expect(w.find('[data-test=metadata-details]').exists()).toBe(false)
+  })
+
   it('searches every source, shows the matches and picks one', async () => {
     const urls: string[] = []
     stubFetch((url) => {

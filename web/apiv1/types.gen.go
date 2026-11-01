@@ -1057,6 +1057,9 @@ type MetadataResult struct {
 	Format   *string `json:"format,omitempty"`
 	Id       string  `json:"id"`
 
+	// Partial a search only answered part of it (no authors, status, tags); search `id:<id>` gets it whole
+	Partial *bool `json:"partial,omitempty"`
+
 	// Score how close it is to the query, 0 to 1
 	Score float64 `json:"score"`
 

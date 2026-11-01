@@ -2889,6 +2889,9 @@ components:
         bad:
           type: boolean
           description: too unlike the query to be used automatically (it can still be picked)
+        partial:
+          type: boolean
+          description: a search only answered part of it (no authors, status, tags); search `id:<id>` gets it whole
 
     Manga:
       type: object
