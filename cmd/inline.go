@@ -112,8 +112,6 @@ func init() {
 	configKeyFlag(f, "format", config.Download.Format.Key)
 	f.StringP("directory", "d", "", "Download directory")
 	configKeyFlag(f, "directory", config.Download.Path.Key)
-	f.Bool("webp", false, "Convert the pages to WebP")
-	configKeyFlag(f, "webp", config.Download.WebP.Key)
 
 	inlineDownloadCmd.MarkFlagDirname("directory")
 }

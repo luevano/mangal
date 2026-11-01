@@ -13,7 +13,7 @@ Version 5 is now based on metafates' [mangalorg](https://github.com/mangalorg) s
 
 ## Features
 
-- Search one provider or several at once, by title or by id; download as CBZ, PDF, EPUB, ZIP, TAR, images (optionally as WebP, `download.webp`), with ComicInfo.xml/series.json metadata from AniList, Kitsu, MyAnimeList or MangaUpdates.
+- Search one provider or several at once, by title or by id; download as CBZ, PDF, EPUB, ZIP, TAR, images (optionally as WebP, `download.image_format`), with ComicInfo.xml/series.json metadata from AniList, Kitsu, MyAnimeList or MangaUpdates.
 - Four ways to use it: the [TUI](#usage), the CLI ([inline](#inline), most commands), Lua [scripts](#script) and the [web UI](#web) (with a reader), all on the same data.
 - A [library](#library) of what's downloaded, from any provider: scan, merge, move to another provider, rename, link metadata ids, hold marks, trash and undo.
 - [Unavailable and retired chapters](#unavailable-and-retired-chapters): list them, get them from another provider, give the files the right titles.

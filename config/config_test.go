@@ -179,6 +179,7 @@ func TestParse(t *testing.T) {
 		{"download.mode_dir_decimal", "493", int64(493)},
 		{"icons", "nerd", "nerd"},
 		{"download.format", "cbz", "cbz"},
+		{"download.image_format", "webp", "webp"},
 		{"tui.skip_home", "false", false},
 		{"download.path", "~/dl", "~/dl"},
 	}
@@ -191,6 +192,8 @@ func TestParse(t *testing.T) {
 	for key, value := range map[string]string{
 		"providers.parallelism":            "0",
 		"download.format":                  "bad",
+		"download.image_format":            "avif",
+		"download.image_quality":           "0",
 		"icons":                            "x",
 		"notification.discord.webhook_url": "https://example.com",
 		"download.path":                    "",
