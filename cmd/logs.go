@@ -34,6 +34,7 @@ var logsArgs logsFlags
 
 func init() {
 	rootCmd.AddCommand(logsCmd)
+	remoteFlags(logsCmd)
 	f := logsCmd.Flags()
 	f.BoolVarP(&logsArgs.List, "list", "l", false, "List the log files")
 	f.BoolVarP(&logsArgs.All, "all", "a", false, "Read every log file, not only the current period's")
@@ -64,7 +65,8 @@ var logsCmd = &cobra.Command{
 	Short:       "Show and search the logs",
 	Long: `Show the log entries of the current period's files (log.rotate), or of every file
 (--all, or when --since/--until is given), or of the named ones (--file). Compressed files
-are read too. --follow keeps printing the new entries, of every mangal process.`,
+are read too. --follow keeps printing the new entries, of every mangal process. With --remote
+(or remote.url) the server's log, for an admin's token.`,
 	Example: `  mangal logs -L warn --since 2d
   mangal logs -a -g 'mangadex.*timeout'
   mangal logs -f -n 20`,
@@ -77,6 +79,13 @@ are read too. --follow keeps printing the new entries, of every mangal process.`
 func runLogs(cmd *cobra.Command, dir string, now time.Time) error {
 	logs := core.NewLogs(func() string { return dir })
 	ctx := ctxOf(cmd)
+	rc, err := connectRemote(cmd)
+	if err != nil {
+		return err
+	}
+	if rc != nil {
+		logs = rc.Services().Logs
+	}
 	files, err := logs.Files(ctx)
 	if err != nil {
 		return err
@@ -205,6 +214,10 @@ func pickLogFiles(files []log.File, now time.Time) ([]log.File, error) {
 		return files, nil
 	}
 	return slices.DeleteFunc(files, func(f log.File) bool {
+		// a server's files don't say their period: the one still written
+		if f.End.IsZero() {
+			return f.Closed
+		}
 		return now.Before(f.Start) || !now.Before(f.End)
 	}), nil
 }

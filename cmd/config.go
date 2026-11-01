@@ -14,8 +14,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// configOf is the config the command works on: a server's (--remote, remote.url), unless
+// key is one each machine keeps (config.Side, "" for none).
+func configOf(cmd *cobra.Command, key string) (core.Config, bool, error) {
+	rc, err := connectRemote(cmd)
+	if err != nil || rc == nil || (key != "" && config.Side(key) == "local") {
+		return core.NewConfig(), false, err
+	}
+	return rc.Services().Config, true, nil
+}
+
 func init() {
 	rootCmd.AddCommand(configCmd)
+	remoteFlags(configInfoCmd, configGetCmd, configSetCmd, configHistoryCmd, configUndoCmd)
 }
 
 var configCmd = &cobra.Command{
@@ -55,7 +66,11 @@ var configInfoCmd = &cobra.Command{
 			Applies     string        `json:"applies"`
 		}
 
-		entries, err := core.NewConfig().List(ctxOf(cmd))
+		cfg, _, err := configOf(cmd, "")
+		if err != nil {
+			return err
+		}
+		entries, err := cfg.List(ctxOf(cmd))
 		if err != nil {
 			return err
 		}
@@ -209,6 +224,18 @@ var configGetCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completionConfigKeys,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, onServer, err := configOf(cmd, args[0])
+		if err != nil {
+			return err
+		}
+		if onServer {
+			e, err := cfg.Get(ctxOf(cmd), args[0])
+			if err != nil {
+				return err
+			}
+			cmd.Println(e.Value)
+			return nil
+		}
 		if !config.Exists(args[0]) {
 			// a provider's setting
 			core.LoadProviderSettings()
@@ -237,11 +264,21 @@ providers' settings, providers.<id>.<key>).`,
 	ValidArgsFunction: completionConfigKeys,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key, value := args[0], args[1]
-		e, err := core.NewConfig().Set(ctxOf(cmd), key, value)
+		cfg, onServer, err := configOf(cmd, key)
+		if err != nil {
+			return err
+		}
+		e, err := cfg.Set(ctxOf(cmd), key, value)
 		if err != nil {
 			return err
 		}
 		successf(cmd, "set %q to %v", key, config.Masked(key, value))
+		if onServer {
+			if e.Restart {
+				cmd.PrintErrf("notice: %s applies when the server restarts\n", key)
+			}
+			return nil
+		}
 		if e.Source.Kind == "env" {
 			cmd.PrintErrf("notice: %s overrides it in this process\n", e.Source.Name)
 		}
@@ -320,7 +357,11 @@ history.`,
 		if len(args) == 1 {
 			key = args[0]
 		}
-		changes, err := core.NewConfig().History(ctxOf(cmd), key, configHistoryArgs.Limit)
+		cfg, _, err := configOf(cmd, "")
+		if err != nil {
+			return err
+		}
+		changes, err := cfg.History(ctxOf(cmd), key, configHistoryArgs.Limit)
 		if err != nil {
 			return err
 		}
@@ -366,7 +407,11 @@ it (undo the later change first) and for secrets (their history doesn't keep the
 		if err != nil {
 			return fmt.Errorf("%q isn't a change id", args[0])
 		}
-		e, err := core.NewConfig().Undo(ctxOf(cmd), id)
+		cfg, _, err := configOf(cmd, "")
+		if err != nil {
+			return err
+		}
+		e, err := cfg.Undo(ctxOf(cmd), id)
 		if err != nil {
 			return err
 		}
