@@ -43,6 +43,17 @@ var errRemote = errors.New("this machine's library isn't used on a remote mangal
 // services, jobs and events; this machine keeps the TUI's own settings, log and search
 // histories.
 func RunRemote(ctx context.Context, rc *remote.Client) error {
+	if err := UseServer(ctx, rc); err != nil {
+		return err
+	}
+	setScreens()
+	base.CurrentActivity = jobs.StartRemote(ctx, rc.Jobs())
+	return base.Run(ctx, home.New())
+}
+
+// UseServer makes rc's mangal serve the TUI's backend: base.Services are its, base.Core and
+// this machine's watches answer nothing.
+func UseServer(ctx context.Context, rc *remote.Client) error {
 	st, err := rc.Status(ctx)
 	if err != nil {
 		return err
@@ -74,9 +85,7 @@ func RunRemote(ctx context.Context, rc *remote.Client) error {
 	base.CurrentRemote = r
 	base.Core = func() (*core.Core, error) { return nil, errRemote }
 	watches.Connect = svc.Watches
-	setScreens()
-	base.CurrentActivity = jobs.StartRemote(ctx, rc.Jobs())
-	return base.Run(ctx, home.New())
+	return nil
 }
 
 // serverTopics are the topics of the server's "changed" events as the data database's.

@@ -233,6 +233,11 @@ func setup(cmd *cobra.Command, _ []string) error {
 		}
 		return err
 	}
+	connWarnings, err := checkConnection(cmd)
+	if err != nil {
+		return err
+	}
+	warnings = append(warnings, connWarnings...)
 
 	// validated by the config, Info otherwise
 	logLevel, _ := log.ParseLevel(config.Log.Level.Get())

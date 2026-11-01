@@ -136,7 +136,7 @@ var libraryDownloadsCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(2),
 	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		c, err := newCore()
+		c, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
@@ -215,7 +215,7 @@ asks AniList), hold mark and the need of a new provider ("mangal library hold"),
 and sources.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		c, err := newCore()
+		c, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
@@ -252,7 +252,9 @@ and sources.`,
 			}
 			cmd.Println(line)
 		}
-		printTrash(cmd)
+		if c.Remote == "" {
+			printTrash(cmd)
+		}
 		return nil
 	},
 }
@@ -307,15 +309,23 @@ existing .libmangal.json is never replaced.`,
 		}
 		st := newStatus(cmd)
 		defer st.Done()
-		c, err := newCore()
+		c, err := newServices(cmd)
 		if err != nil {
 			return err
+		}
+		if c.Remote != "" && (libraryScanArgs.Check || libraryScanArgs.Mark) {
+			return errors.New("--check and --mark aren't on a server yet: --local for this machine")
 		}
 		ctx := changeCtx(cmd, st)
 		rep, err := c.Library.Scan(ctx, core.ScanOptions{})
 		st.Clear()
 		if err != nil {
 			return err
+		}
+		// the server's job says what it did, in a line
+		if c.Remote != "" {
+			cmd.Println(rep.Summary)
+			return nil
 		}
 
 		// mangas in another (existing) download directory
@@ -508,7 +518,7 @@ other sources; one that agrees is left. Only lists what it would write unless --
 }
 
 // checkIDs reports the metadata ids of the adopted folders that look wrong.
-func checkIDs(cmd *cobra.Command, st *status, c *core.Core) error {
+func checkIDs(cmd *cobra.Command, st *status, c core.Services) error {
 	checks, err := c.Library.CheckIDs(changeCtx(cmd, st))
 	st.Clear()
 	if err != nil {

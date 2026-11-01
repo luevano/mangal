@@ -63,6 +63,7 @@ server's, with an admin's token.`,
 			return err
 		}
 		if rc != nil {
+			sayOn(cmd, rc.URL)
 			return updateRemoteProviders(cmd, rc)
 		}
 		dir, err := path.Ensure(path.Providers())

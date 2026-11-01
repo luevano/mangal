@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/tui"
 	"github.com/luevano/mangal/v5/tui/base"
 	accountsViewer "github.com/luevano/mangal/v5/tui/model/accounts"
 	"github.com/spf13/cobra"
@@ -32,8 +33,17 @@ In a terminal they can be refreshed, Anilist, Kitsu or MyAnimeList logged into, 
 MangaPlus secret set.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		rc, err := connectRemote(cmd)
+		if err != nil {
+			return err
+		}
+		accounts := core.NewAccounts()
+		if rc != nil {
+			sayOn(cmd, rc.URL)
+			accounts = rc.Services().Accounts
+		}
 		if accountsArgs.Plain || !term.IsTerminal(int(os.Stdout.Fd())) {
-			entries, err := core.NewAccounts().List(cmd.Context(), core.AccountsOptions{Refresh: accountsArgs.Refresh})
+			entries, err := accounts.List(cmd.Context(), core.AccountsOptions{Refresh: accountsArgs.Refresh})
 			if err != nil {
 				return err
 			}
@@ -54,6 +64,11 @@ MangaPlus secret set.`,
 			return nil
 		}
 
+		if rc != nil {
+			if err := tui.UseServer(cmd.Context(), rc); err != nil {
+				return err
+			}
+		}
 		return base.RunStandalone(cmd.Context(), accountsViewer.New(accountsArgs.Refresh))
 	},
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -21,6 +22,7 @@ func configOf(cmd *cobra.Command, key string) (core.Config, bool, error) {
 	if err != nil || rc == nil || (key != "" && config.Side(key) == config.SideClient) {
 		return core.NewConfig(), false, err
 	}
+	sayOn(cmd, rc.URL)
 	return rc.Services().Config, true, nil
 }
 
@@ -63,9 +65,10 @@ var configInfoCmd = &cobra.Command{
 			Stored      string        `json:"stored"`
 			Source      config.Source `json:"source"`
 			Applies     string        `json:"applies"`
+			Side        string        `json:"side"`
 		}
 
-		cfg, _, err := configOf(cmd, "")
+		cfg, onServer, err := configOf(cmd, "")
 		if err != nil {
 			return err
 		}
@@ -73,11 +76,15 @@ var configInfoCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if onServer {
+			// a server's client keys are its machine's, these are this mangal's
+			entries = append(core.ClientConfig(), slices.DeleteFunc(entries, func(e core.ConfigEntry) bool { return config.Side(e.Key) == config.SideClient })...)
+		}
 		keys := make([]string, len(entries))
 		configEntries := map[string]configEntry{}
 		for i, e := range entries {
 			keys[i] = e.Key
-			configEntries[e.Key] = configEntry{Value: e.Value, Default: e.Default, Description: e.Description, Stored: e.Stored, Source: e.Source, Applies: e.Applies}
+			configEntries[e.Key] = configEntry{Value: e.Value, Default: e.Default, Description: e.Description, Stored: e.Stored, Source: e.Source, Applies: e.Applies, Side: e.Side}
 		}
 
 		if configInfoArgs.JSON {
@@ -115,6 +122,10 @@ var configInfoCmd = &cobra.Command{
 			fmt.Fprintf(w, "  %s %s\n",
 				style.Normal.Viewport.Render("Stored:"),
 				style.Normal.Secondary.Render(storedText(entry.Stored)+", the value comes from "+sourceText(entry.Source)+", "+appliesText(entry.Applies)),
+			)
+			fmt.Fprintf(w, "  %s %s\n",
+				style.Normal.Viewport.Render("Side:"),
+				style.Normal.Secondary.Render(entry.Side),
 			)
 		}
 		return nil

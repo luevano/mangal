@@ -15,6 +15,7 @@ import (
 
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core/remote"
 	"github.com/luevano/mangal/v5/web"
 	"github.com/spf13/cobra"
 )
@@ -40,8 +41,9 @@ func init() {
 var apiCmd = &cobra.Command{
 	Use:   "api [METHOD] PATH",
 	Short: "Call the serve API",
-	Long: `Call the API of the running mangal serve of this config (found with its discovery file,
-which has its key: an admin), or of --server with an API token in MANGAL_API_TOKEN
+	Long: `Call the API of the connection's server with its saved token, on local of the running
+mangal serve of this config (found with its discovery file, which has its key: an admin), or
+of --server with an API token in MANGAL_API_TOKEN
 (or in the file MANGAL_API_TOKEN_FILE names) ("mangal token add <name> --perms read" on the server makes one; it also
 overrides the key). PATH is relative to
 /api/v1 unless it starts with /api/. The answer is pretty-printed; an error answer exits
@@ -76,7 +78,7 @@ the same with ?apply=1 and "expect": "<hash>" applies it.`,
 				method = http.MethodPost
 			}
 		}
-		server, key, err := apiServer(apiArgs.Server)
+		server, key, httpClient, err := apiServer(cmd, apiArgs.Server)
 		if err != nil {
 			return err
 		}
@@ -97,12 +99,6 @@ the same with ?apply=1 and "expect": "<hash>" applies it.`,
 		}
 		if apiArgs.SSE {
 			req.Header.Set("Accept", "text/event-stream")
-		}
-		httpClient := http.DefaultClient
-		if apiArgs.Server == "" {
-			if httpClient, err = watch.LocalClient(server, 0); err != nil {
-				return err
-			}
 		}
 		res, err := httpClient.Do(req)
 		if err != nil {
@@ -170,21 +166,42 @@ func apiBody(cmd *cobra.Command, data string) ([]byte, error) {
 	return b, nil
 }
 
-// apiServer is the server's url: given, or the running mangal serve's of this config.
-// apiServer is the server's url, and the discovery file's key for this config's own.
-func apiServer(given string) (server, key string, err error) {
+// apiServer is the server to call and how: --server as given, the connection's with its saved
+// token and the remote.* settings, else the running mangal serve of this config with the
+// discovery file's key.
+func apiServer(cmd *cobra.Command, given string) (server, key string, client *http.Client, err error) {
 	if given != "" {
-		return strings.TrimSuffix(given, "/"), "", nil
+		return strings.TrimSuffix(given, "/"), "", http.DefaultClient, nil
+	}
+	url, err := remoteTarget(cmd).Address()
+	if err != nil {
+		return "", "", nil, err
+	}
+	if url != "" {
+		token, _, err := remote.Token(url)
+		if err != nil {
+			return "", "", nil, err
+		}
+		rc, err := remote.Open(url, token, remoteWarn(cmd))
+		if err != nil {
+			return "", "", nil, err
+		}
+		// a stream has no timeout
+		return url, token, &http.Client{Transport: rc.HTTP.Transport, CheckRedirect: rc.HTTP.CheckRedirect}, nil
 	}
 	data := watch.DataDB()
 	d, found, err := watch.ReadDiscovery(watch.DiscoveryPath(data))
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 	if !found || d.Data != data || d.Address == "" {
-		return "", "", errors.New("no mangal serve runs for this config (start one, or give --server URL)")
+		return "", "", nil, errors.New("no mangal serve runs for this config (start one, or give --server URL)")
 	}
-	return strings.TrimSuffix(d.Address, "/"), d.Key, nil
+	server = strings.TrimSuffix(d.Address, "/")
+	if client, err = watch.LocalClient(server, 0); err != nil {
+		return "", "", nil, err
+	}
+	return server, d.Key, client, nil
 }
 
 // printAPI prints JSON indented (as it comes with raw, or when it isn't JSON).

@@ -135,6 +135,21 @@ func configEntry(key string) (ConfigEntry, error) {
 	return e, nil
 }
 
+// ClientConfig are this mangal's own keys, for a frontend on a server: the providers' settings
+// aren't among them, nothing loads.
+func ClientConfig() []ConfigEntry {
+	var entries []ConfigEntry
+	for _, key := range config.ListedKeys() {
+		if config.Side(key) == config.SideServer {
+			continue
+		}
+		if e, err := configEntry(key); err == nil {
+			entries = append(entries, e)
+		}
+	}
+	return entries
+}
+
 func (localConfig) List(context.Context) ([]ConfigEntry, error) {
 	LoadProviderSettings()
 	keys := config.ListedKeys()

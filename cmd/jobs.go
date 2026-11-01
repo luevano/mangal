@@ -39,7 +39,7 @@ watch.schedule, health.source_check_interval, jobs.*), "mangal jobs pause|resume
 restarts a kind's schedule.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		kinds, err := newKinds(nil)
+		kinds, _, err := kindsOf(cmd)
 		if err != nil {
 			return err
 		}
@@ -69,6 +69,20 @@ restarts a kind's schedule.`,
 		printJobKinds(cmd.OutOrStdout(), list)
 		return nil
 	},
+}
+
+// kindsOf are the connection's job kinds, onServer on a server: this machine's run nothing.
+func kindsOf(cmd *cobra.Command) (_ core.JobKinds, onServer bool, err error) {
+	rc, err := connectRemote(cmd)
+	if err != nil {
+		return nil, false, err
+	}
+	if rc != nil {
+		sayOn(cmd, rc.URL)
+		return rc.Kinds(), true, nil
+	}
+	kinds, err := newKinds(nil)
+	return kinds, false, err
 }
 
 // newKinds are the job kinds over m (nil: none, nothing runs).
@@ -200,6 +214,21 @@ everything. The providers off for the kind (jobs.<kind>.providers) are skipped.`
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := changeCtx(cmd, st)
+		if server, onServer, err := kindsOf(cmd); err != nil {
+			return err
+		} else if onServer {
+			job, err := server.Run(ctx, kind, jobsRunArgs.All)
+			st.Clear()
+			if errors.Is(err, core.ErrNothingToDo) {
+				cmd.Println(err)
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			cmd.Printf("%s: the server runs it (job %d, mangal jobs shows it)\n", job.Title, job.ID)
+			return nil
+		}
 		m := jobs.New(ctx)
 		defer m.Shutdown(10 * time.Second)
 		kinds, err := newKinds(m)
@@ -308,7 +337,7 @@ unless set on), and the pause between requests (--delay 1s-3s, shared by the kin
 		if s.Enabled == nil && s.Schedule == nil && s.Providers == nil && s.DelayMin == nil {
 			return errors.New("nothing to change, see --help")
 		}
-		kinds, err := newKinds(nil)
+		kinds, _, err := kindsOf(cmd)
 		if err != nil {
 			return err
 		}
@@ -336,7 +365,7 @@ func init() {
 				if err != nil {
 					return err
 				}
-				kinds, err := newKinds(nil)
+				kinds, _, err := kindsOf(cmd)
 				if err != nil {
 					return err
 				}

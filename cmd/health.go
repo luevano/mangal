@@ -106,7 +106,7 @@ error (a watch that isn't checked any more).`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
 		defer st.Done()
-		c, err := newCore()
+		c, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
@@ -137,7 +137,7 @@ error (a watch that isn't checked any more).`,
 
 // dismissFindings dismisses (the findings must be there now) and undismisses findings by
 // key.
-func dismissFindings(cmd *cobra.Command, c *core.Core, st *status) error {
+func dismissFindings(cmd *cobra.Command, c core.Services, st *status) error {
 	ctx := changeCtx(cmd, st)
 	for _, key := range healthArgs.Undismiss {
 		if err := c.Health.Undismiss(ctx, key); err != nil {

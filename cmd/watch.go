@@ -39,9 +39,17 @@ timer), "mangal serve" on a cron schedule (watch.schedule, or the watch's own).`
 	Args: cobra.NoArgs,
 }
 
-// newWatchManager is the running `mangal serve` of this config, else the local watch
-// service with the Discord notifications.
+// newWatchManager is the connection's server's, else the running `mangal serve` of this
+// config, else the local watch service with the Discord notifications.
 func newWatchManager(cmd *cobra.Command) (watch.Manager, error) {
+	rc, err := connectRemote(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if rc != nil {
+		sayOn(cmd, rc.URL)
+		return rc.Watches(), nil
+	}
 	m, err := watch.Connect(cmd.Context(), notify.Watches())
 	if err != nil {
 		return nil, err

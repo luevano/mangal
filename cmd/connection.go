@@ -11,8 +11,10 @@ import (
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/remote"
+	"github.com/luevano/mangal/v5/meta"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var remoteArgs = struct {
@@ -35,6 +37,10 @@ func connectRemote(cmd *cobra.Command) (*remote.Client, error) {
 	return remote.Connect(ctxOf(cmd), remoteTarget(cmd))
 }
 
+// sayOn tells where a command acts, before its plan or answer: a saved connection makes every
+// later command act there. On stderr, stdout stays what scripts read.
+func sayOn(cmd *cobra.Command, url string) { cmd.PrintErrf("on %s\n", remote.Name(url)) }
+
 // newServices are the command's services: this machine's core, or the connection's server.
 func newServices(cmd *cobra.Command) (core.Services, error) {
 	rc, err := connectRemote(cmd)
@@ -42,6 +48,7 @@ func newServices(cmd *cobra.Command) (core.Services, error) {
 		return core.Services{}, err
 	}
 	if rc != nil {
+		sayOn(cmd, rc.URL)
 		return rc.Services(), nil
 	}
 	c, err := newCore()
@@ -322,4 +329,86 @@ var connectionStatusCmd = &cobra.Command{
 		cmd.Printf("as: %s %s (%s)\n", me.Kind, me.Name, strings.Join(me.Scopes, ", "))
 		return nil
 	},
+}
+
+// How a command works with the connection.
+const (
+	// connFollows: on a server it goes through the server
+	connFollows = "follows"
+	// connThisMachine: always this machine, whatever the connection
+	connThisMachine = "this machine"
+	// connNotYet: refused on a server, until it's ported
+	connNotYet = "not yet"
+)
+
+// commandClass is how every runnable command works with the connection, by its path without
+// mangal (TestEveryCommandHasAClass). A command not on a server yet refuses: it never acts on
+// this machine while the user believes they're on the server.
+var commandClass = map[string]string{
+	"": connFollows,
+
+	"library rename": connFollows, "library mark": connFollows, "library merge": connFollows, "library rm": connFollows,
+	"library trash": connFollows, "library trash empty": connFollows, "library undo": connFollows, "library ls": connFollows,
+	"library downloads": connFollows, "library scan": connFollows, "library hold": connFollows,
+	"migrate": connFollows, "history": connFollows, "history clear": connFollows, "health": connFollows, "health fix": connFollows,
+	"providers up": connFollows, "logs": connFollows, "accounts": connFollows, "api": connFollows, "web": connFollows,
+	"config info": connFollows, "config get": connFollows, "config set": connFollows, "config history": connFollows, "config undo": connFollows,
+	"watch add": connFollows, "watch ls": connFollows, "watch rm": connFollows, "watch check": connFollows, "watch hold": connFollows,
+	"watch log": connFollows, "watch move": connFollows, "watch pause": connFollows, "watch resume": connFollows, "watch set": connFollows, "watch stale": connFollows,
+	"jobs": connFollows, "jobs run": connFollows, "jobs set": connFollows, "jobs pause": connFollows, "jobs resume": connFollows,
+
+	"serve": connThisMachine, "serve token": connThisMachine, "connection ls": connThisMachine, "connection add": connThisMachine, "connection rm": connThisMachine,
+	"connection use": connThisMachine, "connection status": connThisMachine, "connection login": connThisMachine, "connection logout": connThisMachine,
+	"config write": connThisMachine, "config clean": connThisMachine, "config export": connThisMachine, "config import": connThisMachine,
+	"path": connThisMachine, "cache clear": connThisMachine, "version": connThisMachine, "templates funcs": connThisMachine,
+	"templates exec": connThisMachine, "formats": connThisMachine, "script doc": connThisMachine, "providers new": connThisMachine,
+	"anilist": connThisMachine, "anilist login": connThisMachine, "kitsu": connThisMachine, "myanimelist": connThisMachine,
+	"myanimelist login": connThisMachine, "myanimelist client": connThisMachine,
+
+	"library bind": connNotYet, "library fill": connNotYet, "library retitle": connNotYet, "library urls": connNotYet, "library move": connNotYet,
+	"search": connNotYet, "bind": connNotYet, "bind ls": connNotYet, "inline json": connNotYet, "inline download": connNotYet,
+	"script": connNotYet, "notify webhook": connNotYet, "providers add": connNotYet, "providers ls": connNotYet, "providers rm": connNotYet,
+	"user add": connNotYet, "user passwd": connNotYet, "user perms": connNotYet, "user rename": connNotYet, "user use": connNotYet,
+	"user logout": connNotYet, "user rm": connNotYet, "user ls": connNotYet, "user roles": connNotYet,
+	"token add": connNotYet, "token perms": connNotYet, "token ls": connNotYet, "token rm": connNotYet,
+}
+
+// commandKey is the command's entry in commandClass.
+func commandKey(cmd *cobra.Command) string {
+	return strings.TrimSpace(strings.TrimPrefix(cmd.CommandPath(), meta.AppName))
+}
+
+// checkConnection refuses what the command can't do on its connection, before it does
+// anything; warnings are what a server's connection makes pointless.
+func checkConnection(cmd *cobra.Command) (warnings []string, err error) {
+	path := commandKey(cmd)
+	class := commandClass[path]
+	if class == connThisMachine {
+		if remoteArgs.Remote != "" {
+			return nil, fmt.Errorf("mangal %s always runs on this machine: --remote doesn't apply", path)
+		}
+		return nil, nil
+	}
+	url, err := remoteTarget(cmd).Address()
+	if err != nil || url == "" {
+		return nil, err
+	}
+	name := remote.Name(url)
+	if class == connNotYet {
+		return nil, fmt.Errorf("mangal %s isn't on a server yet, and this is on %s: --local for this machine", path, name)
+	}
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		if keys := f.Annotations[configKeyAnnotation]; err == nil && len(keys) == 1 && config.Side(keys[0]) != config.SideClient {
+			err = fmt.Errorf("--%s: %s is %s's setting: an admin changes it there, then this runs with it", f.Name, keys[0], name)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, key := range config.Keys() {
+		if env, set := config.EnvVar(key); set && config.Side(key) == config.SideServer {
+			warnings = append(warnings, fmt.Sprintf("%s has no effect on %s: %s is its setting", env, name, key))
+		}
+	}
+	return warnings, nil
 }
