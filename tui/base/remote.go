@@ -49,6 +49,10 @@ type Remote struct {
 // machine.
 var CurrentRemote *Remote
 
+// LocalHeader shows "local" in the header on this machine: there's something else to be on
+// (connections, a running serve).
+var LocalHeader bool
+
 // ReadCache is where the chapters read from the server go (remote.read_cache). It reads
 // the config: not from a background goroutine.
 func ReadCache() remote.ReadCache {

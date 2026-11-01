@@ -324,3 +324,25 @@ func TestLogsKey(t *testing.T) {
 		t.Error("ctrl+l shows the recent lines")
 	}
 }
+
+// A switch ends the program like quitting: it asks first what that cancels, n stays.
+func TestSwitchAsksWhileJobsRun(t *testing.T) {
+	a := &fakeActivity{running: []string{"download One Piece (3 chapters)"}, msgs: make(chan tea.Msg, 1)}
+	withActivity(t, a)
+	m := newTestModel(t, &fakeState{title: "home"})
+	m.update(SwitchMsg{Value: "nas"})
+	if m.quitAsk == nil || !strings.Contains(ansi.Strip(m.View().Content), "Switch to nas?") {
+		t.Fatal("didn't ask")
+	}
+	press(m, keyMsg("n"))
+	if m.quitAsk != nil || m.switchTo != nil {
+		t.Fatal("n didn't stay")
+	}
+	m.update(SwitchMsg{Value: "nas"})
+	if cmd := press(m, keyMsg("y")); cmd == nil {
+		t.Fatal("y didn't end it")
+	}
+	if !m.quitting || m.switchTo == nil || *m.switchTo != "nas" {
+		t.Errorf("quitting %v, to %v", m.quitting, m.switchTo)
+	}
+}

@@ -13,16 +13,17 @@ var (
 
 func newKeyMap() *keyMap {
 	return &keyMap{
-		quit:      util.Bind("quit", "ctrl+c"),
-		quitQ:     util.Bind("quit", "q"),
-		back:      util.Bind("back", "esc"),
-		home:      util.Bind("home", "H"),
-		help:      util.Bind("help", "?"),
-		log:       util.Bind("logs", "ctrl+l"),
-		config:    util.Bind("config", ","),
-		configFix: util.Bind("change it", "e"),
-		downloads: KeyDownloads,
-		windows:   KeyWindows,
+		quit:        util.Bind("quit", "ctrl+c"),
+		quitQ:       util.Bind("quit", "q"),
+		back:        util.Bind("back", "esc"),
+		home:        util.Bind("home", "H"),
+		help:        util.Bind("help", "?"),
+		log:         util.Bind("logs", "ctrl+l"),
+		config:      util.Bind("config", ","),
+		configFix:   util.Bind("change it", "e"),
+		downloads:   KeyDownloads,
+		windows:     KeyWindows,
+		connections: KeyConnections,
 		// notification history: next to ctrl+l (logs); n, N, ctrl+n, alt+n are taken
 		notifications: util.Bind("notifications", "alt+l"),
 	}
@@ -47,6 +48,7 @@ type keyMap struct {
 	configFix,
 	downloads,
 	windows,
+	connections,
 	notifications key.Binding
 }
 
@@ -68,6 +70,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 			k.home,
 			k.downloads,
 			k.windows,
+			k.connections,
 			k.config,
 			k.quit,
 			k.log,
@@ -104,10 +107,10 @@ func (c combinedKeyMap) FullHelp() [][]key.Binding {
 }
 
 // GlobalKeys are the keys every screen has while not typing (quit, back, home, help, log,
-// config, downloads, windows, notifications): a screen's own keys mustn't use them.
+// config, downloads, windows, connections, notifications): a screen's own keys mustn't use them.
 func GlobalKeys() []key.Binding {
 	k := newKeyMap()
-	return []key.Binding{k.quit, k.back, k.home, k.help, k.log, k.config, k.downloads, k.windows, k.notifications}
+	return []key.Binding{k.quit, k.back, k.home, k.help, k.log, k.config, k.downloads, k.windows, k.connections, k.notifications}
 }
 
 // KeyCollisions are the keys that would mean two things on a screen, between its own keys

@@ -50,6 +50,8 @@ type model struct {
 	// standalone runs a single State (and what it pushes) inline, for mangal path etc.
 	standalone bool
 	quitting   bool
+	// switchTo is the connection a switch goes to once the program ends
+	switchTo *string
 
 	size Size
 

@@ -100,7 +100,7 @@ func (m *model) answerQuit(msg tea.KeyPressMsg) tea.Cmd {
 		m.quitting = true
 		return tea.Quit
 	case key.Matches(msg, quitNo):
-		m.quitAsk = nil
+		m.quitAsk, m.switchTo = nil, nil
 	}
 	return nil
 }
@@ -110,7 +110,11 @@ const maxQuitLines = 10
 
 func (m *model) viewQuitAsk(behind string) string {
 	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Quit?"))
+	title, yes := "Quit?", " quit · "
+	if m.switchTo != nil {
+		title, yes = "Switch to "+*m.switchTo+"?", " switch · "
+	}
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render(title))
 	b.WriteString("\nThese are cancelled (the chapters downloaded stay):\n")
 	for i, line := range m.quitAsk {
 		if i == maxQuitLines {
@@ -125,7 +129,7 @@ func (m *model) viewQuitAsk(behind string) string {
 	}
 	b.WriteString("\n")
 	b.WriteString(quitYes.Help().Key)
-	b.WriteString(" quit · ")
+	b.WriteString(yes)
 	b.WriteString(quitNo.Help().Key)
 	b.WriteString(" stay")
 	return m.dialog(b.String(), color.Warning, behind)

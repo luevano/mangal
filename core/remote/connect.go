@@ -113,3 +113,75 @@ func Connect(ctx context.Context, t Target) (*Client, error) {
 	}
 	return c, nil
 }
+
+// writeConnection writes a connection key, creating the config file if needed.
+func writeConnection(key string, value any) error {
+	if err := config.CreateFile(); err != nil {
+		return err
+	}
+	return config.WriteKey(key, value)
+}
+
+// AddConnection names the server at address, never over another address.
+func AddConnection(name, address string) error {
+	if err := config.ValidConnectionName(name); err != nil {
+		return err
+	}
+	url, err := NormalizeURL(address)
+	if err != nil {
+		return err
+	}
+	conns := maps.Clone(config.Connections.Get())
+	if old, ok := conns[name]; ok && old != url {
+		return fmt.Errorf("%s is %s already: remove it first", name, old)
+	}
+	conns[name] = url
+	return writeConnection(config.Connections.Key, conns)
+}
+
+// RemoveConnection forgets the name, refused while it's the connection. Its saved token stays
+// (it's by address: another name, an ad-hoc --remote) until a logout.
+func RemoveConnection(name string) error {
+	conns := maps.Clone(config.Connections.Get())
+	if _, ok := conns[name]; !ok {
+		return fmt.Errorf("no connection %q", name)
+	}
+	if config.Connection.Get() == name {
+		return fmt.Errorf("%s is in use: switch to another first", name)
+	}
+	delete(conns, name)
+	return writeConnection(config.Connections.Key, conns)
+}
+
+// UseConnection makes value (local, a name, an address) the connection from now on.
+func UseConnection(value string) error {
+	value = strings.ToLower(strings.TrimSpace(value))
+	url, err := Resolve(value)
+	if err != nil {
+		return err
+	}
+	if strings.ContainsAny(value, ":/") {
+		value = url
+	}
+	return writeConnection(config.Connection.Key, value)
+}
+
+// SaveToken checks the API token on the server at url and saves it for that address, who is
+// the token's name there. Nothing is saved when the server doesn't take it.
+func SaveToken(ctx context.Context, url, token string, warn func(string)) (who string, err error) {
+	c, err := Open(url, token, warn)
+	if err != nil {
+		return "", err
+	}
+	me, err := c.Me(ctx)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", url, err)
+	}
+	if me.Kind != "token" {
+		return "", fmt.Errorf("%s doesn't take the token (it's %s there): nothing saved", url, me.Kind)
+	}
+	if err := cache.SetRemoteToken(url, token); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s (%s)", me.Name, strings.Join(me.Scopes, ", ")), nil
+}

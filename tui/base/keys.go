@@ -151,6 +151,8 @@ var (
 var (
 	KeyDownloads = util.Bind("downloads", "Q")
 	KeyWindows   = util.Bind("windows", "ctrl+w")
+	// what the TUI is connected to; ctrl+o was free on every screen
+	KeyConnections = util.Bind("connections", "ctrl+o")
 )
 
 // keyConcepts are the keys with more than one help, each one concept: the helps they may

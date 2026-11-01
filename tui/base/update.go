@@ -57,6 +57,9 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		return m.back(m.history.Size())
 	case jumpMsg:
 		return m.jumpToKey(msg.key)
+	case SwitchMsg:
+		m.switchTo = &msg.Value
+		return m.quit()
 	case activityMsg:
 		return m.onActivity(msg.msg)
 	case State:
@@ -159,6 +162,8 @@ func (m *model) updateKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	case key.Matches(msg, m.keyMap.downloads):
 		return m.pushState(NewDownloads())
+	case key.Matches(msg, m.keyMap.connections):
+		return m.pushState(NewConnections())
 	}
 	if r := CurrentRemote; r != nil && !m.state.Inputting() {
 		if why := r.keyRefusal(keyOf(m.state), m.state.KeyMap(), msg); why != "" {
@@ -184,6 +189,7 @@ func (m *model) updateKeybinds() {
 	m.keyMap.windows.SetEnabled(!m.standalone && !m.inViewport && !inputting)
 	m.keyMap.notifications.SetEnabled(!m.inViewport && !inputting)
 	m.keyMap.downloads.SetEnabled(NewDownloads != nil && !m.standalone && !m.inViewport && !inputting)
+	m.keyMap.connections.SetEnabled(NewConnections != nil && !m.standalone && !m.inViewport && !inputting)
 }
 
 // resize the program

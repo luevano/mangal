@@ -97,14 +97,6 @@ func connectionArg(cmd *cobra.Command, args []string) (string, error) {
 	return url, nil
 }
 
-// writeConnectionKey saves a connection key, creating the config file if needed.
-func writeConnectionKey(key string, value any) error {
-	if err := config.CreateFile(); err != nil {
-		return err
-	}
-	return config.WriteKey(key, value)
-}
-
 var connectionLsCmd = &cobra.Command{
 	Use:   "ls",
 	Short: "List the connections, the one in use marked",
@@ -155,21 +147,10 @@ var connectionAddCmd = &cobra.Command{
 	Args:    cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
-		if err := config.ValidConnectionName(name); err != nil {
+		if err := remote.AddConnection(name, args[1]); err != nil {
 			return err
 		}
-		url, err := remote.NormalizeURL(args[1])
-		if err != nil {
-			return err
-		}
-		conns := maps.Clone(config.Connections.Get())
-		if old, ok := conns[name]; ok && old != url {
-			return fmt.Errorf("%s is %s already: mangal connection rm %s first", name, old, name)
-		}
-		conns[name] = url
-		if err := writeConnectionKey(config.Connections.Key, conns); err != nil {
-			return err
-		}
+		url, _ := remote.Resolve(name)
 		cmd.Printf("added %s: %s (mangal connection use %s switches to it)\n", name, url, name)
 		return nil
 	},
@@ -181,15 +162,7 @@ var connectionRmCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
-		conns := maps.Clone(config.Connections.Get())
-		if _, ok := conns[name]; !ok {
-			return fmt.Errorf("no connection %q", name)
-		}
-		if config.Connection.Get() == name {
-			return fmt.Errorf("%s is in use: mangal connection use another first", name)
-		}
-		delete(conns, name)
-		if err := writeConnectionKey(config.Connections.Key, conns); err != nil {
+		if err := remote.RemoveConnection(name); err != nil {
 			return err
 		}
 		cmd.Printf("removed %s\n", name)
@@ -202,18 +175,10 @@ var connectionUseCmd = &cobra.Command{
 	Short: "Use this backend from now on, every later run too",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		value := strings.ToLower(strings.TrimSpace(args[0]))
-		url, err := remote.Resolve(value)
-		if err != nil {
+		if err := remote.UseConnection(args[0]); err != nil {
 			return err
 		}
-		if url != "" && strings.ContainsAny(value, ":/") {
-			value = url
-		}
-		if err := writeConnectionKey(config.Connection.Key, value); err != nil {
-			return err
-		}
-		cmd.Printf("now on %s\n", value)
+		cmd.Printf("now on %s\n", config.Connection.Get())
 		if name, set := config.EnvVar(config.Connection.Key); set {
 			cmd.PrintErrf("warning: %s overrides it in this environment\n", name)
 		}
@@ -241,21 +206,11 @@ save it for that address. A line on stdin when it isn't a terminal.`,
 		if token == "" {
 			return errors.New("no token: nothing saved")
 		}
-		rc, err := remote.Open(url, token, remoteWarn(cmd))
+		who, err := remote.SaveToken(ctxOf(cmd), url, token, remoteWarn(cmd))
 		if err != nil {
 			return err
 		}
-		me, err := rc.Me(ctxOf(cmd))
-		if err != nil {
-			return fmt.Errorf("%s: %w", url, err)
-		}
-		if me.Kind != "token" {
-			return fmt.Errorf("%s doesn't take the token (it's %s there): nothing saved", url, me.Kind)
-		}
-		if err := cache.SetRemoteToken(url, token); err != nil {
-			return err
-		}
-		cmd.Printf("saved the token %s for %s (%s)\n", me.Name, url, strings.Join(me.Scopes, ", "))
+		cmd.Printf("saved the token %s for %s\n", who, url)
 		return nil
 	},
 }
@@ -390,6 +345,10 @@ func checkConnection(cmd *cobra.Command) (warnings []string, err error) {
 		return nil, nil
 	}
 	url, err := remoteTarget(cmd).Address()
+	// the TUI opens at the picker with this
+	if err != nil && !cmd.HasParent() {
+		return nil, nil
+	}
 	if err != nil || url == "" {
 		return nil, err
 	}

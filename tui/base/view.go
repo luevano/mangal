@@ -98,6 +98,8 @@ func (m *model) viewHeader() string {
 	header.WriteString(newline)
 	if r := CurrentRemote; r != nil {
 		header.WriteString(style.Normal.Secondary.Render(r.Header()) + "  ")
+	} else if LocalHeader {
+		header.WriteString(style.Normal.Secondary.Render("local") + "  ")
 	}
 	label := m.loadingLabel()
 	if label != "" {

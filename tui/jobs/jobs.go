@@ -39,7 +39,9 @@ var (
 // Start makes the process's manager, its jobs run with ctx; it's the TUI's base.Activity.
 func Start(ctx context.Context) base.Activity {
 	m := jobs.New(ctx)
-	SetManager(m)
+	mu.Lock()
+	manager, remote = m, nil
+	mu.Unlock()
 	return &activity{svc: Service(), shutdown: m.Shutdown}
 }
 
