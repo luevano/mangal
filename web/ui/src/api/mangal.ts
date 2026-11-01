@@ -2933,10 +2933,10 @@ export interface components {
             /** @description an enum's accepted values */
             values?: string[];
             /**
-             * @description client: each machine keeps its own (the TUI's look, the serve it uses), a frontend on a server shows its own; server: what the server runs with
+             * @description client: each machine keeps its own (the TUI's look, the serve it uses), a frontend on a server shows its own; both: every mangal process has its own (log, data and cache paths), a frontend on a server shows its own and the server's; server: what the server runs with
              * @enum {string}
              */
-            side?: "server" | "client";
+            side?: "server" | "client" | "both";
         };
         ConfigSource: {
             /**

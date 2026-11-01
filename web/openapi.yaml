@@ -4478,9 +4478,9 @@ components:
             type: string
         side:
           type: string
-          enum: [server, client]
-          x-enum-varnames: [SideServer, SideClient]
-          description: "client: each machine keeps its own (the TUI's look, the serve it uses), a frontend on a server shows its own; server: what the server runs with"
+          enum: [server, client, both]
+          x-enum-varnames: [SideServer, SideClient, SideBoth]
+          description: "client: each machine keeps its own (the TUI's look, the serve it uses), a frontend on a server shows its own; both: every mangal process has its own (log, data and cache paths), a frontend on a server shows its own and the server's; server: what the server runs with"
     ConfigSource:
       type: object
       required: [kind]
