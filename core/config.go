@@ -140,7 +140,7 @@ func configEntry(key string) (ConfigEntry, error) {
 func ClientConfig() []ConfigEntry {
 	var entries []ConfigEntry
 	for _, key := range config.ListedKeys() {
-		if config.Side(key) == config.SideServer {
+		if config.Side(key) != config.SideClient {
 			continue
 		}
 		if e, err := configEntry(key); err == nil {

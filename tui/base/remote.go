@@ -14,6 +14,7 @@ import (
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/remote"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
 )
 
@@ -67,6 +68,23 @@ func Can(perm string) bool {
 func (r *Remote) Host() string {
 	_, host, _ := strings.Cut(r.URL, "://")
 	return host
+}
+
+// Name is how to call the server: its connection's name, else its host.
+func (r *Remote) Name() string { return remote.Name(r.URL) }
+
+// CanConfig is true when a setting of the server's can be asked to change: for an admin, or
+// the server refuses (serve.hide_unavailable false).
+func (r *Remote) CanConfig() bool { return r.Has(core.ScopeAdmin) || r.ShowAll }
+
+// RefreshConfig reads the server's settings again, what config answers. Not for Update.
+func (r *Remote) RefreshConfig(ctx context.Context) {
+	if r.Client == nil || r.Client.Config == nil {
+		return
+	}
+	if err := r.Client.Config.Refresh(ctx); err != nil {
+		log.Warn("tui: the settings of %s: %s", r.Name(), err)
+	}
 }
 
 // Header is the header's line: where the TUI runs and as whom.

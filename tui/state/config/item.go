@@ -47,11 +47,21 @@ var summaries = map[string]string{
 type item struct {
 	key    string
 	prefix string
+	// group says whose it is on a server: "this mangal" or the server's name, "" on local
+	group string
 	// e is the server's key on a remote, nil for this machine's
 	e *core.ConfigEntry
 }
 
 func (i item) section() string {
+	if i.group != "" {
+		return i.group + ": " + i.baseSection()
+	}
+	return i.baseSection()
+}
+
+// baseSection is the section without the group.
+func (i item) baseSection() string {
 	if i.e != nil && i.e.Provider != "" {
 		return "providers." + i.e.Provider
 	}
@@ -189,10 +199,14 @@ func (i sectionItem) Title() string {
 
 // Description implements list.DefaultItem.
 func (i sectionItem) Description() string {
-	if id, ok := strings.CutPrefix(i.name, "providers."); ok {
+	name := i.name
+	if n := len(i.items); n > 0 {
+		name = i.items[0].baseSection()
+	}
+	if id, ok := strings.CutPrefix(name, "providers."); ok {
 		return "the settings of the provider " + id + ", stored in the database"
 	}
-	return summaries[i.name]
+	return summaries[name]
 }
 
 // sectionItems are the sections in order, with their keys.
@@ -224,11 +238,16 @@ func sortedItems(keys []string) []item {
 func sortItems(items []item) []item {
 	rank := func(i item) int {
 		// a provider's section after the providers'
-		top, _, _ := strings.Cut(i.section(), ".")
-		if r := slices.Index(sections, top); r >= 0 {
-			return r
+		top, _, _ := strings.Cut(i.baseSection(), ".")
+		r := slices.Index(sections, top)
+		if r < 0 {
+			r = len(sections)
 		}
-		return len(sections)
+		// on a server this mangal's first, then the server's
+		if i.e != nil {
+			r += len(sections) + 1
+		}
+		return r
 	}
 	slices.SortStableFunc(items, func(a, b item) int {
 		if d := rank(a) - rank(b); d != 0 {

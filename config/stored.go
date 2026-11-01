@@ -137,11 +137,21 @@ var (
 	imported bool
 	// badStored are the invalid stored values already warned about.
 	badStored = map[string]string{}
+	// server names the server this process is connected to (UseServer), "" for this machine
+	server string
 )
 
 // applyLocked makes the file's and the database's values viper's config, lmu held.
 func applyLocked() {
 	m := cloneMap(fileSettings)
+	if server != "" {
+		// a server's key it hides reads as the default, not as this machine's value
+		for _, key := range fileKeys() {
+			if Side(key) == SideServer {
+				deleteNested(m, strings.Split(key, "."))
+			}
+		}
+	}
 	for _, key := range slices.Sorted(maps.Keys(stored)) {
 		if raw, ok := storedRawLocked(key); ok && !IsAlias(key) {
 			setNested(m, strings.Split(key, "."), raw)
@@ -240,6 +250,30 @@ func UseStore(s Store) error {
 	store, stored, storeRev, imported = s, values, rev, done
 	applyLocked()
 	return nil
+}
+
+// UseServer is UseStore for a frontend connected to the server called name: s has the server's
+// keys, read-only. WriteKey refuses them from now on, UseLocal ends it.
+func UseServer(s Store, name string) error {
+	lmu.Lock()
+	server = name
+	lmu.Unlock()
+	return UseStore(s)
+}
+
+// UseLocal is UseStore for a frontend back on this machine.
+func UseLocal(s Store) error {
+	lmu.Lock()
+	server = ""
+	lmu.Unlock()
+	return UseStore(s)
+}
+
+// Server is the name of the server this process is connected to, "" for this machine.
+func Server() string {
+	lmu.Lock()
+	defer lmu.Unlock()
+	return server
 }
 
 // refreshStore reads the database keys again if another process changed them.

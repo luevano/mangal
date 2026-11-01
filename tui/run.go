@@ -75,6 +75,9 @@ func UseServer(ctx context.Context, rc *remote.Client) error {
 	r.Events = func(ctx context.Context, fn func([]string)) {
 		err := rc.Events(ctx, []string{"library", "history", "settings", "watches"}, since, func(e remote.Event) {
 			if rev, ok := serverTopics[e.Topic]; ok && e.Kind == "changed" {
+				if rev == storage.RevSettings {
+					r.RefreshConfig(ctx)
+				}
 				fn([]string{rev})
 			}
 		})

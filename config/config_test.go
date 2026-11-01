@@ -564,3 +564,20 @@ func TestConnectionNames(t *testing.T) {
 		t.Error("the connection keys are the client's and hidden over HTTP")
 	}
 }
+
+// Every database key is the server's: what's the client's is in its own mangal.toml.
+func TestSidesAndStorage(t *testing.T) {
+	sides := map[string]string{"read.format": SideClient, "read.download_on_read": SideClient, "tui.skip_home": SideClient,
+		"log.rotate": SideBoth, "data.path": SideBoth, "cache.path": SideBoth, "auth.keyring": SideBoth,
+		"download.format": SideServer, "serve.port": SideServer, "auth.user": SideServer, "providers.path": SideServer, "read.history.local": SideServer}
+	for key, want := range sides {
+		if got := Side(key); got != want {
+			t.Errorf("%s: %s, want %s", key, got, want)
+		}
+	}
+	for _, key := range Keys() {
+		if Side(key) != SideServer && StoredIn(key) == StoredDB {
+			t.Errorf("%s is %s but stored in the database", key, Side(key))
+		}
+	}
+}

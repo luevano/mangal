@@ -43,20 +43,29 @@ func IsRisky(key string) bool {
 	return ok && (f.setting.Kind == libmangal.SettingPath || f.mangal && f.setting.Key == "mirror")
 }
 
-// The sides of a key: SideClient is each machine's own (a frontend on a server keeps using
-// it), SideServer is what a frontend on a server takes from the server.
+// The sides of a key: SideClient is each machine's own, a frontend on a server keeps using
+// it. SideServer is what a frontend on a server takes from the server: an admin changes it
+// there. SideBoth configures every mangal process: the frontend's own, the server's apart.
 const (
 	SideClient = "client"
+	SideBoth   = "both"
 	SideServer = "server"
 )
 
-// clientPrefixes are each machine's own keys: its terminal's look and the serve it uses.
-var clientPrefixes = []string{"tui.", "icons", "cli.", "remote.", "connection"}
+var (
+	// clientPrefixes are this terminal's look, the serve it uses, what opens a chapter here
+	clientPrefixes = []string{"tui.", "icons", "cli.", "remote.", "connection", "read.format", "read.download_on_read"}
+	// bothPrefixes are what a process reads before anything else: where its data and log are
+	bothPrefixes = []string{"log.", "data.path", "cache.path", "auth.keyring"}
+)
 
-// Side is the key's side, SideClient or SideServer.
+// Side is the key's side.
 func Side(key string) string {
-	if hasPrefix(key, clientPrefixes) {
+	switch {
+	case hasPrefix(key, clientPrefixes):
 		return SideClient
+	case hasPrefix(key, bothPrefixes):
+		return SideBoth
 	}
 	return SideServer
 }

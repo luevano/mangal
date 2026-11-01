@@ -78,11 +78,13 @@ type state struct {
 	history historyView
 
 	// remote is the server of a remote TUI: its keys (server, by key) are shown and set
-	// there, the local-side ones (config.Side) stay this machine's; filter is the
+	// there, this mangal's (config.Side client and both) stay this machine's; filter is the
 	// window's, again once they're loaded
 	remote *base.Remote
 	server map[string]core.ConfigEntry
 	filter string
+	// onServer is whether the shown row of a both key (listed twice) is the server's
+	onServer bool
 }
 
 // serverListMsg are the server's keys, or why not.
@@ -152,8 +154,8 @@ func (s *state) rows() []_list.Item {
 			}
 		}
 		for _, i := range section.items {
-			if !s.searching && i.key != section.name {
-				i.prefix = section.name + "."
+			if base := i.baseSection(); !s.searching && i.key != base {
+				i.prefix = base + "."
 			}
 			rows = append(rows, i)
 		}
@@ -161,8 +163,11 @@ func (s *state) rows() []_list.Item {
 	return rows
 }
 
-// items are the keys by section: on a remote this machine's local-side ones and the
-// server's others.
+// thisMangal is the group of this machine's keys on a server.
+const thisMangal = "this mangal"
+
+// items are the keys by section: on a remote this mangal's (client and both) first, then the
+// server's (both and server).
 func (s *state) items() []item {
 	keys := mconfig.ListedKeys()
 	if s.remote == nil {
@@ -170,13 +175,13 @@ func (s *state) items() []item {
 	}
 	var items []item
 	for _, key := range keys {
-		if mconfig.Side(key) == mconfig.SideClient {
-			items = append(items, item{key: key})
+		if mconfig.Side(key) != mconfig.SideServer {
+			items = append(items, item{key: key, group: thisMangal})
 		}
 	}
 	for _, e := range s.server {
-		if e.Side != mconfig.SideClient {
-			items = append(items, item{key: e.Key, e: &e})
+		if mconfig.Side(e.Key) != mconfig.SideClient {
+			items = append(items, item{key: e.Key, e: &e, group: s.remote.Name()})
 		}
 	}
 	return sortItems(items)
@@ -184,10 +189,20 @@ func (s *state) items() []item {
 
 // itemOf is the key's item, the server's on a remote.
 func (s *state) itemOf(key string) item {
-	if e, ok := s.server[key]; ok && e.Side != mconfig.SideClient {
-		return item{key: key, e: &e}
+	e, ok := s.server[key]
+	switch side := mconfig.Side(key); {
+	case !ok || side == mconfig.SideClient:
+		return item{key: key}
+	case side == mconfig.SideBoth:
+		// listed twice: the selected row says which, an open editor keeps it
+		if i, ok := s.list.SelectedItem().(item); ok && i.key == key && s.mode == browsing {
+			s.onServer = i.e != nil
+		}
+		if !s.onServer {
+			return item{key: key}
+		}
 	}
-	return item{key: key}
+	return item{key: key, e: &e}
 }
 
 // loadServer reads the server's keys, on a remote.
@@ -212,8 +227,8 @@ func (s *state) serverRefusal(i item) string {
 	switch {
 	case i.secret():
 		return "a secret isn't set over HTTP: mangal config set on the server"
-	case !s.remote.Has(core.ScopeAdmin) && !s.remote.ShowAll:
-		return "changing the server's settings needs the admin permission on " + s.remote.Host()
+	case !s.remote.CanConfig():
+		return "this is " + s.remote.Name() + "'s setting: changing it needs the admin permission there"
 	}
 	return ""
 }
@@ -225,8 +240,12 @@ func (s *state) setServer(ctx context.Context, key string, value any) tea.Cmd {
 		s.err = err.Error()
 		return nil
 	}
+	remote := s.remote
 	return base.Load(ctx, "Saving "+key+" on the server", func(ctx context.Context) (serverMsg, error) {
 		e, err := cfg.Set(ctx, key, value)
+		if err == nil {
+			remote.RefreshConfig(ctx)
+		}
 		return serverMsg{key: key, e: e, err: err}, nil
 	}, func(m serverMsg) tea.Msg { return m })
 }
@@ -253,6 +272,9 @@ func (s *state) serverAnswer(msg serverMsg) tea.Cmd {
 func rowID(row _list.Item) string {
 	switch r := row.(type) {
 	case item:
+		if r.group != "" {
+			return r.group + "/" + r.key
+		}
 		return r.key
 	case sectionItem:
 		return "section:" + r.name
@@ -262,13 +284,14 @@ func rowID(row _list.Item) string {
 
 // showRows lists the rows again, the selected one kept (or its section's header).
 func (s *state) showRows() tea.Cmd {
-	selected := rowID(s.list.SelectedItem())
+	row := s.list.SelectedItem()
+	selected := rowID(row)
 	cmd := s.list.SetItems(s.rows())
 	// SetItems enables it again
 	s.list.KeyMap.Reverse.SetEnabled(false)
-	section, isSection := strings.CutPrefix(selected, "section:")
-	if !isSection {
-		section = sectionOf(selected)
+	section := strings.TrimPrefix(selected, "section:")
+	if i, ok := row.(item); ok {
+		section = i.section()
 	}
 	for n, row := range s.list.Items() {
 		if id := rowID(row); id == selected || (id == "section:"+section && !s.expanded[section]) {
@@ -335,7 +358,7 @@ func (s *state) Subtitle() string {
 		return s.list.Subtitle() + ", every section"
 	}
 	if s.remote != nil {
-		return fmt.Sprintf("%d keys: the server's (%s), this machine's tui, icons, cli and remote", len(s.items()), s.remote.Host())
+		return fmt.Sprintf("%d keys: this mangal's, then %s's", len(s.items()), s.remote.Name())
 	}
 	return fmt.Sprintf("%d keys: %s and the database", len(mconfig.ListedKeys()), mconfig.Path)
 }

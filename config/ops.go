@@ -442,7 +442,13 @@ func WriteKey(key string, value any) error {
 // file, it's never created here (see CreateFile).
 //
 // Unlike Write, runtime values (e.g. from flags) and missing defaults aren't written.
+//
+// While connected to a server (UseServer) a server's key is refused: it's the server's, this
+// machine's value would be read by nothing.
 func WriteKeyBy(key string, value any, who string) error {
+	if name := Server(); name != "" && Side(key) == SideServer {
+		return fmt.Errorf("write config key %q: it's %s's setting: an admin changes it there", key, name)
+	}
 	if StoredIn(key) == StoredDB {
 		return writeStored(key, value, who)
 	}

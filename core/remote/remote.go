@@ -123,7 +123,9 @@ type Client struct {
 	// HTTP sends the requests: the CA file, the timeout, redirects only on the same
 	// address. It doesn't add the token.
 	HTTP *http.Client
-	API  *apiv1.ClientWithResponses
+	// Config is the server's settings for config, once ReadConfig ran.
+	Config *ConfigStore
+	API    *apiv1.ClientWithResponses
 
 	token    string
 	warn     func(string)

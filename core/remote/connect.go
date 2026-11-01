@@ -88,7 +88,7 @@ func Open(url, token string, warn func(string)) (*Client, error) {
 }
 
 // Connect is the client of the target's server with its token, checked (the API's major
-// version, the token), nil for this machine.
+// version, the token), nil for this machine. config answers the server's keys from then on.
 func Connect(ctx context.Context, t Target) (*Client, error) {
 	url, err := t.Address()
 	if err != nil || url == "" {
@@ -107,6 +107,9 @@ func Connect(ctx context.Context, t Target) (*Client, error) {
 			return nil, fmt.Errorf("%s: %w (mangal connection login %s)", Name(url), err, Name(url))
 		}
 		return nil, fmt.Errorf("%s (--local for this machine): %w", Name(url), err)
+	}
+	if err := c.ReadConfig(ctx); err != nil {
+		return nil, err
 	}
 	return c, nil
 }

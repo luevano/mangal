@@ -141,6 +141,7 @@ func TestRemoteSplit(t *testing.T) {
 		"download.skip_if_exists": {Key: "download.skip_if_exists", Value: true, Default: true, Kind: "bool", Side: "server", Stored: "file"},
 		"providers.parallelism":   {Key: "providers.parallelism", Value: float64(3), Default: float64(15), Kind: "int", Side: "server", Stored: "db"},
 		"tui.skip_home":           {Key: "tui.skip_home", Value: false, Kind: "bool", Side: "client"},
+		"log.compress":            {Key: "log.compress", Value: true, Kind: "bool", Side: "both", Stored: "file"},
 	}}
 	base.CurrentRemote = &base.Remote{URL: "http://nas.lan:6977", Perms: []string{core.ScopeRead}}
 	t.Cleanup(func() { base.CurrentRemote = nil })
@@ -164,9 +165,19 @@ func TestRemoteSplit(t *testing.T) {
 	if i := s.itemOf("tui.skip_home"); i.e != nil || i.displayValue() != "true" {
 		t.Errorf("tui.skip_home %+v", i)
 	}
+	// a both key is listed twice: this mangal's and the server's
+	both := map[string]bool{}
+	for _, i := range s.items() {
+		if i.key == "log.compress" {
+			both[i.group] = true
+		}
+	}
+	if !both[thisMangal] || !both["nas.lan:6977"] {
+		t.Errorf("log.compress in %v", both)
+	}
 	s.Filter("download.skip_if_exists")
 	update(s, util.KeyPress("enter"))
-	if len(server.sets) != 0 || !strings.Contains(s.err, "admin permission on nas.lan:6977") {
+	if len(server.sets) != 0 || !strings.Contains(s.err, "nas.lan:6977's setting") {
 		t.Fatalf("a reader set %v, err %q", server.sets, s.err)
 	}
 	base.CurrentRemote.Perms = core.Scopes
