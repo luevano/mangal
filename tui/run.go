@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
@@ -76,6 +77,10 @@ func runOn(ctx context.Context, t remote.Target, notices []string) error {
 		if err := config.UseLocal(s); err != nil {
 			return err
 		}
+	}
+	// one client per provider id in the process: the last backend's would answer for this one
+	if err := client.CloseAll(); err != nil {
+		log.Warn("tui: close the providers: %s", err)
 	}
 	base.CurrentRemote, base.CurrentActivity = nil, nil
 	base.Core, watches.Connect = core.Default, localWatches
