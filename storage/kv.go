@@ -58,6 +58,47 @@ ON CONFLICT (owner, key) DO UPDATE SET value = excluded.value, expires = exclude
 	return nil
 }
 
+// Update changes the value in one write transaction, so a change another process makes
+// meanwhile isn't lost. v (a pointer) gets the stored value, stays as it is without one
+// (or an expired one); change then changes it and must not use the database (the
+// transaction holds its connection). Not for a Keyring KV.
+func (s KV) Update(k string, v any, change func()) error {
+	if err := util.CheckKeyAndValue(k, v); err != nil {
+		return err
+	}
+	err := s.DB.InTx(func(tx *sql.Tx) error {
+		var data []byte
+		var expires int64
+		err := tx.QueryRow(`SELECT value, expires FROM `+s.Table+` WHERE owner = ? AND key = ?`, s.Owner, k).Scan(&data, &expires)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil && (expires == 0 || expires >= time.Now().Unix()) {
+			// another type's value (an older mangal's) is a miss, as in Get
+			if codec.Unmarshal(data, v) != nil {
+				log.Warn("update %s %q: its value can't be read, replaced", s.Table, k)
+			}
+		}
+		change()
+		if data, err = codec.Marshal(v); err != nil {
+			return err
+		}
+		if s.TTL > 0 {
+			expires = time.Now().Add(s.TTL).Unix()
+		} else {
+			expires = 0
+		}
+		_, err = tx.Exec(`INSERT INTO `+s.Table+` (owner, key, value, expires) VALUES (?, ?, ?, ?)
+ON CONFLICT (owner, key) DO UPDATE SET value = excluded.value, expires = excluded.expires`,
+			s.Owner, k, data, expires)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("update %s %q: %w", s.Table, k, err)
+	}
+	return nil
+}
+
 func (s KV) Get(k string, v any) (bool, error) {
 	if err := util.CheckKeyAndValue(k, v); err != nil {
 		return false, err

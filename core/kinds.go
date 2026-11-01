@@ -149,8 +149,6 @@ type localKinds struct {
 	core *Core
 	m    *jobs.Manager
 	opts KindsOptions
-	// mu guards the read-modify-write of the kinds' kept state in this process
-	mu sync.Mutex
 }
 
 // kindState is what's kept of a kind in the cache db.
@@ -184,28 +182,35 @@ func (c *Core) KindPaused(kind jobs.Kind) bool {
 func (k *localKinds) state(kind jobs.Kind) (kindState, error) {
 	var st kindState
 	_, err := k.kv().Get(kind.String(), &st)
-	if err == nil && st.Last == nil && kind == jobs.KindSourceCheck {
-		// mangal serve's source check before the kinds kept only when it ran
-		var last time.Time
-		old := storage.KV{DB: k.core.env.Storage.Cache, Table: storage.TableOther, Owner: storage.OwnerMangal + "/serve"}
-		if ok, _ := old.Get("source-check", &last); ok && !last.IsZero() {
-			st.Last = &JobRun{Started: last, Finished: last}
-		}
+	if err == nil && st.Last == nil {
+		st.Last = k.legacyLast(kind)
 	}
 	return st, err
 }
 
-func (k *localKinds) update(kind jobs.Kind, f func(*kindState)) error {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	// shortcut: another process writing the same kind at once loses one write, a
-	// kind runs in one process at a time (mangal serve's schedules)
-	st, err := k.state(kind)
-	if err != nil {
-		return err
+// legacyLast is mangal serve's source check from before the kinds, which kept only when
+// it ran.
+func (k *localKinds) legacyLast(kind jobs.Kind) *JobRun {
+	if kind != jobs.KindSourceCheck {
+		return nil
 	}
-	f(&st)
-	return k.kv().Set(kind.String(), st)
+	var last time.Time
+	old := storage.KV{DB: k.core.env.Storage.Cache, Table: storage.TableOther, Owner: storage.OwnerMangal + "/serve"}
+	if ok, _ := old.Get("source-check", &last); ok && !last.IsZero() {
+		return &JobRun{Started: last, Finished: last}
+	}
+	return nil
+}
+
+func (k *localKinds) update(kind jobs.Kind, f func(*kindState)) error {
+	legacy := k.legacyLast(kind)
+	var st kindState
+	return k.kv().Update(kind.String(), &st, func() {
+		if st.Last == nil {
+			st.Last = legacy
+		}
+		f(&st)
+	})
 }
 
 func (k *localKinds) changed() {

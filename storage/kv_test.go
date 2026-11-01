@@ -2,6 +2,7 @@ package storage
 
 import (
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -28,5 +29,28 @@ func TestKVDecode(t *testing.T) {
 	var other []float64
 	if found, err := kv.Get("k", &other); err != nil || found {
 		t.Errorf("other type: %t, %v, want a miss", found, err)
+	}
+}
+
+// TestKVUpdate: the changes of two stores on the same database (two processes) add up.
+func TestKVUpdate(t *testing.T) {
+	st, err := OpenCache(filepath.Join(t.TempDir(), FilenameCache))
+	if err != nil {
+		t.Fatal(err)
+	}
+	kv := KV{DB: st, Table: TableOther, Owner: "t"}
+	var wg sync.WaitGroup
+	for range 20 {
+		wg.Go(func() {
+			var n int
+			if err := kv.Update("n", &n, func() { n++ }); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	var n int
+	if ok, err := kv.Get("n", &n); err != nil || !ok || n != 20 {
+		t.Errorf("got %d %v %v", n, ok, err)
 	}
 }
