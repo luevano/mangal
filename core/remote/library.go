@@ -11,6 +11,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	lmmeta "github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
 	"github.com/luevano/mangal/v5/library"
@@ -102,11 +103,23 @@ func (l remoteLibrary) MangaBySource(ctx context.Context, provider, mangaID stri
 	return *found, true, nil
 }
 
-// MangaFor is the library manga the provider's manga was downloaded into.
-// shortcut: not a folder sharing a metadata id (no endpoint for the library's match),
-// add one if a remote TUI should mark chapters another provider downloaded.
-func (l remoteLibrary) MangaFor(ctx context.Context, provider libmangal.ProviderInfo, mangaID string, _ []lmmeta.ID) (storage.Manga, bool, error) {
-	return l.MangaBySource(ctx, provider.ID, mangaID)
+// MangaFor is the library manga the provider's manga was downloaded into, else a folder
+// sharing a metadata id where its downloads would go on the server (the local rule over
+// the server's list).
+func (l remoteLibrary) MangaFor(ctx context.Context, provider libmangal.ProviderInfo, mangaID string, ids []lmmeta.ID) (storage.Manga, bool, error) {
+	if m, ok, err := l.MangaBySource(ctx, provider.ID, mangaID); ok || err != nil || len(ids) == 0 {
+		return m, ok, err
+	}
+	mangas, err := l.list(ctx, nil)
+	if err != nil {
+		return storage.Manga{}, false, err
+	}
+	dirs, err := l.c.configBool(ctx, config.Download.Provider.CreateDir.Key)
+	if err != nil {
+		return storage.Manga{}, false, err
+	}
+	match := storage.MatchLibrary(mangas, provider, mangaID, ids, dirs)
+	return match.Manga, match.Linked, nil
 }
 
 func (l remoteLibrary) Downloads(ctx context.Context, manga int64) ([]storage.Download, error) {

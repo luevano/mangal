@@ -257,6 +257,21 @@ func configOf(e apiv1.ConfigEntry) core.ConfigEntry {
 	return out
 }
 
+// configBool is the server's value of the boolean key.
+func (c *Client) configBool(ctx context.Context, key string) (bool, error) {
+	entries, err := remoteConfig{c}.List(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, e := range entries {
+		if e.Key == key {
+			v, _ := e.Value.(bool)
+			return v, nil
+		}
+	}
+	return false, nil
+}
+
 func (cf remoteConfig) List(ctx context.Context) ([]core.ConfigEntry, error) {
 	r, err := cf.c.API.ListConfigWithResponse(ctx)
 	if err != nil {
