@@ -5,8 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 
 	lmmeta "github.com/luevano/libmangal/metadata"
@@ -22,12 +20,7 @@ func clientMetadataProvider(source lmmeta.IDSource) (metadataSearcher, error) {
 	return client.MetadataProvider(source)
 }
 
-// metadataSearcher is what the search uses of a lmmeta.ProviderWithCache.
-type metadataSearcher interface {
-	SearchByIDContext(ctx context.Context, id int) (lmmeta.Metadata, bool, error)
-	SearchContext(ctx context.Context, query string) ([]lmmeta.Metadata, error)
-	FindClosestContext(ctx context.Context, query lmmeta.Query) (lmmeta.Match, bool, error)
-}
+type metadataSearcher = client.MetadataSearcher
 
 // ListMetadataSources implements apiv1.StrictServerInterface.
 func (a *API) ListMetadataSources(context.Context, apiv1.ListMetadataSourcesRequestObject) (apiv1.ListMetadataSourcesResponseObject, error) {
@@ -72,9 +65,6 @@ func (a *API) GetMetadataIcon(ctx context.Context, request apiv1.GetMetadataIcon
 	return nil, fmt.Errorf("metadata source %q: %w", request.Source, core.ErrNotFound)
 }
 
-// metadataIDQuery is a search for an id: "123" or "id:123".
-var metadataIDQuery = regexp.MustCompile(`^\s*(?:id:\s*)?(\d+)\s*$`)
-
 // SearchMetadata implements apiv1.StrictServerInterface: the TUI's metadata search (the
 // closest match on top, then the results scored).
 func (a *API) SearchMetadata(ctx context.Context, request apiv1.SearchMetadataRequestObject) (apiv1.SearchMetadataResponseObject, error) {
@@ -90,35 +80,13 @@ func (a *API) SearchMetadata(ctx context.Context, request apiv1.SearchMetadataRe
 	if err != nil {
 		return nil, unprocessable(err)
 	}
+	hits, err := client.SearchMetadataSource(ctx, src, p, query)
+	if err != nil {
+		return nil, unprocessable(err)
+	}
 	out := apiv1.SearchMetadata200JSONResponse{}
-	if m := metadataIDQuery.FindStringSubmatch(query); m != nil {
-		id, _ := strconv.Atoi(m[1])
-		meta, found, err := p.SearchByIDContext(ctx, id)
-		if err != nil {
-			return nil, unprocessable(fmt.Errorf("get %s manga %d: %w", src.Name, id, err))
-		}
-		if found {
-			out = append(out, toAPIMetadata(src, meta, 1))
-		}
-		return out, nil
-	}
-	q := lmmeta.Query{Titles: []string{query}}
-	closest, found, err := p.FindClosestContext(ctx, q)
-	if err != nil {
-		return nil, unprocessable(fmt.Errorf("search %q on %s: %w", query, src.Name, err))
-	}
-	if found {
-		out = append(out, toAPIMetadata(src, closest.Metadata, closest.Score))
-	}
-	results, err := p.SearchContext(ctx, query)
-	if err != nil {
-		return nil, unprocessable(fmt.Errorf("search %q on %s: %w", query, src.Name, err))
-	}
-	for _, m := range results {
-		if found && m.ID() == closest.Metadata.ID() {
-			continue
-		}
-		out = append(out, toAPIMetadata(src, m, lmmeta.Score(q, m)))
+	for _, h := range hits {
+		out = append(out, toAPIMetadata(src, h.Meta, h.Score))
 	}
 	return out, nil
 }

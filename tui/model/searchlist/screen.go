@@ -129,6 +129,13 @@ func (s *Screen) SetResults(items []_list.Item) tea.Cmd {
 	return s.List.SetItems(items)
 }
 
+// KeepResults shows the items of a search that's still adding to them: the filter and the
+// cursor stay.
+func (s *Screen) KeepResults(items []_list.Item) tea.Cmd {
+	s.searched = true
+	return s.List.SetItemsKeep(items)
+}
+
 // Backable implements base.State.
 func (s *Screen) Backable() bool {
 	return s.List.Unfiltered() && !s.Search.Searching()

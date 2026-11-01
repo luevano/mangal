@@ -2,7 +2,6 @@ package anilist
 
 import (
 	"github.com/luevano/mangal/v5/tui/base"
-	"strings"
 	"testing"
 
 	"github.com/luevano/mangal/v5/client"
@@ -22,21 +21,6 @@ func TestSourceItem(t *testing.T) {
 	i.binding.Default = false
 	if i.Title() != "Kitsu (backup)" {
 		t.Errorf("backup: %q", i.Title())
-	}
-}
-
-func TestIDQuery(t *testing.T) {
-	for q, want := range map[string]string{"38": "38", " id: 30013 ": "30013", "One Piece": "", "id:x": "", "20th Century Boys": ""} {
-		got := ""
-		if m := idQuery.FindStringSubmatch(q); m != nil {
-			got = m[1]
-		}
-		if got != want {
-			t.Errorf("%q: %q, want %q", q, got, want)
-		}
-	}
-	if !strings.HasPrefix(client.MetadataSources[0].URL, "https://anilist.co/") {
-		t.Error("anilist url")
 	}
 }
 

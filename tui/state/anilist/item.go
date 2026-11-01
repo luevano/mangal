@@ -42,10 +42,13 @@ func (i *item) Title() string {
 func (i *item) Description() string {
 	url := i.src.MangaURL(i.meta.ID().Raw)
 	if i.bad {
-		return fmt.Sprintf("%s · bad match (%.0f%%)", url, i.score*100)
+		return fmt.Sprintf("%s · %s · bad match (%.0f%%)", i.src.Name, url, i.score*100)
 	}
-	return url
+	return i.src.Name + " · " + url
 }
+
+// ItemKey implements list.Keyed: sources share titles.
+func (i *item) ItemKey() string { return string(i.src.Code) + "/" + i.meta.ID().Raw }
 
 // sourceItem is a metadata source of the bindings screen with the manga's binding.
 type sourceItem struct {

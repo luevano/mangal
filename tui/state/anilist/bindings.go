@@ -157,11 +157,7 @@ func (s *bindingsState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		switch {
 		case key.Matches(msg, s.search):
-			p, err := s.client.GetMetadataProvider(i.src.Source)
-			if err != nil {
-				return func() tea.Msg { return err }
-			}
-			return func() tea.Msg { return newSearch(s.client, i.src, p, s.manga) }
+			return func() tea.Msg { return newSearch(s.client, s.manga) }
 		case key.Matches(msg, s.remove) && i.binding != nil:
 			src := i.src
 			message := fmt.Sprintf("Remove the %s binding of %q (%s)?", src.Name, s.manga.Info().Title, i.binding.ID)
