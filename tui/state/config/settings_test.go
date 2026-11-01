@@ -83,14 +83,21 @@ func TestHistoryUndo(t *testing.T) {
 		{ID: 1, Key: "download.format", New: new(`"cbz"`), Who: "mangal config set", At: time.Now()},
 	}}
 	s.cfg = fake
-	press(s, "alt+h")
+	settle := func(k string) {
+		for _, m := range base.Drain(s.Update(context.Background(), util.KeyPress(k))) {
+			for _, m := range base.Drain(s.Update(context.Background(), m)) {
+				s.Update(context.Background(), m)
+			}
+		}
+	}
+	settle("alt+h")
 	if s.mode != historying || len(s.history.changes) != 1 || s.history.key != "providers.parallelism" {
 		t.Fatalf("history of the key: mode %d %+v", s.mode, s.history)
 	}
 	if !strings.Contains(s.View(), "15 → 4") {
 		t.Errorf("view:\n%s", s.View())
 	}
-	press(s, "U")
+	settle("U")
 	if !slices.Equal(fake.undone, []int64{2}) || db.values["providers.parallelism"] != "15" || *reloads != 1 {
 		t.Errorf("undone %v, stored %q, %d reloads", fake.undone, db.values["providers.parallelism"], *reloads)
 	}

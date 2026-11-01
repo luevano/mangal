@@ -408,6 +408,11 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return cmd
 	case serverMsg:
 		return s.serverAnswer(msg)
+	case historyMsg:
+		s.showHistory(msg)
+		return nil
+	case undoneMsg:
+		return s.undone(ctx, msg)
 	case base.DBChangedMsg:
 		if s.remote != nil && msg.Has(storage.RevSettings) {
 			return s.loadServer(ctx)
@@ -569,21 +574,72 @@ func (s *state) config() (core.Config, error) {
 	return svc.Config, err
 }
 
+// historyMsg is the changes of a key (openHistory), err why they can't be shown.
+type historyMsg struct {
+	key     string
+	changes []core.ConfigChange
+	err     error
+}
+
+// undoneMsg is a change undone (or why not).
+type undoneMsg struct {
+	entry core.ConfigEntry
+	id    int64
+	err   error
+}
+
 // openHistory lists the changes of key, every key's when "".
 func (s *state) openHistory(ctx context.Context, key string) tea.Cmd {
 	cfg, err := s.config()
-	var changes []core.ConfigChange
-	if err == nil {
-		changes, err = cfg.History(ctx, key, 200)
-	}
 	if err != nil {
 		s.err = err.Error()
 		return nil
 	}
+	return base.Load(ctx, "", func(ctx context.Context) (historyMsg, error) {
+		changes, err := cfg.History(ctx, key, 200)
+		return historyMsg{key: key, changes: changes, err: err}, nil
+	}, func(msg historyMsg) tea.Msg { return msg })
+}
+
+func (s *state) showHistory(msg historyMsg) {
+	if msg.err != nil {
+		s.err = msg.err.Error()
+		return
+	}
 	s.err = ""
 	s.mode = historying
-	s.history = historyView{key: key, changes: changes, cursor: min(s.history.cursor, max(0, len(changes)-1))}
-	return nil
+	s.history = historyView{key: msg.key, changes: msg.changes, cursor: min(s.history.cursor, max(0, len(msg.changes)-1))}
+}
+
+func (s *state) undoCmd(ctx context.Context, id int64) tea.Cmd {
+	cfg, err := s.config()
+	if err != nil {
+		s.err = err.Error()
+		return nil
+	}
+	return base.Load(ctx, "", func(ctx context.Context) (undoneMsg, error) {
+		e, err := cfg.Undo(ctx, id)
+		return undoneMsg{entry: e, id: id, err: err}, nil
+	}, func(msg undoneMsg) tea.Msg { return msg })
+}
+
+func (s *state) undone(ctx context.Context, msg undoneMsg) tea.Cmd {
+	if msg.err != nil {
+		s.err = msg.err.Error()
+		return nil
+	}
+	e := msg.entry
+	// a value set earlier in this run would hide the stored one
+	if _, ok := s.server[e.Key]; ok {
+		s.server[e.Key] = e
+	} else if raw, err := mconfig.FileValue(e.Key); err == nil {
+		_ = mconfig.Set(e.Key, raw)
+	}
+	if s.remote == nil && effectOf(e.Key) == applyReload {
+		s.reload()
+	}
+	s.history.cursor = 0
+	return tea.Batch(s.openHistory(ctx, s.history.key), base.Notify(fmt.Sprintf("%s set back to %v (undo of change %d)", e.Key, e.Value, msg.id)))
 }
 
 func (s *state) updateHistory(ctx context.Context, msg tea.Msg) tea.Cmd {
@@ -608,28 +664,7 @@ func (s *state) updateHistory(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if len(h.changes) == 0 {
 			return nil
 		}
-		c := h.changes[h.cursor]
-		cfg, err := s.config()
-		var e core.ConfigEntry
-		if err == nil {
-			e, err = cfg.Undo(ctx, c.ID)
-		}
-		if err != nil {
-			s.err = err.Error()
-			return nil
-		}
-		// a value set earlier in this run would hide the stored one
-		if _, ok := s.server[e.Key]; ok {
-			s.server[e.Key] = e
-		} else if raw, err := mconfig.FileValue(e.Key); err == nil {
-			_ = mconfig.Set(e.Key, raw)
-		}
-		if s.remote == nil && effectOf(e.Key) == applyReload {
-			s.reload()
-		}
-		h.cursor = 0
-		cmd := s.openHistory(ctx, h.key)
-		return tea.Batch(cmd, base.Notify(fmt.Sprintf("%s set back to %v (undo of change %d)", e.Key, e.Value, c.ID)))
+		return s.undoCmd(ctx, h.changes[h.cursor].ID)
 	}
 	return nil
 }
