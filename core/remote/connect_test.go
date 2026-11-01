@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/adrg/xdg"
 	lmmeta "github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/client"
+	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 )
 
@@ -141,5 +144,37 @@ func TestMetadataThroughTheServer(t *testing.T) {
 	want := []string{"/api/v1/metadata/anilist/search?berserk", "/api/v1/metadata/anilist/search?id:5"}
 	if !slices.Equal(queries, want) {
 		t.Errorf("%q, want %q", queries, want)
+	}
+}
+
+// this data's serve is found by its discovery file, one of another API major can't be used, and
+// none is no error
+func TestLocalServe(t *testing.T) {
+	old := xdg.StateHome
+	xdg.StateHome = t.TempDir()
+	t.Cleanup(func() { xdg.StateHome = old })
+	if c, err := LocalServe(t.Context()); c != nil || err != nil {
+		t.Fatalf("no serve: %v, %v", c, err)
+	}
+	version := "1.1.0"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"api_version": version, "ok": true, "status": "ok"})
+	}))
+	defer srv.Close()
+	data := watch.DataDB()
+	if err := watch.WriteDiscovery(watch.DiscoveryPath(data), watch.Discovery{PID: os.Getpid(), Address: srv.URL, Data: data, Key: "the key"}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := LocalServe(t.Context())
+	if err != nil || c == nil {
+		t.Fatalf("serve: %v, %v", c, err)
+	}
+	if !c.HasToken() {
+		t.Error("without the discovery key")
+	}
+	version = "2.0.0"
+	if c, err := LocalServe(t.Context()); c != nil || err == nil || !strings.Contains(err.Error(), "API 2.0.0") {
+		t.Errorf("another major: %v, %v", c, err)
 	}
 }

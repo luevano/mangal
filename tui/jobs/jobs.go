@@ -21,6 +21,7 @@ import (
 	"github.com/luevano/mangal/v5/notify"
 	"github.com/luevano/mangal/v5/theme/icon"
 	"github.com/luevano/mangal/v5/tui/base"
+	stringutil "github.com/luevano/mangal/v5/util/string"
 )
 
 var (
@@ -53,6 +54,17 @@ func StartRemote(ctx context.Context, svc core.Jobs) base.Activity {
 	manager, remote = m, svc
 	mu.Unlock()
 	return &activity{svc: svc, shutdown: m.Shutdown, remote: true}
+}
+
+// StartServed is Start with this machine's mangal serve taking the downloads (served): they
+// go on when the TUI quits, whose question says so.
+func StartServed(ctx context.Context, serve core.Jobs) base.Activity {
+	m := jobs.New(ctx)
+	svc := served{local: core.NewJobs(m, core.JobsOptions{Finally: notifyDone}), serve: serve}
+	mu.Lock()
+	manager, remote = m, svc
+	mu.Unlock()
+	return &activity{svc: svc, shutdown: m.Shutdown, remote: true, served: true}
 }
 
 // Manager is the process's manager (one with a background ctx if Start wasn't called, for
@@ -157,6 +169,8 @@ type activity struct {
 	shutdown func(time.Duration) bool
 	// remote: svc's jobs are a server's, quitting doesn't stop them
 	remote bool
+	// served: the server is this machine's mangal serve, quitting says what goes on in it
+	served bool
 
 	subscribe sync.Once
 	events    <-chan core.JobEvent
@@ -321,6 +335,24 @@ func (a *activity) Running() []string {
 		lines = append(lines, Line(j))
 	}
 	return lines
+}
+
+// Continuing says the downloads this TUI gave this machine's mangal serve go on after it.
+func (a *activity) Continuing() string {
+	if !a.served {
+		return ""
+	}
+	n := 0
+	for _, j := range a.active() {
+		// the origin: this TUI's, what the web UI and the watches start isn't its to tell
+		if j.ID < 0 && j.Kind == jobs.KindDownload && j.Origin != "" {
+			n++
+		}
+	}
+	if n == 0 {
+		return ""
+	}
+	return stringutil.Quantify(n, "download continues", "downloads continue") + " in mangal serve"
 }
 
 func (a *activity) Shutdown(timeout time.Duration) {

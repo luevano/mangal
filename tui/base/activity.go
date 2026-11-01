@@ -25,6 +25,9 @@ type Activity interface {
 	Status() string
 	// Running is what quitting cancels, a line each.
 	Running() []string
+	// Continuing says what goes on after quitting (this machine's mangal serve), empty for
+	// nothing.
+	Continuing() string
 	// Shutdown stops it all, waiting up to timeout.
 	Shutdown(timeout time.Duration)
 }
@@ -77,11 +80,14 @@ func (m *model) activityStatus() string {
 	return m.activity.Status()
 }
 
-// quit quits, unless there's background work: it asks first then, saying what stops.
+// quit quits, unless there's background work: it asks first then, saying what stops and what
+// goes on.
 func (m *model) quit() tea.Cmd {
 	if m.activity != nil && m.quitAsk == nil {
-		if running := m.activity.Running(); len(running) != 0 {
-			m.quitAsk = running
+		running, goesOn := m.activity.Running(), m.activity.Continuing()
+		if len(running) != 0 || goesOn != "" {
+			// not nil: it's asking
+			m.quitAsk, m.quitGoesOn = append([]string{}, running...), goesOn
 			return nil
 		}
 	}
@@ -115,7 +121,14 @@ func (m *model) viewQuitAsk(behind string) string {
 		title, yes = "Switch to "+*m.switchTo+"?", " switch · "
 	}
 	b.WriteString(lipgloss.NewStyle().Bold(true).Render(title))
-	b.WriteString("\nThese are cancelled (the chapters downloaded stay):\n")
+	b.WriteString("\n")
+	if m.quitGoesOn != "" {
+		b.WriteString(m.quitGoesOn)
+		b.WriteString("\n")
+	}
+	if len(m.quitAsk) != 0 {
+		b.WriteString("These are cancelled (the chapters downloaded stay):\n")
+	}
 	for i, line := range m.quitAsk {
 		if i == maxQuitLines {
 			b.WriteString("  … and ")

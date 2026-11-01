@@ -212,9 +212,10 @@ func TestJumpToClosedWindow(t *testing.T) {
 }
 
 type fakeActivity struct {
-	running []string
-	msgs    chan tea.Msg
-	stopped bool
+	continuing string
+	running    []string
+	msgs       chan tea.Msg
+	stopped    bool
 }
 
 type noticeMsg string
@@ -231,6 +232,7 @@ func (a *fakeActivity) Wait(ctx context.Context) tea.Msg {
 }
 func (a *fakeActivity) Status() string         { return "1 running" }
 func (a *fakeActivity) Running() []string      { return a.running }
+func (a *fakeActivity) Continuing() string     { return a.continuing }
 func (a *fakeActivity) Shutdown(time.Duration) { a.stopped = true }
 
 func withActivity(t *testing.T, a Activity) {
@@ -344,5 +346,21 @@ func TestSwitchAsksWhileJobsRun(t *testing.T) {
 	}
 	if !m.quitting || m.switchTo == nil || *m.switchTo != "nas" {
 		t.Errorf("quitting %v, to %v", m.quitting, m.switchTo)
+	}
+}
+
+func TestQuitSaysWhatGoesOn(t *testing.T) {
+	a := &fakeActivity{continuing: "2 downloads continue in mangal serve", msgs: make(chan tea.Msg, 1)}
+	withActivity(t, a)
+	m := newTestModel(t, &fakeState{title: "home"})
+	if cmd := press(m, util.KeyPress("ctrl+c")); cmd != nil {
+		t.Fatal("quit without saying")
+	}
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, a.continuing) || strings.Contains(view, "cancelled") {
+		t.Errorf("the question:\n%s", view)
+	}
+	if cmd := press(m, keyMsg("y")); cmd == nil {
+		t.Error("y didn't quit")
 	}
 }

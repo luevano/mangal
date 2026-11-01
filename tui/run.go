@@ -101,8 +101,27 @@ func runOn(ctx context.Context, t remote.Target, notices []string) error {
 	if notice := anilist.LoginNotice(); notice != "" {
 		notices = append(notices, notice)
 	}
-	base.CurrentActivity = jobs.Start(ctx)
+	var notice string
+	base.CurrentActivity, notice = startLocal(ctx)
+	if notice != "" {
+		notices = append(notices, notice)
+	}
 	return base.Run(ctx, home.New(), notices...)
+}
+
+// startLocal are the jobs on this machine: this data's running mangal serve takes the downloads
+// (no setting chooses that, one started later takes them after a switch back here), else they
+// run here, with a notice when that serve can't be used.
+func startLocal(ctx context.Context) (base.Activity, string) {
+	rc, err := remote.LocalServe(ctx)
+	if err != nil {
+		log.Warn("tui: %s", err)
+		return jobs.Start(ctx), "The downloads run in this mangal: " + err.Error()
+	}
+	if rc == nil {
+		return jobs.Start(ctx), ""
+	}
+	return jobs.StartServed(ctx, rc.Jobs()), ""
 }
 
 // runDetached is the picker alone, with why the connection doesn't work: nothing else opens.

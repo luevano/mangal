@@ -125,9 +125,10 @@ func LocalClient(address string, timeout time.Duration) (*http.Client, error) {
 	return tlsutil.PinnedClient(cert, timeout)
 }
 
-// Connect is the Manager the CLI and the TUI use: the running `mangal serve` of this
-// config's data database (found with its discovery file) when there's one, else the local
-// Service (New) with the notifier (notify.Watches(), which this package can't import).
+// Connect is this machine's Manager (the connection local): the running `mangal serve` of
+// this config's data database (found with its discovery file) when there's one, else the
+// local Service (New) with the notifier (notify.Watches(), which this package can't import).
+// A server's are (*remote.Client).Watches().
 func Connect(ctx context.Context, notifier Notifier) (Manager, error) {
 	remote, _, err := Find(ctx, DataDB())
 	if err != nil {

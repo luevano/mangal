@@ -1,14 +1,17 @@
 package remote
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/util/cache"
 )
@@ -116,6 +119,28 @@ func Connect(ctx context.Context, t Target) (*Client, error) {
 	}
 	if err := c.ReadConfig(ctx); err != nil {
 		return nil, err
+	}
+	return c, nil
+}
+
+// LocalServe is the client of this data's running mangal serve (its discovery file's address
+// and key), nil when none runs; an error when it can't be used (another major API version).
+func LocalServe(ctx context.Context) (*Client, error) {
+	found, d, err := watch.Find(ctx, watch.DataDB())
+	if err != nil {
+		return nil, err
+	}
+	if found == nil {
+		return nil, nil
+	}
+	c, err := New(Options{URL: d.Address, Token: d.Key, Timeout: found.Client.Timeout})
+	if err != nil {
+		return nil, err
+	}
+	// its own certificate, when it has one
+	c.HTTP.Transport = cmp.Or[http.RoundTripper](found.Client.Transport, c.HTTP.Transport)
+	if _, err := c.Status(ctx); err != nil {
+		return nil, fmt.Errorf("mangal serve at %s: %w", d.Address, err)
 	}
 	return c, nil
 }

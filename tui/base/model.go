@@ -37,6 +37,8 @@ type model struct {
 	aheadAsk State
 	// quitAsk is what quitting would cancel while it asks, nil when it doesn't
 	quitAsk []string
+	// quitGoesOn is what goes on after quitting, while it asks
+	quitGoesOn string
 	// activity is the background work (downloads, checks), nil without
 	activity Activity
 

@@ -1,5 +1,5 @@
 // Package serve is `mangal serve`: the scheduler that checks the watches when they're due
-// and the JSON API to manage them (the TUI and the CLI use it through watch.Connect).
+// and the JSON API to manage them (the TUI and the CLI on this machine use it through watch.Connect).
 package serve
 
 import (
