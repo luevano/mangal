@@ -87,6 +87,10 @@ func Open(url, token string, warn func(string)) (*Client, error) {
 	return New(Options{URL: url, Token: token, CAFile: config.Remote.CAFile.Get(), Timeout: timeout, Warn: warn})
 }
 
+// connectTimeout is how long a server may take to say it's there: an unreachable one tells
+// the user soon, whatever remote.timeout allows a request.
+const connectTimeout = 5 * time.Second
+
 // Connect is the client of the target's server with its token, checked (the API's major
 // version, the token), nil for this machine. config answers the server's keys from then on.
 func Connect(ctx context.Context, t Target) (*Client, error) {
@@ -102,7 +106,9 @@ func Connect(ctx context.Context, t Target) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.Status(ctx); err != nil {
+	handshake, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
+	if _, err := c.Status(handshake); err != nil {
 		if errors.Is(err, ErrUnauthorized) {
 			return nil, fmt.Errorf("%s: %w (mangal connection login %s)", Name(url), err, Name(url))
 		}

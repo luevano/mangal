@@ -61,7 +61,7 @@ func switchTo(t remote.Target, value string) (remote.Target, []string) {
 	if err := remote.UseConnection(value); err != nil {
 		return next, []string{"On " + value + " for this session, it isn't saved: " + err.Error()}
 	}
-	return next, nil
+	return remote.Target{Warn: t.Warn}, nil
 }
 
 // runOn runs the TUI once on t's backend, set up from scratch: nothing's carried over.
@@ -108,6 +108,7 @@ func runOn(ctx context.Context, t remote.Target, notices []string) error {
 // runDetached is the picker alone, with why the connection doesn't work: nothing else opens.
 func runDetached(ctx context.Context, url string, why error, notices []string) error {
 	log.Warn("tui: %s", why)
+	base.LocalHeader = false
 	base.Core = func() (*core.Core, error) { return nil, errDetached }
 	watches.Connect = func(context.Context) (watch.Manager, error) { return nil, errDetached }
 	base.NewConfigWindow, base.NewDownloads, base.NewLogs, base.NewConnections = nil, nil, nil, nil
