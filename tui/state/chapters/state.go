@@ -250,6 +250,14 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return s.download(ctx, msg)
 	case queuedMsg:
 		return s.onQueued(msg)
+	case readFileMsg:
+		return s.readCmd(ctx, msg.path, msg.chapter)
+	case base.LookupDoneMsg:
+		// the library match goes by the metadata's ids too
+		if msg.Manga == s.manga {
+			return s.refresh(ctx, false)
+		}
+		return nil
 	case tuijobs.ChangedMsg:
 		return s.onJobs(ctx, msg)
 	case readMsg:
@@ -309,6 +317,10 @@ func (s *state) updateKey(ctx context.Context, msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, k.metadata):
 		return metadata.ShowManga(s.manga)
 	case key.Matches(msg, k.watch):
+		// its add screen starts from the metadata's id
+		if cmd, waiting := s.afterLookup(ctx, msg); waiting {
+			return cmd
+		}
 		// a volume's chapters aren't all of them
 		var chapters []mangadata.Chapter
 		if s.volume == nil {
@@ -407,6 +419,8 @@ func (s *state) refresh(ctx context.Context, scan bool) tea.Cmd {
 		chapters[i] = it.chapter
 	}
 	c, manga := s.client, s.manga
+	// read here: a metadata search's result is set in Update
+	metadataIDs := storage.MangaMetadataIDs(manga)
 	temp := path.Temp()
 	return func() tea.Msg {
 		release, ok := base.Track(ctx)
@@ -421,7 +435,7 @@ func (s *state) refresh(ctx context.Context, scan bool) tea.Cmd {
 			return msg
 		}
 		// the chapters still show without what can't be looked up
-		files, err := lib.ChapterFiles(ctx, core.ChapterFilesReq{Provider: c.Info(), MangaID: manga.Info().ID, MetadataIDs: storage.MangaMetadataIDs(manga), Scan: scan})
+		files, err := lib.ChapterFiles(ctx, core.ChapterFilesReq{Provider: c.Info(), MangaID: manga.Info().ID, MetadataIDs: metadataIDs, Scan: scan})
 		if err != nil {
 			log.Error("library of %q: %s", manga, err)
 			return msg

@@ -90,6 +90,8 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		return m.update(msg.msg)
+	case LookupDoneMsg:
+		return m.onLookupDone(msg)
 	case NotificationMsg:
 		return m.notify(msg.Message, msg.level(), 0)
 	case NotificationWithDurationMsg:

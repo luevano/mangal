@@ -70,12 +70,10 @@ type resultsMsg struct {
 	note string
 }
 
-// openedMsg is a manga ready to be shown: its metadata (nil if none was searched or
-// found) and its volumes.
+// openedMsg is a manga ready to be shown: its volumes.
 type openedMsg struct {
 	client  *libmangal.Client
 	item    *item
-	meta    lmmeta.Metadata
 	notice  string
 	volumes []mangadata.Volume
 	// chapters of every volume, when they're shown right away
@@ -304,8 +302,9 @@ func (s *state) openCmd(ctx context.Context, i *item, note string) tea.Cmd {
 	return openCmd(ctx, s.client, i, note)
 }
 
-// openCmd searches the manga's metadata (download.metadata.search) and its volumes, or
-// right away the chapters (tui.expand_*), with the client of its provider.
+// openCmd searches the manga's volumes, or right away the chapters (tui.expand_*), with the
+// client of its provider; its metadata (download.metadata.search) in the background, a slow
+// source doesn't hold up the screen.
 func openCmd(ctx context.Context, c *libmangal.Client, i *item, note string) tea.Cmd {
 	manga := i.manga
 	// the metadata is read here, it's only changed in Update
@@ -313,19 +312,12 @@ func openCmd(ctx context.Context, c *libmangal.Client, i *item, note string) tea
 	searchMeta := config.Download.Metadata.Search.Get() && !hasMetadata(manga.Metadata()) && base.CurrentRemote == nil
 	// the config isn't read from the background (viper isn't safe for it)
 	expandAll, expandSingle := config.TUI.ExpandAllVolumes.Get(), config.TUI.ExpandSingleVolume.Get()
-	label := fmt.Sprintf("Searching volumes for %q", manga)
+	var lookup tea.Cmd
 	if searchMeta {
-		label = fmt.Sprintf("Searching metadata and volumes for %q", manga)
+		lookup = lookupCmd(ctx, c, i)
 	}
-	return base.LoadWithStatus(ctx, label, func(ctx context.Context, status func(string)) (openedMsg, error) {
+	open := base.LoadWithStatus(ctx, fmt.Sprintf("Searching volumes for %q", manga), func(ctx context.Context, status func(string)) (openedMsg, error) {
 		msg := openedMsg{client: c, item: i, notice: note}
-		if searchMeta {
-			var notice string
-			msg.meta, notice = searchMetadata(ctx, c, manga)
-			msg.notice = joinNotice(msg.notice, notice)
-			status(fmt.Sprintf("Searching volumes for %q", manga))
-		}
-
 		vols, err := c.MangaVolumesContext(ctx, manga)
 		if err != nil {
 			return msg, base.MangaError(fmt.Errorf("get the volumes of %q: %w", manga, err), c.Info().Name, manga)
@@ -352,6 +344,21 @@ func openCmd(ctx context.Context, c *libmangal.Client, i *item, note string) tea
 		}
 		return msg, nil
 	}, func(msg openedMsg) tea.Msg { return msg })
+	return tea.Batch(open, lookup)
+}
+
+// lookupCmd searches the item's manga metadata. What was bound meanwhile stays.
+func lookupCmd(ctx context.Context, c *libmangal.Client, i *item) tea.Cmd {
+	manga := i.manga
+	return base.LookupMetadata(ctx, manga, fmt.Sprintf("Searching metadata for %q", manga), func(ctx context.Context) (func(), string) {
+		meta, notice := searchMetadata(ctx, c, manga)
+		return func() {
+			if meta != nil && !hasMetadata(manga.Metadata()) {
+				manga.SetMetadata(meta)
+				i.renderMetadata()
+			}
+		}, notice
+	})
 }
 
 // searchMetadata is the manga's default metadata binding, else it finds the manga on Anilist,
@@ -376,11 +383,6 @@ func searchMetadata(ctx context.Context, c *libmangal.Client, manga mangadata.Ma
 
 func onOpened(msg openedMsg) tea.Cmd {
 	manga := msg.item.manga
-	if msg.meta != nil {
-		manga.SetMetadata(msg.meta)
-		msg.item.renderMetadata()
-	}
-
 	var next base.State
 	if msg.expanded != "" {
 		next = chapters.New(msg.client, manga, msg.volume, msg.chapters)
@@ -413,7 +415,7 @@ func hasMetadata(meta lmmeta.Metadata) bool {
 		return false
 	}
 	source := meta.ID().Source
-	return source == lmmeta.IDSourceAnilist || source == lmmeta.IDSourceKitsu || source == lmmeta.IDSourceMyAnimeList
+	return source == lmmeta.IDSourceAnilist || source == lmmeta.IDSourceKitsu || source == lmmeta.IDSourceMyAnimeList || source == lmmeta.IDSourceMangaUpdates
 }
 
 func (s *state) updateKeys() {

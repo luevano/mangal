@@ -94,11 +94,32 @@ func (s *state) askRead(ctx context.Context, hovered *item) tea.Cmd {
 	}
 	if i.readPath != "" {
 		log.Debug("read format of %q already downloaded", i.chapter)
+		// its sync finds the ids in the metadata
+		if cmd, waiting := s.afterLookup(ctx, readFileMsg{i.readPath, i.chapter}); waiting {
+			return cmd
+		}
 		return s.readCmd(ctx, i.readPath, i.chapter)
 	}
 	msg := "Download chapter " + stringutil.FormatFloat32(i.chapter.Info().Number) + ` ("` + i.chapter.Info().Title + `") for reading?`
 	s.Confirm.Ask("Download", msg, s.View(), func() tea.Msg { return downloadMsg{item: i, read: true} })
 	return nil
+}
+
+// afterLookup is msg again once the manga's metadata search is over, when one is running:
+// what uses the metadata needs its result. Dropped if the screen is left meanwhile.
+func (s *state) afterLookup(ctx context.Context, msg tea.Msg) (tea.Cmd, bool) {
+	pending := base.PendingLookup(s.manga)
+	if pending == nil {
+		return nil, false
+	}
+	return base.Load(ctx, fmt.Sprintf("Waiting for the metadata of %q", s.manga), func(ctx context.Context) (struct{}, error) {
+		select {
+		case <-pending:
+			return struct{}{}, nil
+		case <-ctx.Done():
+			return struct{}{}, ctx.Err()
+		}
+	}, func(struct{}) tea.Msg { return msg }), true
 }
 
 // downloadOptions are the core's, for reading if read.
@@ -127,6 +148,9 @@ func checkMetadata(manga mangadata.Manga, options libmangal.DownloadOptions) err
 // stays here with a notice of how to see it; reading opens the reader when it's done, if
 // this screen is shown.
 func (s *state) download(ctx context.Context, msg downloadMsg) tea.Cmd {
+	if cmd, waiting := s.afterLookup(ctx, msg); waiting {
+		return cmd
+	}
 	options := downloadOptions(msg.read)
 	if err := checkMetadata(s.manga, options); err != nil {
 		return func() tea.Msg { return err }
@@ -226,6 +250,12 @@ func (s *state) onJobs(ctx context.Context, msg tuijobs.ChangedMsg) tea.Cmd {
 
 // readMsg is a chapter opened for reading, err is from opening or syncing it.
 type readMsg struct{ err error }
+
+// readFileMsg is a downloaded chapter to read, its metadata search over.
+type readFileMsg struct {
+	path    string
+	chapter mangadata.Chapter
+}
 
 func (s *state) readCmd(ctx context.Context, path string, chapter mangadata.Chapter) tea.Cmd {
 	c := s.client

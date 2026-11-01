@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -299,5 +300,58 @@ func TestViewSanitized(t *testing.T) {
 	}
 	if !strings.Contains(v, "One Piece") {
 		t.Error("the title is gone")
+	}
+}
+
+// a metadata search runs past the State that started it, is set in Update and reaches the
+// shown State; PendingLookup holds until then
+func TestLookupMetadata(t *testing.T) {
+	home := &fakeState{title: "home"}
+	m := newTestModel(t, home)
+	screen := &fakeState{title: "screen"}
+	m.Update(State(screen))
+	manga := goneManga{}
+	release := make(chan struct{})
+	var applied bool
+	cmd := LookupMetadata(screen.ctx, manga, "looking", func(context.Context) (func(), string) {
+		<-release
+		return func() { applied = true }, "no match"
+	})
+	if LookupMetadata(screen.ctx, manga, "looking", nil) != nil {
+		t.Error("a second search of the same manga")
+	}
+	pending := PendingLookup(manga)
+	if pending == nil {
+		t.Fatal("not pending")
+	}
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("not a batch: %T", cmd())
+	}
+	start, work := splitLoad(t, batch[0])
+	m.Update(start)
+	m.Update(BackMsg{Steps: 1})
+
+	close(release)
+	_, after := m.Update(work())
+	if !applied {
+		t.Fatal("the result was dropped with the State that started it")
+	}
+	select {
+	case <-pending:
+	default:
+		t.Error("still pending once applied")
+	}
+	if PendingLookup(manga) != nil {
+		t.Error("still registered")
+	}
+	if !slices.ContainsFunc(home.got, func(msg tea.Msg) bool { _, ok := msg.(LookupDoneMsg); return ok }) {
+		t.Error("the shown State wasn't told")
+	}
+	if !slices.ContainsFunc(Drain(after), func(msg tea.Msg) bool {
+		n, ok := msg.(NotificationWithDurationMsg)
+		return ok && n.Message == "no match"
+	}) {
+		t.Error("no notice")
 	}
 }

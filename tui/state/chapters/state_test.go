@@ -106,6 +106,43 @@ func TestCheckMetadata(t *testing.T) {
 	}
 }
 
+// a download while the manga's metadata search runs waits for it, the strict check sees its
+// result
+func TestDownloadWaitsForLookup(t *testing.T) {
+	manga, list := chapters(1)
+	c, err := libmangal.NewClient(fakeLoader{}, libmangal.DefaultClientOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(c, manga, nil, list).(*state)
+	ctx := context.Background()
+	lookup := base.LookupMetadata(ctx, manga, "looking", func(context.Context) (func(), string) { return func() {}, "" })
+	if lookup == nil {
+		t.Fatal("no lookup")
+	}
+	waited := make(chan []tea.Msg, 1)
+	wait := s.Update(ctx, downloadMsg{chapters: list})
+	go func() { waited <- base.Drain(wait) }()
+	select {
+	case msgs := <-waited:
+		t.Fatalf("didn't wait: %v", msgs)
+	case <-time.After(100 * time.Millisecond):
+	}
+	for _, msg := range base.Drain(lookup) {
+		msg.(base.LookupDoneMsg).Apply()
+	}
+	msgs := <-waited
+	if len(msgs) != 1 {
+		t.Fatalf("after the lookup: %v", msgs)
+	}
+	if _, ok := msgs[0].(downloadMsg); !ok {
+		t.Errorf("after the lookup: %#v, want the download again", msgs[0])
+	}
+	if cmd, waiting := s.afterLookup(ctx, nil); waiting || cmd != nil {
+		t.Error("still waiting")
+	}
+}
+
 func TestLibraryDownloads(t *testing.T) {
 	db, err := storage.OpenData(filepath.Join(t.TempDir(), storage.FilenameData))
 	if err != nil {
