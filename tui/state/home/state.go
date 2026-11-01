@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/meta"
@@ -93,6 +94,18 @@ func (s *state) Init(ctx context.Context) tea.Cmd {
 func (s *state) checkHealth(ctx context.Context) tea.Cmd {
 	key := s.healthKey.Help().Key
 	return base.Load(ctx, "", func(ctx context.Context) (healthMsg, error) {
+		// the short version whoever hasn't manage may see, no findings to open
+		if r := base.CurrentRemote; r != nil && !r.Has(core.ScopeManage) {
+			st, err := r.Client.Status(ctx)
+			if err != nil {
+				warnHealth(err)
+				return healthMsg{}, nil
+			}
+			if st.Health == nil {
+				return healthMsg{}, nil
+			}
+			return healthMsg{line: problems(st.Health.Errors + st.Health.Warnings)}, nil
+		}
 		c, err := base.Services()
 		if err != nil {
 			warnHealth(err)
@@ -109,14 +122,17 @@ func (s *state) checkHealth(ctx context.Context) tea.Cmd {
 
 // healthLine is "health: 3 problems (!)": errors and warnings, info isn't a problem.
 func healthLine(report health.Report, key string) string {
-	n := report.Counts.Error + report.Counts.Warning
+	return fmt.Sprintf("%s (%s)", problems(report.Counts.Error+report.Counts.Warning), key)
+}
+
+func problems(n int) string {
 	switch n {
 	case 0:
-		return fmt.Sprintf("health: no problems (%s)", key)
+		return "health: no problems"
 	case 1:
-		return fmt.Sprintf("health: 1 problem (%s)", key)
+		return "health: 1 problem"
 	}
-	return fmt.Sprintf("health: %d problems (%s)", n, key)
+	return fmt.Sprintf("health: %d problems", n)
 }
 
 func (s *state) load(ctx context.Context) tea.Cmd {

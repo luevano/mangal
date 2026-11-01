@@ -179,9 +179,11 @@ func (s *mangasState) reload(ctx context.Context) tea.Cmd {
 			// the list without the watch marks
 			log.Warn("library: the watches: %s", err)
 		}
-		dups, err := lib.Duplicates(ctx)
-		if err != nil {
-			log.Warn("duplicates: %s", err)
+		var dups []library.Duplicate
+		if base.Can(core.ScopeManage) {
+			if dups, err = lib.Duplicates(ctx); err != nil {
+				log.Warn("duplicates: %s", err)
+			}
 		}
 		ids := library.DuplicateIDs(dups)
 		items := make([]*mangaItem, len(list.Mangas))
@@ -195,6 +197,9 @@ func (s *mangasState) reload(ctx context.Context) tea.Cmd {
 
 // trashSummary is the size of the trash, empty if it's empty.
 func trashSummary(ctx context.Context, lib core.Library) string {
+	if !base.Can(core.ScopeManage) {
+		return ""
+	}
 	batches, err := lib.Trash(ctx)
 	if err != nil || len(batches) == 0 {
 		return ""
