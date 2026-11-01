@@ -239,6 +239,29 @@ func (j Journal) Ops(limit int) ([]Op, error) {
 	return queryAll(j.DB, scanOp, query)
 }
 
+// OpState is what can change of a journaled operation.
+type OpState struct{ Finished, Undone bool }
+
+// OpStates are the states of every operation. No steps or summaries: it stays cheap with
+// a long journal.
+func (j Journal) OpStates() (map[int64]OpState, error) {
+	rows, err := j.DB.Query(`SELECT id, finished != 0, undone != 0 FROM journal`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	states := map[int64]OpState{}
+	for rows.Next() {
+		var id int64
+		var st OpState
+		if err := rows.Scan(&id, &st.Finished, &st.Undone); err != nil {
+			return nil, err
+		}
+		states[id] = st
+	}
+	return states, rows.Err()
+}
+
 // Op is the operation with the id.
 func (j Journal) Op(id int64) (Op, bool, error) {
 	ops, err := queryAll(j.DB, scanOp, `SELECT `+opColumns+` FROM journal WHERE id = ?`, id)

@@ -397,6 +397,26 @@ func TestOpWatch(t *testing.T) {
 	if got := kinds(); len(got) != 0 {
 		t.Errorf("nothing new: %q", got)
 	}
+
+	// an operation however old: no window of the newest ones
+	for i := range 150 {
+		if _, err := j.Begin("rename", fmt.Sprintf("filler %d", i), ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := kinds(); len(got) != 150 {
+		t.Errorf("fillers: %d events", len(got))
+	}
+	first, ok, err := j.Op(1)
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if err := j.MarkUndone(first); err != nil {
+		t.Fatal(err)
+	}
+	if got := kinds(); !slices.Equal(got, []string{"undone old tui"}) {
+		t.Errorf("undone oldest: %q", got)
+	}
 }
 
 // TestV1DismissPick: a pick is dismissed through plan and apply, then there's nothing to

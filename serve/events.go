@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -60,17 +61,11 @@ func (a *API) dbChanged(topics []string) {
 	}
 }
 
-// opsWatched is how many of the newest operations opWatch compares.
-// shortcut: undoing an older one has no op event (the library one still comes), raise it if that matters.
-const opsWatched = 100
-
-type opState struct{ finished, undone bool }
-
 // opWatch tells which of the journal's operations started, finished or were undone since
 // it last looked, whichever process did them.
 type opWatch struct {
 	journal storage.Journal
-	seen    map[int64]opState
+	seen    map[int64]storage.OpState
 }
 
 // newOpWatch watches the journal from now on.
@@ -87,31 +82,38 @@ type opEvent struct {
 
 // changes are the op events since the last call, oldest first: started, done, undone.
 func (w *opWatch) changes() ([]opEvent, error) {
-	ops, err := w.journal.Ops(opsWatched)
+	// the journal's timestamps can't be a watermark (taken before their commit, which may
+	// wait for another's): compare every operation's state, cheap and only after a change
+	states, err := w.journal.OpStates()
 	if err != nil {
 		return nil, err
 	}
 	first := w.seen == nil
-	seen := make(map[int64]opState, len(ops))
 	var events []opEvent
-	for _, op := range slices.Backward(ops) {
-		now := opState{finished: !op.Finished.IsZero(), undone: !op.Undone.IsZero()}
-		seen[op.ID] = now
-		if first {
+	for _, id := range slices.Sorted(maps.Keys(states)) {
+		now := states[id]
+		was, known := w.seen[id]
+		if first || (known && now == was) {
 			continue
 		}
-		was, ok := w.seen[op.ID]
+		op, ok, err := w.journal.Op(id)
+		if err != nil {
+			return nil, err
+		}
 		if !ok {
+			continue // forgotten since
+		}
+		if !known {
 			events = append(events, opEvent{"started", op})
 		}
-		if now.finished && !was.finished {
+		if now.Finished && !was.Finished {
 			events = append(events, opEvent{"done", op})
 		}
-		if now.undone && !was.undone {
+		if now.Undone && !was.Undone {
 			events = append(events, opEvent{"undone", op})
 		}
 	}
-	w.seen = seen
+	w.seen = states
 	return events, nil
 }
 
