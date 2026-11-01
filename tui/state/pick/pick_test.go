@@ -37,7 +37,7 @@ func fakes(t *testing.T) *[]string {
 		searched = append(searched, provider+": "+query)
 		return []mangadata.Manga{manga(provider + "-1"), manga(provider + "-2")}, provider + "-new", nil
 	}
-	InstalledProviders = func() ([]libmangal.ProviderInfo, error) {
+	InstalledProviders = func(context.Context) ([]libmangal.ProviderInfo, error) {
 		return []libmangal.ProviderInfo{{ID: "a", Name: "Alpha"}, {ID: "b", Name: "Beta"}, {ID: "c", Name: "Gamma"}}, nil
 	}
 	return &searched

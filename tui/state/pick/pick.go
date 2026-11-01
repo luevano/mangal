@@ -38,12 +38,12 @@ var SearchProvider = func(ctx context.Context, provider, id, query string) (mang
 }
 
 // InstalledProviders are the installed providers. Swapped in tests.
-var InstalledProviders = func() ([]libmangal.ProviderInfo, error) {
+var InstalledProviders = func(ctx context.Context) ([]libmangal.ProviderInfo, error) {
 	svc, err := base.Services()
 	if err != nil {
 		return nil, err
 	}
-	return svc.Providers.List(context.Background())
+	return svc.Providers.List(ctx)
 }
 
 // MangaItem is a search result.
@@ -323,8 +323,8 @@ func (s *Providers) Title() base.Title {
 }
 
 func (s *Providers) Init(ctx context.Context) tea.Cmd {
-	return base.Load(ctx, "Loading the providers", func(context.Context) (providersMsg, error) {
-		infos, err := InstalledProviders()
+	return base.Load(ctx, "Loading the providers", func(ctx context.Context) (providersMsg, error) {
+		infos, err := InstalledProviders(ctx)
 		return providersMsg(infos), err
 	}, func(msg providersMsg) tea.Msg { return msg })
 }
