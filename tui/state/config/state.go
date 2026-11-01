@@ -170,12 +170,12 @@ func (s *state) items() []item {
 	}
 	var items []item
 	for _, key := range keys {
-		if mconfig.Side(key) == "local" {
+		if mconfig.Side(key) == mconfig.SideClient {
 			items = append(items, item{key: key})
 		}
 	}
 	for _, e := range s.server {
-		if e.Side != "local" {
+		if e.Side != mconfig.SideClient {
 			items = append(items, item{key: e.Key, e: &e})
 		}
 	}
@@ -184,7 +184,7 @@ func (s *state) items() []item {
 
 // itemOf is the key's item, the server's on a remote.
 func (s *state) itemOf(key string) item {
-	if e, ok := s.server[key]; ok && e.Side != "local" {
+	if e, ok := s.server[key]; ok && e.Side != mconfig.SideClient {
 		return item{key: key, e: &e}
 	}
 	return item{key: key}

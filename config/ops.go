@@ -285,6 +285,7 @@ var retired = map[string]string{
 	"serve.allowed_hosts":     "every request logs in now, any host name is answered",
 	"serve.allowed_origins":   "the browsers' Sec-Fetch-Site tells same-origin requests apart, behind a proxy too",
 	"web.host":                "mangal web uses serve.host",
+	"remote.url":              "connection takes the address or a name now, see mangal connection",
 	"web.port":                "mangal web uses serve.port",
 }
 

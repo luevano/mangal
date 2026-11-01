@@ -550,3 +550,17 @@ func TestSizeEntry(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectionNames(t *testing.T) {
+	for _, name := range []string{"", "local", "a:b", "a/b", "a.b", "a b", "NAS"} {
+		if ValidConnectionName(name) == nil {
+			t.Errorf("%q is accepted", name)
+		}
+	}
+	if err := ValidConnectionName("nas-2"); err != nil {
+		t.Error(err)
+	}
+	if Side(Connection.Key) != SideClient || Side(Connections.Key) != SideClient || !IsRisky(Connection.Key) || !IsRisky(Connections.Key) {
+		t.Error("the connection keys are the client's and hidden over HTTP")
+	}
+}

@@ -54,7 +54,7 @@ func init() {
 var providersUpCmd = &cobra.Command{
 	Use:   "up",
 	Short: "Update providers",
-	Long: `Update the installed providers: a git pull of each. With --remote (or remote.url) the
+	Long: `Update the installed providers: a git pull of each. On a server (--remote, connection) the
 server's, with an admin's token.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {

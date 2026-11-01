@@ -14,11 +14,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// configOf is the config the command works on: a server's (--remote, remote.url), unless
-// key is one each machine keeps (config.Side, "" for none).
+// configOf is the config the command works on: the connection's, unless key is one each
+// machine keeps (config.Side, "" for none).
 func configOf(cmd *cobra.Command, key string) (core.Config, bool, error) {
 	rc, err := connectRemote(cmd)
-	if err != nil || rc == nil || (key != "" && config.Side(key) == "local") {
+	if err != nil || rc == nil || (key != "" && config.Side(key) == config.SideClient) {
 		return core.NewConfig(), false, err
 	}
 	return rc.Services().Config, true, nil
@@ -26,7 +26,6 @@ func configOf(cmd *cobra.Command, key string) (core.Config, bool, error) {
 
 func init() {
 	rootCmd.AddCommand(configCmd)
-	remoteFlags(configInfoCmd, configGetCmd, configSetCmd, configHistoryCmd, configUndoCmd)
 }
 
 var configCmd = &cobra.Command{

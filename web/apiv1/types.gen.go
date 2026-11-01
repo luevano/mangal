@@ -60,16 +60,16 @@ func (e ConfigEntryKind) Valid() bool {
 
 // Defines values for ConfigEntrySide.
 const (
-	ConfigEntrySideLocal  ConfigEntrySide = "local"
-	ConfigEntrySideServer ConfigEntrySide = "server"
+	SideClient ConfigEntrySide = "client"
+	SideServer ConfigEntrySide = "server"
 )
 
 // Valid indicates whether the value is a known member of the ConfigEntrySide enum.
 func (e ConfigEntrySide) Valid() bool {
 	switch e {
-	case ConfigEntrySideLocal:
+	case SideClient:
 		return true
-	case ConfigEntrySideServer:
+	case SideServer:
 		return true
 	default:
 		return false
@@ -404,7 +404,7 @@ type ConfigEntry struct {
 	Risky  *bool `json:"risky,omitempty"`
 	Secret bool  `json:"secret"`
 
-	// Side local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with
+	// Side client: each machine keeps its own (the TUI's look, the serve it uses), a frontend on a server shows its own; server: what the server runs with
 	Side   *ConfigEntrySide `json:"side,omitempty"`
 	Source ConfigSource     `json:"source"`
 
@@ -424,7 +424,7 @@ type ConfigEntryApplies string
 // ConfigEntryKind the value's type
 type ConfigEntryKind string
 
-// ConfigEntrySide local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with
+// ConfigEntrySide client: each machine keeps its own (the TUI's look, the serve it uses), a frontend on a server shows its own; server: what the server runs with
 type ConfigEntrySide string
 
 // ConfigEntryStored where the value is stored, mangal.toml of the server (file) or the database (db)

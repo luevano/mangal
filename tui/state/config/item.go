@@ -17,7 +17,7 @@ import (
 var _ list.DefaultItem = item{}
 
 // sections in the order shown, the others after them by name.
-var sections = []string{"download", "read", "providers", "metadata", "notification", "watch", "health", "jobs", "serve", "remote", "web", "tui", "cache", "data", "log", "auth", "icons", "cli"}
+var sections = []string{"download", "read", "providers", "metadata", "notification", "watch", "health", "jobs", "serve", "connection", "connections", "remote", "web", "tui", "cache", "data", "log", "auth", "icons", "cli"}
 
 // summaries say what each section holds, on the section list.
 var summaries = map[string]string{
@@ -30,7 +30,9 @@ var summaries = map[string]string{
 	"health":       "mangal serve's own health checks",
 	"jobs":         "the maintenance jobs: on/off, per-provider settings, the pause between requests",
 	"serve":        "where mangal serve listens",
-	"remote":       "the mangal serve elsewhere the CLI's changes go to",
+	"connection":   "the backend the TUI and the CLI use: local or a server",
+	"connections":  "the servers by name",
+	"remote":       "how to reach a server: its token, CA, timeout, read cache",
 	"web":          "where mangal web listens",
 	"tui":          "how the TUI looks and behaves",
 	"cache":        "how long searches, lists and mirrors are kept",

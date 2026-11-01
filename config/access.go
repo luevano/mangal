@@ -23,7 +23,7 @@ import (
 // mangal keeps its data, downloads and runs providers from, the files' permissions, the log.
 // Over HTTP only an admin sees them; every other key is seen with read, changed by an admin.
 var (
-	riskyPrefixes = []string{"serve.", "auth.", "log.", "remote."}
+	riskyPrefixes = []string{"serve.", "auth.", "log.", "remote.", "connection"}
 	riskyKeys     = []string{
 		"providers.allow_private_addresses", "providers.private_allowlist", "providers.headless.flaresolverr_url",
 		"providers.mirrors", "data.path", "cache.path", "providers.path",
@@ -43,17 +43,22 @@ func IsRisky(key string) bool {
 	return ok && (f.setting.Kind == libmangal.SettingPath || f.mangal && f.setting.Key == "mirror")
 }
 
-// localPrefixes are each machine's own keys: its terminal's look and the serve it uses. A
-// remote TUI keeps its own, the server's other keys are what it runs with.
-var localPrefixes = []string{"tui.", "icons", "cli.", "remote."}
+// The sides of a key: SideClient is each machine's own (a frontend on a server keeps using
+// it), SideServer is what a frontend on a server takes from the server.
+const (
+	SideClient = "client"
+	SideServer = "server"
+)
 
-// Side is "local" for a key each machine keeps for itself (a remote frontend uses its own),
-// "server" for one a remote frontend takes from the server.
+// clientPrefixes are each machine's own keys: its terminal's look and the serve it uses.
+var clientPrefixes = []string{"tui.", "icons", "cli.", "remote.", "connection"}
+
+// Side is the key's side, SideClient or SideServer.
 func Side(key string) string {
-	if hasPrefix(key, localPrefixes) {
-		return "local"
+	if hasPrefix(key, clientPrefixes) {
+		return SideClient
 	}
-	return "server"
+	return SideServer
 }
 
 // startupPrefixes are read once when mangal starts: where the databases are, the log, the

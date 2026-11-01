@@ -145,7 +145,7 @@ func NormalizeURL(raw string) (string, error) {
 		return "", fmt.Errorf("%q isn't an http or https address: %w", raw, core.ErrInvalid)
 	}
 	if u.User != nil {
-		return "", fmt.Errorf("the address has a user or password: log in with a token instead (mangal remote login): %w", core.ErrInvalid)
+		return "", fmt.Errorf("the address has a user or password: log in with a token instead (mangal connection login): %w", core.ErrInvalid)
 	}
 	u.Scheme, u.Host = strings.ToLower(u.Scheme), strings.ToLower(u.Host)
 	if port := u.Port(); (u.Scheme == "http" && port == "80") || (u.Scheme == "https" && port == "443") {
@@ -231,7 +231,7 @@ func sameAddress(req *http.Request, via []*http.Request) error {
 		return errors.New("stopped after 10 redirects")
 	}
 	if first := via[0].URL; req.URL.Scheme != first.Scheme || req.URL.Host != first.Host {
-		return fmt.Errorf("the server redirects to %s://%s: not followed, set remote.url to the address that answers", req.URL.Scheme, req.URL.Host)
+		return fmt.Errorf("the server redirects to %s://%s: not followed, use the address that answers", req.URL.Scheme, req.URL.Host)
 	}
 	return nil
 }

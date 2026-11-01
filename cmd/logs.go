@@ -34,7 +34,6 @@ var logsArgs logsFlags
 
 func init() {
 	rootCmd.AddCommand(logsCmd)
-	remoteFlags(logsCmd)
 	f := logsCmd.Flags()
 	f.BoolVarP(&logsArgs.List, "list", "l", false, "List the log files")
 	f.BoolVarP(&logsArgs.All, "all", "a", false, "Read every log file, not only the current period's")

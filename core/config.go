@@ -82,8 +82,8 @@ type ConfigEntry struct {
 	Restart bool `json:"restart,omitempty"`
 	// Risky keys weaken access when changed: only an admin sees them over HTTP.
 	Risky bool `json:"risky,omitempty"`
-	// Side is "local" for a key each machine keeps (a remote TUI uses its own), else
-	// "server".
+	// Side is "client" for a key each machine keeps (a frontend on a server uses its own),
+	// else "server".
 	Side string `json:"side"`
 }
 

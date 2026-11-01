@@ -160,7 +160,7 @@ var Features = []Feature{
 		TUI: "K (home): users and API tokens after the accounts", TUIKey: "K",
 		CLI:           []string{"user add", "user passwd", "user perms", "user logout", "user rm", "user ls", "token add", "token ls", "token rm"},
 		NotApplicable: map[Mode]string{ModeScript: "scripts use the server's key or an API token"}},
-	{Name: "remote server", CLI: []string{"remote login", "remote logout", "remote status"},
+	{Name: "remote server", CLI: []string{"connection ls", "connection add", "connection rm", "connection use", "connection login", "connection logout", "connection status"},
 		NotApplicable: map[Mode]string{ModeTUI: "the TUI runs on a server with --remote, logging in is the CLI's", ModeWeb: "the web UI is the server's", ModeAPI: "the client side of the API", ModeScript: cliEnough}},
 }
 

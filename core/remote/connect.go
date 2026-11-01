@@ -4,38 +4,70 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
-// Target says which mangal serve: URL (--remote), else remote.url unless Local (--local).
+// Target says which backend: Remote (--remote, a name or an address), else the connection
+// key unless Local (--local).
 type Target struct {
-	URL   string
-	Local bool
+	Remote string
+	Local  bool
 	// Warn, if set, is told the client's warnings (a token over plain HTTP).
 	Warn func(msg string)
 }
 
 // Address is the target's server, normalized, "" for this machine.
 func (t Target) Address() (string, error) {
-	raw := t.URL
-	if raw == "" && !t.Local {
-		raw = config.Remote.URL.Get()
-	}
-	if raw == "" {
+	if t.Local {
 		return "", nil
 	}
-	return NormalizeURL(raw)
+	if t.Remote != "" {
+		return Resolve(t.Remote)
+	}
+	return Resolve(config.Connection.Get())
+}
+
+// Resolve is the server of a connection value (local, a name from connections, an address),
+// normalized, "" for this machine.
+func Resolve(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || value == config.LocalConnection {
+		return "", nil
+	}
+	if strings.ContainsAny(value, ":/") {
+		return NormalizeURL(value)
+	}
+	address, ok := config.Connections.Get()[strings.ToLower(value)]
+	if !ok {
+		return "", fmt.Errorf("no connection %q: mangal connection ls shows them, mangal connection add adds one", value)
+	}
+	return NormalizeURL(address)
+}
+
+// Name is how to call the server at url: its connection's name, else its host.
+func Name(url string) string {
+	conns := config.Connections.Get()
+	for _, name := range slices.Sorted(maps.Keys(conns)) {
+		if address, err := NormalizeURL(conns[name]); err == nil && address == url {
+			return name
+		}
+	}
+	_, host, _ := strings.Cut(url, "://")
+	return host
 }
 
 // Token is the token for the server at url (normalized) and where it's from: remote.token
-// when it's remote.url's (never sent to another server), else the one `mangal remote
-// login` saved; "" for none.
+// when it's the connection key's server (never sent to a --remote elsewhere), else the one
+// `mangal connection login` saved; "" for none.
 func Token(url string) (token, from string, err error) {
 	if t := config.Remote.Token.Get(); t != "" {
-		if configured, err := NormalizeURL(config.Remote.URL.Get()); err == nil && configured == url {
+		if configured, err := Resolve(config.Connection.Get()); err == nil && configured == url {
 			return t, "remote.token", nil
 		}
 	}
@@ -72,9 +104,9 @@ func Connect(ctx context.Context, t Target) (*Client, error) {
 	}
 	if _, err := c.Status(ctx); err != nil {
 		if errors.Is(err, ErrUnauthorized) {
-			return nil, fmt.Errorf("%s: %w (mangal remote login %s)", url, err, url)
+			return nil, fmt.Errorf("%s: %w (mangal connection login %s)", Name(url), err, Name(url))
 		}
-		return nil, fmt.Errorf("%s: %w", url, err)
+		return nil, fmt.Errorf("%s (--local for this machine): %w", Name(url), err)
 	}
 	return c, nil
 }

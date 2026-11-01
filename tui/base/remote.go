@@ -17,7 +17,7 @@ import (
 	"github.com/luevano/mangal/v5/path"
 )
 
-// Remote is the mangal serve the TUI runs on (--remote, remote.url).
+// Remote is the mangal serve the TUI runs on (the connection).
 type Remote struct {
 	// URL is the server's address, Version its mangal's.
 	URL, Version string

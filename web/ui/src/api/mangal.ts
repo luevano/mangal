@@ -2930,10 +2930,10 @@ export interface components {
             /** @description an enum's accepted values */
             values?: string[];
             /**
-             * @description local: each machine keeps its own (the TUI's look, the serve it uses), a remote TUI shows its own; server: what the server runs with
+             * @description client: each machine keeps its own (the TUI's look, the serve it uses), a frontend on a server shows its own; server: what the server runs with
              * @enum {string}
              */
-            side?: "server" | "local";
+            side?: "server" | "client";
         };
         ConfigSource: {
             /**

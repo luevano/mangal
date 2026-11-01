@@ -82,7 +82,7 @@ func TestV1ConfigAdmin(t *testing.T) {
 				t.Errorf("the %s doesn't see %s", name, key)
 			}
 		}
-		sides := map[string]string{"icons": "local", "tui.skip_home": "local", "cli.colored_help": "local", "download.format": "server", "watch.schedule": "server"}
+		sides := map[string]string{"icons": "client", "tui.skip_home": "client", "cli.colored_help": "client", "download.format": "server", "watch.schedule": "server"}
 		for _, e := range some {
 			if want, ok := sides[e.Key]; ok && (e.Side == nil || string(*e.Side) != want) {
 				t.Errorf("%s: side %v, want %s", e.Key, e.Side, want)

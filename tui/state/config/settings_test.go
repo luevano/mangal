@@ -140,7 +140,7 @@ func TestRemoteSplit(t *testing.T) {
 	server := &serverConfig{entries: map[string]core.ConfigEntry{
 		"download.skip_if_exists": {Key: "download.skip_if_exists", Value: true, Default: true, Kind: "bool", Side: "server", Stored: "file"},
 		"providers.parallelism":   {Key: "providers.parallelism", Value: float64(3), Default: float64(15), Kind: "int", Side: "server", Stored: "db"},
-		"tui.skip_home":           {Key: "tui.skip_home", Value: false, Kind: "bool", Side: "local"},
+		"tui.skip_home":           {Key: "tui.skip_home", Value: false, Kind: "bool", Side: "client"},
 	}}
 	base.CurrentRemote = &base.Remote{URL: "http://nas.lan:6977", Perms: []string{core.ScopeRead}}
 	t.Cleanup(func() { base.CurrentRemote = nil })
