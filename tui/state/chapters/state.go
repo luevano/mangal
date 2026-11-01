@@ -285,6 +285,9 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 		return nil
 	case base.DBChangedMsg:
+		if msg.Has(storage.RevSettings) {
+			s.updateSubtitleFormats()
+		}
 		// another process downloaded, deleted, renamed or read: the marks
 		if msg.Has(storage.RevLibrary, storage.RevJournal, storage.RevHistory) {
 			return s.refresh(ctx, false)
