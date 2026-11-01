@@ -19,7 +19,7 @@ func Details(meta metadata.Metadata, width int) string {
 	m := renderer{styles: newStyles(metaIDStyle(meta.ID())), width: width}
 	f := allFields(meta)
 
-	return jV(
+	view := jV(
 		m.row(m.render(f.id), m.render(f.title)),
 		m.row(m.render(f.status), m.render(f.chapters), m.render(f.startDate), m.render(f.endDate)),
 		m.row(m.render(f.country), m.render(f.score), m.render(f.format), m.render(f.publisher)),
@@ -33,6 +33,11 @@ func Details(meta metadata.Metadata, width int) string {
 		m.render(f.extraIDs),
 		m.render(f.notes),
 	)
+	if meta.ID().Code == metadata.IDCodeMangaUpdates {
+		// its acceptable use policy asks for it where its data is shown
+		return jV(view, _style.Normal.Secondary.Render("Data from MangaUpdates: https://www.mangaupdates.com/"))
+	}
+	return view
 }
 
 type renderer struct {

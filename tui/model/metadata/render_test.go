@@ -76,3 +76,20 @@ func TestDetailsWidth(t *testing.T) {
 		t.Error("120 columns isn't the layout without a limit")
 	}
 }
+
+type fakeMU struct{ fakeMeta }
+
+func (fakeMU) ID() metadata.ID {
+	return metadata.ID{Raw: "1", Source: metadata.IDSourceMangaUpdates, Code: metadata.IDCodeMangaUpdates}
+}
+
+// the credit is only for MangaUpdates' data
+func TestDetailsCredit(t *testing.T) {
+	const credit = "Data from MangaUpdates: https://www.mangaupdates.com/"
+	if !strings.Contains(ansi.Strip(Details(fakeMU{}, 80)), credit) {
+		t.Error("no credit on MangaUpdates' data")
+	}
+	if strings.Contains(ansi.Strip(Details(fakeMeta{}, 80)), credit) {
+		t.Error("credit on AniList's data")
+	}
+}
