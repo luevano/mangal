@@ -222,7 +222,7 @@ func (a *API) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 // publicPaths are the API's routes without a login.
-var publicPaths = []string{"/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/me"}
+var publicPaths = []string{"/api/v1/auth/login", "/api/v1/auth/device", "/api/v1/auth/logout", "/api/v1/auth/me"}
 
 // isPublic is true for the web UI's files and the login: the rest is the API and OPDS.
 func isPublic(path string) bool {

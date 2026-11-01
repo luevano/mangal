@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	neturl "net/url"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/util/cache"
+	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
 // Target says which backend: Remote (--remote, a name or an address), else the connection
@@ -215,4 +218,43 @@ func SaveToken(ctx context.Context, url, token string, warn func(string)) (who s
 		return "", err
 	}
 	return fmt.Sprintf("%s (%s)", me.Name, strings.Join(me.Scopes, ", ")), nil
+}
+
+// CheckPasswordAddress refuses sending a password to the server at url in the clear: over plain
+// HTTP only to this machine. Asked before the password is, Login checks it too.
+func CheckPasswordAddress(url string) error {
+	u, err := neturl.Parse(url)
+	if err != nil {
+		return err
+	}
+	if u.Scheme == "http" && !loopback(u.Hostname()) {
+		return fmt.Errorf("a password isn't sent to %s over plain HTTP, anyone on the way could read it: use HTTPS, or an API token (mangal token add there)", u.Host)
+	}
+	return nil
+}
+
+// Login logs the user in on the server at url: the password goes once and isn't kept, the device
+// token the server answers (tui@<hostname>, with the user's permissions) is saved as SaveToken
+// does. who is the token's name there.
+func Login(ctx context.Context, url, user, password string, warn func(string)) (who string, err error) {
+	if err := CheckPasswordAddress(url); err != nil {
+		return "", err
+	}
+	host, err := os.Hostname()
+	if err != nil {
+		return "", fmt.Errorf("this machine's name: %w", err)
+	}
+	c, err := Open(url, "", warn)
+	if err != nil {
+		return "", err
+	}
+	r, err := c.API.LoginDeviceWithResponse(ctx, apiv1.DeviceLogin{Name: user, Password: password, Device: host})
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", url, err)
+	}
+	added, err := answer(r.StatusCode(), r.Body, r.JSON201, r.JSONDefault)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", url, err)
+	}
+	return SaveToken(ctx, url, added.Secret, warn)
 }

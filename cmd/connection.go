@@ -75,10 +75,11 @@ var connectionCmd = &cobra.Command{
 	Long: `A frontend (the TUI, the CLI) has one connection: local (this machine) or a mangal serve.
 "mangal connection use nas" saves it for every later run (the key connection, MANGAL_CONNECTION
 for one process), --remote <name|address> and --local are for one run. mangal serve itself
-ignores it. A server's API token ("mangal token add <name> --perms ..." there) is saved per
-address with "mangal connection login" (with auth.keyring in the OS keyring), remote.token
-(MANGAL_REMOTE_TOKEN) is sent only to the connection. Over plain HTTP to another machine the
-token can be read on the way: a warning says so, use HTTPS (remote.ca_file for a private CA).`,
+ignores it. "mangal connection login" logs in with a user and password, the server answers with
+this device's token, or saves an API token ("mangal token add <name> --perms ..." there): per
+address (with auth.keyring in the OS keyring). remote.token (MANGAL_REMOTE_TOKEN) is sent only to
+the connection. Over plain HTTP to another machine a password is refused, a token can be read on
+the way: a warning says so, use HTTPS (remote.ca_file for a private CA).`,
 }
 
 // connectionArg is the server of the command's argument (a name or an address), else the
@@ -186,12 +187,25 @@ var connectionUseCmd = &cobra.Command{
 	},
 }
 
+var connectionLoginArgs = struct {
+	User string
+}{}
+
+func init() {
+	connectionLoginCmd.Flags().StringVarP(&connectionLoginArgs.User, "user", "u", "", "Log in as this user (asked on a terminal, empty for an API token)")
+}
+
 var connectionLoginCmd = &cobra.Command{
 	Use:   "login [name|address]",
-	Short: "Save an API token of a mangal serve",
-	Long: `Ask for an API token of the mangal serve (the connection by default), check it there and
-save it for that address. A line on stdin when it isn't a terminal.`,
+	Short: "Log in to a mangal serve, or save an API token of it",
+	Long: `Log in to the mangal serve (the connection by default). With a user and password, once: the
+server answers with this device's token (tui@<hostname>, the user's permissions, no tokens
+permission needed; logging in again replaces it; it ends with the user's logins) and the password
+isn't kept. A password is refused over plain HTTP except to this machine. With an empty user, an
+API token is asked for, checked there and saved for that address. Without a terminal, stdin's line
+is the token, or the password with --user.`,
 	Example: `  mangal connection login nas
+  mangal connection login nas --user david
   echo "$TOKEN" | mangal connection login http://nas.lan:6977`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -199,7 +213,17 @@ save it for that address. A line on stdin when it isn't a terminal.`,
 		if err != nil {
 			return err
 		}
-		token, err := readSecret(cmd, bufio.NewReader(cmd.InOrStdin()), "API token for "+url+": ")
+		in := bufio.NewReader(cmd.InOrStdin())
+		user := connectionLoginArgs.User
+		if _, tty := terminal(cmd.InOrStdin()); tty && user == "" {
+			if user, err = readLine(cmd, in, "User on "+url+" (empty for an API token): ", false); err != nil {
+				return err
+			}
+		}
+		if user != "" {
+			return loginUser(cmd, in, url, user)
+		}
+		token, err := readSecret(cmd, in, "API token for "+url+": ")
 		if err != nil {
 			return err
 		}
@@ -213,6 +237,26 @@ save it for that address. A line on stdin when it isn't a terminal.`,
 		cmd.Printf("saved the token %s for %s\n", who, url)
 		return nil
 	},
+}
+
+// loginUser logs the user in with the password asked for, saving this device's token.
+func loginUser(cmd *cobra.Command, in *bufio.Reader, url, user string) error {
+	if err := remote.CheckPasswordAddress(url); err != nil {
+		return err
+	}
+	password, err := readSecret(cmd, in, "Password of "+user+": ")
+	if err != nil {
+		return err
+	}
+	if password == "" {
+		return errors.New("no password: nothing saved")
+	}
+	who, err := remote.Login(ctxOf(cmd), url, user, password, remoteWarn(cmd))
+	if err != nil {
+		return err
+	}
+	cmd.Printf("logged in as %s, saved this device's token %s for %s\n", user, who, url)
+	return nil
 }
 
 var connectionLogoutCmd = &cobra.Command{

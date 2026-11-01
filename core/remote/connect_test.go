@@ -178,3 +178,32 @@ func TestLocalServe(t *testing.T) {
 		t.Errorf("another major: %v, %v", c, err)
 	}
 }
+
+// a password goes over HTTPS or to this machine, nothing is sent otherwise
+func TestLoginAddress(t *testing.T) {
+	for url, ok := range map[string]bool{
+		"https://nas.lan":       true,
+		"http://localhost:6977": true,
+		"http://127.0.0.1:6977": true,
+		"http://[::1]:6977":     true,
+		"http://nas.lan:6977":   false,
+		"http://192.168.1.2":    false,
+		"http://localhost.evil": false,
+		"http://127.0.0.1.evil": false,
+	} {
+		if err := CheckPasswordAddress(url); (err == nil) != ok {
+			t.Errorf("%s: %v", url, err)
+		}
+	}
+	asked := false
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { asked = true }))
+	defer srv.Close()
+	// the fake server's address as another machine's, through a proxy nothing goes to
+	t.Setenv("HTTP_PROXY", srv.URL)
+	if _, err := Login(t.Context(), "http://nas.lan:6977", "david", "the password", nil); err == nil || !strings.Contains(err.Error(), "plain HTTP") {
+		t.Errorf("over plain HTTP: %v", err)
+	}
+	if asked {
+		t.Error("the password was sent")
+	}
+}

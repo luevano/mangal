@@ -63,6 +63,7 @@
   "PATCH /v1/tokens/{name}": "tokens",
   "PATCH /v1/users/{name}": "admin",
   "PATCH /v1/watches/{id}": "manage",
+  "POST /v1/auth/device": "public",
   "POST /v1/auth/login": "public",
   "POST /v1/auth/logout": "public",
   "POST /v1/check": "manage",

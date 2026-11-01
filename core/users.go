@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/luevano/mangal/v5/client"
@@ -548,6 +549,45 @@ func (l localUsers) RemoveToken(_ context.Context, name string) error {
 		}
 		return slices.Delete(entries, i, i+1), nil
 	})
+}
+
+// DevicePrefix goes before a device's name in its token's: tui@host.
+const DevicePrefix = "tui@"
+
+// DeviceToken makes the user's token for the device (its hostname), replacing the one they have
+// there, with their permissions now; it lasts while their logins do (generation). Someone else's
+// token of that name stays: this one's name then says whose it is.
+func DeviceToken(owner, device string, generation int64, perms []string) (Token, string, error) {
+	if device == "" || strings.TrimSpace(device) != device || strings.ContainsFunc(device, unicode.IsControl) {
+		return Token{}, "", invalid("%q can't be a device's name", device)
+	}
+	scopes, err := NormalizeScopes(perms)
+	if err != nil {
+		return Token{}, "", err
+	}
+	secret, err := NewToken()
+	if err != nil {
+		return Token{}, "", err
+	}
+	device = DevicePrefix + device
+	e := cache.ServeTokenEntry{Name: device, Hash: HashToken(secret), Perms: scopes, Owner: owner, Created: time.Now(), Device: device, Generation: generation}
+	err = cache.UpdateServeTokens(func(entries []cache.ServeTokenEntry) ([]cache.ServeTokenEntry, error) {
+		entries = slices.DeleteFunc(entries, func(t cache.ServeTokenEntry) bool { return t.Device == device && strings.EqualFold(t.Owner, owner) })
+		taken := func(name string) bool {
+			return slices.ContainsFunc(entries, func(t cache.ServeTokenEntry) bool { return t.Name == name })
+		}
+		if taken(e.Name) {
+			e.Name = fmt.Sprintf("%s (%s)", device, owner)
+			if taken(e.Name) {
+				return nil, &RefusedError{Reasons: []string{fmt.Sprintf("there's a token %q already", e.Name)}}
+			}
+		}
+		return append(entries, e), nil
+	})
+	if err != nil {
+		return Token{}, "", err
+	}
+	return Token{Name: e.Name, Scopes: scopes, Owner: owner, Created: e.Created}, secret, nil
 }
 
 type historyUserKey struct{}

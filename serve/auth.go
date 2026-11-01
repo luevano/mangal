@@ -275,7 +275,7 @@ func (a *Auth) bearer(r *http.Request, token string) (identity, error) {
 					return identity{}, err
 				}
 				id.Scopes = core.CapScopes(id.Scopes, userIdentity(u).Scopes)
-				if len(id.Scopes) == 0 {
+				if len(id.Scopes) == 0 || (t.Device != "" && t.Generation != u.Generation) {
 					break
 				}
 			}

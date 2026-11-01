@@ -269,6 +269,10 @@ type ServeTokenEntry struct {
 	// from the CLI or by an admin for the server.
 	Owner   string    `json:"owner,omitempty"`
 	Created time.Time `json:"created"`
+	// Device is what it's a login of (tui@host, one per device per user), Generation the
+	// owner's logins' then: it ends with them.
+	Device     string `json:"device,omitempty"`
+	Generation int64  `json:"generation,omitempty"`
 }
 
 // ServeTokens are the named tokens of the `mangal serve` API.

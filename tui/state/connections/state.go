@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -73,7 +74,7 @@ type state struct {
 	list.Screen
 	// current is the server in use, "" for this machine; why is why the TUI opened here
 	current, why string
-	// form is what's being filled: a new connection, or login's token
+	// form is what's being filled: a new connection, or a login
 	form  *huhform.Form
 	login string
 	err   string
@@ -188,7 +189,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return base.NotifyWarning("This machine has no login")
 		}
 		s.err, s.login = "", i.url
-		s.form = huhform.New(huhform.Secret("API token", "", "from mangal token add on "+i.name, nil))
+		s.form = huhform.New(huhform.Text("User", "", "empty to paste an API token (from mangal token add on "+i.name+")", nil),
+			huhform.Secret("Password or token", "", "the password isn't kept, the server answers with this device's token", nil))
 		s.form.SetSubmit("log in")
 		return s.form.Focus(0)
 	}
@@ -227,21 +229,40 @@ func (s *state) updateForm(ctx context.Context, msg tea.Msg) tea.Cmd {
 	return tea.Batch(s.reload(), base.Notify("Added "+name))
 }
 
-// loginErrMsg is why a token wasn't saved, shown under the form.
+// loginErrMsg is why a login wasn't saved, shown under the form.
 type loginErrMsg struct{ err error }
 
 func (s *state) saveToken(ctx context.Context) tea.Cmd {
-	url, token := s.login, s.form.Fields[0].Value()
-	if token == "" {
-		s.err = "no token: nothing saved"
+	url, user, secret := s.login, s.form.Fields[0].Value(), s.form.Fields[1].Raw()
+	warn := func(w string) { log.Warn("%s", w) }
+	if user == "" {
+		secret = strings.TrimSpace(secret)
+		if secret == "" {
+			s.err = "no token: nothing saved"
+			return nil
+		}
+		return base.Load(ctx, "Checking the token on "+remote.Name(url), func(ctx context.Context) (tea.Msg, error) {
+			who, err := remote.SaveToken(ctx, url, secret, warn)
+			if err != nil {
+				return loginErrMsg{err: err}, nil
+			}
+			return loggedInMsg{notice: "Saved the token " + who + " for " + remote.Name(url)}, nil
+		}, func(m tea.Msg) tea.Msg { return m })
+	}
+	if err := remote.CheckPasswordAddress(url); err != nil {
+		s.err = err.Error()
 		return nil
 	}
-	return base.Load(ctx, "Checking the token on "+remote.Name(url), func(ctx context.Context) (tea.Msg, error) {
-		who, err := remote.SaveToken(ctx, url, token, func(w string) { log.Warn("%s", w) })
+	if secret == "" {
+		s.err = "no password: nothing saved"
+		return nil
+	}
+	return base.Load(ctx, "Logging in to "+remote.Name(url), func(ctx context.Context) (tea.Msg, error) {
+		who, err := remote.Login(ctx, url, user, secret, warn)
 		if err != nil {
 			return loginErrMsg{err: err}, nil
 		}
-		return loggedInMsg{notice: "Saved the token " + who + " for " + remote.Name(url)}, nil
+		return loggedInMsg{notice: "Logged in as " + user + ", saved this device's token " + who + " for " + remote.Name(url)}, nil
 	}, func(m tea.Msg) tea.Msg { return m })
 }
 

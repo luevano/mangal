@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -335,4 +336,132 @@ func TestUsersAPI(t *testing.T) {
 	if rec := do(h, "GET", "/api/v1/watches", "", remote, "Bearer "+made.Secret, nil); rec.Code != http.StatusUnauthorized {
 		t.Errorf("the removed token: %d", rec.Code)
 	}
+}
+
+// one login of a device, also for a reader: the user's permissions, one per device per user
+// (again replaces it, another user's stays), ending with the user's logins; rate limited
+func TestDeviceLogin(t *testing.T) {
+	s := newTestServer(t, "s3cret")
+	addUser(t, s, "reader", "correct horse", ScopeRead, ScopeProgress)
+	addUser(t, s, "other", "battery staple", ScopeRead)
+	s.api.Auth.Tokens = cache.ServeTokens
+	t.Cleanup(func() { _ = cache.SetServeTokens(nil) })
+	users := storage.Users{DB: s.svc.Watches.DB}
+	h := s.handler(t)
+	const from = "192.0.2.9:1"
+	login := func(name, password, device string) (int, apiv1.NewTokenResponse) {
+		rec := do(h, "POST", "/api/v1/auth/device", `{"name":"`+name+`","password":"`+password+`","device":"`+device+`"}`, from, "", nil)
+		var out apiv1.NewTokenResponse
+		if rec.Code == http.StatusCreated {
+			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return rec.Code, out
+	}
+	me := func(secret string) (int, apiv1.Me) {
+		rec := do(h, "GET", "/api/v1/auth/me", "", from, "Bearer "+secret, nil)
+		var out apiv1.Me
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	tokens := func(owner string) []string {
+		list, err := core.NewUsers().Tokens(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, tk := range list {
+			if tk.Owner == owner {
+				names = append(names, tk.Name)
+			}
+		}
+		return names
+	}
+
+	if code, _ := login("reader", "wrong", "box"); code != http.StatusUnauthorized {
+		t.Errorf("wrong password: %d", code)
+	}
+	code, first := login("reader", "correct horse", "box")
+	if code != http.StatusCreated || first.Token.Name != "tui@box" || deref(first.Token.Owner) != "reader" {
+		t.Fatalf("login: %d %+v", code, first.Token)
+	}
+	if code, who := me(first.Secret); code != http.StatusOK || who.Kind != "token" || !slices.Equal(who.Scopes, []string{ScopeRead, ScopeProgress}) {
+		t.Errorf("the token: %d %+v", code, who)
+	}
+	// refused what its user is: no tokens permission, no admin
+	if rec := do(h, "GET", "/api/v1/tokens", "", from, "Bearer "+first.Secret, nil); rec.Code != http.StatusForbidden {
+		t.Errorf("a reader's device token lists tokens: %d", rec.Code)
+	}
+	if rec := do(h, "GET", "/api/v1/users", "", from, "Bearer "+first.Secret, nil); rec.Code != http.StatusForbidden {
+		t.Errorf("a reader's device token lists users: %d", rec.Code)
+	}
+
+	code, again := login("reader", "correct horse", "box")
+	if code != http.StatusCreated || again.Token.Name != "tui@box" || again.Secret == first.Secret {
+		t.Fatalf("again: %d %+v", code, again.Token)
+	}
+	if code, _ := me(first.Secret); code != http.StatusUnauthorized {
+		t.Errorf("the replaced token: %d", code)
+	}
+	if got := tokens("reader"); !slices.Equal(got, []string{"tui@box"}) {
+		t.Errorf("one per device: %v", got)
+	}
+	code, laptop := login("reader", "correct horse", "laptop")
+	if code != http.StatusCreated || laptop.Token.Name != "tui@laptop" {
+		t.Errorf("another device: %d %+v", code, laptop.Token)
+	}
+
+	// another user on that device: theirs, and neither takes the other's
+	code, other := login("other", "battery staple", "box")
+	if code != http.StatusCreated || other.Token.Name != "tui@box (other)" {
+		t.Fatalf("another user: %d %+v", code, other.Token)
+	}
+	if code, _ := me(again.Secret); code != http.StatusOK {
+		t.Errorf("the first user's token after another's login: %d", code)
+	}
+
+	// a token that happens to have the name isn't the device's
+	u := core.NewUsers()
+	if _, _, err := u.AddToken(t.Context(), "tui@script", "reader", []string{ScopeRead}); err != nil {
+		t.Fatal(err)
+	}
+	if code, tk := login("reader", "correct horse", "script"); code != http.StatusCreated || tk.Token.Name != "tui@script (reader)" {
+		t.Errorf("a named token in the way: %d %+v", code, tk.Token)
+	}
+	if got := tokens("reader"); !slices.Contains(got, "tui@script") {
+		t.Errorf("a named token replaced: %v", got)
+	}
+
+	// never above the user, even if an admin asks; ends with their logins and with them
+	if err := u.SetTokenScopes(t.Context(), "tui@box", core.Scopes); err != nil {
+		t.Fatal(err)
+	}
+	s.api.authChanged()
+	if code, who := me(again.Secret); code != http.StatusOK || slices.Contains(who.Scopes, ScopeAdmin) {
+		t.Errorf("above its user: %d %+v", code, who)
+	}
+	if err := users.EndSessions("reader"); err != nil {
+		t.Fatal(err)
+	}
+	s.api.authChanged()
+	if code, _ := me(again.Secret); code != http.StatusUnauthorized {
+		t.Errorf("after the user's logins ended: %d", code)
+	}
+	if err := users.Remove("other"); err != nil {
+		t.Fatal(err)
+	}
+	s.api.authChanged()
+	if code, _ := me(other.Secret); code != http.StatusUnauthorized {
+		t.Errorf("after the user was removed: %d", code)
+	}
+
+	// the login's rate limit
+	for range freeFailures {
+		login("reader", "nope", "box")
+	}
+	if code, _ := login("reader", "correct horse", "box"); code != http.StatusTooManyRequests {
+		t.Errorf("limited: %d", code)
+	}
+
 }

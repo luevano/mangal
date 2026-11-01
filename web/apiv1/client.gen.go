@@ -104,6 +104,32 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/accounts (the `ListAccounts` operationId).
 	ListAccounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// LoginDeviceWithBody Log a device in, it gets its token
+	//
+	// For a frontend on another machine (mangal connection login): the user's name and password
+	// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+	// permission; one per device per user (logging in again replaces it). It ends with the
+	// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
+	// the login (429 with Retry-After).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/auth/device (the `LoginDevice` operationId).
+	LoginDeviceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LoginDevice Log a device in, it gets its token
+	//
+	// For a frontend on another machine (mangal connection login): the user's name and password
+	// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+	// permission; one per device per user (logging in again replaces it). It ends with the
+	// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
+	// the login (429 with Retry-After).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/auth/device (the `LoginDevice` operationId).
+	LoginDevice(ctx context.Context, body LoginDeviceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// LoginWithBody Log in, the session cookie is set
 	//
 	// Starts a session for the user (the mangal_session cookie, HttpOnly, SameSite=Lax);
@@ -1203,6 +1229,52 @@ func (c *Client) GetIndex(ctx context.Context, reqEditors ...RequestEditorFn) (*
 // Corresponds with GET /v1/accounts (the `ListAccounts` operationId).
 func (c *Client) ListAccounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAccountsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LoginDeviceWithBody Log a device in, it gets its token
+//
+// For a frontend on another machine (mangal connection login): the user's name and password
+// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+// permission; one per device per user (logging in again replaces it). It ends with the
+// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
+// the login (429 with Retry-After).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/auth/device (the `LoginDevice` operationId).
+func (c *Client) LoginDeviceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLoginDeviceRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LoginDevice Log a device in, it gets its token
+//
+// For a frontend on another machine (mangal connection login): the user's name and password
+// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+// permission; one per device per user (logging in again replaces it). It ends with the
+// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
+// the login (429 with Retry-After).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/auth/device (the `LoginDevice` operationId).
+func (c *Client) LoginDevice(ctx context.Context, body LoginDeviceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLoginDeviceRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3849,6 +3921,46 @@ func NewListAccountsRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewLoginDeviceRequest calls the generic LoginDevice builder with application/json body
+func NewLoginDeviceRequest(server string, body LoginDeviceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewLoginDeviceRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewLoginDeviceRequestWithBody constructs an http.Request for the LoginDevice method, with any body, and a specified content type
+func NewLoginDeviceRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/auth/device")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -9344,6 +9456,32 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/accounts (the `ListAccounts` operationId).
 	ListAccountsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAccountsResponse, error)
 
+	// LoginDeviceWithBodyWithResponse Log a device in, it gets its token
+	//
+	// For a frontend on another machine (mangal connection login): the user's name and password
+	// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+	// permission; one per device per user (logging in again replaces it). It ends with the
+	// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
+	// the login (429 with Retry-After).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/auth/device (the `LoginDevice` operationId).
+	LoginDeviceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginDeviceResponse, error)
+
+	// LoginDeviceWithResponse Log a device in, it gets its token
+	//
+	// For a frontend on another machine (mangal connection login): the user's name and password
+	// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+	// permission; one per device per user (logging in again replaces it). It ends with the
+	// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
+	// the login (429 with Retry-After).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/auth/device (the `LoginDevice` operationId).
+	LoginDeviceWithResponse(ctx context.Context, body LoginDeviceJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginDeviceResponse, error)
+
 	// LoginWithBodyWithResponse Log in, the session cookie is set
 	//
 	// Starts a session for the user (the mangal_session cookie, HttpOnly, SameSite=Lax);
@@ -10653,6 +10791,54 @@ func (r ListAccountsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListAccountsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type LoginDeviceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *NewTokenResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r LoginDeviceResponse) GetJSON201() *NewTokenResponse {
+	return r.JSON201
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r LoginDeviceResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r LoginDeviceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LoginDeviceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LoginDeviceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LoginDeviceResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -15945,6 +16131,44 @@ func (c *ClientWithResponses) ListAccountsWithResponse(ctx context.Context, reqE
 	return ParseListAccountsResponse(rsp)
 }
 
+// LoginDeviceWithBodyWithResponse Log a device in, it gets its token
+//
+// For a frontend on another machine (mangal connection login): the user's name and password
+// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+// permission; one per device per user (logging in again replaces it). It ends with the
+// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
+// the login (429 with Retry-After).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/auth/device (the `LoginDevice` operationId).
+func (c *ClientWithResponses) LoginDeviceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginDeviceResponse, error) {
+	rsp, err := c.LoginDeviceWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLoginDeviceResponse(rsp)
+}
+
+// LoginDeviceWithResponse Log a device in, it gets its token
+//
+// For a frontend on another machine (mangal connection login): the user's name and password
+// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+// permission; one per device per user (logging in again replaces it). It ends with the
+// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
+// the login (429 with Retry-After).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/auth/device (the `LoginDevice` operationId).
+func (c *ClientWithResponses) LoginDeviceWithResponse(ctx context.Context, body LoginDeviceJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginDeviceResponse, error) {
+	rsp, err := c.LoginDevice(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLoginDeviceResponse(rsp)
+}
+
 // LoginWithBodyWithResponse Log in, the session cookie is set
 //
 // Starts a session for the user (the mangal_session cookie, HttpOnly, SameSite=Lax);
@@ -18122,6 +18346,39 @@ func ParseListAccountsResponse(rsp *http.Response) (*ListAccountsResponse, error
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseLoginDeviceResponse parses an HTTP response from a LoginDeviceWithResponse call
+func ParseLoginDeviceResponse(rsp *http.Response) (*LoginDeviceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LoginDeviceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest NewTokenResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error

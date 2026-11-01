@@ -472,6 +472,14 @@ type DeleteRequest struct {
 	Manga int64 `json:"manga"`
 }
 
+// DeviceLogin defines model for DeviceLogin.
+type DeviceLogin struct {
+	// Device the device's name, its hostname
+	Device   string `json:"device"`
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+
 // DismissPickRequest defines model for DismissPickRequest.
 type DismissPickRequest struct {
 	// Confirm empty-trash for an irreversible plan, force-undo for a forced undo
@@ -1978,6 +1986,9 @@ type ListStaleWatchesParams struct {
 	// Since a duration (90d by default)
 	Since *string `form:"since,omitempty" json:"since,omitempty"`
 }
+
+// LoginDeviceJSONRequestBody defines body for LoginDevice for application/json ContentType.
+type LoginDeviceJSONRequestBody = DeviceLogin
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest

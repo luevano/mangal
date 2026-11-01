@@ -470,6 +470,7 @@
       ],
       "api": [
         "login",
+        "loginDevice",
         "logout",
         "getMe",
         "listUsers",

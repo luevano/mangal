@@ -83,6 +83,33 @@ paths:
                 $ref: '#/components/schemas/Me'
         default:
           $ref: '#/components/responses/Error'
+  /v1/auth/device:
+    post:
+      summary: Log a device in, it gets its token
+      description: |
+        For a frontend on another machine (mangal connection login): the user's name and password
+        once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+        permission; one per device per user (logging in again replaces it). It ends with the
+        user's logins (a new password or permissions, end logins, a removed user). Rate limited as
+        the login (429 with Retry-After).
+      operationId: loginDevice
+      tags: [v1, auth]
+      x-mangal-scope: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceLogin'
+      responses:
+        '201':
+          description: the token and its secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewTokenResponse'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/auth/logout:
     post:
       summary: Log out, the session ends
@@ -2561,6 +2588,17 @@ components:
           type: string
         remember:
           type: boolean
+    DeviceLogin:
+      type: object
+      required: [name, password, device]
+      properties:
+        name:
+          type: string
+        password:
+          type: string
+        device:
+          type: string
+          description: the device's name, its hostname
     User:
       type: object
       required: [name, perms, role, password, admin, created]

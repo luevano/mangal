@@ -80,6 +80,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/device": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log a device in, it gets its token
+         * @description For a frontend on another machine (mangal connection login): the user's name and password
+         *     once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+         *     permission; one per device per user (logging in again replaces it). It ends with the
+         *     user's logins (a new password or permissions, end logins, a removed user). Rate limited as
+         *     the login (429 with Retry-After).
+         */
+        post: operations["loginDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/logout": {
         parameters: {
             query?: never;
@@ -1914,6 +1938,12 @@ export interface components {
             password: string;
             remember?: boolean;
         };
+        DeviceLogin: {
+            name: string;
+            password: string;
+            /** @description the device's name, its hostname */
+            device: string;
+        };
         User: {
             name: string;
             perms: string[];
@@ -3347,6 +3377,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Me"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    loginDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceLogin"];
+            };
+        };
+        responses: {
+            /** @description the token and its secret */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewTokenResponse"];
                 };
             };
             default: components["responses"]["Error"];

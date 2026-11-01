@@ -284,6 +284,35 @@ func (a *API) Login(ctx context.Context, request apiv1.LoginRequestObject) (apiv
 	return loginResponse{cookie: auth.sessionCookieOf(r, token, expiry, remember), me: meOf(userIdentity(u))}, nil
 }
 
+// LoginDevice implements apiv1.StrictServerInterface.
+func (a *API) LoginDevice(ctx context.Context, request apiv1.LoginDeviceRequestObject) (apiv1.LoginDeviceResponseObject, error) {
+	r, ok := requestOf(ctx)
+	if !ok || request.Body == nil {
+		return nil, badRequest("no request")
+	}
+	auth := a.Auth
+	if auth.Mode == AuthNone {
+		return nil, newAPIError(http.StatusConflict, CodeRefused, "serve.auth is none: there's nothing to log into")
+	}
+	u, err := auth.checkPassword(r, strings.TrimSpace(request.Body.Name), request.Body.Password)
+	if err != nil {
+		if _, ok := errors.AsType[errLoginLimited](err); ok {
+			return nil, &apiError{status: http.StatusTooManyRequests, code: CodeRateLimited, err: err}
+		}
+		if errors.Is(err, errUnauthorized) {
+			return nil, newAPIError(http.StatusUnauthorized, CodeUnauthorized, "wrong name or password")
+		}
+		return nil, err
+	}
+	t, secret, err := core.DeviceToken(u.Name, request.Body.Device, u.Generation, u.Perms)
+	if err != nil {
+		return nil, err
+	}
+	a.authChanged()
+	log.Info("serve: %s logged in from %s with the token %q", u.Name, auth.clientIP(r), t.Name)
+	return apiv1.LoginDevice201JSONResponse{Token: tokenOut(t), Secret: secret}, nil
+}
+
 // Logout implements apiv1.StrictServerInterface.
 func (a *API) Logout(ctx context.Context, _ apiv1.LogoutRequestObject) (apiv1.LogoutResponseObject, error) {
 	r, ok := requestOf(ctx)
