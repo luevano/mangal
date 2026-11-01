@@ -59,7 +59,7 @@ type state struct {
 	progress map[lmmeta.IDCode]string
 	// cancel stops the latest search: a slow source's rate limit isn't spent on an old query
 	cancel context.CancelFunc
-	// binding is true while a pick is being bound (Busy is true for any search left)
+	// binding is true while a pick is being bound or fetched (Busy is true for any search left)
 	binding atomic.Bool
 
 	confirm,
@@ -81,6 +81,13 @@ type sourceResultsMsg struct {
 type boundMsg struct {
 	src  client.MetadataSource
 	meta lmmeta.Metadata
+}
+
+// wholeMsg is a partial result fetched whole, for what then needs it.
+type wholeMsg struct {
+	item *item
+	meta lmmeta.Metadata
+	then func(lmmeta.Metadata) tea.Cmd
 }
 
 // sourceColor is the title color of the source's screens.
@@ -199,6 +206,9 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return s.searchCmd(ctx, s.query)
 		}
 		return nil
+	case wholeMsg:
+		msg.item.meta = msg.meta
+		return msg.then(msg.meta)
 	case boundMsg:
 		return tea.Sequence(base.Back, base.Notify(fmt.Sprintf("Bound %s %q", msg.src.Name, msg.meta)))
 	case search.SearchMsg:
@@ -211,17 +221,40 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		switch {
 		case key.Matches(msg, s.confirm) && ok:
 			if s.pick != nil {
-				return tea.Sequence(base.Back, s.pick(i.meta))
+				return s.wholeCmd(ctx, i, func(meta lmmeta.Metadata) tea.Cmd { return tea.Sequence(base.Back, s.pick(meta)) })
 			}
+			// the bind's plan gets it by id
 			return s.bindCmd(ctx, i)
 		case key.Matches(msg, s.search):
 			s.List.ResetFilter()
 			return s.Search.Focus()
 		case key.Matches(msg, s.metadata) && ok:
-			return metadata.ShowCmd(i.meta)
+			return s.wholeCmd(ctx, i, metadata.ShowCmd)
 		}
 	}
 	return s.Screen.Update(msg)
+}
+
+// wholeCmd runs then with the result, fetched first if a search only answered part of it
+// (lmmeta.IsPartial).
+func (s *state) wholeCmd(ctx context.Context, i *item, then func(lmmeta.Metadata) tea.Cmd) tea.Cmd {
+	if !lmmeta.IsPartial(i.meta) {
+		return then(i.meta)
+	}
+	// not Busy: that's true for any source still searching
+	if !s.binding.CompareAndSwap(false, true) {
+		return nil
+	}
+	idx := slices.IndexFunc(s.sources, func(source searchSource) bool { return source.src.Code == i.src.Code })
+	provider, meta := s.sources[idx].provider, i.meta
+	return base.Load(ctx, fmt.Sprintf("Getting %s %q", i.src.Name, meta), func(ctx context.Context) (wholeMsg, error) {
+		defer s.binding.Store(false)
+		whole, found, err := provider.SearchByIDContext(ctx, meta.ID().Value())
+		if err == nil && !found {
+			err = fmt.Errorf("%s has no manga %s", i.src.Name, meta.ID().Raw)
+		}
+		return wholeMsg{item: i, meta: whole, then: then}, err
+	}, func(msg wholeMsg) tea.Msg { return msg })
 }
 
 func (s *state) bindCmd(ctx context.Context, i *item) tea.Cmd {

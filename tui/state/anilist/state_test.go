@@ -142,3 +142,54 @@ func TestSearchCancels(t *testing.T) {
 		}
 	}
 }
+
+type partialMeta struct{ *mangadata.Metadata }
+
+func (partialMeta) Partial() bool { return true }
+
+type wholeSource struct {
+	fakeSource
+	calls int
+}
+
+func (f *wholeSource) SearchByIDContext(_ context.Context, id int) (lmmeta.Metadata, bool, error) {
+	f.calls++
+	return &mangadata.Metadata{EnglishTitle: "whole", ProviderID: "7", ProviderIDCode: string(f.code)}, id == 7, nil
+}
+
+// what uses a partial result fetches it whole first, once
+func TestWholeCmd(t *testing.T) {
+	src := client.MetadataSource{Code: lmmeta.IDCodeMangaUpdates, Name: "MangaUpdates"}
+	fake := &wholeSource{}
+	fake.code = src.Code
+	s := newState([]searchSource{{src: src, provider: fake}}, "x")
+	partial := partialMeta{&mangadata.Metadata{EnglishTitle: "partial", ProviderID: "7", ProviderIDCode: string(src.Code)}}
+	i := &item{src: src, meta: partial}
+
+	var got lmmeta.Metadata
+	then := func(m lmmeta.Metadata) tea.Cmd { got = m; return nil }
+	ctx := context.Background()
+	msgs := base.Drain(s.wholeCmd(ctx, i, then))
+	if got != nil || fake.calls != 1 {
+		t.Fatalf("ran with %v before the fetch, %d calls", got, fake.calls)
+	}
+	var whole wholeMsg
+	for _, msg := range msgs {
+		if m, ok := msg.(wholeMsg); ok {
+			whole = m
+		}
+	}
+	if whole.then == nil {
+		t.Fatalf("no whole msg in %v", msgs)
+	}
+	s.Update(ctx, whole)
+	if got == nil || got.Title() != "whole" || i.meta.Title() != "whole" {
+		t.Errorf("then got %v, item has %v", got, i.meta)
+	}
+
+	got = nil
+	base.Drain(s.wholeCmd(ctx, i, then))
+	if got == nil || fake.calls != 1 {
+		t.Errorf("a whole one: then got %v, %d calls", got, fake.calls)
+	}
+}
