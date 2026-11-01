@@ -25,8 +25,8 @@ const (
 	levelError   = "error"
 )
 
-// shortcut: this session's last notificationsKept only, in memory; persist them if
-// they're wanted across runs.
+// TODO: this session's last notificationsKept only, in memory; persist them if they're
+// wanted across runs.
 const notificationsKept = 200
 
 type notification struct {
