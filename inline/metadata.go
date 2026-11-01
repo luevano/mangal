@@ -149,6 +149,10 @@ func assignMatches(ctx context.Context, c *libmangal.Client, args Args, results 
 			// not enabled or configured
 			continue
 		}
+		// 6 requests at 1/s per manga for a preview of a list: the download does its own search
+		if src.Code == metadata.IDCodeMangaUpdates && len(pending) > 1 {
+			continue
+		}
 		args.status("looking up %d manga(s) on %s", len(pending), src.Name)
 		mangas := make([]mangadata.Manga, len(pending))
 		for j, i := range pending {

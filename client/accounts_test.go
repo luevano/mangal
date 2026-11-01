@@ -129,7 +129,7 @@ func TestDiscordAccount(t *testing.T) {
 	}
 }
 
-func TestMetadataProvidersMyAnimeListLast(t *testing.T) {
+func TestMetadataProvidersMyAnimeListThird(t *testing.T) {
 	isolate(t)
 	if err := cache.SetMyAnimeListClient("some-id", ""); err != nil {
 		t.Fatal(err)
@@ -138,11 +138,11 @@ func TestMetadataProvidersMyAnimeListLast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(metas) != 3 || metas[2].Info().Source != metadata.IDSourceMyAnimeList {
-		t.Errorf("providers %v, want myanimelist last", metas)
+	if len(metas) != 4 || metas[2].Info().Source != metadata.IDSourceMyAnimeList || metas[3].Info().Source != metadata.IDSourceMangaUpdates {
+		t.Errorf("providers %v, want myanimelist third, mangaupdates last", metas)
 	}
 	_ = config.Metadata.MyAnimeList.Enabled.Set(false)
-	if metas, _ := metadataProviders(); len(metas) != 2 {
+	if metas, _ := metadataProviders(); len(metas) != 3 {
 		t.Errorf("providers with myanimelist disabled %v", metas)
 	}
 }

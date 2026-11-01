@@ -326,8 +326,8 @@ var Metadata = configMetadata{
 			"Search MyAnimeList for metadata when Anilist and Kitsu find none (or fail). Only with a MyAnimeList API client (mangal myanimelist client)."),
 	},
 	MangaUpdates: configMetadataMangaUpdates{
-		Enabled: boolEntry("metadata.mangaupdates.enabled", false,
-			"Search MangaUpdates for metadata when the others find none (or fail), and allow MangaUpdates links and bindings. Off by default: a search takes about 6 seconds (one request a second)."),
+		Enabled: boolEntry("metadata.mangaupdates.enabled", true,
+			"Search MangaUpdates for metadata when the others find none (or fail), in the interactive searches, and allow MangaUpdates links and bindings. A search takes about 6 seconds (one request a second)."),
 	},
 }
 

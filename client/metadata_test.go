@@ -34,13 +34,13 @@ func TestMetadataProvidersOrder(t *testing.T) {
 		return got
 	}
 
-	if got := sources(); len(got) != 2 || got[0] != metadata.IDSourceAnilist || got[1] != metadata.IDSourceKitsu {
-		t.Errorf("default providers %v, want anilist then kitsu", got)
+	if got := sources(); len(got) != 3 || got[0] != metadata.IDSourceAnilist || got[1] != metadata.IDSourceKitsu || got[2] != metadata.IDSourceMangaUpdates {
+		t.Errorf("default providers %v, want anilist, kitsu, mangaupdates", got)
 	}
 	if err := config.Metadata.Kitsu.Enabled.Set(false); err != nil {
 		t.Fatal(err)
 	}
-	if got := sources(); len(got) != 1 || got[0] != metadata.IDSourceAnilist {
+	if got := sources(); len(got) != 2 || got[0] != metadata.IDSourceAnilist || got[1] != metadata.IDSourceMangaUpdates {
 		t.Errorf("providers without kitsu %v", got)
 	}
 }
