@@ -5,13 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/library"
-	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
@@ -189,8 +187,7 @@ func (r changes) Apply(ctx context.Context, ch core.Change, opts core.ApplyOpts)
 		resp, err := r.send(ctx, ch, true, f)
 		if errors.Is(err, core.ErrBusy) && !opts.NoWait {
 			if !waited && opts.OnWait != nil {
-				// shortcut: the API doesn't say who holds the lock, the message says "another change"
-				opts.OnWait(client.LibraryBusy{Holder: storage.LockHolder{PID: os.Getpid()}})
+				opts.OnWait(client.LibraryBusy{Reason: err.Error()})
 			}
 			waited = true
 			select {

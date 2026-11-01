@@ -34,10 +34,15 @@ var (
 // kind) and who.
 type LibraryBusy struct {
 	Holder storage.LockHolder
+	// Reason is what a remote server answered, Holder isn't known then.
+	Reason string
 }
 
 // Message is "the library is busy (merge) in another mangal (pid N), waiting…".
 func (b LibraryBusy) Message() string {
+	if b.Reason != "" {
+		return b.Reason + ", waiting…"
+	}
 	what := ""
 	if b.Holder.Purpose != "" {
 		what = " (" + b.Holder.Purpose + ")"
