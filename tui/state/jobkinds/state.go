@@ -24,8 +24,11 @@ import (
 	"github.com/luevano/mangal/v5/tui/util"
 )
 
-// Kinds are the job kinds over the TUI's jobs (swapped in tests).
+// Kinds are the job kinds over the TUI's jobs, a remote server's own (swapped in tests).
 var Kinds = func() (core.JobKinds, error) {
+	if r := base.CurrentRemote; r != nil {
+		return r.Client.Kinds(), nil
+	}
 	c, err := base.Core()
 	if err != nil {
 		return nil, err
@@ -185,7 +188,7 @@ func (s *state) updateKeys() {
 	s.keys.runAll.SetEnabled(ok && k.Running == nil)
 	s.keys.runMissing.SetEnabled(ok && k.Running == nil && k.Missing != nil)
 	s.keys.pause.SetEnabled(ok && !k.Manual)
-	s.keys.edit.SetEnabled(ok)
+	s.keys.edit.SetEnabled(ok && hasSettings(k))
 }
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {

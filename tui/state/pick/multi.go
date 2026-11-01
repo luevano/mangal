@@ -25,6 +25,17 @@ import (
 
 // Search searches several providers at once (core.Core.Search). Swapped in tests.
 var Search = func(ctx context.Context, req core.SearchReq) <-chan core.SearchResult {
+	if base.CurrentRemote != nil {
+		return core.SearchWith(ctx, req, func(ctx context.Context, provider, query string) (libmangal.ProviderInfo, []mangadata.Manga, error) {
+			c, release, err := base.HoldProvider(ctx, provider)
+			if err != nil {
+				return libmangal.ProviderInfo{}, nil, err
+			}
+			defer release()
+			mangas, err := c.SearchMangasContext(ctx, query)
+			return c.Info(), mangas, err
+		})
+	}
 	c, err := base.Core()
 	if err != nil {
 		results := make(chan core.SearchResult, len(req.Providers))

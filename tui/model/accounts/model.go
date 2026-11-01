@@ -56,6 +56,9 @@ type state struct {
 	formKind userForm
 	// target is the user the form changes, confirm the row a delete waits a second press for
 	target, confirm string
+	// loginURL is what a remote tracker login opened (remote.go)
+	loginURL string
+	width    int
 }
 
 type loadedMsg []core.Account
@@ -94,8 +97,11 @@ func (s *state) Inputting() bool { return s.inputting }
 func (s *state) Title() base.Title {
 	return base.Title{Text: "Accounts"}
 }
-func (s *state) Status() string                { return "" }
-func (s *state) Resize(size base.Size) tea.Cmd { return nil }
+func (s *state) Status() string { return "" }
+func (s *state) Resize(size base.Size) tea.Cmd {
+	s.width = size.Width
+	return nil
+}
 
 func (s *state) Subtitle() string {
 	switch s.formKind {
@@ -109,12 +115,19 @@ func (s *state) Subtitle() string {
 		return s.target + ": their history, tokens and logins follow, their logins end"
 	case formTokenPerms:
 		return "the API token " + s.target + " (its secret stays)"
+	case formTrackerPassword:
+		return "the name and password aren't kept, the login is"
+	case formTrackerPaste:
+		return "open this address, allow mangal, paste what the page ends on"
 	}
 	if s.inputting && s.discord {
 		return "the webhook url of the notifications (empty removes it)"
 	}
 	if s.inputting {
 		return "the device secret of the official app (empty removes it), see the mangoplus docs"
+	}
+	if r := base.CurrentRemote; r != nil {
+		return "your trackers on " + r.Host() + ", its other accounts as it last checked them"
 	}
 	return "cached for 12 hours, " + s.keys.refresh.Help().Key + " fetches them now"
 }
@@ -126,7 +139,11 @@ func (s *state) KeyMap() help.KeyMap {
 	if keys := s.usersKeys(); keys != nil {
 		return util.KeyMap{Short: append([]key.Binding{s.keys.refresh}, keys...)}
 	}
-	return util.KeyMap{Short: []key.Binding{s.keys.refresh, s.keys.login, s.keys.copy}}
+	short := []key.Binding{s.keys.refresh, s.keys.login, s.keys.copy}
+	if s.remoteTracker() {
+		short = append(short, s.keys.logout)
+	}
+	return util.KeyMap{Short: short}
 }
 
 func (s *state) Init(ctx context.Context) tea.Cmd {
@@ -149,6 +166,9 @@ func (s *state) load(ctx context.Context, refresh bool) tea.Cmd {
 
 func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 	if cmd, ok := s.updateUsers(ctx, msg); ok {
+		return cmd
+	}
+	if cmd, ok := s.updateTracker(ctx, msg); ok {
 		return cmd
 	}
 	if s.formKind != formNone {
@@ -177,7 +197,9 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			}
 			return s.load(ctx, true)
 		case key.Matches(msg, s.keys.login):
-			return s.login()
+			return s.login(ctx)
+		case key.Matches(msg, s.keys.logout) && s.remoteTracker():
+			return s.trackerLogout(ctx)
 		case key.Matches(msg, s.keys.copy):
 			entry, ok := s.selected()
 			if !ok || entry.URL == "" {
@@ -209,10 +231,13 @@ func (s *state) selected() (core.Account, bool) {
 	return s.entries[i], true
 }
 
-func (s *state) login() tea.Cmd {
+func (s *state) login(ctx context.Context) tea.Cmd {
 	entry, ok := s.selected()
 	if !ok {
 		return nil
+	}
+	if r := base.CurrentRemote; r != nil {
+		return s.trackerLogin(ctx, r, entry)
 	}
 	switch {
 	case entry.Metadata == metadata.IDSourceAnilist:
@@ -289,6 +314,9 @@ func (s *state) View() string {
 	if !s.loaded {
 		return ""
 	}
+	if s.formKind == formTrackerPaste {
+		return lipgloss.JoinVertical(lipgloss.Left, s.table.View(), " ", lipgloss.NewStyle().Width(s.width).Render(s.loginURL), " ", s.form.View())
+	}
 	if s.formKind != formNone {
 		return lipgloss.JoinVertical(lipgloss.Left, s.table.View(), " ", s.form.View())
 	}
@@ -314,6 +342,8 @@ func accountRow(e core.Account) table.Row {
 func ago(t time.Time) string {
 	d := time.Since(t)
 	switch {
+	case t.IsZero():
+		return ""
 	case d < time.Minute:
 		return "now"
 	case d < time.Hour:

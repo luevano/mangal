@@ -11,12 +11,11 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
-	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/tui/base"
 	"github.com/luevano/mangal/v5/tui/model/huhform"
 	"github.com/luevano/mangal/v5/tui/util"
-	"github.com/luevano/mangal/v5/util/cache"
+	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
 // The users who log into mangal serve and its API tokens are rows after the accounts:
@@ -49,6 +48,8 @@ const (
 	formPerms
 	formTokenPerms
 	formRename
+	formTrackerPassword
+	formTrackerPaste
 )
 
 type usersMsg struct {
@@ -72,19 +73,30 @@ func (s *state) refs() []rowRef {
 	if !s.usersLoaded {
 		return refs
 	}
-	for i := range s.users {
-		refs = append(refs, rowRef{rowUser, i})
+	users, tokens := usersShown()
+	if users {
+		for i := range s.users {
+			refs = append(refs, rowRef{rowUser, i})
+		}
+		if len(s.users) == 0 {
+			refs = append(refs, rowRef{rowNoUsers, 0})
+		}
 	}
-	if len(s.users) == 0 {
-		refs = append(refs, rowRef{rowNoUsers, 0})
-	}
-	for i := range s.tokens {
-		refs = append(refs, rowRef{rowToken, i})
-	}
-	if len(s.tokens) == 0 {
-		refs = append(refs, rowRef{rowNoTokens, 0})
+	if tokens {
+		for i := range s.tokens {
+			refs = append(refs, rowRef{rowToken, i})
+		}
+		if len(s.tokens) == 0 {
+			refs = append(refs, rowRef{rowNoTokens, 0})
+		}
 	}
 	return refs
+}
+
+// usersShown says whether the users and the tokens are listed: on a remote server, only
+// what the permissions may see (nothing is asked that would be refused).
+func usersShown() (users, tokens bool) {
+	return base.Can(core.ScopeAdmin), base.Can(core.ScopeTokens)
 }
 
 func (s *state) selectedRef() (rowRef, bool) {
@@ -111,7 +123,9 @@ func (s *state) setRows() {
 			case !u.LastLogin.IsZero():
 				last = "last login " + u.LastLogin.Format(time.DateTime)
 			}
-			if local, _ := cache.LocalUser(); local == u.Name {
+			if u.Local && base.CurrentRemote != nil {
+				last += ", the server's machine's user"
+			} else if u.Local {
 				last += ", this machine's user"
 			}
 			rows = append(rows, table.Row{"mangal user", u.Name, u.Role, "", last, ""})
@@ -134,11 +148,18 @@ func (s *state) setRows() {
 	}
 	s.table.SetRows(rows)
 	s.table.SetHeight(len(rows) + 1)
+	// no rows left the cursor at -1
+	if s.table.Cursor() < 0 {
+		s.table.SetCursor(0)
+	}
 }
 
 func (s *state) usersService() core.Users {
 	if s.usersSvc != nil {
 		return s.usersSvc
+	}
+	if r := base.CurrentRemote; r != nil {
+		return r.Services.Users
 	}
 	return core.NewUsers()
 }
@@ -146,12 +167,17 @@ func (s *state) usersService() core.Users {
 func (s *state) loadUsers(ctx context.Context) tea.Cmd {
 	svc := s.usersService()
 	return base.Load(ctx, "Loading the users", func(ctx context.Context) (usersMsg, error) {
-		users, err := svc.List(ctx)
-		if err != nil {
-			return usersMsg{err: err}, nil
+		var m usersMsg
+		listUsers, listTokens := usersShown()
+		if listUsers {
+			if m.users, m.err = svc.List(ctx); m.err != nil {
+				return m, nil
+			}
 		}
-		tokens, err := svc.Tokens(ctx)
-		return usersMsg{users: users, tokens: tokens, err: err}, nil
+		if listTokens {
+			m.tokens, m.err = svc.Tokens(ctx)
+		}
+		return m, nil
 	}, func(m usersMsg) tea.Msg { return m })
 }
 
@@ -279,8 +305,12 @@ func (s *state) updateUsersKeys(ctx context.Context, msg tea.KeyPressMsg) (tea.C
 				return core.CheckUserName(v)
 			})), true
 		case key.Matches(msg, s.keys.beUser):
-			return s.userAction(ctx, "Switching the user", func(ctx context.Context, _ core.Users) (tea.Msg, error) {
-				return done("mangal on this machine is " + u.Name + " now: their history, searches and AniList/Kitsu/MyAnimeList"), client.UseLocalUser(ctx, u.Name)
+			where := "this machine"
+			if base.CurrentRemote != nil {
+				where = "the server's machine"
+			}
+			return s.userAction(ctx, "Switching the user", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
+				return done("mangal on " + where + " is " + u.Name + " now: their history, searches and AniList/Kitsu/MyAnimeList"), svc.UseLocal(ctx, u.Name)
 			}), true
 		case key.Matches(msg, s.keys.logout):
 			return s.userAction(ctx, "Ending the logins", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
@@ -381,6 +411,10 @@ func (s *state) submitForm(ctx context.Context) tea.Cmd {
 		return s.userAction(ctx, "Changing the password", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
 			return done("Changed the password of " + target + ", its logins ended"), svc.SetPassword(ctx, target, password)
 		})
+	case formTrackerPassword:
+		return s.trackerLoginCmd(ctx, target, apiv1.TrackerLogin{Name: new(f.Fields[0].Value()), Password: new(f.Fields[1].Value())})
+	case formTrackerPaste:
+		return s.trackerLoginCmd(ctx, target, apiv1.TrackerLogin{Paste: new(f.Fields[0].Value())})
 	case formPerms:
 		perms := permsOf(f.Fields)
 		return s.userAction(ctx, "Changing the permissions", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
@@ -434,7 +468,7 @@ func (s *state) usersKeys() []key.Binding {
 	case rowUser:
 		return []key.Binding{s.keys.add, s.keys.edit, s.keys.login, s.keys.rename, s.keys.beUser, s.keys.logout, s.keys.remove}
 	case rowToken:
-		return []key.Binding{s.keys.add, s.keys.remove}
+		return []key.Binding{s.keys.add, s.keys.edit, s.keys.remove}
 	case rowNoUsers, rowNoTokens:
 		return []key.Binding{s.keys.add}
 	}

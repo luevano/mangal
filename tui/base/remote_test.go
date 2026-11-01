@@ -54,13 +54,19 @@ func TestRemoteRefusals(t *testing.T) {
 	if len(shown) != 1 || shown[0].Help().Desc != KeyItsWatch.Help().Desc {
 		t.Errorf("reader's keys: %v", shown)
 	}
-	if why := admin.screenRefusal("jobs"); !strings.Contains(why, "isn't on a remote server yet") {
-		t.Errorf("the jobs screen on a remote server: %q", why)
+	// what a remote can't do says so as a fact, no "yet"
+	open := tea.KeyPressMsg{Code: 'o', Text: "o"}
+	if why := admin.keyRefusal("download/1", util.KeyMap{Short: []key.Binding{KeyOpenDir}}, open); why != "A server's folder isn't on this machine" {
+		t.Errorf("open directory: %q", why)
 	}
-	if why := admin.screenRefusal("chapters/p/m"); why != "" {
-		t.Errorf("the chapters screen: %q", why)
+	// the accounts: any of the permissions that have rows there
+	accounts := util.KeyMap{Short: []key.Binding{KeyAccounts}}
+	k := tea.KeyPressMsg{Code: 'K', Text: "K"}
+	if why := reader.keyRefusal("home", accounts, k); why != "" {
+		t.Errorf("a reader's accounts: %q", why)
 	}
-	if why := admin.screenRefusal("library/12"); why != "" {
-		t.Errorf("a library manga: %q", why)
+	browser := &Remote{URL: reader.URL, Perms: []string{core.ScopeRead}, Features: core.APIFeatures()}
+	if why := browser.keyRefusal("home", accounts, k); !strings.Contains(why, "one of the progress, tokens, admin permissions") {
+		t.Errorf("a read token's accounts: %q", why)
 	}
 }

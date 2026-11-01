@@ -58,6 +58,11 @@ func ReadCache() remote.ReadCache {
 // Has is true when the server allows the permission.
 func (r *Remote) Has(perm string) bool { return slices.Contains(r.Perms, perm) }
 
+// Can is true when the permission lets this ask for what needs it: always on this machine.
+func Can(perm string) bool {
+	return CurrentRemote == nil || CurrentRemote.Has(perm)
+}
+
 // Host is the server's address without the scheme.
 func (r *Remote) Host() string {
 	_, host, _ := strings.Cut(r.URL, "://")
@@ -73,18 +78,19 @@ func (r *Remote) Header() string {
 	return fmt.Sprintf("remote: %s as %s (%s)", r.Host(), r.Who, role)
 }
 
-// gate is what a screen's action needs on a remote server: a permission, a feature of
-// the server; or why it can't be done there yet.
+// gate is what a screen's action needs on a remote server: a permission (or any of
+// anyPerm), a feature of the server; or why a remote can't do it.
 type gate struct {
 	perm, feature string
-	unsupported   string
+	anyPerm       []string
+	impossible    string
 }
 
 // remoteGates are the actions a remote server may refuse, by "screen:help" (the screen's
 // key up to its first slash, with the slash: "library/" is a library manga's), else
 // "*:help". The server enforces the permissions anyway: these hide what it would refuse.
 var remoteGates = map[string]gate{
-	"home:accounts":     {unsupported: "the accounts, users and tokens"},
+	"home:accounts":     {anyPerm: []string{core.ScopeProgress, core.ScopeTokens, core.ScopeAdmin}, feature: "accounts"},
 	"home:health":       {perm: core.ScopeManage, feature: "health"},
 	"home:migrate":      {perm: core.ScopeAdmin, feature: "migrate"},
 	"home:read history": {feature: "read history"},
@@ -106,13 +112,14 @@ var remoteGates = map[string]gate{
 
 	"providers:mirrors": {perm: core.ScopeAdmin, feature: "mirrors"},
 
-	"chapters/:download":           {perm: core.ScopeDownload, feature: "download"},
-	"library/:scan":                {perm: core.ScopeManage, feature: "library scan"},
-	"library/:delete":              {perm: core.ScopeManage, feature: "delete"},
-	"library/:watch":               {perm: core.ScopeManage, feature: "watches"},
-	"library/:bindings":            {feature: "links"},
-	"library/:hold / new provider": {perm: core.ScopeManage, feature: "hold marks"},
-	"library/:retitle chapters":    {perm: core.ScopeManage, feature: "retitle"},
+	"chapters/:download":                  {perm: core.ScopeDownload, feature: "download"},
+	"chapters/:get unavailable elsewhere": {perm: core.ScopeManage, feature: "get unavailable chapters elsewhere"},
+	"library/:scan":                       {perm: core.ScopeManage, feature: "library scan"},
+	"library/:delete":                     {perm: core.ScopeManage, feature: "delete"},
+	"library/:watch":                      {perm: core.ScopeManage, feature: "watches"},
+	"library/:bindings":                   {feature: "links"},
+	"library/:hold / new provider":        {perm: core.ScopeManage, feature: "hold marks"},
+	"library/:retitle chapters":           {perm: core.ScopeManage, feature: "retitle"},
 
 	"trash:empty": {perm: core.ScopeAdmin, feature: "empty the trash"},
 
@@ -147,19 +154,16 @@ var remoteGates = map[string]gate{
 	"downloads:clear every queue": {perm: core.ScopeAdmin, feature: "download"},
 	"download/:cancel":            {perm: core.ScopeDownload, feature: "download"},
 	"download/:retry":             {perm: core.ScopeDownload, feature: "download"},
-	"download/:open directory":    {unsupported: "opening the server's folders"},
-	"*:jobs":                      {unsupported: "the maintenance jobs"},
-}
+	"download/:open directory":    {impossible: "A server's folder isn't on this machine"},
 
-// remoteScreens are the screens a remote server can't show yet, by their key up to its
-// first slash: they need this machine's providers, files or accounts (docs/remote.md R3
-// "what's left").
-var remoteScreens = map[string]string{
-	"chapters-fill": "getting chapters from another provider",
-	"accounts":      "the accounts, users and tokens (the web UI's Users page has them)",
-	"jobs":          "the maintenance jobs",
-	"jobs-settings": "the maintenance jobs",
-	"login":         "the logins",
+	"*:jobs":                 {feature: "maintenance jobs"},
+	"jobs:run all":           {perm: core.ScopeManage, feature: "maintenance jobs"},
+	"jobs:run missing":       {perm: core.ScopeManage, feature: "maintenance jobs"},
+	"jobs:pause/resume":      {perm: core.ScopeAdmin, feature: "maintenance jobs"},
+	"jobs:edit":              {perm: core.ScopeAdmin, feature: "maintenance jobs"},
+	"jobs/:edit":             {perm: core.ScopeAdmin, feature: "maintenance jobs"},
+	"jobs/:on/off":           {perm: core.ScopeAdmin, feature: "maintenance jobs"},
+	"jobs/:reset to default": {perm: core.ScopeAdmin, feature: "maintenance jobs"},
 }
 
 // screenClass is the key up to its first slash, with the slash.
@@ -182,23 +186,16 @@ func remoteGate(screen, desc string) (gate, bool) {
 // refusal is why the server can't do g, "" when it can.
 func (r *Remote) refusal(g gate) string {
 	switch {
-	case g.unsupported != "":
-		return capitalize(g.unsupported) + " isn't on a remote server yet (mangal without --remote does it)"
+	case g.impossible != "":
+		return g.impossible
 	case g.feature != "" && !slices.Contains(r.Features, g.feature):
 		return fmt.Sprintf("The server (mangal %s) doesn't have %s: update it", r.Version, g.feature)
 	case g.perm != "" && !r.Has(g.perm) && !r.ShowAll:
 		return fmt.Sprintf("That needs the %s permission on %s", g.perm, r.Host())
+	case len(g.anyPerm) != 0 && !slices.ContainsFunc(g.anyPerm, r.Has) && !r.ShowAll:
+		return fmt.Sprintf("That needs one of the %s permissions on %s", strings.Join(g.anyPerm, ", "), r.Host())
 	}
 	return ""
-}
-
-// screenRefusal is why the server can't show the screen with the key, "" when it can.
-func (r *Remote) screenRefusal(key string) string {
-	what, ok := remoteScreens[strings.TrimSuffix(screenClass(key), "/")]
-	if !ok {
-		return ""
-	}
-	return capitalize(what) + " isn't on a remote server yet (mangal without --remote does it)"
 }
 
 // keyRefusal is why the server refuses the pressed key of the screen's bindings, "" when
@@ -222,13 +219,6 @@ func flatten(keys help.KeyMap) []key.Binding {
 		all = append(all, group...)
 	}
 	return append(all, keys.ShortHelp()...)
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // gatedKeyMap is a screen's keys without those the server refuses.

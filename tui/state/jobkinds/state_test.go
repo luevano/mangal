@@ -159,3 +159,12 @@ func TestKeys(t *testing.T) {
 		t.Errorf("settings: %q", bad)
 	}
 }
+
+func TestHasSettings(t *testing.T) {
+	if hasSettings(core.JobKind{Manual: true}) {
+		t.Error("a manual kind without providers has none")
+	}
+	if !hasSettings(core.JobKind{Manual: true, ProvidersKey: "x"}) || !hasSettings(core.JobKind{}) {
+		t.Error("the others have some")
+	}
+}

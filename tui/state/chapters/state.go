@@ -45,7 +45,7 @@ type state struct {
 	manga  mangadata.Manga
 	// libraryManga is the manga's library manga, 0 if none (yet)
 	libraryManga int64
-	client *libmangal.Client
+	client       *libmangal.Client
 
 	selected map[*item]struct{}
 	// show is what the items show, they point to it

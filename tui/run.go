@@ -36,8 +36,8 @@ func setScreens() {
 	base.NewLogs = logs.New
 }
 
-// errRemote is a screen that needs this machine's core on a remote server.
-var errRemote = errors.New("not on a remote mangal serve yet (mangal without --remote does it)")
+// errRemote is this machine's core asked for on a remote server: no screen should.
+var errRemote = errors.New("this machine's library isn't used on a remote mangal serve")
 
 // RunRemote runs the TUI on the mangal serve of rc (checked: remote.Connect): its
 // services, jobs and events; this machine keeps the TUI's own settings, log and search

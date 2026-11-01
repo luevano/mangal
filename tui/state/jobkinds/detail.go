@@ -120,7 +120,7 @@ func (d *detail) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if d.List.Filtering() {
 			break
 		}
-		if key.Matches(msg, d.keys.edit) {
+		if key.Matches(msg, d.keys.edit) && hasSettings(d.k) {
 			k := d.k
 			return func() tea.Msg { return newSettings(k) }
 		}

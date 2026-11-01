@@ -23,6 +23,9 @@ import (
 // planFill plans getting the manga's unavailable chapters from the provider's manga.
 // Swapped in tests.
 var planFill = func(ctx context.Context, req core.FillReq) (core.FillPlan, error) {
+	if r := base.CurrentRemote; r != nil {
+		return r.Client.PlanFill(ctx, req)
+	}
 	c, err := base.Core()
 	if err != nil {
 		return core.FillPlan{}, err
@@ -76,6 +79,8 @@ type fillState struct {
 	confirm.Host
 	provider, origin string
 	manga            mangadata.Manga
+	// planned is the request of the plan shown
+	planned core.FillReq
 }
 
 type fillPlannedMsg struct{ plan core.FillPlan }
@@ -105,13 +110,14 @@ func (s *fillState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return cmd
 	}
 	if msg, ok := msg.(fillPlannedMsg); ok {
-		return s.ask(msg.plan)
+		return s.ask(ctx, msg.plan)
 	}
 	return s.Multi.Update(ctx, msg)
 }
 
 func (s *fillState) planCmd(ctx context.Context, provider string, from mangadata.Manga) tea.Cmd {
 	req := s.req(provider, from)
+	s.planned = req
 	return base.LoadWithStatus(ctx, fmt.Sprintf("Listing the chapters of %q", from.Info().Title), func(ctx context.Context, status func(string)) (fillPlannedMsg, error) {
 		plan, err := planFill(base.WithStatus(ctx, status), req)
 		return fillPlannedMsg{plan: plan}, err
@@ -126,12 +132,19 @@ func (s *fillState) req(provider string, from mangadata.Manga) core.FillReq {
 }
 
 // ask confirms the fill, or says there's nothing to get.
-func (s *fillState) ask(plan core.FillPlan) tea.Cmd {
+func (s *fillState) ask(ctx context.Context, plan core.FillPlan) tea.Cmd {
 	if plan.Nothing() {
 		return base.Notify("Nothing to get: " + strings.Join(plan.Lines(), "; "))
 	}
+	req, origin := s.planned, s.origin
 	s.Confirm.Ask("Get chapters", strings.Join(plan.Lines(), "\n"), s.View(), func() tea.Msg {
-		tuijobs.Queue(plan.Job(s.origin))
+		if r := base.CurrentRemote; r != nil {
+			if err := r.Client.ApplyFill(ctx, req, origin); err != nil {
+				return err
+			}
+			return base.Back()
+		}
+		tuijobs.Queue(plan.Job(origin))
 		return base.Back()
 	})
 	return nil

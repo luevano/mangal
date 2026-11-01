@@ -55,6 +55,11 @@ func validDelay(s string) error {
 	return nil
 }
 
+// hasSettings is false for a kind with nothing to set (a manual one without providers).
+func hasSettings(k core.JobKind) bool {
+	return !k.Manual || k.ScheduleKey != "" || k.Delay != "" || k.ProvidersKey != ""
+}
+
 func newSettings(k core.JobKind) base.State {
 	s := &settings{k: k}
 	var fields []*huhform.Field

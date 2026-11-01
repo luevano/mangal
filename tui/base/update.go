@@ -237,12 +237,6 @@ func (m *model) restore(request State) tea.Cmd {
 // first (aheadAsk): yes closes them and shows it, no drops it.
 func (m *model) pushState(state State) tea.Cmd {
 	key := keyOf(state)
-	if r := CurrentRemote; r != nil {
-		if why := r.screenRefusal(key); why != "" {
-			destroy(state)
-			return NotifyWarning(why)
-		}
-	}
 	for i, s := range m.windows() {
 		if s == state || (key != "" && keyOf(s) == key) {
 			return m.jump(i, state)
