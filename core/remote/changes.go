@@ -130,7 +130,7 @@ func (r changes) send(ctx context.Context, ch core.Change, apply bool, f apiv1.A
 	case nil:
 		return resp, fmt.Errorf("no change: %w", core.ErrInvalid)
 	default:
-		return resp, fmt.Errorf("a %s isn't done through a remote server yet, run it without --remote on the server: %w", ch.Kind(), core.ErrInvalid)
+		return resp, fmt.Errorf("a %s can't be done through a remote server, run it on the server: %w", ch.Kind(), core.ErrInvalid)
 	}
 	var pc *core.PlanChangedError
 	if errors.As(err, &pc) {

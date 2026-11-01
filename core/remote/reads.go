@@ -57,8 +57,8 @@ func (c *Client) History(ctx context.Context, provider, mangaID string) ([]stora
 	return reads, nil
 }
 
-// Services are the core services over the server. What its API doesn't have yet answers
-// an error matching errors.ErrUnsupported; the jobs are Jobs.
+// Services are the core services over the server. What only its machine can do answers an
+// error matching errors.ErrUnsupported; the jobs are Jobs.
 func (c *Client) Services() core.Services {
 	return core.Services{Remote: c.URL, Changes: c.Changes(), Library: remoteLibrary{c}, History: history{c},
 		Bindings: remoteBindings{c}, Journal: c, Health: remoteHealth{c}, Logs: remoteLogs{c}, Providers: remoteProviders{c},
