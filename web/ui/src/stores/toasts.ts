@@ -23,7 +23,7 @@ export function readableMs(kind: Toast['kind'], text: string) {
   return Math.min(ms, toastMax)
 }
 
-// shortcut: this browser session's last kept only, in memory; persist them if they're wanted across reloads
+// TODO: this browser session's last kept only, in memory; persist them if they're wanted across reloads
 const kept = 200
 
 export const useToasts = defineStore('toasts', () => {
