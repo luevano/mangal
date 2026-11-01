@@ -35,6 +35,11 @@ func New(accentColor color.Color) *Model {
 	h := help.New()
 	h.ShowAll = true
 	_keyMap := newKeyMap()
+	// what's only the server's admin's isn't offered on a server
+	if r := base.CurrentRemote; r != nil && !r.CanConfig() {
+		_keyMap.setDownload.SetEnabled(false)
+		_keyMap.setBoth.SetEnabled(false)
+	}
 	return &Model{
 		list:  list,
 		title: t,

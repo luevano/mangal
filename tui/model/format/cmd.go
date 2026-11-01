@@ -16,6 +16,10 @@ func backCmd() tea.Msg {
 // setFormat writes the format to the config file. It runs in Update: the items read the
 // config to render.
 func (m *Model) setFormat(what forWhat, format libmangal.Format) tea.Cmd {
+	// the download format is the server's: its screen asks, the read format is this machine's
+	if base.CurrentRemote != nil && what != forRead {
+		return func() tea.Msg { return AskServerMsg{Format: format, Both: what == forBoth} }
+	}
 	err := config.CreateFile()
 	if err == nil {
 		switch what {

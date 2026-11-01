@@ -100,7 +100,11 @@ func (s *bindingsState) load(ctx context.Context) tea.Cmd {
 		var items []*sourceItem
 		for _, src := range client.MetadataSources {
 			// a source the client doesn't have isn't enabled or configured
-			if _, err := c.GetMetadataProvider(src.Source); err != nil {
+			if r := base.CurrentRemote; r != nil {
+				if _, err := base.MetadataSearcher(src); err != nil {
+					continue
+				}
+			} else if _, err := c.GetMetadataProvider(src.Source); err != nil {
 				continue
 			}
 			i := &sourceItem{src: src}
@@ -109,7 +113,9 @@ func (s *bindingsState) load(ctx context.Context) tea.Cmd {
 					i.binding = &b
 				}
 			}
-			if i.binding != nil {
+			if r := base.CurrentRemote; r != nil && i.binding != nil {
+				i.meta, i.err = r.RemoteMetadata(ctx, src, i.binding.ID)
+			} else if i.binding != nil {
 				i.meta, i.err = client.BoundMetadata(ctx, c, src.Code, i.binding.ID)
 			} else if meta := manga.Metadata(); meta != nil && meta.ID().Code == src.Code {
 				i.matched = meta

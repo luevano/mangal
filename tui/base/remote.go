@@ -37,6 +37,9 @@ type Remote struct {
 	Loaders func(ctx context.Context) ([]libmangal.ProviderLoader, error)
 	// Client is the server's API: reading fetches the chapters with it.
 	Client *remote.Client
+	// MetadataSources are the codes of the metadata sources enabled on the server, when it
+	// connected: shortcut, one enabled later needs a switch back to it to show.
+	MetadataSources []string
 	// Events tells fn the topics (storage.Rev*) the server says changed, until ctx is
 	// done: the shown State's DBChangedMsg.
 	Events func(ctx context.Context, fn func(topics []string))
@@ -122,6 +125,8 @@ var remoteGates = map[string]gate{
 	"library:undo":                {perm: core.ScopeManage, feature: "undo"},
 	"library:duplicates only":     {perm: core.ScopeManage, feature: "merge"},
 	"library:bindings":            {feature: "links"},
+	"bindings/:search":            {perm: core.ScopeBrowse, feature: "metadata search"},
+	"links/:search":               {perm: core.ScopeBrowse, feature: "metadata search"},
 	"library:fill backups":        {perm: core.ScopeManage, feature: "backup links"},
 	"library:rename":              {perm: core.ScopeAdmin, feature: "rename"},
 	"library:hold / new provider": {perm: core.ScopeManage, feature: "hold marks"},

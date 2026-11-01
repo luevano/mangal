@@ -108,6 +108,12 @@ func sourceColor(code lmmeta.IDCode) gocolor.Color {
 func newSearch(c *libmangal.Client, manga mangadata.Manga) base.State {
 	var sources []searchSource
 	for _, src := range client.MetadataSources {
+		if base.CurrentRemote != nil {
+			if p, err := base.MetadataSearcher(src); err == nil {
+				sources = append(sources, searchSource{src: src, provider: p})
+			}
+			continue
+		}
 		// a source the client doesn't have isn't enabled or configured
 		if p, err := c.GetMetadataProvider(src.Source); err == nil {
 			sources = append(sources, searchSource{src: src, provider: p})
@@ -121,7 +127,7 @@ func newSearch(c *libmangal.Client, manga mangadata.Manga) base.State {
 
 // NewPick is the search of the source's manga for query (a number or "id:<n>" gets that
 // id); enter goes back and runs pick with the chosen one.
-func NewPick(src client.MetadataSource, provider *lmmeta.ProviderWithCache, query string, pick func(lmmeta.Metadata) tea.Cmd) base.State {
+func NewPick(src client.MetadataSource, provider client.MetadataSearcher, query string, pick func(lmmeta.Metadata) tea.Cmd) base.State {
 	s := newState([]searchSource{{src: src, provider: provider}}, query)
 	s.pick = pick
 	return s

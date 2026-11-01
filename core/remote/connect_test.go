@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	lmmeta "github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 )
 
@@ -111,5 +114,32 @@ func TestConfigStore(t *testing.T) {
 	}
 	if err := c.Config.Set("download.format", nil, false, ""); err == nil {
 		t.Error("the store writes")
+	}
+}
+
+// The metadata search goes to the server, with its ranking, and asks for an id as id:<n>.
+func TestMetadataThroughTheServer(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.Path+"?"+r.URL.Query().Get("q"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"source": "al", "id": "5", "title": "Berserk", "url": "u", "score": 0.9, "bad": false}})
+	}))
+	defer srv.Close()
+	c, err := New(Options{URL: srv.URL, Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, _ := client.ParseMetadataSource("anilist")
+	hits, err := client.SearchMetadataSource(context.Background(), src, c.Metadata(src), "berserk")
+	if err != nil || len(hits) != 1 || hits[0].Meta.ID().Raw != "5" || hits[0].Score != 0.9 || !lmmeta.IsPartial(hits[0].Meta) {
+		t.Fatalf("%+v, %v", hits, err)
+	}
+	if _, found, err := c.Metadata(src).SearchByIDContext(context.Background(), 5); !found || err != nil {
+		t.Fatal(found, err)
+	}
+	want := []string{"/api/v1/metadata/anilist/search?berserk", "/api/v1/metadata/anilist/search?id:5"}
+	if !slices.Equal(queries, want) {
+		t.Errorf("%q, want %q", queries, want)
 	}
 }

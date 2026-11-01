@@ -266,6 +266,16 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return tea.Batch(refresh, func() tea.Msg { return msg.err })
 		}
 		return refresh
+	case format.AskServerMsg:
+		r := base.CurrentRemote
+		s.Confirm.Ask("Download format", fmt.Sprintf("Set the download format to %s for everyone on %s?", msg.Format, r.Name()), s.View(),
+			func() tea.Msg { return format.SetServerMsg(msg) })
+		return nil
+	case format.SetServerMsg:
+		return s.setServerFormat(ctx, msg)
+	case serverFormatMsg:
+		s.updateSubtitleFormats()
+		return base.Notify(fmt.Sprintf("Download format set to %s on %s", msg.format, base.CurrentRemote.Name()))
 	case format.BackMsg:
 		s.inFormats = false
 		s.updateSubtitleFormats()
@@ -290,6 +300,30 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		return tea.Batch(s.refresh(ctx, false), s.watchedCmd(ctx))
 	}
 	return s.updateChild(msg)
+}
+
+// serverFormatMsg is the server's download format, changed.
+type serverFormatMsg struct{ format libmangal.Format }
+
+// setServerFormat sets the server's download format, then config answers it (with Both also
+// this machine's read format).
+func (s *state) setServerFormat(ctx context.Context, msg format.SetServerMsg) tea.Cmd {
+	if msg.Both {
+		if err := config.CreateFile(); err != nil {
+			return func() tea.Msg { return err }
+		}
+		if err := config.Read.Format.Write(msg.Format); err != nil {
+			return func() tea.Msg { return err }
+		}
+	}
+	r := base.CurrentRemote
+	return base.Load(ctx, "Setting the download format on "+r.Name(), func(ctx context.Context) (serverFormatMsg, error) {
+		if _, err := r.Services.Config.Set(ctx, config.Download.Format.Key, msg.Format.String()); err != nil {
+			return serverFormatMsg{}, fmt.Errorf("set the download format on %s: %w", r.Name(), err)
+		}
+		r.RefreshConfig(ctx)
+		return serverFormatMsg{format: msg.Format}, nil
+	}, func(m serverFormatMsg) tea.Msg { return m })
 }
 
 // updateChild sends the msg to what's shown: the format picker or the list.

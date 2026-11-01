@@ -168,14 +168,16 @@ func (s *linksState) load(ctx context.Context) tea.Cmd {
 		manga := info.Manga
 		var items []*linkItem
 		for _, src := range client.MetadataSources {
-			_, err := client.MetadataProvider(src.Source)
+			_, err := base.MetadataSearcher(src)
 			link := info.Source(src.Code)
 			// a source not enabled or configured shows only when linked
 			if err != nil && !link.Linked() {
 				continue
 			}
 			i := &linkItem{src: src, link: link}
-			if link.Linked() {
+			if r := base.CurrentRemote; r != nil && link.Linked() {
+				i.meta, i.err = r.RemoteMetadata(ctx, src, link.Current())
+			} else if link.Linked() {
 				i.meta, i.err = client.LinkMetadata(ctx, src.Code, link.Current())
 			}
 			if pick, ok, err := lib.LinkPick(ctx, manga.ID, src.Code); err != nil {
@@ -256,7 +258,7 @@ func (s *linksState) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		case msg.String() == "enter" && i.pick != nil:
 			return loadPick(ctx, *i.pick)
 		case key.Matches(msg, s.search):
-			p, err := client.MetadataProvider(i.src.Source)
+			p, err := base.MetadataSearcher(i.src)
 			if err != nil {
 				return func() tea.Msg { return err }
 			}
@@ -292,7 +294,13 @@ func loadPick(ctx context.Context, pick storage.LinkPick) tea.Cmd {
 		for i, c := range pick.Candidates {
 			// one that doesn't load is still a choice
 			var err error
-			if msg.metas[i], err = client.LinkMetadata(ctx, pick.Source, c.ID); err != nil {
+			if r := base.CurrentRemote; r != nil {
+				src, _ := client.MetadataSourceOf(pick.Source)
+				msg.metas[i], err = r.RemoteMetadata(ctx, src, c.ID)
+			} else {
+				msg.metas[i], err = client.LinkMetadata(ctx, pick.Source, c.ID)
+			}
+			if err != nil {
 				log.Warn("look up %s %s: %s", pick.Source, c.ID, err)
 			}
 		}

@@ -30,6 +30,12 @@ var metadataIDQuery = regexp.MustCompile(`^\s*(?:id:\s*)?(\d+)\s*$`)
 // SearchMetadataSource is a source's part of an interactive metadata search: the manga
 // with the id for a number or "id:<n>", else the closest match on top, then the results scored.
 func SearchMetadataSource(ctx context.Context, src MetadataSource, p MetadataSearcher, query string) ([]MetadataHit, error) {
+	// a server's search has already done this
+	if h, ok := p.(interface {
+		Hits(ctx context.Context, query string) ([]MetadataHit, error)
+	}); ok {
+		return h.Hits(ctx, query)
+	}
 	if m := metadataIDQuery.FindStringSubmatch(query); m != nil {
 		id, _ := strconv.Atoi(m[1])
 		meta, found, err := p.SearchByIDContext(ctx, id)
