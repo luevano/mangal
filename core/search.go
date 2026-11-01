@@ -35,6 +35,11 @@ type SearchResult struct {
 // once every one did. A cancelled ctx ends the searches still running (their results
 // carry the error); the channel holds every result, so a reader may stop early.
 func (c *Core) Search(ctx context.Context, req SearchReq) <-chan SearchResult {
+	return SearchWith(ctx, req, c.env.SearchProvider)
+}
+
+// SearchWith is Search over the search of one provider.
+func SearchWith(ctx context.Context, req SearchReq, search func(ctx context.Context, provider, query string) (libmangal.ProviderInfo, []mangadata.Manga, error)) <-chan SearchResult {
 	results := make(chan SearchResult, len(req.Providers))
 	limit := req.Concurrency
 	if limit <= 0 {
@@ -48,7 +53,7 @@ func (c *Core) Search(ctx context.Context, req SearchReq) <-chan SearchResult {
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
-				r.Info, r.Mangas, r.Err = c.env.SearchProvider(ctx, p, req.Query)
+				r.Info, r.Mangas, r.Err = search(ctx, p, req.Query)
 			case <-ctx.Done():
 				r.Err = ctx.Err()
 			}

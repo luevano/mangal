@@ -19,9 +19,9 @@ import (
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
-// unsupported is what the server's API doesn't do yet (docs/remote.md R3/R4).
+// unsupported is what the API doesn't do: only the server's machine can.
 func unsupported(what string) error {
-	return fmt.Errorf("%s isn't on a remote mangal serve yet (mangal without --remote does it): %w", what, errors.ErrUnsupported)
+	return fmt.Errorf("%s only works on the server's machine: %w", what, errors.ErrUnsupported)
 }
 
 // remoteLibrary is the server's library (core.Library).
@@ -273,7 +273,11 @@ func (l remoteLibrary) Scan(ctx context.Context, opts core.ScanOptions) (core.Sc
 // ScanManga is the server's scan of the manga (API 1.1), the manga as it is on an older
 // server or without the manage permission (the server's scans keep it then).
 func (l remoteLibrary) ScanManga(ctx context.Context, id int64) (core.MangaScan, error) {
-	if l.c.needsAPI(ctx, 1, "") == nil {
+	st, err := l.c.status(ctx)
+	if err != nil {
+		return core.MangaScan{}, err
+	}
+	if l.c.needsAPI(ctx, 1, "") == nil && slices.Contains(st.Scopes, core.ScopeManage) {
 		r, err := l.c.API.ScanLibraryMangaWithResponse(ctx, id)
 		if err != nil {
 			return core.MangaScan{}, fmt.Errorf("mangal serve: %w", err)

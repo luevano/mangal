@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/alexedwards/argon2id"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
@@ -224,8 +225,10 @@ type User struct {
 	Role string `json:"role"`
 	// Password is false for a user only mangal on this machine is (the default user
 	// "mangal" until it gets one): they can't log in.
-	Password bool      `json:"password"`
-	Created  time.Time `json:"created"`
+	Password bool `json:"password"`
+	// Local is true when mangal on this machine (a server's, remotely) is this user.
+	Local   bool      `json:"local,omitempty"`
+	Created time.Time `json:"created"`
 	// LastLogin is zero when the user never logged in.
 	LastLogin time.Time `json:"last_login,omitzero"`
 }
@@ -262,6 +265,8 @@ type Users interface {
 	// EndLogins ends the user's sessions (every browser and app).
 	EndLogins(ctx context.Context, name string) error
 	Remove(ctx context.Context, name string) error
+	// UseLocal makes mangal on this machine (a server's, remotely) this user (auth.user).
+	UseLocal(ctx context.Context, name string) error
 
 	Tokens(ctx context.Context) ([]Token, error)
 	// AddToken makes an API token owned by owner (empty for the server's), secret is
@@ -316,11 +321,20 @@ func (l localUsers) List(context.Context) ([]User, error) {
 	if err != nil {
 		return nil, err
 	}
+	local, err := cache.LocalUser()
+	if err != nil {
+		return nil, err
+	}
 	users := make([]User, len(list))
 	for i, u := range list {
 		users[i] = userOf(u)
+		users[i].Local = u.Name == local
 	}
 	return users, nil
+}
+
+func (l localUsers) UseLocal(ctx context.Context, name string) error {
+	return client.UseLocalUser(ctx, name)
 }
 
 func (l localUsers) Add(ctx context.Context, name, password string, perms []string) (User, error) {

@@ -214,6 +214,7 @@ type Services struct {
 	Providers Providers
 	Config    Config
 	Accounts  Accounts
+	Users     Users
 	// Watches are the watches: the running mangal serve's, else the local service.
 	Watches func(ctx context.Context) (watch.Manager, error)
 }
@@ -243,6 +244,7 @@ func New(_ context.Context, env Env) (*Core, error) {
 	c.Providers = NewProviders(env.Loaders)
 	c.Config = NewConfig()
 	c.Accounts = NewAccounts()
+	c.Users = NewUsers()
 	c.Watches = env.Watches
 	return c, nil
 }

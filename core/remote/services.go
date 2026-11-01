@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/luevano/libmangal"
-	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/health"
@@ -343,24 +342,4 @@ func (remoteConfig) ImportPlan(context.Context, []byte) ([]config.ImportChange, 
 
 func (remoteConfig) Import(context.Context, []config.ImportChange) (int64, error) {
 	return 0, unsupported("importing settings into the server")
-}
-
-// remoteAccounts are the server's accounts as it last checked them (core.Accounts).
-type remoteAccounts struct{ c *Client }
-
-func (a remoteAccounts) List(ctx context.Context, _ core.AccountsOptions) ([]core.Account, error) {
-	r, err := a.c.API.ListAccountsWithResponse(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("mangal serve: %w", err)
-	}
-	list, err := answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]core.Account, len(list))
-	for i, e := range list {
-		out[i] = core.Account{Account: metadata.Account{Service: e.Service, User: deref(e.User), URL: deref(e.Url), Status: e.Status,
-			Expires: deref(e.Expires), Details: deref(e.Details)}, Provider: deref(e.Provider), Checked: deref(e.Checked), Error: deref(e.Error)}
-	}
-	return out, nil
 }

@@ -62,7 +62,7 @@ func (c *Client) History(ctx context.Context, provider, mangaID string) ([]stora
 func (c *Client) Services() core.Services {
 	return core.Services{Remote: c.URL, Changes: c.Changes(), Library: remoteLibrary{c}, History: history{c},
 		Bindings: remoteBindings{c}, Journal: c, Health: remoteHealth{c}, Logs: remoteLogs{c}, Providers: remoteProviders{c},
-		Config: remoteConfig{c}, Accounts: remoteAccounts{c},
+		Config: remoteConfig{c}, Accounts: remoteAccounts{c}, Users: remoteUsers{c},
 		Watches: func(context.Context) (watch.Manager, error) { return c.Watches(), nil }}
 }
 

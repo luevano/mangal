@@ -59,6 +59,8 @@ func (e *Error) Is(target error) bool {
 		return target == core.ErrInvalid
 	case "busy":
 		return target == core.ErrBusy
+	case "refused":
+		return target == core.ErrRefused
 	case "nothing_to_do":
 		return target == core.ErrNothingToDo || target == library.ErrNothingToUndo
 	}
