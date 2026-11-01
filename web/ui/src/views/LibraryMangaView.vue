@@ -321,7 +321,7 @@ function watchSource(provider: string, mangaID: string) {
       <label class="form-label small mb-0">{{ sourceNames[k] ?? k }} id</label>
       <div class="input-group input-group-sm">
         <input v-model="links[k]" class="form-control" :placeholder="`empty removes it`" />
-        <button v-if="k !== 'mu'" type="button" class="btn btn-outline-secondary" :title="`Search ${sourceNames[k] ?? k}`" :data-test="`search-link-${k}`" @click="pickSource = k"><i class="bi bi-search" /></button>
+        <button type="button" class="btn btn-outline-secondary" :title="`Search ${sourceNames[k] ?? k}`" :data-test="`search-link-${k}`" @click="pickSource = k"><i class="bi bi-search" /></button>
       </div>
     </div>
     <div class="form-check"><input id="lr" v-model="linkRename" class="form-check-input" type="checkbox" /><label class="form-check-label" for="lr">rename the folder</label></div>
