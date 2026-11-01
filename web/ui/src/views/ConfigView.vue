@@ -21,8 +21,9 @@ const filter = ref('')
 // the edited values by key, as typed
 const drafts = reactive<Record<string, string>>({})
 
-// a provider's settings are its own section
+// a provider's settings are its own section; a client key is the server machine's own mangal
 function sectionOf(e: ConfigEntry): string {
+  if (e.side === 'client') return "the server machine's terminal"
   return e.provider ? `providers.${e.provider}` : (e.key.split('.')[0] ?? '')
 }
 
