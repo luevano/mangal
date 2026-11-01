@@ -34,12 +34,19 @@ source looked up and what was found.`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		st := newStatus(cmd)
 		defer st.Done()
-		c, err := newCore()
+		c, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
 		rep, err := c.Library.LookupSourceURLs(changeCtx(cmd, st), core.SourceURLsOptions{All: libraryURLsArgs.All})
 		st.Clear()
+		// the server's job says what it did, in a line
+		if c.Remote != "" {
+			if rep.Summary != "" {
+				cmd.Println(rep.Summary)
+			}
+			return err
+		}
 		for _, s := range rep.Skipped {
 			cmd.Println("skipped " + s)
 		}

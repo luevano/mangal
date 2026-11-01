@@ -3,6 +3,8 @@ package cmd
 import (
 	"strings"
 
+	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/spf13/cobra"
@@ -50,12 +52,14 @@ Only lists what would happen unless --apply is set; "mangal library undo" undoes
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := st.Context(cmd.Context())
-		if _, err := path.ExistingDownloads(); err != nil {
-			return err
-		}
-		c, err := newCore()
+		c, err := newBackend(cmd)
 		if err != nil {
 			return err
+		}
+		if c.app != nil {
+			if _, err := path.ExistingDownloads(); err != nil {
+				return err
+			}
 		}
 		id, err := parseMangaID(args[0])
 		if err != nil {
@@ -69,9 +73,13 @@ Only lists what would happen unless --apply is set; "mangal library undo" undoes
 			return err
 		}
 		ctx = core.WithProgress(ctx, st.Progress)
-		req, err := c.RetitleSource(ctx, id, core.RetitleFrom{Provider: libraryRetitleArgs.From, MangaID: mangaID, Query: query, Selector: libraryRetitleArgs.Selector})
-		if err != nil {
-			return err
+		from := core.RetitleFrom{Provider: libraryRetitleArgs.From, MangaID: mangaID, Query: query, Selector: libraryRetitleArgs.Selector}
+		// a server finds the manga itself
+		req := core.RetitleReq{Manga: id, Provider: libmangal.ProviderInfo{ID: from.Provider}, From: mangadata.MangaInfo{ID: from.MangaID}, Query: from.Query, Selector: from.Selector}
+		if c.app != nil {
+			if req, err = c.app.RetitleSource(ctx, id, from); err != nil {
+				return err
+			}
 		}
 		st.Set("planning the retitle")
 		plan, err := c.Changes.Plan(ctx, req)
@@ -98,7 +106,9 @@ Only lists what would happen unless --apply is set; "mangal library undo" undoes
 		}
 		printResultLines(cmd, res.Lines)
 		cmd.Printf("retitled %d chapters\n", res.Detail)
-		printTrash(cmd)
+		if c.app != nil {
+			printTrash(cmd)
+		}
 		return nil
 	},
 }

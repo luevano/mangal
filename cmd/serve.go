@@ -103,21 +103,21 @@ taking it within seconds). Permissions: "mangal user roles --all".`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		switch {
 		case serveTokenArgs.List:
-			return listServeTokens(cmd)
+			return listServeTokens(cmd, core.NewUsers(), false)
 		case serveTokenArgs.Revoke != "":
-			return revokeServeToken(cmd, serveTokenArgs.Revoke)
+			return revokeServeToken(cmd, core.NewUsers(), serveTokenArgs.Revoke)
 		case serveTokenArgs.Generate:
 			if serveTokenArgs.Name == "" {
 				return errors.New("--generate needs --name (what the token is for)")
 			}
-			return generateNamedToken(cmd, serveTokenArgs.Name, serveTokenArgs.Scopes)
+			return generateNamedToken(cmd, core.NewUsers(), serveTokenArgs.Name, serveTokenArgs.Scopes)
 		}
 		return cmd.Help()
 	},
 }
 
-func generateNamedToken(cmd *cobra.Command, name string, scopes []string) error {
-	t, secret, err := core.NewUsers().AddToken(ctxOf(cmd), name, "", scopes)
+func generateNamedToken(cmd *cobra.Command, users core.Users, name string, scopes []string) error {
+	t, secret, err := users.AddToken(ctxOf(cmd), name, "", scopes)
 	if err != nil {
 		return err
 	}
@@ -126,16 +126,16 @@ func generateNamedToken(cmd *cobra.Command, name string, scopes []string) error 
 	return nil
 }
 
-func revokeServeToken(cmd *cobra.Command, name string) error {
-	if err := core.NewUsers().RemoveToken(ctxOf(cmd), name); err != nil {
+func revokeServeToken(cmd *cobra.Command, users core.Users, name string) error {
+	if err := users.RemoveToken(ctxOf(cmd), name); err != nil {
 		return err
 	}
 	successf(cmd, "revoked the API token %q", name)
 	return nil
 }
 
-func listServeTokens(cmd *cobra.Command) error {
-	tokens, err := core.NewUsers().Tokens(ctxOf(cmd))
+func listServeTokens(cmd *cobra.Command, users core.Users, remote bool) error {
+	tokens, err := users.Tokens(ctxOf(cmd))
 	if err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func listServeTokens(cmd *cobra.Command) error {
 	if len(tokens) == 0 {
 		cmd.Println("no API tokens")
 	}
-	if config.Serve.Auth.Get() == serve.AuthNone {
+	if !remote && config.Serve.Auth.Get() == serve.AuthNone {
 		cmd.Println("serve.auth is none: the server takes no tokens")
 	}
 	return nil

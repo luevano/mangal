@@ -31,22 +31,22 @@ URL) as soon as it answers. "mangal inline json" has the full results of one pro
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := st.Context(ctxOf(cmd))
-		c, err := newCore()
+		b, err := newBackend(cmd)
 		if err != nil {
 			return err
 		}
 		providers := searchArgs.Providers
 		if len(providers) == 0 {
-			if providers, err = installedProviderIDs(ctx, c); err != nil {
+			if providers, err = installedProviderIDs(ctx, b.Services); err != nil {
 				return err
 			}
 		}
-		return printSearch(ctx, cmd, st, c, providers, strings.Join(args, " "))
+		return printSearch(ctx, cmd, st, b, providers, strings.Join(args, " "))
 	},
 }
 
 // installedProviderIDs are the installed providers' ids.
-func installedProviderIDs(ctx context.Context, c *core.Core) ([]string, error) {
+func installedProviderIDs(ctx context.Context, c core.Services) ([]string, error) {
 	infos, err := c.Providers.List(ctx)
 	if err != nil {
 		return nil, err
@@ -60,11 +60,11 @@ func installedProviderIDs(ctx context.Context, c *core.Core) ([]string, error) {
 
 // printSearch searches the query on the providers, printing each one's results as they
 // come: an error when every provider failed.
-func printSearch(ctx context.Context, cmd *cobra.Command, st *status, c *core.Core, providers []string, query string) error {
+func printSearch(ctx context.Context, cmd *cobra.Command, st *status, b backend, providers []string, query string) error {
 	pending := len(providers)
 	st.Set(fmt.Sprintf("searching %q on %d providers", query, pending))
 	failed := 0
-	for r := range c.Search(ctx, core.SearchReq{Providers: providers, Query: query}) {
+	for r := range b.search(ctx, cmd, core.SearchReq{Providers: providers, Query: query}) {
 		pending--
 		st.Print(func() {
 			if r.Err != nil {

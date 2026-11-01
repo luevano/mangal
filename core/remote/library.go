@@ -260,7 +260,7 @@ func (l remoteLibrary) Scan(ctx context.Context, opts core.ScanOptions) (core.Sc
 	if err != nil {
 		return core.ScanReport{}, err
 	}
-	j, err := l.c.waitJob(ctx, jobOf(job))
+	j, err := l.c.WaitJob(ctx, jobOf(job))
 	if err != nil {
 		return core.ScanReport{}, err
 	}
@@ -304,12 +304,27 @@ func (l remoteLibrary) SourceURL(ctx context.Context, manga int64, provider, man
 	return u.Url, err
 }
 
-func (remoteLibrary) LookupSourceURLs(context.Context, core.SourceURLsOptions) (core.SourceURLsReport, error) {
-	return core.SourceURLsReport{}, unsupported("looking up every source's address")
+func (l remoteLibrary) LookupSourceURLs(ctx context.Context, opts core.SourceURLsOptions) (core.SourceURLsReport, error) {
+	r, err := l.c.API.LookupSourceURLsWithResponse(ctx, apiv1.SourceURLsRequest{All: opt(opts.All)})
+	if err != nil {
+		return core.SourceURLsReport{}, fmt.Errorf("mangal serve: %w", err)
+	}
+	job, err := answer(r.StatusCode(), r.Body, r.JSON202, r.JSONDefault)
+	if err != nil {
+		return core.SourceURLsReport{}, err
+	}
+	j, err := l.c.WaitJob(ctx, jobOf(job))
+	if err != nil {
+		return core.SourceURLsReport{}, err
+	}
+	if j.Status != jobs.Done {
+		return core.SourceURLsReport{Summary: j.Message}, fmt.Errorf("the server's lookup (job %d): %s", j.ID, cmp.Or(j.Error, j.Status.String()))
+	}
+	return core.SourceURLsReport{Summary: j.Message}, nil
 }
 
-// waitJob polls the job until it's over.
-func (c *Client) waitJob(ctx context.Context, j core.Job) (core.Job, error) {
+// WaitJob polls the job until it's over.
+func (c *Client) WaitJob(ctx context.Context, j core.Job) (core.Job, error) {
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	for j.Status.Active() {

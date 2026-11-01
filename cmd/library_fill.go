@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/jobs"
+	"github.com/luevano/mangal/v5/core/remote"
 	"github.com/luevano/mangal/v5/path"
 	stringutil "github.com/luevano/mangal/v5/util/string"
 	"github.com/spf13/cobra"
@@ -65,12 +67,14 @@ searches the title on each and lists the candidates, to run again with one --fro
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := st.Context(cmd.Context())
-		if _, err := path.ExistingDownloads(); err != nil {
-			return err
-		}
-		c, err := newCore()
+		c, err := newBackend(cmd)
 		if err != nil {
 			return err
+		}
+		if c.app != nil {
+			if _, err := path.ExistingDownloads(); err != nil {
+				return err
+			}
 		}
 		req := core.FillReq{Provider: libraryFillArgs.Provider, MangaID: libraryFillArgs.MangaID}
 		if req.Provider == "" {
@@ -107,21 +111,16 @@ searches the title on each and lists the candidates, to run again with one --fro
 				query = req.Query
 			}
 			if query == "" {
-				_, info, found, err := c.Env().ProviderManga(ctx, req.Provider, req.MangaID, "")
-				if err != nil {
+				if query, err = providerMangaTitle(ctx, cmd, c, req.Provider, req.MangaID); err != nil {
 					return err
 				}
-				if !found {
-					return fmt.Errorf("%s has no manga %q", req.Provider, req.MangaID)
-				}
-				query = info.Title
 			}
 			return printSearch(ctx, cmd, st, c, libraryFillArgs.From, query)
 		}
 		ctx = core.WithProgress(ctx, st.Progress)
 		req.Chapters = libraryFillArgs.Chapters
 		req.From = core.RetitleFrom{Provider: libraryFillArgs.From[0], MangaID: mangaID, Query: query, Selector: libraryFillArgs.Selector}
-		plan, err := c.PlanFill(ctx, req)
+		plan, err := planFill(ctx, c, req)
 		st.Done()
 		if err != nil {
 			return err
@@ -136,6 +135,13 @@ searches the title on each and lists the candidates, to run again with one --fro
 		}
 		if !libraryFillArgs.Apply {
 			cmd.Println("run with --apply to get them")
+			return nil
+		}
+		if c.rc != nil {
+			if err := c.rc.ApplyFill(ctx, req, "cli"); err != nil {
+				return err
+			}
+			cmd.Printf("started the download on %s (mangal jobs lists it)\n", remote.Name(c.rc.URL))
 			return nil
 		}
 		// the job the TUI and serve queue, run here
@@ -168,4 +174,35 @@ searches the title on each and lists the candidates, to run again with one --fro
 		}
 		return job.Err
 	},
+}
+
+// planFill is the fill's plan on the backend.
+func planFill(ctx context.Context, b backend, req core.FillReq) (core.FillPlan, error) {
+	if b.rc != nil {
+		return b.rc.PlanFill(ctx, req)
+	}
+	return b.app.PlanFill(ctx, req)
+}
+
+// providerMangaTitle is the title of the provider's manga with the id.
+func providerMangaTitle(ctx context.Context, cmd *cobra.Command, b backend, provider, id string) (string, error) {
+	if b.app != nil {
+		_, info, found, err := b.app.Env().ProviderManga(ctx, provider, id, "")
+		if err == nil && !found {
+			err = fmt.Errorf("%s has no manga %q", provider, id)
+		}
+		return info.Title, err
+	}
+	c, err := b.acquire(ctx, cmd, provider)
+	if err != nil {
+		return "", err
+	}
+	manga, found, err := c.MangaByIDContext(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", fmt.Errorf("%s has no manga %q", provider, id)
+	}
+	return manga.Info().Title, nil
 }

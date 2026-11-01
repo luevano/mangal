@@ -70,7 +70,11 @@ The first user is an admin, the others readers unless --role or --perms say.`,
 		if err != nil {
 			return err
 		}
-		u, err := core.NewUsers().Add(ctxOf(cmd), args[0], password, perms)
+		users, _, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		u, err := users.Add(ctxOf(cmd), args[0], password, perms)
 		if err != nil {
 			return err
 		}
@@ -92,7 +96,11 @@ var userPasswdCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := core.NewUsers().SetPassword(ctxOf(cmd), args[0], password); err != nil {
+		users, _, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		if err := users.SetPassword(ctxOf(cmd), args[0], password); err != nil {
 			return err
 		}
 		successf(cmd, "changed the password of %q, its logins ended", args[0])
@@ -126,7 +134,11 @@ var userPermsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := core.NewUsers().SetPerms(ctxOf(cmd), args[0], perms); err != nil {
+		users, _, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		if err := users.SetPerms(ctxOf(cmd), args[0], perms); err != nil {
 			return err
 		}
 		successf(cmd, "changed the permissions of %q, its logins ended", args[0])
@@ -143,7 +155,11 @@ var userRenameCmd = &cobra.Command{
 	Short: "Rename a user, with their history, tokens and auth.user (their logins end)",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := core.NewUsers().Rename(ctxOf(cmd), args[0], args[1]); err != nil {
+		users, _, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		if err := users.Rename(ctxOf(cmd), args[0], args[1]); err != nil {
 			return err
 		}
 		successf(cmd, "renamed the user %q to %q", args[0], args[1])
@@ -163,6 +179,17 @@ their read history, search history and AniList/Kitsu/MyAnimeList accounts from n
 password needed, whoever runs mangal here owns its files anyway.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		users, onServer, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		if onServer {
+			if err := users.UseLocal(ctxOf(cmd), args[0]); err != nil {
+				return err
+			}
+			successf(cmd, "mangal on the server's machine is %q now", args[0])
+			return nil
+		}
 		if err := client.UseLocalUser(ctxOf(cmd), args[0]); err != nil {
 			return err
 		}
@@ -181,7 +208,11 @@ var userLogoutCmd = &cobra.Command{
 	Short: "End a user's logins (every browser and app)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := core.NewUsers().EndLogins(ctxOf(cmd), args[0]); err != nil {
+		users, _, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		if err := users.EndLogins(ctxOf(cmd), args[0]); err != nil {
 			return err
 		}
 		successf(cmd, "ended the logins of %q", args[0])
@@ -199,7 +230,11 @@ var userRmCmd = &cobra.Command{
 	Short:   "Remove a user (their logins end)",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := core.NewUsers().Remove(ctxOf(cmd), args[0]); err != nil {
+		users, _, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		if err := users.Remove(ctxOf(cmd), args[0]); err != nil {
 			return err
 		}
 		successf(cmd, "removed the user %q", args[0])
@@ -217,7 +252,11 @@ var userLsCmd = &cobra.Command{
 	Short:   "List the users",
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		list, err := core.NewUsers().List(ctxOf(cmd))
+		users, onServer, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		list, err := users.List(ctxOf(cmd))
 		if err != nil {
 			return err
 		}
@@ -225,9 +264,11 @@ var userLsCmd = &cobra.Command{
 			cmd.Println("no users (mangal user add <name>)")
 			return nil
 		}
-		local, err := cache.LocalUser()
-		if err != nil {
-			return err
+		local := ""
+		if !onServer {
+			if local, err = cache.LocalUser(); err != nil {
+				return err
+			}
 		}
 		for _, u := range list {
 			last := "never logged in"
@@ -237,7 +278,10 @@ var userLsCmd = &cobra.Command{
 			case !u.LastLogin.IsZero():
 				last = "last login " + u.LastLogin.Format(time.DateTime)
 			}
-			if u.Name == local {
+			switch {
+			case onServer && u.Local:
+				last += ", the server's machine's user"
+			case !onServer && u.Name == local:
 				last += ", this machine's user"
 			}
 			cmd.Printf("%s  %s: %s  (%s)\n", u.Name, u.Role, strings.Join(u.Perms, ", "), last)
@@ -259,22 +303,34 @@ var userRolesCmd = &cobra.Command{
 	Use:   "roles",
 	Short: "What each role (and with --all each permission) allows",
 	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, _ []string) {
-		for _, r := range core.Roles {
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		roles, perms := core.Roles, core.Permissions
+		rc, err := connectRemote(cmd)
+		if err != nil {
+			return err
+		}
+		if rc != nil {
+			sayOn(cmd, rc.URL)
+			if roles, perms, err = rc.Permissions(ctxOf(cmd)); err != nil {
+				return err
+			}
+		}
+		for _, r := range roles {
 			cmd.Printf("%-10s  %s\n            (%s)\n", r.Name, r.Line, strings.Join(r.Perms, ", "))
 		}
 		cmd.Println("tokens can be added to any of them (--perms tokens): they make their own API tokens.")
 		if !userRolesArgs.All {
-			return
+			return nil
 		}
 		cmd.Println()
-		for _, p := range core.Permissions {
+		for _, p := range perms {
 			implies := ""
 			if len(p.Implies) != 0 {
 				implies = " [with " + strings.Join(p.Implies, ", ") + "]"
 			}
 			cmd.Printf("%-10s  %s%s\n", p.Name, p.Line, implies)
 		}
+		return nil
 	},
 }
 

@@ -105,12 +105,24 @@ var providersLsCmd = &cobra.Command{
 	Short: "List installed providers",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		loaders, problems, err := manager.Load()
+		rc, err := connectRemote(cmd)
 		if err != nil {
 			return err
 		}
-		for _, p := range problems {
-			cmd.PrintErrf("warning: skipped %s\n", p)
+		var loaders []libmangal.ProviderLoader
+		if rc != nil {
+			sayOn(cmd, rc.URL)
+			if loaders, err = rc.Loaders(ctxOf(cmd)); err != nil {
+				return err
+			}
+		} else {
+			var problems []error
+			if loaders, problems, err = manager.Load(); err != nil {
+				return err
+			}
+			for _, p := range problems {
+				cmd.PrintErrf("warning: skipped %s\n", p)
+			}
 		}
 
 		withMirrors, _ := cmd.Flags().GetBool("mirrors")
@@ -119,6 +131,9 @@ var providersLsCmd = &cobra.Command{
 			cmd.Println(info.ID)
 			if withMirrors && len(info.Mirrors) != 0 {
 				preferred := config.Providers.Mirrors.Get()[info.ID]
+				if l, ok := loader.(remote.Loader); ok {
+					preferred = l.Preferred()
+				}
 				for _, site := range append([]string{info.Website}, info.Mirrors...) {
 					mark := ""
 					if site == preferred || (preferred == "" && site == info.Website) {

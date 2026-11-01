@@ -140,6 +140,8 @@ type SourceURLsReport struct {
 	Results []SourceURLResult
 	// Skipped are the providers not asked, with why (not installed).
 	Skipped []string
+	// Summary is a server's job's line, what's known of its results.
+	Summary string
 }
 
 // sleep waits d, an error when ctx is done first.

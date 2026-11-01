@@ -12,6 +12,7 @@ import (
 	"github.com/luevano/libmangal/logger"
 	"github.com/luevano/libmangal/mangadata"
 	lmmeta "github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
 
@@ -32,6 +33,20 @@ func (c *Client) Loaders(ctx context.Context) ([]libmangal.ProviderLoader, error
 		loaders[i] = Loader{c: c, info: providerOf(p), preferred: deref(p.Preferred)}
 	}
 	return loaders, nil
+}
+
+// Loader is the server's provider with the id (an old id too): one it hasn't is an error naming
+// it, this machine's isn't what it means.
+func (c *Client) Loader(ctx context.Context, id string) (libmangal.ProviderLoader, error) {
+	loaders, err := c.Loaders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	loader, _, ok := libmangal.FindLoader(loaders, id)
+	if !ok {
+		return nil, &core.NotFoundError{What: fmt.Sprintf("no provider %q on %s: install it there, or --local for this machine's", id, Name(c.URL))}
+	}
+	return loader, nil
 }
 
 // Loader is a provider of the server.

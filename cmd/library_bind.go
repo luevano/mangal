@@ -79,7 +79,7 @@ differs is only replaced when you say so (with --apply). Every change can be und
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := changeCtx(cmd, st)
-		c, err := newCore()
+		c, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
@@ -235,7 +235,7 @@ func libraryBindLinks(cmd *cobra.Command) (library.Links, error) {
 }
 
 // printLinks prints the manga's links, where they come from, and what its folder suggests.
-func printLinks(ctx context.Context, cmd *cobra.Command, c *core.Core, manga storage.Manga) error {
+func printLinks(ctx context.Context, cmd *cobra.Command, c core.Services, manga storage.Manga) error {
 	info, err := c.Library.Links(ctx, manga.ID)
 	if err != nil {
 		return err
@@ -279,7 +279,7 @@ func pickLine(pick storage.LinkPick, flag string) string {
 
 // libraryBackups fills the Kitsu and MyAnimeList links of the mangas (nil: all) from
 // AniList, asking first (unless --yes) and for each id that differs.
-func libraryBackups(cmd *cobra.Command, st *status, c *core.Core, mangas []int64) error {
+func libraryBackups(cmd *cobra.Command, st *status, c core.Services, mangas []int64) error {
 	ctx := changeCtx(cmd, st)
 	req := core.BackupsReq{Mangas: mangas}
 	plan, err := c.Changes.Plan(ctx, req)

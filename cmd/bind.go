@@ -97,12 +97,13 @@ manga) share the bindings.`,
 			remove = append(remove, src.Code)
 		}
 
-		c, warnings, err := client.AcquireByID(ctx, args[0])
+		app, err := newBackend(cmd)
 		if err != nil {
 			return err
 		}
-		for _, w := range warnings {
-			cmd.PrintErrf("warning: %s\n", w)
+		c, err := app.acquire(ctx, cmd, args[0])
+		if err != nil {
+			return err
 		}
 		provider := c.Info().ID
 		title := ""
@@ -122,14 +123,15 @@ manga) share the bindings.`,
 			mangaID, title = mangas[indexes[0]].Info().ID, mangas[indexes[0]].Info().Title
 		}
 
-		app, err := newCore()
-		if err != nil {
-			return err
-		}
 		for _, s := range sets {
 			res, err := app.Changes.Apply(ctx, core.BindReq{Provider: provider, MangaID: mangaID, Code: s.src.Code, ID: s.id}, core.ApplyOpts{})
 			if err != nil {
 				return err
+			}
+			// a server's doesn't send what it found
+			if res.Detail == nil {
+				successf(cmd, "bound to %s %s", s.src.Name, s.id)
+				continue
 			}
 			successf(cmd, "bound to %s %s: %s", s.src.Name, s.id, res.Detail)
 		}
@@ -188,7 +190,7 @@ var bindLsCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(2),
 	ValidArgsFunction: completionFirstProvider,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		c, err := newCore()
+		c, err := newServices(cmd)
 		if err != nil {
 			return err
 		}
@@ -227,7 +229,7 @@ var bindLsCmd = &cobra.Command{
 
 // knownTitles are the titles of the watched and downloaded mangas by provider and id,
 // best effort.
-func knownTitles(ctx context.Context, c *core.Core) map[[2]string]string {
+func knownTitles(ctx context.Context, c core.Services) map[[2]string]string {
 	titles := map[[2]string]string{}
 	if list, err := c.Library.Mangas(ctx, core.MangasOptions{}); err == nil {
 		for _, m := range list.Mangas {

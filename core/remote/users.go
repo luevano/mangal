@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -138,6 +139,22 @@ func (u remoteUsers) RemoveToken(ctx context.Context, name string) error {
 		return fmt.Errorf("mangal serve: %w", err)
 	}
 	return done(r.StatusCode(), r.Body, r.JSONDefault)
+}
+
+// Permissions are the server's roles and permissions.
+func (c *Client) Permissions(ctx context.Context) ([]core.Role, []core.Permission, error) {
+	r, err := c.API.ListPermissionsWithResponse(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("mangal serve: %w", err)
+	}
+	if _, err := answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault); err != nil {
+		return nil, nil, err
+	}
+	var out struct {
+		Roles       []core.Role       `json:"roles"`
+		Permissions []core.Permission `json:"permissions"`
+	}
+	return out.Roles, out.Permissions, json.Unmarshal(r.Body, &out)
 }
 
 // trackers are the trackers the API has logins for, by the name in its paths.

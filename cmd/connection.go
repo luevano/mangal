@@ -2,12 +2,16 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"strings"
 
+	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
+	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/remote"
@@ -56,6 +60,77 @@ func newServices(cmd *cobra.Command) (core.Services, error) {
 		return core.Services{}, err
 	}
 	return c.Services, nil
+}
+
+// backend is what a command works on: this machine's core (app), or the connection's server
+// (rc); Services are the one's in use.
+type backend struct {
+	core.Services
+	app *core.Core
+	rc  *remote.Client
+}
+
+// newBackend is the command's backend, a server's says "on nas".
+func newBackend(cmd *cobra.Command) (backend, error) {
+	rc, err := connectRemote(cmd)
+	if err != nil {
+		return backend{}, err
+	}
+	if rc != nil {
+		sayOn(cmd, rc.URL)
+		return backend{Services: rc.Services(), rc: rc}, nil
+	}
+	app, err := newCore()
+	if err != nil {
+		return backend{}, err
+	}
+	return backend{Services: app.Services, app: app}, nil
+}
+
+// acquire is the client of the provider with the id: this machine's, or the server's, browsed
+// through it.
+func (b backend) acquire(ctx context.Context, cmd *cobra.Command, id string) (*libmangal.Client, error) {
+	if b.rc != nil {
+		loader, err := b.rc.Loader(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		return client.Acquire(ctx, loader)
+	}
+	c, warnings, err := client.AcquireByID(ctx, id)
+	for _, w := range warnings {
+		cmd.PrintErrf("warning: %s\n", w)
+	}
+	return c, err
+}
+
+// search searches several providers at once.
+func (b backend) search(ctx context.Context, cmd *cobra.Command, req core.SearchReq) <-chan core.SearchResult {
+	if b.app != nil {
+		return b.app.Search(ctx, req)
+	}
+	return core.SearchWith(ctx, req, func(ctx context.Context, provider, query string) (libmangal.ProviderInfo, []mangadata.Manga, error) {
+		c, err := b.acquire(ctx, cmd, provider)
+		if err != nil {
+			return libmangal.ProviderInfo{}, nil, err
+		}
+		mangas, err := c.SearchMangasContext(ctx, query)
+		return c.Info(), mangas, err
+	})
+}
+
+// usersOf are the users and tokens the command manages: the connection's server's, else this
+// machine's.
+func usersOf(cmd *cobra.Command) (core.Users, bool, error) {
+	rc, err := connectRemote(cmd)
+	if err != nil {
+		return nil, false, err
+	}
+	if rc != nil {
+		sayOn(cmd, rc.URL)
+		return rc.Services().Users, true, nil
+	}
+	return core.NewUsers(), false, nil
 }
 
 func init() {
@@ -336,25 +411,27 @@ const (
 	connFollows = "follows"
 	// connThisMachine: always this machine, whatever the connection
 	connThisMachine = "this machine"
-	// connNotYet: refused on a server, until it's ported
-	connNotYet = "not yet"
 )
 
 // commandClass is how every runnable command works with the connection, by its path without
-// mangal (TestEveryCommandHasAClass). A command not on a server yet refuses: it never acts on
-// this machine while the user believes they're on the server.
+// mangal (TestEveryCommandHasAClass), serverRefuses for what can't run on a server.
 var commandClass = map[string]string{
 	"": connFollows,
 
 	"library rename": connFollows, "library mark": connFollows, "library merge": connFollows, "library rm": connFollows,
 	"library trash": connFollows, "library trash empty": connFollows, "library undo": connFollows, "library ls": connFollows,
 	"library downloads": connFollows, "library scan": connFollows, "library hold": connFollows,
+	"library bind": connFollows, "library fill": connFollows, "library retitle": connFollows, "library urls": connFollows, "library move": connFollows,
 	"migrate": connFollows, "history": connFollows, "history clear": connFollows, "health": connFollows, "health fix": connFollows,
-	"providers up": connFollows, "logs": connFollows, "accounts": connFollows, "api": connFollows, "web": connFollows,
+	"providers up": connFollows, "providers ls": connFollows, "logs": connFollows, "accounts": connFollows, "api": connFollows, "web": connFollows,
 	"config info": connFollows, "config get": connFollows, "config set": connFollows, "config history": connFollows, "config undo": connFollows,
 	"watch add": connFollows, "watch ls": connFollows, "watch rm": connFollows, "watch check": connFollows, "watch hold": connFollows,
 	"watch log": connFollows, "watch move": connFollows, "watch pause": connFollows, "watch resume": connFollows, "watch set": connFollows, "watch stale": connFollows,
 	"jobs": connFollows, "jobs run": connFollows, "jobs set": connFollows, "jobs pause": connFollows, "jobs resume": connFollows,
+	"search": connFollows, "bind": connFollows, "bind ls": connFollows,
+	"user add": connFollows, "user passwd": connFollows, "user perms": connFollows, "user rename": connFollows, "user use": connFollows,
+	"user logout": connFollows, "user rm": connFollows, "user ls": connFollows, "user roles": connFollows,
+	"token add": connFollows, "token perms": connFollows, "token ls": connFollows, "token rm": connFollows,
 
 	"serve": connThisMachine, "serve token": connThisMachine, "connection ls": connThisMachine, "connection add": connThisMachine, "connection rm": connThisMachine,
 	"connection use": connThisMachine, "connection status": connThisMachine, "connection login": connThisMachine, "connection logout": connThisMachine,
@@ -364,12 +441,18 @@ var commandClass = map[string]string{
 	"anilist": connThisMachine, "anilist login": connThisMachine, "kitsu": connThisMachine, "myanimelist": connThisMachine,
 	"myanimelist login": connThisMachine, "myanimelist client": connThisMachine,
 
-	"library bind": connNotYet, "library fill": connNotYet, "library retitle": connNotYet, "library urls": connNotYet, "library move": connNotYet,
-	"search": connNotYet, "bind": connNotYet, "bind ls": connNotYet, "inline json": connNotYet, "inline download": connNotYet,
-	"script": connNotYet, "notify webhook": connNotYet, "providers add": connNotYet, "providers ls": connNotYet, "providers rm": connNotYet,
-	"user add": connNotYet, "user passwd": connNotYet, "user perms": connNotYet, "user rename": connNotYet, "user use": connNotYet,
-	"user logout": connNotYet, "user rm": connNotYet, "user ls": connNotYet, "user roles": connNotYet,
-	"token add": connNotYet, "token perms": connNotYet, "token ls": connNotYet, "token rm": connNotYet,
+	"inline json": connNotYet, "inline download": connNotYet, "script": connNotYet,
+}
+
+// connNotYet: refused on a server, until it's ported
+const connNotYet = "not yet"
+
+// serverRefuses are the commands that can't run on a server, with why: never on this machine
+// while the user believes they're on the server.
+var serverRefuses = map[string]string{
+	"notify webhook": "a webhook is a secret and secrets aren't sent over HTTP: set it on the server's machine",
+	"providers add":  "it installs code on the server's machine, that's a terminal's job there",
+	"providers rm":   "it removes code from the server's machine, that's a terminal's job there",
 }
 
 // commandKey is the command's entry in commandClass.
@@ -397,6 +480,9 @@ func checkConnection(cmd *cobra.Command) (warnings []string, err error) {
 		return nil, err
 	}
 	name := remote.Name(url)
+	if why, ok := serverRefuses[path]; ok {
+		return nil, fmt.Errorf("mangal %s doesn't run on %s: %s (--local for this machine)", path, name, why)
+	}
 	if class == connNotYet {
 		return nil, fmt.Errorf("mangal %s isn't on a server yet, and this is on %s: --local for this machine", path, name)
 	}

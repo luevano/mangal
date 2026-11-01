@@ -313,11 +313,8 @@ existing .libmangal.json is never replaced.`,
 		if err != nil {
 			return err
 		}
-		if c.Remote != "" && (libraryScanArgs.Check || libraryScanArgs.Mark) {
-			return errors.New("--check and --mark aren't on a server yet: --local for this machine")
-		}
 		ctx := changeCtx(cmd, st)
-		rep, err := c.Library.Scan(ctx, core.ScanOptions{})
+		rep, err := c.Library.Scan(ctx, core.ScanOptions{Check: c.Remote != "" && libraryScanArgs.Check})
 		st.Clear()
 		if err != nil {
 			return err
@@ -325,6 +322,12 @@ existing .libmangal.json is never replaced.`,
 		// the server's job says what it did, in a line
 		if c.Remote != "" {
 			cmd.Println(rep.Summary)
+			if libraryScanArgs.Check {
+				cmd.Println(`the API says how many, the folders are listed by "mangal library scan --check" on the server's machine`)
+			}
+			if libraryScanArgs.Mark {
+				return markFolders(cmd, st, c, libraryScanArgs.Apply)
+			}
 			return nil
 		}
 
@@ -370,7 +373,7 @@ existing .libmangal.json is never replaced.`,
 		}
 		printLines(cmd, library.DuplicateLines(rep.Duplicates, rep.Root))
 		if libraryScanArgs.Mark {
-			if err := markFolders(cmd, st, libraryScanArgs.Apply); err != nil {
+			if err := markFolders(cmd, st, c, libraryScanArgs.Apply); err != nil {
 				return err
 			}
 		}
@@ -402,11 +405,7 @@ func forgetMissing(cmd *cobra.Command, st *status, missing []storage.Manga) erro
 
 // markFolders writes (apply) or lists the missing .libmangal.json of the folders, from
 // what's known.
-func markFolders(cmd *cobra.Command, st *status, apply bool) error {
-	c, err := newCore()
-	if err != nil {
-		return err
-	}
+func markFolders(cmd *cobra.Command, st *status, c core.Services, apply bool) error {
 	ctx := changeCtx(cmd, st)
 	count := "to mark"
 	if apply {
@@ -620,12 +619,14 @@ Only lists what would happen unless --apply is set.`,
 		st := newStatus(cmd)
 		defer st.Done()
 		ctx := st.Context(cmd.Context())
-		if _, err := path.ExistingDownloads(); err != nil {
-			return err
-		}
-		c, err := newCore()
+		c, err := newBackend(cmd)
 		if err != nil {
 			return err
+		}
+		if c.app != nil {
+			if _, err := path.ExistingDownloads(); err != nil {
+				return err
+			}
 		}
 		id, err := parseMangaID(args[0])
 		if err != nil {
@@ -636,12 +637,10 @@ Only lists what would happen unless --apply is set.`,
 			return err
 		}
 		st.Set("loading " + args[1])
-		cl, warnings, err := client.AcquireByID(ctx, args[1])
+		var cl *libmangal.Client
+		st.Print(func() { cl, err = c.acquire(ctx, cmd, args[1]) })
 		if err != nil {
 			return err
-		}
-		for _, w := range warnings {
-			st.Print(func() { cmd.PrintErrf("warning: %s\n", w) })
 		}
 		var mangaID, query string
 		st.Print(func() { mangaID, query, err = mangaQuery(cmd, "id", libraryMoveArgs.ID, strings.Join(args[2:], " ")) })

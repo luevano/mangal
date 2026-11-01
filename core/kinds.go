@@ -997,5 +997,11 @@ func ScanSummary(rep ScanReport) string {
 	if len(rep.Duplicates) != 0 {
 		parts = append(parts, fmt.Sprintf("%d duplicates", len(rep.Duplicates)))
 	}
+	if rep.Checked {
+		parts = append(parts, fmt.Sprintf("%d folders' ids to check", len(rep.Checks)))
+	}
+	if rep.CheckErr != nil {
+		parts = append(parts, "the check failed: "+rep.CheckErr.Error())
+	}
 	return strings.Join(parts, ", ")
 }

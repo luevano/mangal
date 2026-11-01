@@ -25,6 +25,9 @@ type RetitleReq struct {
 	Provider libmangal.ProviderInfo `json:"-"`
 	From     mangadata.MangaInfo    `json:"-"`
 	Titles   map[float32]string     `json:"-"`
+	// Query and Selector find the manga on a server, instead of From (RetitleFrom's).
+	Query    string `json:"-"`
+	Selector string `json:"-"`
 }
 
 func (RetitleReq) Kind() Kind { return KindRetitle }

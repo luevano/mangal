@@ -29,13 +29,15 @@ func TestEveryCommandHasAClass(t *testing.T) {
 	for _, c := range runnable(rootCmd) {
 		key := commandKey(c)
 		seen[key] = true
-		if _, ok := commandClass[key]; !ok {
-			t.Errorf("%q has no class in commandClass", key)
+		_, classed := commandClass[key]
+		_, refused := serverRefuses[key]
+		if classed == refused {
+			t.Errorf("%q needs to be in commandClass or serverRefuses, one of them", key)
 		}
 	}
-	for _, key := range slices.Sorted(maps.Keys(commandClass)) {
+	for _, key := range slices.Concat(slices.Sorted(maps.Keys(commandClass)), slices.Sorted(maps.Keys(serverRefuses))) {
 		if !seen[key] {
-			t.Errorf("%q in commandClass is no command", key)
+			t.Errorf("%q is no command", key)
 		}
 	}
 }
@@ -61,8 +63,10 @@ func onServer(t *testing.T) {
 
 func TestRefusedOnAServer(t *testing.T) {
 	onServer(t)
-	if _, err := checkConnection(inlineDownloadCmd); err == nil || !strings.Contains(err.Error(), "--local") {
-		t.Errorf("inline: %v", err)
+	for _, c := range []*cobra.Command{notifyWebhookCmd, providersAddCmd, providersRmCmd} {
+		if _, err := checkConnection(c); err == nil || !strings.Contains(err.Error(), "--local") || !strings.Contains(err.Error(), "machine") {
+			t.Errorf("%s: %v", c.Name(), err)
+		}
 	}
 	if _, err := checkConnection(libraryRmCmd); err != nil {
 		t.Errorf("library rm: %v", err)
@@ -72,8 +76,8 @@ func TestRefusedOnAServer(t *testing.T) {
 	}
 	remoteArgs.Local = true
 	t.Cleanup(func() { remoteArgs.Local = false })
-	if _, err := checkConnection(inlineDownloadCmd); err != nil {
-		t.Errorf("inline --local: %v", err)
+	if _, err := checkConnection(notifyWebhookCmd); err != nil {
+		t.Errorf("notify webhook --local: %v", err)
 	}
 }
 

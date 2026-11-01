@@ -47,7 +47,11 @@ var tokenAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return generateNamedToken(cmd, args[0], scopes)
+		users, _, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		return generateNamedToken(cmd, users, args[0], scopes)
 	},
 }
 
@@ -72,7 +76,11 @@ var tokenPermsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := core.NewUsers().SetTokenScopes(ctxOf(cmd), args[0], perms); err != nil {
+		users, _, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		if err := users.SetTokenScopes(ctxOf(cmd), args[0], perms); err != nil {
 			return err
 		}
 		scopes, _ := core.NormalizeScopes(perms)
@@ -91,7 +99,11 @@ var tokenLsCmd = &cobra.Command{
 	Short:   "List the API tokens, with their scopes",
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		return listServeTokens(cmd)
+		users, remote, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		return listServeTokens(cmd, users, remote)
 	},
 }
 
@@ -105,6 +117,10 @@ var tokenRmCmd = &cobra.Command{
 	Short:   "Remove an API token (a running server stops taking it within seconds)",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return revokeServeToken(cmd, args[0])
+		users, _, err := usersOf(cmd)
+		if err != nil {
+			return err
+		}
+		return revokeServeToken(cmd, users, args[0])
 	},
 }

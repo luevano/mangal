@@ -83,7 +83,7 @@ func (r changes) send(ctx context.Context, ch core.Change, apply bool, f apiv1.A
 			apiv1.MoveRequest{Manga: ch.Manga, Provider: ch.Provider.ID, MangaId: opt(ch.To.Info().ID), Full: opt(ch.Full), Expect: f.Expect, Force: f.Force, Confirm: f.Confirm}))
 	case core.RetitleReq:
 		resp, err = sent(api.RetitleLibraryMangaWithResponse(ctx, ch.Manga, &apiv1.RetitleLibraryMangaParams{Apply: p},
-			apiv1.RetitleRequest{Provider: opt(ch.Provider.ID), MangaId: opt(ch.From.ID), Expect: f.Expect, Force: f.Force, Confirm: f.Confirm}))
+			apiv1.RetitleRequest{Provider: opt(ch.Provider.ID), MangaId: opt(ch.From.ID), Query: opt(ch.Query), Selector: opt(ch.Selector), Expect: f.Expect, Force: f.Force, Confirm: f.Confirm}))
 	case core.DismissPickReq:
 		resp, err = sent(api.DismissLinkPickWithResponse(ctx, &apiv1.DismissLinkPickParams{Apply: p},
 			apiv1.DismissPickRequest{Manga: ch.Manga, Source: string(ch.Source), Expect: f.Expect, Force: f.Force, Confirm: f.Confirm}))
