@@ -2308,6 +2308,8 @@ export interface components {
              * @description when the chapter got that title
              */
             title_changed?: string;
+            /** @description what the file's pages are by their names (webp, jpeg, png..., mixed); absent when unknown, as for a PDF */
+            page_format?: string;
         };
         DownloadList: {
             total: number;

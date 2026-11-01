@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -171,5 +172,70 @@ func TestEpubSpine(t *testing.T) {
 	fs = write("/d.epub", map[string]string{"META-INF/container.xml": "not xml", "p10.png": "x", "p2.png": "y"})
 	if c, err = Open(fs, "/d.epub"); err != nil || len(c.Pages) != 2 || c.Pages[0].Name != "p2.png" {
 		t.Errorf("no spine: %+v %v", c, err)
+	}
+}
+
+func TestPageFormat(t *testing.T) {
+	writeZip := func(p string, names ...string) {
+		t.Helper()
+		f, err := os.Create(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		w := zip.NewWriter(f)
+		for _, name := range names {
+			e, err := w.Create(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if name == "META-INF/container.xml" {
+				_, err = e.Write([]byte(`<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>`))
+			} else if name == "OEBPS/content.opf" {
+				_, err = e.Write([]byte(`<package><manifest><item id="n" href="nav.xhtml" media-type="application/xhtml+xml"/><item id="l" href="l.svg" media-type="image/svg+xml"/><item id="a" href="images/a" media-type="image/webp"/></manifest></package>`))
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dir := t.TempDir()
+	cases := []struct{ name, want string }{}
+	add := func(name, want string, names ...string) {
+		writeZip(filepath.Join(dir, name), names...)
+		cases = append(cases, struct{ name, want string }{name, want})
+	}
+	add("webp.cbz", "webp", "0001.webp", "0002.WEBP", "ComicInfo.xml")
+	add("jpeg.zip", "jpeg", "0001.jpg", "0002.jpeg")
+	add("mixed.cbz", MixedFormat, "0001.webp", "0002.png")
+	add("none.cbz", "", "ComicInfo.xml")
+	// the manifest's types, not the names: its files could say otherwise
+	add("book.epub", "webp", "META-INF/container.xml", "OEBPS/content.opf", "OEBPS/images/a.png")
+	add("foreign.epub", "png", "OEBPS/images/a.png")
+
+	if err := os.WriteFile(filepath.Join(dir, "doc.pdf"), []byte("%PDF"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cases = append(cases, struct{ name, want string }{"doc.pdf", ""})
+	folder := filepath.Join(dir, "folder")
+	if err := os.Mkdir(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, "0001.png"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cases = append(cases, struct{ name, want string }{"folder", "png"})
+
+	for _, c := range cases {
+		got, err := PageFormat(afero.NewOsFs(), filepath.Join(dir, c.name))
+		if err != nil || got != c.want {
+			t.Errorf("%s: %q, %v, want %q", c.name, got, err, c.want)
+		}
+	}
+	if _, err := PageFormat(afero.NewOsFs(), filepath.Join(dir, "doc.pdf.nope")); err == nil {
+		t.Error("a missing file: no error")
 	}
 }

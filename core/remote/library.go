@@ -357,7 +357,7 @@ func downloadOf(d apiv1.Download) storage.Download {
 	return storage.Download{Path: d.Path, Provider: d.Provider, MangaID: d.MangaId, MangaTitle: d.MangaTitle,
 		Volume: d.Volume, Chapter: d.Chapter, ChapterTitle: d.ChapterTitle, ChapterURL: deref(d.ChapterUrl),
 		Format: d.Format, Pages: d.Pages, Downloaded: d.Downloaded, TitleProvider: deref(d.TitleProvider),
-		TitleMangaID: deref(d.TitleMangaId), TitleChanged: deref(d.TitleChanged)}
+		TitleMangaID: deref(d.TitleMangaId), TitleChanged: deref(d.TitleChanged), PageFormat: deref(d.PageFormat)}
 }
 
 // remoteBindings are the server's bindings (core.Bindings).

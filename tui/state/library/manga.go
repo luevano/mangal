@@ -41,7 +41,11 @@ func (i *downloadItem) Title() string {
 }
 
 func (i *downloadItem) Description() string {
-	desc := fmt.Sprintf("%s · %s", i.download.Format, i.download.Provider)
+	desc := i.download.Format
+	if i.download.PageFormat != "" {
+		desc += " (" + i.download.PageFormat + ")"
+	}
+	desc += " · " + i.download.Provider
 	if i.download.Pages != 0 {
 		desc += fmt.Sprintf(" · %d pages", i.download.Pages)
 	}

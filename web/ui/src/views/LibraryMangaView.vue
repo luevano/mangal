@@ -242,7 +242,7 @@ function watchSource(provider: string, mangaID: string) {
               <td>{{ num(c.download.chapter) }}<span v-if="c.download.volume" class="text-secondary small"> v{{ num(c.download.volume) }}</span></td>
               <td><a href="#" class="text-decoration-none" @click.prevent="read(c)">{{ c.download.chapter_title }}</a></td>
               <td class="d-none d-md-table-cell small">{{ c.download.provider }}</td>
-              <td class="d-none d-md-table-cell small">{{ c.download.format }}</td>
+              <td class="d-none d-md-table-cell small">{{ c.download.format }}<span v-if="c.download.page_format" class="text-secondary" data-test="page-format"> ({{ c.download.page_format }})</span></td>
               <td class="d-none d-lg-table-cell small">{{ date(c.download.downloaded) }}</td>
               <td>
                 <span v-if="c.reads" class="text-success" :title="`read ${c.reads}×, last ${date(c.last_read)}`"><i class="bi bi-check2" />{{ c.reads > 1 ? c.reads : '' }}</span>

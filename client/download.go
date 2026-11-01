@@ -10,9 +10,11 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/libmangal/netutil"
+	"github.com/luevano/mangal/v5/library/pages"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
+	"github.com/luevano/mangal/v5/util/afs"
 	"github.com/luevano/mangal/v5/util/cache"
 )
 
@@ -366,6 +368,14 @@ func recordIn(parent, dir string, home storage.Source, provider string, manga ma
 	// a fill: the title is home's
 	if home.Provider != provider || home.MangaID != manga.ID {
 		dl.TitleProvider, dl.TitleMangaID, dl.TitleChanged = home.Provider, home.MangaID, dl.Downloaded
+	}
+	// a scan reads it when this fails
+	if file, err := afs.Afero.Stat(dl.Path); err == nil {
+		if dl.PageFormat, err = pages.PageFormat(afs.Afero, dl.Path); err != nil {
+			log.Warn("page format of %s: %s", dl.Path, err)
+		} else {
+			dl.PageFormatMTime = file.ModTime().Unix()
+		}
 	}
 	return library.RecordFill(parent, dir, home, dl)
 }

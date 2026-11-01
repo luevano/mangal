@@ -252,6 +252,9 @@ func toAPIDownload(d storage.Download) apiv1.Download {
 	if !d.TitleChanged.IsZero() {
 		out.TitleChanged = &d.TitleChanged
 	}
+	if d.PageFormat != "" {
+		out.PageFormat = &d.PageFormat
+	}
 	return out
 }
 

@@ -3310,6 +3310,9 @@ components:
           type: string
           format: date-time
           description: when the chapter got that title
+        page_format:
+          type: string
+          description: what the file's pages are by their names (webp, jpeg, png..., mixed); absent when unknown, as for a PDF
     DownloadList:
       type: object
       required: [total, downloads]

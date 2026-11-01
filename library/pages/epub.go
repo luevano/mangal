@@ -18,25 +18,8 @@ const epubReadMax = 8 << 20
 // the images of a document. Nil when it can't tell (not a proper epub): any image of the
 // file by name then.
 func epubSpine(r *zip.Reader) []string {
-	var container struct {
-		Rootfiles []struct {
-			Path string `xml:"full-path,attr"`
-		} `xml:"rootfiles>rootfile"`
-	}
-	if !readEpubXML(r, "META-INF/container.xml", &container) || len(container.Rootfiles) == 0 {
-		return nil
-	}
-	opfPath := container.Rootfiles[0].Path
-	var opf struct {
-		Items []struct {
-			ID   string `xml:"id,attr"`
-			Href string `xml:"href,attr"`
-		} `xml:"manifest>item"`
-		Spine []struct {
-			IDRef string `xml:"idref,attr"`
-		} `xml:"spine>itemref"`
-	}
-	if !readEpubXML(r, opfPath, &opf) {
+	opfPath, opf, ok := readEpubPackage(r)
+	if !ok {
 		return nil
 	}
 	hrefs := make(map[string]string, len(opf.Items))
@@ -55,6 +38,32 @@ func epubSpine(r *zip.Reader) []string {
 		}
 	}
 	return images
+}
+
+// epubPackage is the part of an epub's package document that's read.
+type epubPackage struct {
+	Items []struct {
+		ID        string `xml:"id,attr"`
+		Href      string `xml:"href,attr"`
+		MediaType string `xml:"media-type,attr"`
+	} `xml:"manifest>item"`
+	Spine []struct {
+		IDRef string `xml:"idref,attr"`
+	} `xml:"spine>itemref"`
+}
+
+func readEpubPackage(r *zip.Reader) (string, epubPackage, bool) {
+	var container struct {
+		Rootfiles []struct {
+			Path string `xml:"full-path,attr"`
+		} `xml:"rootfiles>rootfile"`
+	}
+	var opf epubPackage
+	if !readEpubXML(r, "META-INF/container.xml", &container) || len(container.Rootfiles) == 0 {
+		return "", opf, false
+	}
+	opfPath := container.Rootfiles[0].Path
+	return opfPath, opf, readEpubXML(r, opfPath, &opf)
 }
 
 func readEpubXML(r *zip.Reader, name string, v any) bool {

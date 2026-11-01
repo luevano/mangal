@@ -510,9 +510,12 @@ type Download struct {
 	Format       string    `json:"format"`
 	MangaId      string    `json:"manga_id"`
 	MangaTitle   string    `json:"manga_title"`
-	Pages        int       `json:"pages"`
-	Path         string    `json:"path"`
-	Provider     string    `json:"provider"`
+
+	// PageFormat what the file's pages are by their names (webp, jpeg, png..., mixed); absent when unknown, as for a PDF
+	PageFormat *string `json:"page_format,omitempty"`
+	Pages      int     `json:"pages"`
+	Path       string  `json:"path"`
+	Provider   string  `json:"provider"`
 
 	// TitleChanged when the chapter got that title
 	TitleChanged *time.Time `json:"title_changed,omitempty"`

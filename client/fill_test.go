@@ -135,7 +135,7 @@ func TestDownloadFill(t *testing.T) {
 		t.Fatalf("downloads %+v %v", downloads, err)
 	}
 	if d := downloads[0]; d.Provider != "mango-mangapill" || d.MangaID != "mp" || d.ChapterURL != src.info.URL || d.ChapterTitle != "Lie Low" ||
-		d.TitleProvider != "mango-mangadex" || d.TitleMangaID != "md" || d.TitleChanged.IsZero() {
+		d.TitleProvider != "mango-mangadex" || d.TitleMangaID != "md" || d.TitleChanged.IsZero() || d.PageFormat != "jpeg" || d.PageFormatMTime == 0 {
 		t.Errorf("download %+v", d)
 	}
 }

@@ -411,3 +411,70 @@ func TestScanFillsSourceURL(t *testing.T) {
 		t.Errorf("sources %+v", m.Sources)
 	}
 }
+
+// openCounter counts the times the cbz files are opened.
+type openCounter struct {
+	afero.Fs
+	opens map[string]int
+}
+
+func (f openCounter) Open(name string) (afero.File, error) {
+	if strings.HasSuffix(name, ".cbz") {
+		f.opens[filepath.Base(name)]++
+	}
+	return f.Fs.Open(name)
+}
+
+// a scan reads the page format of a chapter without one or whose file changed, opening no other
+func TestScanPageFormat(t *testing.T) {
+	lib := newLibrary(t)
+	root := t.TempDir()
+	folder := filepath.Join(root, "Vagabond")
+	old, fresh := filepath.Join(folder, "[0001.0] a.cbz"), filepath.Join(folder, "[0002.0] b.cbz")
+	writeCBZ(t, old, "1")
+	writeCBZ(t, fresh, "2")
+	fs := openCounter{Fs: afero.NewOsFs(), opens: map[string]int{}}
+	scanner := Scanner{FS: fs, Library: lib}
+	scan := func() {
+		t.Helper()
+		clear(fs.opens)
+		if _, err := scanner.Scan(root, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	format := func(path string) string {
+		t.Helper()
+		var format string
+		if err := lib.DB.QueryRow(`SELECT page_format FROM downloads WHERE path = ?`, path).Scan(&format); err != nil {
+			t.Fatal(err)
+		}
+		return format
+	}
+
+	scan()
+	if got := format(old); got != "jpeg" {
+		t.Errorf("first scan: %q", got)
+	}
+	scan()
+	if len(fs.opens) != 0 {
+		t.Errorf("nothing changed, opened %v", fs.opens)
+	}
+
+	// an older chapter: recorded before the column
+	if _, err := lib.DB.Exec(`UPDATE downloads SET page_format = '', page_format_mtime = 0 WHERE path = ?`, old); err != nil {
+		t.Fatal(err)
+	}
+	scan()
+	if format(old) != "jpeg" || len(fs.opens) != 1 || fs.opens[filepath.Base(old)] == 0 {
+		t.Errorf("an older chapter: %q, opened %v", format(old), fs.opens)
+	}
+
+	// its file changed
+	if err := os.Chtimes(fresh, time.Now(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	scan()
+	if len(fs.opens) != 1 || fs.opens[filepath.Base(fresh)] == 0 {
+		t.Errorf("a changed file: opened %v", fs.opens)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/metadata"
+	"github.com/luevano/mangal/v5/library/pages"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/spf13/afero"
@@ -105,14 +107,6 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 		m.Parent, m.Dir = filepath.Dir(found), filepath.Base(found)
 	}
 
-	// without its own folder the chapters share it with other mangas, only check what's recorded
-	var files []chapterFile
-	if m.Dir != "" {
-		report(onProgress, Progress{Phase: "reading the chapter files", Item: m.Title})
-		if files, err = s.chapterFiles(folder); err != nil {
-			return res, err
-		}
-	}
 	recorded, err := s.Library.Downloads(m.ID)
 	if err != nil {
 		return res, err
@@ -121,16 +115,32 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 	for _, dl := range recorded {
 		known[dl.Path] = true
 	}
+	// without its own folder the chapters share it with other mangas, only check what's recorded
+	var files []chapterFile
+	if m.Dir != "" {
+		report(onProgress, Progress{Phase: "reading the chapter files", Item: m.Title})
+		if files, err = s.chapterFiles(folder, known); err != nil {
+			return res, err
+		}
+	}
 
 	for i, dl := range recorded {
 		report(onProgress, Progress{Phase: "checking the recorded chapters", Done: i + 1, Total: len(recorded), Item: m.Title})
-		if exists, err := afero.Exists(s.FS, dl.Path); err != nil {
-			return res, err
-		} else if exists {
+		info, err := s.FS.Stat(dl.Path)
+		if err == nil {
+			if err := s.refreshPageFormat(dl, dl.Path, info.ModTime()); err != nil {
+				return res, err
+			}
 			continue
+		}
+		if !os.IsNotExist(err) {
+			return res, err
 		}
 		if f, ok := movedTo(files, known, dl); ok {
 			if err := s.Library.SetDownloadPath(dl.Path, f.path); err != nil {
+				return res, err
+			}
+			if err := s.refreshPageFormat(dl, f.path, f.modTime); err != nil {
 				return res, err
 			}
 			known[f.path] = true
@@ -168,6 +178,7 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 			Path: f.path, Provider: provider, MangaID: mangaID, MangaTitle: m.Title,
 			Chapter: f.number, ChapterTitle: f.title, ChapterURL: f.url,
 			Format: f.format.String(), Pages: f.pages, Downloaded: f.modTime,
+			PageFormat: s.pageFormat(f.path), PageFormatMTime: f.modTime.Unix(),
 		}
 		// its Notes line says where it's from (a fill: another provider's manga)
 		if o := f.origin; o.Provider != "" {
@@ -183,6 +194,25 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 		res.Added++
 	}
 	return res, nil
+}
+
+// refreshPageFormat reads what the pages of the recorded chapter at path are, if it
+// hasn't since its file last changed.
+func (s Scanner) refreshPageFormat(dl storage.Download, path string, modTime time.Time) error {
+	if dl.PageFormatMTime == modTime.Unix() {
+		return nil
+	}
+	return s.Library.SetPageFormat(path, s.pageFormat(path), modTime.Unix())
+}
+
+// pageFormat is what the pages of the chapter at path are, empty if it can't be read (logged,
+// and not tried again until the file changes).
+func (s Scanner) pageFormat(path string) string {
+	format, err := pages.PageFormat(s.FS, path)
+	if err != nil {
+		log.Warn("scan %s: %s", path, err)
+	}
+	return format
 }
 
 // Scan reconciles the whole library with the files under root, and adds the manga
@@ -234,7 +264,7 @@ func (s Scanner) ScanContext(ctx context.Context, root string, providerDirs bool
 			if s.holdsMangas(folder.path) {
 				continue
 			}
-			files, err := s.chapterFiles(folder.path)
+			files, err := s.chapterFiles(folder.path, nil)
 			if err != nil {
 				return res, err
 			}
@@ -350,14 +380,15 @@ var (
 	notChapters   = []string{metadata.FilenameSeriesJSON, metadata.FilenameCoverJPG, metadata.FilenameBannerJPG}
 )
 
-// chapterFiles finds the chapter files of a manga folder (and its volume folders).
-func (s Scanner) chapterFiles(folder string) ([]chapterFile, error) {
+// chapterFiles finds the chapter files of a manga folder (and its volume folders). The
+// known ones aren't opened: a scan of a large library doesn't read every archive again.
+func (s Scanner) chapterFiles(folder string, known map[string]bool) ([]chapterFile, error) {
 	var files []chapterFile
-	err := s.walkChapters(folder, 0, &files)
+	err := s.walkChapters(folder, 0, &files, known)
 	return files, err
 }
 
-func (s Scanner) walkChapters(dir string, depth int, files *[]chapterFile) error {
+func (s Scanner) walkChapters(dir string, depth int, files *[]chapterFile, known map[string]bool) error {
 	entries, err := afero.ReadDir(s.FS, dir)
 	if err != nil {
 		return err
@@ -379,7 +410,7 @@ func (s Scanner) walkChapters(dir string, depth int, files *[]chapterFile) error
 				*files = append(*files, f)
 			} else if depth == 0 {
 				// a volume folder
-				if err := s.walkChapters(path, depth+1, files); err != nil {
+				if err := s.walkChapters(path, depth+1, files, known); err != nil {
 					return err
 				}
 			}
@@ -390,7 +421,7 @@ func (s Scanner) walkChapters(dir string, depth int, files *[]chapterFile) error
 			continue
 		}
 		f := chapterFile{path: path, format: format, modTime: e.ModTime()}
-		if format == libmangal.FormatCBZ || format == libmangal.FormatZIP || format == libmangal.FormatEPUB {
+		if !known[path] && (format == libmangal.FormatCBZ || format == libmangal.FormatZIP || format == libmangal.FormatEPUB) {
 			s.readZip(&f)
 		}
 		if !f.hasNumber {

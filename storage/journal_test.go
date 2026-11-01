@@ -467,3 +467,23 @@ func TestFingerprint(t *testing.T) {
 		t.Error("other tables, same fingerprint")
 	}
 }
+
+// a scan filling in a page format doesn't make a plan stale or refuse an undo
+func TestFingerprintSkipsPageFormat(t *testing.T) {
+	data := openData(t)
+	lib := Library{DB: data}
+	err := lib.RecordDownload("/lib", "Berserk", Download{Path: "/lib/Berserk/1.cbz", Provider: "p", MangaID: "b", MangaTitle: "Berserk", Chapter: 1, Format: "CBZ", Downloaded: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := data.Fingerprint("downloads")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.SetPageFormat("/lib/Berserk/1.cbz", "webp", 5); err != nil {
+		t.Fatal(err)
+	}
+	if after, err := data.Fingerprint("downloads"); err != nil || after != before {
+		t.Errorf("%s, was %s (%v)", after, before, err)
+	}
+}

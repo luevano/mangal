@@ -139,6 +139,64 @@ func Open(fsys afero.Fs, p string) (*Chapter, error) {
 	return c, nil
 }
 
+// MixedFormat is the PageFormat of a chapter with pages of several formats.
+const MixedFormat = "mixed"
+
+// PageFormat is what the pages of the chapter at p are, reading no more than names: its
+// zip's directory, an EPUB's manifest, a folder's files, a tar's headers. webp, jpeg, png...,
+// MixedFormat, empty when there are none (a PDF).
+func PageFormat(fsys afero.Fs, p string) (string, error) {
+	format, err := FormatOf(fsys, p)
+	if err != nil {
+		return "", err
+	}
+	var names []string
+	if format == libmangal.FormatEPUB {
+		c := &Chapter{FS: fsys, Path: p, Format: format}
+		err = c.withZip(func(r *zip.Reader) error {
+			if _, opf, ok := readEpubPackage(r); ok {
+				for _, item := range opf.Items {
+					// by name, as the other formats: image/jpeg, not its href
+					if ext, ok := strings.CutPrefix(item.MediaType, "image/"); ok {
+						names = append(names, "."+ext)
+					}
+				}
+			}
+			if len(names) == 0 {
+				for _, f := range r.File {
+					names = append(names, f.Name)
+				}
+			}
+			return nil
+		})
+	} else {
+		var c *Chapter
+		if c, err = Open(fsys, p); err == nil {
+			for _, page := range c.Pages {
+				names = append(names, page.Name)
+			}
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", filepath.Base(p), err)
+	}
+	found := ""
+	for _, name := range names {
+		if !isImage(name) {
+			continue
+		}
+		kind := strings.TrimPrefix(strings.ToLower(path.Ext(name)), ".")
+		if kind == "jpg" {
+			kind = "jpeg"
+		}
+		if found != "" && found != kind {
+			return MixedFormat, nil
+		}
+		found = kind
+	}
+	return found, nil
+}
+
 func (c *Chapter) withZip(fn func(*zip.Reader) error) error {
 	f, err := c.FS.Open(c.Path)
 	if err != nil {
