@@ -637,8 +637,8 @@ Only lists what would happen unless --apply is set.`,
 			return err
 		}
 		st.Set("loading " + args[1])
-		var cl *libmangal.Client
-		st.Print(func() { cl, err = c.acquire(ctx, cmd, args[1]) })
+		// not in st.Print: ctx reports to the status line, which that holds
+		cl, err := c.acquire(ctx, cmd, args[1])
 		if err != nil {
 			return err
 		}

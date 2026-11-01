@@ -211,3 +211,21 @@ func TestScriptMissingProviderOnAServer(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 }
+
+// the manga to move to is found through the server, its id is what the server gets (a provider
+// id of its own: the process keeps a client per provider)
+func TestMoveOnAServer(t *testing.T) {
+	asked := fakeAPI(t, map[string]string{
+		"GET /library/mangas/12":   `{"manga":{"id":12,"title":"Frieren","chapters":1},"bindings":[],"marker":false,"missing":false}`,
+		"GET /providers":           `[{"id":"pm","name":"PM","version":"1"}]`,
+		"GET /providers/pm/search": `[{"id":"m1","title":"Frieren"}]`,
+		"POST /library/move":       `{"plan":{"kind":"move","summary":"move","hash":"h","lines":["a line"],"nothing":false}}`,
+	})
+	out, err := run(t, libraryMoveCmd, "12", "pm")
+	if err != nil || !strings.Contains(out, "a line") {
+		t.Fatalf("%q, %v\n%v", out, err, *asked)
+	}
+	if got := strings.Join(*asked, "\n"); !strings.Contains(got, `"manga_id":"m1"`) || !strings.Contains(got, `"provider":"pm"`) {
+		t.Errorf("asked:\n%s", got)
+	}
+}
