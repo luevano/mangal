@@ -581,3 +581,47 @@ func TestSidesAndStorage(t *testing.T) {
 		}
 	}
 }
+
+type readOnlyStore struct{ values map[string]string }
+
+func (s readOnlyStore) All() (map[string]string, int64, error) { return s.values, 1, nil }
+func (s readOnlyStore) Revision() (int64, error)               { return 1, nil }
+func (s readOnlyStore) Set(string, *string, bool, string) error {
+	return errors.New("read-only")
+}
+func (s readOnlyStore) Imported() (bool, error) { return true, nil }
+
+// On a server a key it hides answers the default, not this machine's value; a both or client
+// key stays this machine's; back on local it's all this machine's again.
+func TestUseServer(t *testing.T) {
+	reset(t)
+	writeConfig(t, "icons = 'nerd'\n[serve]\ntls_cert = '/from/file'\n[log]\ncompress = true\n")
+	if err := Load(Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := UseServer(readOnlyStore{}, "nas"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = UseLocal(readOnlyStore{}) })
+	if got, _ := Get(Serve.TLSCert.Key); got != "" {
+		t.Errorf("hidden key %v", got)
+	}
+	if got, _ := Get(Log.Compress.Key); got != true {
+		t.Errorf("both key %v", got)
+	}
+	if got, _ := Get(Icons.Key); got != "nerd" {
+		t.Errorf("client key %v", got)
+	}
+	if err := WriteKey(Serve.TLSCert.Key, "/x"); err == nil {
+		t.Error("a server's key is written")
+	}
+	if err := WriteKey(Log.Compress.Key, false); err != nil {
+		t.Errorf("both key: %v", err)
+	}
+	if err := UseLocal(readOnlyStore{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := Get(Serve.TLSCert.Key); got != "/from/file" {
+		t.Errorf("back on local %v", got)
+	}
+}
