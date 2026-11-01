@@ -6,12 +6,15 @@ import (
 	"io"
 	"os"
 
+	"github.com/luevano/libmangal"
 	"github.com/luevano/luaprovider/util"
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/core/remote"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/provider/loader"
 	"github.com/luevano/mangal/v5/script/lib"
+	"github.com/luevano/mangal/v5/script/lib/api"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -23,6 +26,10 @@ type Args struct {
 	Stdin     bool
 	Provider  string
 	Variables Variables
+	// Server is the connection's server, nil for this machine: its providers.
+	Server *remote.Client
+	// API is what mangal.api calls.
+	API api.Call
 }
 
 func addVarsTable(state *lua.LState, variables Variables) {
@@ -36,7 +43,7 @@ func addVarsTable(state *lua.LState, variables Variables) {
 
 // Run runs the script with the provider's client and the mangal library.
 func Run(ctx context.Context, args Args, script io.Reader) error {
-	c, warnings, release, err := client.HoldByID(ctx, args.Provider)
+	c, warnings, release, err := hold(ctx, args)
 	for _, w := range warnings {
 		fmt.Fprintln(os.Stderr, "warning: "+w)
 	}
@@ -63,8 +70,21 @@ func Run(ctx context.Context, args Args, script io.Reader) error {
 	state.SetContext(ctx)
 
 	addVarsTable(state, args.Variables)
-	lib.Preload(state, c, sdkOptions)
+	lib.Preload(state, c, sdkOptions, args.API)
 	return run(state, script)
+}
+
+// hold is the client of the provider: the server's, browsed through it, or this machine's.
+func hold(ctx context.Context, args Args) (*libmangal.Client, []string, func(), error) {
+	if args.Server == nil {
+		return client.HoldByID(ctx, args.Provider)
+	}
+	loader, err := args.Server.Loader(ctx, args.Provider)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	c, release, err := client.Hold(ctx, loader)
+	return c, nil, release, err
 }
 
 // run runs the script on state, the errors the SDK raised as themselves.

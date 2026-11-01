@@ -1,6 +1,8 @@
 package client
 
 import (
+	"fmt"
+
 	luadoc "github.com/luevano/gopher-luadoc"
 	"github.com/luevano/libmangal"
 	"github.com/luevano/libmangal/mangadata"
@@ -485,6 +487,9 @@ func newDownloadChapter(client *libmangal.Client) lua.LGFunction {
 
 	return func(state *lua.LState) int {
 		chapter := util.Check[mangadata.Chapter](state, 1)
+		if name := config.Server(); name != "" {
+			util.Must(state, fmt.Errorf("download_chapter writes on this machine and this runs on %s: mangal.api.post(\"/downloads\", ...) downloads there", name))
+		}
 
 		downChap, err := mangalclient.DownloadChapter(state.Context(), client, chapter, config.DownloadOptions(), nil)
 		util.Must(state, err)

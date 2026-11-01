@@ -6,6 +6,7 @@ import (
 	luadoc "github.com/luevano/gopher-luadoc"
 	lmanilist "github.com/luevano/libmangal/metadata/anilist"
 	"github.com/luevano/mangal/v5/client/anilist"
+	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/script/lib/util"
 	lua "github.com/yuin/gopher-lua"
@@ -187,6 +188,9 @@ func findClosestManga(state *lua.LState) int {
 func bindTitleWithID(state *lua.LState) int {
 	title := state.CheckString(1)
 	id := state.CheckInt(2)
+	if name := config.Server(); name != "" {
+		util.Must(state, fmt.Errorf("bind_title_with_id writes on this machine and this runs on %s: mangal.api.put(\"/bindings\", ...) binds there", name))
+	}
 
 	ani, err := anilist.Anilist()
 	util.Must(state, err)

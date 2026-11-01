@@ -36,9 +36,11 @@ func init() {
 }
 
 var scriptCmd = &cobra.Command{
-	Use:     "script",
-	Short:   "Useful for custom process with Lua",
-	Long:    "script, useful for custom process with Lua",
+	Use:   "script",
+	Short: "Useful for custom process with Lua",
+	Long: `script, useful for custom process with Lua. On a server (the connection) the provider is the
+server's, browsed through it; its mangal.api is the server's API, its download_chapter refuses
+(it writes on this machine). mangal.api works locally with a running mangal serve of this config.`,
 	GroupID: groupMode,
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -58,7 +60,16 @@ var scriptCmd = &cobra.Command{
 			reader = cmd.InOrStdin()
 		}
 
-		return script.Run(cmd.Context(), scriptArgs, reader)
+		args := scriptArgs
+		var err error
+		if args.Server, err = connectRemote(cmd); err != nil {
+			return err
+		}
+		if args.Server != nil {
+			sayOn(cmd, args.Server.URL)
+		}
+		args.API = apiCall(cmd)
+		return script.Run(cmd.Context(), args, reader)
 	},
 }
 

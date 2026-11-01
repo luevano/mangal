@@ -28,7 +28,8 @@ each with a role (reader, downloader, manager, admin) or their own set of permis
 seconds; a new password or new permissions end the user's logins. No server needs to run:
 they're changed in the data db of this config. There's always one: "mangal", an admin
 without a password, is made when there's none (mangal on this machine is a user too, see
-auth.user); a user without a password can't log in, "mangal user passwd" gives one.`,
+auth.user); a user without a password can't log in, "mangal user passwd" gives one. On a server
+(the connection), the server's users, with an admin's login.`,
 	Args: cobra.NoArgs,
 }
 

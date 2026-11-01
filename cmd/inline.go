@@ -63,9 +63,11 @@ func init() {
 }
 
 var inlineCmd = &cobra.Command{
-	Use:     "inline",
-	Short:   "Useful for automation",
-	Long:    "inline, useful for automation",
+	Use:   "inline",
+	Short: "Useful for automation",
+	Long: `inline, useful for automation. On a server (the connection) the provider, the metadata and the
+download are the server's: "download" is its job (the paths are there), its results printed when
+it's over; ctrl+c cancels it. --json prints each chapter's result as the API has it.`,
 	GroupID: groupMode,
 	Args:    cobra.NoArgs,
 }

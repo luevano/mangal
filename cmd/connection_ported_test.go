@@ -163,3 +163,51 @@ func TestScanCheckOnAServer(t *testing.T) {
 		t.Errorf("asked:\n%s", got)
 	}
 }
+
+// a script on a server: its providers, its API, nothing written on this machine
+func TestScriptOnAServer(t *testing.T) {
+	asked := fakeAPI(t, map[string]string{
+		"GET /providers":            `[{"id":"p","name":"P","version":"1"}]`,
+		"GET /providers/p/search":   `[{"id":"m1","title":"Frieren"}]`,
+		"GET /providers/p/chapters": `[{"number":1,"title":"One","url":"https://x/1","volume":1}]`,
+		"GET /library/mangas":       `{"mangas":[{"id":1,"title":"Berserk"}]}`,
+	})
+	if err := scriptCmd.Flags().Set("string", `
+local mangal = require("mangal")
+local mangas = mangal.client.search_mangas("Frieren")
+assert(mangas[1]:info().title == "Frieren")
+assert(mangal.api.get("/library/mangas").mangas[1].title == "Berserk")
+local chapters = mangal.client.volume_chapters(mangal.client.manga_volumes(mangas[1])[1])
+local ok, e = pcall(mangal.client.download_chapter, chapters[1])
+assert(not ok and string.find(tostring(e), "writes on this machine"), tostring(e))
+ok, e = pcall(mangal.anilist.bind_title_with_id, "Frieren", 1)
+assert(not ok and string.find(tostring(e), "writes on this machine"), tostring(e))
+`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		scriptArgs.String = ""
+		scriptCmd.Flag("string").Changed = false
+		scriptArgs.Provider = ""
+	})
+	scriptArgs.Provider = "p"
+	if _, err := run(t, scriptCmd); err != nil {
+		t.Fatalf("%v\n%v", err, *asked)
+	}
+}
+
+func TestScriptMissingProviderOnAServer(t *testing.T) {
+	fakeAPI(t, map[string]string{"GET /providers": `[]`})
+	if err := scriptCmd.Flags().Set("string", `return`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		scriptArgs.String = ""
+		scriptCmd.Flag("string").Changed = false
+		scriptArgs.Provider = ""
+	})
+	scriptArgs.Provider = "gone"
+	if _, err := run(t, scriptCmd); err == nil || !strings.Contains(err.Error(), `"gone"`) {
+		t.Errorf("%v", err)
+	}
+}

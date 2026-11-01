@@ -9,5 +9,5 @@ import (
 func LuaDoc() string {
 	state := lua.NewState()
 	defer state.Close()
-	return Lib(state, nil, sdk.DefaultOptions()).LuaDoc()
+	return Lib(state, nil, sdk.DefaultOptions(), nil).LuaDoc()
 }

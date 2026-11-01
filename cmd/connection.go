@@ -440,12 +440,8 @@ var commandClass = map[string]string{
 	"templates exec": connThisMachine, "formats": connThisMachine, "script doc": connThisMachine, "providers new": connThisMachine,
 	"anilist": connThisMachine, "anilist login": connThisMachine, "kitsu": connThisMachine, "myanimelist": connThisMachine,
 	"myanimelist login": connThisMachine, "myanimelist client": connThisMachine,
-	"inline json": connFollows, "inline download": connFollows,
-	"script": connNotYet,
+	"inline json": connFollows, "inline download": connFollows, "script": connFollows,
 }
-
-// connNotYet: refused on a server, until it's ported
-const connNotYet = "not yet"
 
 // serverRefuses are the commands that can't run on a server, with why: never on this machine
 // while the user believes they're on the server.
@@ -482,9 +478,6 @@ func checkConnection(cmd *cobra.Command) (warnings []string, err error) {
 	name := remote.Name(url)
 	if why, ok := serverRefuses[path]; ok {
 		return nil, fmt.Errorf("mangal %s doesn't run on %s: %s (--local for this machine)", path, name, why)
-	}
-	if class == connNotYet {
-		return nil, fmt.Errorf("mangal %s isn't on a server yet, and this is on %s: --local for this machine", path, name)
 	}
 	cmd.Flags().Visit(func(f *pflag.Flag) {
 		if keys := f.Annotations[configKeyAnnotation]; err == nil && len(keys) == 1 && config.Side(keys[0]) != config.SideClient {

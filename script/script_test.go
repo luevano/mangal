@@ -15,7 +15,7 @@ func TestSDKErrorMessage(t *testing.T) {
 	state := lua.NewState()
 	defer state.Close()
 	state.SetContext(context.Background())
-	lib.Preload(state, nil, sdk.DefaultOptions())
+	lib.Preload(state, nil, sdk.DefaultOptions(), nil)
 
 	err := run(state, strings.NewReader(`require("mangal").sdk.encoding.base64.decode("!!not base64")`))
 	if err == nil {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,11 +12,13 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"text/tabwriter"
 
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
 	"github.com/luevano/mangal/v5/core/remote"
+	"github.com/luevano/mangal/v5/script/lib/api"
 	"github.com/luevano/mangal/v5/web"
 	"github.com/spf13/cobra"
 )
@@ -164,6 +167,48 @@ func apiBody(cmd *cobra.Command, data string) ([]byte, error) {
 		return nil, errors.New("--data isn't JSON")
 	}
 	return b, nil
+}
+
+// apiCall is what scripts call the API with: the server "mangal api" would use, found on the
+// first call (a script may not use it).
+func apiCall(cmd *cobra.Command) api.Call {
+	find := sync.OnceValues(func() (func(ctx context.Context, method, path string, body []byte) (int, []byte, error), error) {
+		server, key, httpClient, err := apiServer(cmd, "")
+		if err != nil {
+			return nil, err
+		}
+		envToken, err := config.EnvSecret("MANGAL_API_TOKEN")
+		if err != nil {
+			return nil, err
+		}
+		token := cmp.Or(envToken, key)
+		return func(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
+			req, err := http.NewRequestWithContext(ctx, method, server+apiPath(path), bytes.NewReader(body))
+			if err != nil {
+				return 0, nil, err
+			}
+			if body != nil {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			if token != "" {
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
+			res, err := httpClient.Do(req)
+			if err != nil {
+				return 0, nil, err
+			}
+			defer res.Body.Close()
+			data, err := io.ReadAll(res.Body)
+			return res.StatusCode, data, err
+		}, nil
+	})
+	return func(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
+		call, err := find()
+		if err != nil {
+			return 0, nil, err
+		}
+		return call(ctx, method, path, body)
+	}
 }
 
 // apiServer is the server to call and how: --server as given, the connection's with its saved

@@ -20,7 +20,8 @@ var tokenCmd = &cobra.Command{
 users ("mangal user"). Only a token's hash is kept, it's printed once when made. A token
 has a role or permissions as users do ("mangal user roles --all"), read by default; one
 made here is the server's (no owner). No server needs to run; a running one sees changes
-within seconds.`,
+within seconds. On a server (the connection), the server's tokens: your own with the tokens
+permission, every one with admin.`,
 	Args: cobra.NoArgs,
 }
 
