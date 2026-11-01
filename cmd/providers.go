@@ -49,7 +49,6 @@ var providersAddCmd = &cobra.Command{
 
 func init() {
 	providersCmd.AddCommand(providersUpCmd)
-	remoteFlags(providersUpCmd)
 }
 
 var providersUpCmd = &cobra.Command{

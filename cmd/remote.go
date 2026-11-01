@@ -63,7 +63,7 @@ func init() {
 	rootCmd.AddCommand(remoteCmd)
 	remoteCmd.AddCommand(remoteLoginCmd, remoteLogoutCmd, remoteStatusCmd)
 	remoteFlags(rootCmd, libraryRenameCmd, libraryMarkCmd, libraryMergeCmd, libraryRmCmd, libraryTrashEmptyCmd, migrateCmd,
-		libraryUndoCmd, healthFixCmd, historyCmd, historyClearCmd)
+		libraryUndoCmd, healthFixCmd, historyCmd, historyClearCmd, providersUpCmd)
 }
 
 var remoteCmd = &cobra.Command{
