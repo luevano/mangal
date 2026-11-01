@@ -6,6 +6,7 @@ import (
 	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/libmangal/metadata"
 	lmanilist "github.com/luevano/libmangal/metadata/anilist"
+	"github.com/luevano/mangal/v5/core/remote"
 )
 
 type QueryResult struct {
@@ -47,6 +48,8 @@ type Args struct {
 	JSONOutput             bool   `json:"json_output,omitempty"`
 	// Status shows what the run is doing, may be nil.
 	Status Status `json:"-"`
+	// Server is the connection's server, nil for this machine.
+	Server *remote.Client `json:"-"`
 }
 
 // Status shows what a run is doing (cmd's status line on stderr).

@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path"
 	"slices"
@@ -248,6 +249,9 @@ func (m *manga) Info() mangadata.MangaInfo        { return m.info }
 func (m *manga) Metadata() lmmeta.Metadata        { return m.meta }
 func (m *manga) SetMetadata(meta lmmeta.Metadata) { m.meta = meta }
 
+// MarshalJSON is what's known of it (mangal inline json on a server).
+func (m *manga) MarshalJSON() ([]byte, error) { return json.Marshal(m.info) }
+
 type volume struct {
 	manga *manga
 	info  mangadata.VolumeInfo
@@ -257,6 +261,9 @@ func (v *volume) String() string             { return fmt.Sprintf("%g", v.info.N
 func (v *volume) Info() mangadata.VolumeInfo { return v.info }
 func (v *volume) Manga() mangadata.Manga     { return v.manga }
 
+// MarshalJSON is what's known of it.
+func (v *volume) MarshalJSON() ([]byte, error) { return json.Marshal(v.info) }
+
 type chapter struct {
 	volume *volume
 	info   mangadata.ChapterInfo
@@ -265,6 +272,9 @@ type chapter struct {
 func (c *chapter) String() string              { return c.info.Title }
 func (c *chapter) Info() mangadata.ChapterInfo { return c.info }
 func (c *chapter) Volume() mangadata.Volume    { return c.volume }
+
+// MarshalJSON is what's known of it.
+func (c *chapter) MarshalJSON() ([]byte, error) { return json.Marshal(c.info) }
 
 type page struct {
 	chapter *chapter

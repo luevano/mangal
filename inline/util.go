@@ -18,7 +18,7 @@ var acquire = client.AcquireByID
 // search gets the provider's client, searches the query and picks the mangas with the
 // manga selector.
 func search(ctx context.Context, args Args) (*libmangal.Client, []MangaResult, error) {
-	c, warnings, err := acquire(ctx, args.Provider)
+	c, warnings, err := acquireFrom(ctx, args)
 	args.print(func() {
 		for _, w := range warnings {
 			fmt.Fprintln(os.Stderr, "warning: "+sanitize.Text(w))

@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -95,6 +96,9 @@ type metadataResult struct {
 var _ lmmeta.Partial = metadataResult{}
 
 func (m metadataResult) Partial() bool { return true }
+
+// MarshalJSON is the API's result (mangal inline json on a server).
+func (m metadataResult) MarshalJSON() ([]byte, error) { return json.Marshal(m.r) }
 
 func (m metadataResult) String() string {
 	if m.r.Year != nil {

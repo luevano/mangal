@@ -68,6 +68,10 @@ func assignMetadata(ctx context.Context, c *libmangal.Client, args Args, results
 	if len(pending) == 0 || args.AnilistDisable {
 		return nil
 	}
+	if args.Server != nil {
+		assignFromServer(ctx, c, args, results, pending)
+		return nil
+	}
 	if err := anilist.EnsureLogin(ctx); err != nil {
 		log.Debug("anilist login: %s", err)
 	}

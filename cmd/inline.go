@@ -138,6 +138,11 @@ single manga: the default "all" only works when the search finds one, use e.g. -
 func inlineRunArgs(cmd *cobra.Command) (inline.Args, error) {
 	args := inlineArgs
 	var err error
-	args.ID, args.Query, err = mangaQuery(cmd, "id", args.ID, args.Query)
+	if args.ID, args.Query, err = mangaQuery(cmd, "id", args.ID, args.Query); err != nil {
+		return args, err
+	}
+	if args.Server, err = connectRemote(cmd); err == nil && args.Server != nil {
+		sayOn(cmd, args.Server.URL)
+	}
 	return args, err
 }

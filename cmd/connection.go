@@ -440,8 +440,8 @@ var commandClass = map[string]string{
 	"templates exec": connThisMachine, "formats": connThisMachine, "script doc": connThisMachine, "providers new": connThisMachine,
 	"anilist": connThisMachine, "anilist login": connThisMachine, "kitsu": connThisMachine, "myanimelist": connThisMachine,
 	"myanimelist login": connThisMachine, "myanimelist client": connThisMachine,
-
-	"inline json": connNotYet, "inline download": connNotYet, "script": connNotYet,
+	"inline json": connFollows, "inline download": connFollows,
+	"script": connNotYet,
 }
 
 // connNotYet: refused on a server, until it's ported

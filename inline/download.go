@@ -23,6 +23,9 @@ import (
 var download = client.Download
 
 func RunDownload(ctx context.Context, args Args) error {
+	if args.Server != nil {
+		return serverDownload(ctx, args)
+	}
 	results, err := runDownload(ctx, args)
 	// stopped (ctrl+c): nothing to tell Discord, it couldn't be sent anyway
 	if ctx.Err() != nil {
