@@ -184,7 +184,7 @@ func init() {
 	libraryCmd.AddCommand(libraryLsCmd)
 	libraryCmd.AddCommand(libraryScanCmd)
 	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Check, "check", false, "Check the metadata ids of the folders without a .libmangal.json on AniList and Kitsu")
-	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Mark, "mark", false, "List the folders without a .libmangal.json that can get one, from what's known")
+	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Mark, "mark", false, "List the folders without a .libmangal.json that can get one, from what's known, and those missing metadata ids the library knows")
 	libraryScanCmd.Flags().BoolVar(&libraryScanArgs.Apply, "apply", false, "With --mark, write the .libmangal.json files instead of only listing them")
 	libraryCmd.AddCommand(libraryMergeCmd)
 	libraryMergeCmd.Flags().BoolVar(&libraryMergeArgs.Apply, "apply", false, "Merge, instead of only listing what would happen")
@@ -301,7 +301,8 @@ from what's known: the library's source of it (provider and manga id, also found
 its watch or recorded downloads), else the provider of the provider directory it's in
 (no manga id), else only its title and metadata ids, so downloads, scans and renames
 recognize the folder by it. Folders with nothing to go by are left as they are, an
-existing .libmangal.json is never replaced.`,
+existing .libmangal.json is never replaced: it only gets the metadata ids (AniList,
+Kitsu, MyAnimeList, MangaUpdates) the library knows and it lacks or has others of.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if libraryScanArgs.Apply && !libraryScanArgs.Mark {
@@ -439,8 +440,8 @@ func markFolders(cmd *cobra.Command, st *status, c core.Services, apply bool) er
 	for _, m := range res.Marked {
 		counts[m.Evidence]++
 	}
-	cmd.Printf("%d %s (%d from the library source, %d provider from its directory, %d metadata ids only), %d with nothing to go by (not marked)\n",
-		len(res.Marked), count, counts[library.MarkedFromSource], counts[library.MarkedFromDir], counts[library.MarkedFromIDs], len(res.Unknown))
+	cmd.Printf("%d %s (%d from the library source, %d provider from its directory, %d metadata ids only, %d existing ones getting the library's metadata ids), %d with nothing to go by (not marked)\n",
+		len(res.Marked), count, counts[library.MarkedFromSource], counts[library.MarkedFromDir], counts[library.MarkedFromIDs], counts[library.MarkedIDs], len(res.Unknown))
 	if len(res.Broken) != 0 {
 		cmd.Printf("%d folders have a broken %s, left as they are (\"mangal library mark <id>\" replaces one):\n", len(res.Broken), libmangal.FilenameMangaDirInfo)
 		for _, m := range res.Broken {
@@ -469,7 +470,8 @@ var libraryMarkCmd = &cobra.Command{
 what the library knows, as "mangal library scan --mark" does for every folder without one.
 Unlike it, a .libmangal.json that's broken (invalid JSON) or says another provider manga
 than the library's sources (or has no manga id) is replaced, keeping its metadata ids of
-other sources; one that agrees is left. Only lists what it would write unless --apply.`,
+other sources; one that agrees only gets the metadata ids the library knows. Only lists
+what it would write unless --apply.`,
 	Example: `  mangal library mark 12
   mangal library mark 12 15 --apply`,
 	Args: cobra.MinimumNArgs(1),

@@ -107,6 +107,12 @@ func (s Scanner) scanManga(m storage.Manga, root string, providerDirs bool, mark
 		m.Parent, m.Dir = filepath.Dir(found), filepath.Base(found)
 	}
 
+	if m.Dir != "" {
+		if err := s.readIDs(m); err != nil {
+			return res, err
+		}
+	}
+
 	recorded, err := s.Library.Downloads(m.ID)
 	if err != nil {
 		return res, err
@@ -327,6 +333,33 @@ func movedTo(files []chapterFile, known map[string]bool, dl storage.Download) (c
 		}
 	}
 	return chapterFile{}, false
+}
+
+// readIDs adds the metadata ids of the folder's .libmangal.json of sources the library
+// manga has none of (no own id nor binding): one written elsewhere (another machine, an
+// older library) may have more; an id it has of a known source is left to library bind.
+func (s Scanner) readIDs(m storage.Manga) error {
+	info, err := libmangal.ReadMangaDirInfo(s.FS, m.Path())
+	if err != nil {
+		// none or broken, as for the rest of the scan
+		return nil
+	}
+	known, err := storage.Bindings{DB: s.Library.DB}.OfLibraryManga(m.ID)
+	if err != nil {
+		return err
+	}
+	var add []metadata.ID
+	for _, id := range info.MetadataIDs {
+		if id.Source == metadata.IDSourceProvider || id.Raw == "" || slices.ContainsFunc(known, func(b storage.Binding) bool { return b.Source == id.Code }) ||
+			slices.ContainsFunc(add, func(o metadata.ID) bool { return o.Code == id.Code }) {
+			continue
+		}
+		add = append(add, id)
+	}
+	if len(add) == 0 {
+		return nil
+	}
+	return s.Library.AddMetadataIDs(m.ID, add)
 }
 
 // locate finds the folder of a library manga under root by its .libmangal.json: same

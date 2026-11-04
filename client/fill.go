@@ -13,6 +13,7 @@ import (
 	"github.com/luevano/libmangal/metadata"
 	"github.com/luevano/mangal/v5/library"
 	"github.com/luevano/mangal/v5/log"
+	"github.com/luevano/mangal/v5/path"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 	stringutil "github.com/luevano/mangal/v5/util/string"
@@ -149,7 +150,7 @@ func (f Fill) download(ctx context.Context, client *libmangal.Client, chapter ma
 	parent, dir := f.Folder, ""
 	if f.MangaDir {
 		parent, dir = filepath.Dir(f.Folder), filepath.Base(f.Folder)
-		if err := f.ensureDirInfo(client.FS(), parent, dir, manga); err != nil {
+		if err := f.ensureDirInfo(ctx, client.FS(), parent, dir, manga); err != nil {
 			return nil, err
 		}
 	}
@@ -167,18 +168,22 @@ func (f Fill) download(ctx context.Context, client *libmangal.Client, chapter ma
 
 // ensureDirInfo writes the .libmangal.json of Manga a download of it would write, unless
 // the folder has one.
-func (f Fill) ensureDirInfo(fsys afero.Fs, parent, dir string, manga mangadata.Manga) error {
+func (f Fill) ensureDirInfo(ctx context.Context, fsys afero.Fs, parent, dir string, manga mangadata.Manga) error {
 	folder := filepath.Join(parent, dir)
 	if _, err := fsys.Stat(filepath.Join(folder, libmangal.FilenameMangaDirInfo)); !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	info := libmangal.NewMangaDirInfo(f.Provider, manga)
-	if err := libmangal.WriteMangaDirInfo(fsys, folder, info, LibraryModes().File); err != nil {
-		return fmt.Errorf("write %s of %q: %w", libmangal.FilenameMangaDirInfo, f.Manga, err)
-	}
 	library, err := cache.Library()
 	if err != nil {
 		return err
+	}
+	index := libraryIndex{library: library, temp: path.Temp()}
+	info, err := index.MangaDirInfoContext(ctx, parent, dir, libmangal.NewMangaDirInfo(f.Provider, manga))
+	if err != nil {
+		return fmt.Errorf("%s of %q: %w", libmangal.FilenameMangaDirInfo, f.Manga, err)
+	}
+	if err := libmangal.WriteMangaDirInfo(fsys, folder, info, LibraryModes().File); err != nil {
+		return fmt.Errorf("write %s of %q: %w", libmangal.FilenameMangaDirInfo, f.Manga, err)
 	}
 	return library.RememberMangaDir(parent, dir, info)
 }

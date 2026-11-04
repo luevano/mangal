@@ -478,3 +478,26 @@ func TestScanPageFormat(t *testing.T) {
 		t.Errorf("a changed file: opened %v", fs.opens)
 	}
 }
+
+// a scan reads the ids of the .libmangal.json of sources the library manga has none of
+func TestScanReadsMarkerIDs(t *testing.T) {
+	root := t.TempDir()
+	lib := newLibrary(t)
+	dir := filepath.Join(root, "p")
+	touch(t, filepath.Join(dir, "Berserk", "1.cbz"))
+	record(t, lib, dir, "Berserk", "1.cbz", 1, "p")
+	al := metadata.ID{Raw: "1", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}
+	if err := lib.RememberMangaDir(dir, "Berserk", libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "berserk"}, MetadataIDs: []metadata.ID{al}}); err != nil {
+		t.Fatal(err)
+	}
+	kt := metadata.ID{Raw: "5", Source: metadata.IDSourceKitsu, Code: metadata.IDCodeKitsu}
+	writeMarker(t, filepath.Join(dir, "Berserk"), libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "berserk"},
+		MetadataIDs: []metadata.ID{{Raw: "2", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}, kt}})
+	if _, err := (Scanner{FS: afero.NewOsFs(), Library: lib}).Scan(root, true); err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ := lib.MangaByFolder(dir, "Berserk")
+	if !slices.Equal(m.MetadataIDs, []metadata.ID{al, kt}) {
+		t.Errorf("ids %+v, want the Kitsu id added, the AniList one kept", m.MetadataIDs)
+	}
+}

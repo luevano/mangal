@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -175,8 +176,12 @@ func loginBound(ctx context.Context, bindings storage.Bindings, provider, mangaI
 
 func applyBinding(ctx context.Context, bindings storage.Bindings, provider string, c metadataProvider, manga mangadata.Manga) (bool, error) {
 	list, err := bindings.Get(provider, manga.Info().ID)
-	if err != nil || len(list) == 0 {
+	if err != nil {
 		return false, err
+	}
+	keepReportedIDs(provider, manga, list)
+	if len(list) == 0 {
+		return false, nil
 	}
 	if meta := manga.Metadata(); meta != nil {
 		for _, b := range list {
@@ -195,6 +200,32 @@ func applyBinding(ctx context.Context, bindings storage.Bindings, provider strin
 	}
 	manga.SetMetadata(meta)
 	return true, nil
+}
+
+// reported are the metadata ids providers reported of their mangas (e.g. MangaDex's
+// links), kept before a binding or a metadata search replaces a manga's metadata:
+// downloads write them in the .libmangal.json too (libraryIndex.MangaDirInfoContext).
+var reported sync.Map
+
+func reportedKey(provider, mangaID string) string { return provider + "\x00" + mangaID }
+
+// keepReportedIDs keeps the ids of the manga's metadata, the first ones seen (later ones
+// may be a search's), unless it's one of its bindings'.
+func keepReportedIDs(provider string, manga mangadata.Manga, bound []storage.Binding) {
+	meta := manga.Metadata()
+	if meta == nil || slices.ContainsFunc(bound, func(b storage.Binding) bool { return meta.ID().Code == b.Source && meta.ID().Raw == b.ID }) {
+		return
+	}
+	if ids := storage.MangaMetadataIDs(manga); len(ids) != 0 {
+		reported.LoadOrStore(reportedKey(provider, manga.Info().ID), ids)
+	}
+}
+
+// reportedIDs are the ids the provider reported of its manga (keepReportedIDs).
+func reportedIDs(provider, mangaID string) []metadata.ID {
+	ids, _ := reported.Load(reportedKey(provider, mangaID))
+	list, _ := ids.([]metadata.ID)
+	return list
 }
 
 // failedTTL is how long a binding that couldn't be fetched is skipped for the backup the

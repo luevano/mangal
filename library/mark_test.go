@@ -223,3 +223,53 @@ func TestMarkManga(t *testing.T) {
 		t.Error("a marker without a manga id agrees")
 	}
 }
+
+// TestMarkIDs: a marker gets every metadata id the library knows (its sources' bindings,
+// its own ids), the db's id of a source replacing the marker's; scan --mark and
+// library mark do it, a marker that has them is left.
+func TestMarkIDs(t *testing.T) {
+	root := t.TempDir()
+	lib := newLibrary(t)
+	files := Files{FS: afero.NewOsFs(), Library: lib, Root: root, Modes: DefaultModes}
+	see := filepath.Join(root, "p")
+	touch(t, filepath.Join(see, "Berserk", "1.cbz"))
+	record(t, lib, see, "Berserk", "1.cbz", 1, "p")
+	al := metadata.ID{Raw: "30002", Source: metadata.IDSourceAnilist, Code: metadata.IDCodeAnilist}
+	mu := metadata.ID{Raw: "9", Source: metadata.IDSourceMangaUpdates, Code: metadata.IDCodeMangaUpdates}
+	ap := metadata.ID{Raw: "berserk", Source: metadata.IDSourceAnimePlanet, Code: metadata.IDCodeAnimePlanet}
+	if err := lib.RememberMangaDir(see, "Berserk", libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "berserk"}, MetadataIDs: []metadata.ID{al}}); err != nil {
+		t.Fatal(err)
+	}
+	bindings := storage.Bindings{DB: lib.DB}
+	for _, b := range []storage.Binding{{Source: metadata.IDCodeKitsu, ID: "5"}, {Source: metadata.IDCodeMyAnimeList, ID: "2"}} {
+		b.Provider, b.MangaID = "p", "berserk"
+		if err := bindings.Set(b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// the marker has a stale MyAnimeList id, and ids of sources the library doesn't know
+	writeMarker(t, filepath.Join(see, "Berserk"), libmangal.MangaDirInfo{Provider: "p", Manga: mangadata.MangaInfo{ID: "berserk"},
+		MetadataIDs: []metadata.ID{{Raw: "1", Source: metadata.IDSourceMyAnimeList, Code: metadata.IDCodeMyAnimeList}, mu, ap}})
+
+	res, err := files.Mark(MarkOptions{DryRun: true})
+	if err != nil || len(res.Marked) != 1 || res.Marked[0].Evidence != MarkedIDs {
+		t.Fatalf("dry run %+v, %v", res, err)
+	}
+	m, _, _ := lib.MangaByFolder(see, "Berserk")
+	marked, done, err := files.MarkManga(m, MarkOptions{})
+	if err != nil || !done || marked.Evidence != MarkedIDs {
+		t.Fatalf("mark %+v %v %v", marked, done, err)
+	}
+	info, err := libmangal.ReadMangaDirInfo(files.FS, m.Path())
+	want := []metadata.ID{al, {Raw: "5", Source: metadata.IDSourceKitsu, Code: metadata.IDCodeKitsu},
+		{Raw: "2", Source: metadata.IDSourceMyAnimeList, Code: metadata.IDCodeMyAnimeList}, mu, ap}
+	if err != nil || !sameIDSet(info.MetadataIDs, want) || info.Provider != "p" || info.Manga.ID != "berserk" {
+		t.Errorf("marker %+v, %v, want ids %+v", info, err, want)
+	}
+	if res, _ := files.Mark(MarkOptions{DryRun: true}); len(res.Marked) != 0 {
+		t.Errorf("marked again: %+v", res.Marked)
+	}
+	if _, done, _ := files.MarkManga(m, MarkOptions{}); done {
+		t.Error("library mark again")
+	}
+}

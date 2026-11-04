@@ -263,6 +263,14 @@ ON CONFLICT (provider, manga_id) DO UPDATE SET manga = excluded.manga, title = e
 	return id, err
 }
 
+// AddMetadataIDs adds the ids to the library manga's own metadata ids.
+func (l Library) AddMetadataIDs(manga int64, ids []metadata.ID) error {
+	if err := l.DB.InTx(func(tx *sql.Tx) error { return addMetadataIDs(tx, manga, ids) }); err != nil {
+		return fmt.Errorf("add metadata ids to library manga %d: %w", manga, err)
+	}
+	return nil
+}
+
 func addMetadataIDs(tx *sql.Tx, manga int64, ids []metadata.ID) error {
 	if len(ids) == 0 {
 		return nil

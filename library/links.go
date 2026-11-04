@@ -146,14 +146,9 @@ func (i LinkInfo) Current() Links {
 // LinkInfo reads what tells the manga's links: its ids, its sources' bindings, its
 // .libmangal.json and its folder's name.
 func (f Files) LinkInfo(manga storage.Manga) (LinkInfo, error) {
-	bindings := storage.Bindings{DB: f.Library.DB}
-	var bound []storage.Binding
-	for _, src := range manga.Sources {
-		list, err := bindings.Get(src.Provider, src.MangaID)
-		if err != nil {
-			return LinkInfo{Manga: manga}, err
-		}
-		bound = append(bound, list...)
+	bound, err := f.boundOf(manga)
+	if err != nil {
+		return LinkInfo{Manga: manga}, err
 	}
 	var marker *libmangal.MangaDirInfo
 	if manga.Dir != "" {
@@ -166,6 +161,20 @@ func (f Files) LinkInfo(manga storage.Manga) (LinkInfo, error) {
 		}
 	}
 	return LinkInfoOf(manga, bound, marker), nil
+}
+
+// boundOf are the bindings of the manga's sources, the current source's first.
+func (f Files) boundOf(manga storage.Manga) ([]storage.Binding, error) {
+	bindings := storage.Bindings{DB: f.Library.DB}
+	var bound []storage.Binding
+	for _, src := range manga.Sources {
+		list, err := bindings.Get(src.Provider, src.MangaID)
+		if err != nil {
+			return nil, err
+		}
+		bound = append(bound, list...)
+	}
+	return bound, nil
 }
 
 // LinkInfoOf is the manga's LinkInfo from its sources' bindings (the current source's
@@ -333,8 +342,8 @@ func (l Linker) PlanLinks(ctx context.Context, manga storage.Manga, links Links,
 		}
 	}
 	if info.Marker != nil {
-		ids := storage.ReplaceIDs(info.Marker.MetadataIDs, links)
-		if !sameIDs(ids, info.Marker.MetadataIDs) {
+		ids := storage.ReplaceIDs(info.MarkerIDs(), links)
+		if !sameIDSet(ids, info.Marker.MetadataIDs) {
 			marker := *info.Marker
 			marker.MetadataIDs = ids
 			plan.Marker = &marker
@@ -363,8 +372,63 @@ func (l Linker) PlanLinks(ctx context.Context, manga storage.Manga, links Links,
 	return plan, nil
 }
 
-func sameIDs(a, b []metadata.ID) bool {
-	return slices.EqualFunc(a, b, func(x, y metadata.ID) bool { return x.Code == y.Code && x.Raw == y.Raw })
+// sameIDSet is true when a and b have the same ids, in any order.
+func sameIDSet(a, b []metadata.ID) bool {
+	key := func(ids []metadata.ID) []string {
+		var keys []string
+		for _, id := range ids {
+			keys = append(keys, string(id.Code)+":"+id.Raw)
+		}
+		slices.Sort(keys)
+		return keys
+	}
+	return slices.Equal(key(a), key(b))
+}
+
+// MarkerIDs are the metadata ids the manga's .libmangal.json gets, every one the library
+// knows: the id of each link source (LinkSource.Current), then the ids of other sources
+// (e.g. AnimePlanet) its own ids and its marker have.
+func (i LinkInfo) MarkerIDs() []metadata.ID {
+	var ids []metadata.ID
+	for _, s := range i.Sources {
+		if id, ok := (storage.Binding{Source: s.Code, ID: s.Current()}).MetadataID(); ok {
+			ids = append(ids, id)
+		}
+	}
+	others := slices.Clone(i.Manga.MetadataIDs)
+	if i.Marker != nil {
+		others = append(others, i.Marker.MetadataIDs...)
+	}
+	for _, id := range others {
+		if id.Source == metadata.IDSourceProvider || id.Raw == "" || slices.Contains(LinkSources, id.Code) ||
+			slices.ContainsFunc(ids, func(o metadata.ID) bool { return o.Code == id.Code }) {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// SyncMarker gives the manga's .libmangal.json the metadata ids the library knows
+// (LinkInfo.MarkerIDs, journaled), the new one and false when it has none (or a broken
+// one) or has them already.
+func (f Files) SyncMarker(m storage.Manga, dryRun bool) (libmangal.MangaDirInfo, bool, error) {
+	info, err := f.LinkInfo(m)
+	if err != nil || info.Marker == nil {
+		return libmangal.MangaDirInfo{}, false, err
+	}
+	ids := info.MarkerIDs()
+	if sameIDSet(ids, info.Marker.MetadataIDs) {
+		return *info.Marker, false, nil
+	}
+	marker := *info.Marker
+	marker.MetadataIDs = ids
+	if !dryRun {
+		if err := writeDirInfo(f.FS, f.Journal, m.Path(), marker, f.Modes.File); err != nil {
+			return marker, false, fmt.Errorf("write the %s of %q: %w", libmangal.FilenameMangaDirInfo, m.Title, err)
+		}
+	}
+	return marker, true, nil
 }
 
 // planRename works out the folder name the template gives with the AniList link.
