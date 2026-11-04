@@ -50,6 +50,7 @@ const (
 	formRename
 	formTrackerPassword
 	formTrackerPaste
+	formAPIClient
 )
 
 type usersMsg struct {
@@ -415,6 +416,8 @@ func (s *state) submitForm(ctx context.Context) tea.Cmd {
 		return s.trackerLoginCmd(ctx, target, apiv1.TrackerLogin{Name: new(f.Fields[0].Value()), Password: new(f.Fields[1].Value())})
 	case formTrackerPaste:
 		return s.trackerLoginCmd(ctx, target, apiv1.TrackerLogin{Paste: new(f.Fields[0].Value())})
+	case formAPIClient:
+		return s.saveAPIClient(ctx, target, f.Fields[0].Value(), f.Fields[1].Value())
 	case formPerms:
 		perms := permsOf(f.Fields)
 		return s.userAction(ctx, "Changing the permissions", func(ctx context.Context, svc core.Users) (tea.Msg, error) {

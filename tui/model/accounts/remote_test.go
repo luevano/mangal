@@ -87,3 +87,51 @@ func TestRemoteTrackerLogin(t *testing.T) {
 		t.Errorf("mangaplus: %#v", msg)
 	}
 }
+
+// TestRemoteAPIClient: e on a tracker sets the server's API client, for an admin only; the
+// form has the client id, an empty secret keeps the saved one.
+func TestRemoteAPIClient(t *testing.T) {
+	var put map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/v1/accounts/clients":
+			_, _ = w.Write([]byte(`[{"source":"anilist","name":"AniList","configured":true,"id":"12","secret":true,"redirect":"pin",` +
+				`"redirectUrl":"https://anilist.co/api/v2/oauth/pin","registerUrl":"https://anilist.co/settings/developer"}]`))
+		case r.URL.Path == "/api/v1/accounts/clients/anilist" && r.Method == http.MethodPut:
+			_ = json.NewDecoder(r.Body).Decode(&put)
+			_, _ = w.Write([]byte(`{"source":"anilist","name":"AniList","configured":true,"secret":true,"redirectUrl":"","registerUrl":""}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	rc, err := remote.New(remote.Options{URL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.CurrentRemote = &base.Remote{URL: srv.URL, Client: rc, Perms: []string{core.ScopeRead, core.ScopeProgress}}
+	t.Cleanup(func() { base.CurrentRemote = nil })
+
+	ctx := context.Background()
+	s := New(false).(*state)
+	s.Update(ctx, usersMsg{})
+	s.Update(ctx, loadedMsg{{Service: "AniList", Metadata: metadata.IDSourceAnilist}})
+	settle := func(cmd tea.Cmd) {
+		for _, m := range base.Drain(cmd) {
+			s.Update(ctx, m)
+		}
+	}
+	if settle(press(s, "e")); s.Inputting() {
+		t.Fatal("not an admin, the form opens")
+	}
+	base.CurrentRemote.Perms = append(base.CurrentRemote.Perms, core.ScopeAdmin)
+	settle(press(s, "e"))
+	if s.formKind != formAPIClient || !strings.Contains(s.View(), "oauth/pin") {
+		t.Fatalf("no client form:\n%s", s.View())
+	}
+	settle(press(s, "enter"))
+	if put["id"] != "12" || put["secret"] != nil {
+		t.Errorf("put %v", put)
+	}
+}

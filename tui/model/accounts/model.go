@@ -121,6 +121,8 @@ func (s *state) Subtitle() string {
 		return "the name and password aren't kept, the login is"
 	case formTrackerPaste:
 		return "open this address, allow mangal, paste what the page ends on"
+	case formAPIClient:
+		return "the server's API client, every user's login goes through it"
 	}
 	if s.inputting && s.discord {
 		return "the webhook url of the notifications (empty removes it)"
@@ -144,6 +146,9 @@ func (s *state) KeyMap() help.KeyMap {
 	short := []key.Binding{s.keys.refresh, s.keys.login, s.keys.copy}
 	if s.remoteTracker() {
 		short = append(short, s.keys.logout)
+	}
+	if s.remoteClient() {
+		short = append(short, s.keys.client)
 	}
 	return util.KeyMap{Short: short}
 }
@@ -202,6 +207,8 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return s.login(ctx)
 		case key.Matches(msg, s.keys.logout) && s.remoteTracker():
 			return s.trackerLogout(ctx)
+		case key.Matches(msg, s.keys.client) && s.remoteClient():
+			return s.apiClientForm(ctx)
 		case key.Matches(msg, s.keys.copy):
 			entry, ok := s.selected()
 			if !ok || entry.URL == "" {
@@ -316,7 +323,7 @@ func (s *state) View() string {
 	if !s.loaded {
 		return ""
 	}
-	if s.formKind == formTrackerPaste {
+	if s.formKind == formTrackerPaste || s.formKind == formAPIClient {
 		return lipgloss.JoinVertical(lipgloss.Left, s.table.View(), " ", lipgloss.NewStyle().Width(s.width).Render(s.loginURL), " ", s.form.View())
 	}
 	if s.formKind != formNone {
@@ -362,6 +369,7 @@ type keyMap struct {
 	add,
 	edit,
 	logout,
+	client,
 	remove,
 	rename,
 	beUser,
@@ -377,6 +385,7 @@ func newKeyMap() keyMap {
 		add:     base.KeyAdd,
 		edit:    base.KeyEdit,
 		logout:  base.KeyLogOut,
+		client:  base.KeyAPIClient,
 		remove:  base.KeyDelete,
 		rename:  base.KeyRename,
 		beUser:  base.KeyBeUser,

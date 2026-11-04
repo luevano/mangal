@@ -25,6 +25,57 @@ type trackerStartedMsg struct{ source, url string }
 // trackerDoneMsg reloads the accounts and says what changed.
 type trackerDoneMsg struct{ notice string }
 
+// apiClientMsg is the server's API client of a tracker, its form opens.
+type apiClientMsg core.APIClient
+
+// remoteClient is true on a remote server's AniList or MyAnimeList row, for an admin: the
+// server's API client every user's login goes through.
+func (s *state) remoteClient() bool {
+	entry, ok := s.selected()
+	return ok && base.CurrentRemote != nil && base.Can(core.ScopeAdmin) &&
+		(entry.Metadata == metadata.IDSourceAnilist || entry.Metadata == metadata.IDSourceMyAnimeList)
+}
+
+// apiClientForm loads the server's API client of the row's tracker, then opens its form.
+func (s *state) apiClientForm(ctx context.Context) tea.Cmd {
+	entry, _ := s.selected()
+	source := remote.TrackerSource(entry.Metadata)
+	accounts := base.CurrentRemote.Client.Services().Accounts
+	return base.Load(ctx, "Loading the API client", func(ctx context.Context) (apiClientMsg, error) {
+		clients, err := accounts.APIClients(ctx)
+		if err != nil {
+			return apiClientMsg{}, err
+		}
+		for _, c := range clients {
+			if c.Source == source {
+				return apiClientMsg(c), nil
+			}
+		}
+		return apiClientMsg{}, fmt.Errorf("the server has no API client of %s", entry.Service)
+	}, func(m apiClientMsg) tea.Msg { return m })
+}
+
+// saveAPIClient saves the form's API client on the server: an empty id removes it, an
+// empty secret keeps the saved one, "-" none.
+func (s *state) saveAPIClient(ctx context.Context, source, id, secret string) tea.Cmd {
+	var keep *string
+	switch secret {
+	case "":
+	case "-":
+		keep = new("")
+	default:
+		keep = &secret
+	}
+	accounts := base.CurrentRemote.Client.Services().Accounts
+	return base.Load(ctx, "Saving the API client", func(ctx context.Context) (trackerDoneMsg, error) {
+		notice := "Saved the server's API client"
+		if id == "" {
+			notice = "Removed the server's API client"
+		}
+		return trackerDoneMsg{notice: notice}, accounts.SetAPIClient(ctx, source, id, keep)
+	}, func(m trackerDoneMsg) tea.Msg { return m })
+}
+
 // remoteTracker is true on a remote server's row of a tracker the user is logged into.
 func (s *state) remoteTracker() bool {
 	entry, ok := s.selected()
@@ -75,6 +126,13 @@ func (s *state) updateTracker(ctx context.Context, msg tea.Msg) (tea.Cmd, bool) 
 			_ = open.Start(msg.url)
 			return base.NotificationMsg{Message: util.CopyNotice(msg.url, "Copied the login address")}
 		}), true
+	case apiClientMsg:
+		s.target, s.loginURL = msg.Source, "register it at "+msg.RegisterURL+" with the redirect URL "+msg.RedirectURL
+		hint := "(optional)"
+		if msg.Secret {
+			hint = "enter keeps the saved one, - for none"
+		}
+		return s.openForm(formAPIClient, huhform.Text("Client ID", msg.ID, "empty removes the client", nil), huhform.Secret("Client secret", "", hint, nil)), true
 	case trackerDoneMsg:
 		return tea.Batch(base.Notify(msg.notice), s.load(ctx, false)), true
 	}
