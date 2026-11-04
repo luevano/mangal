@@ -13,7 +13,8 @@ import (
 
 // usersTables: the users who log into `mangal serve` (the web UI, the API, OPDS) and their
 // sessions. A session is kept by the sha256 of its id; generation goes up when the user's
-// password or permissions change, ending the sessions started before.
+// password or name changes or their logins are ended, ending the sessions started before (a
+// change of permissions doesn't: the logins go on with the new ones).
 const usersTables = `CREATE TABLE serve_users (
 	name       TEXT PRIMARY KEY COLLATE NOCASE,
 	hash       TEXT NOT NULL,
@@ -40,7 +41,7 @@ type User struct {
 	// Hash is the password's argon2id hash (PHC string).
 	Hash  string
 	Perms []string
-	// Generation ends the sessions of an older one (password or permissions changed).
+	// Generation ends the sessions of an older one (password or name changed, logins ended).
 	Generation int64
 	Created    time.Time
 	// LastLogin is zero when the user never logged in.
@@ -146,13 +147,16 @@ func (u Users) checked(check func([]User) error, f func(execer) error) error {
 	})
 }
 
-// update changes a column of the user and ends its sessions (a new generation).
+// update changes columns of the user.
 func (u Users) update(name, set string, args ...any) error {
 	return updateUser(u.DB, name, set, args...)
 }
 
+// endSessions goes in an update's set to end the user's sessions.
+const endSessions = `generation = generation + 1`
+
 func updateUser(ex execer, name, set string, args ...any) error {
-	res, err := ex.Exec(`UPDATE serve_users SET `+set+`, generation = generation + 1 WHERE name = ?`, append(args, name)...)
+	res, err := ex.Exec(`UPDATE serve_users SET `+set+` WHERE name = ?`, append(args, name)...)
 	if err != nil {
 		return fmt.Errorf("change user %q: %w", name, err)
 	}
@@ -164,10 +168,10 @@ func updateUser(ex execer, name, set string, args ...any) error {
 
 // SetHash changes the user's password hash, its sessions end.
 func (u Users) SetHash(name, hash string) error {
-	return u.update(name, `hash = ?`, hash)
+	return u.update(name, `hash = ?, `+endSessions, hash)
 }
 
-// SetPerms changes the user's permissions, its sessions end.
+// SetPerms changes the user's permissions; its sessions go on with them.
 func (u Users) SetPerms(name string, perms []string) error {
 	return u.update(name, `perms = ?`, strings.Join(perms, ","))
 }
@@ -182,7 +186,7 @@ func (u Users) SetPermsChecked(name string, perms []string, check func([]User) e
 
 // EndSessions ends the user's sessions.
 func (u Users) EndSessions(name string) error {
-	return u.update(name, `perms = perms`)
+	return u.update(name, endSessions)
 }
 
 // LoggedIn records a login.
@@ -353,7 +357,7 @@ func (u Users) Rename(old, name string) error {
 		if taken > 0 {
 			return fmt.Errorf("rename user %q to %q: %w", old, name, ErrUserExists)
 		}
-		if err := updateUser(tx, exact, `name = ?`, name); err != nil {
+		if err := updateUser(tx, exact, `name = ?, `+endSessions, name); err != nil {
 			return err
 		}
 		for _, table := range []string{"reads", "reader_positions"} {

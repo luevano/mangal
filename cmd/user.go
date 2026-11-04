@@ -26,7 +26,7 @@ var userCmd = &cobra.Command{
 password) for OPDS readers. They're kept in the data db (passwords as argon2id hashes),
 each with a role (reader, downloader, manager, admin) or their own set of permissions:
 "mangal user roles --all" says what each allows. A running server sees changes within
-seconds; a new password or new permissions end the user's logins. No server needs to run:
+seconds; a new password ends the user's logins, new permissions apply to them. No server needs to run:
 they're changed in the data db of this config. There's always one: "mangal", an admin
 without a password, is made when there's none (mangal on this machine is a user too, see
 auth.user); a user without a password can't log in, "mangal user passwd" gives one. On a server
@@ -123,7 +123,7 @@ func init() {
 
 var userPermsCmd = &cobra.Command{
 	Use:   "perms <name> [permissions]",
-	Short: "Set a user's role or permissions (their logins end)",
+	Short: "Set a user's role or permissions (their logins get them at once)",
 	Example: `  mangal user perms kid --role downloader
   mangal user perms friend --role reader --perms tokens
   mangal user perms guest read,progress`,
@@ -144,7 +144,7 @@ var userPermsCmd = &cobra.Command{
 		if err := users.SetPerms(ctxOf(cmd), args[0], perms); err != nil {
 			return err
 		}
-		successf(cmd, "changed the permissions of %q, its logins ended", args[0])
+		successf(cmd, "changed the permissions of %q, its logins have them now", args[0])
 		return nil
 	},
 }

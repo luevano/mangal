@@ -109,8 +109,10 @@ func (s *state) Subtitle() string {
 		return "a user who logs into mangal serve (the web UI, OPDS)"
 	case formAddToken:
 		return "an API token for a program, shown once"
-	case formPassword, formPerms:
+	case formPassword:
 		return s.target + ": its logins end"
+	case formPerms:
+		return s.target + ": its logins get them at once"
 	case formRename:
 		return s.target + ": their history, tokens and logins follow, their logins end"
 	case formTokenPerms:

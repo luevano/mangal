@@ -488,9 +488,25 @@ func (l localUsers) Tokens(context.Context) ([]Token, error) {
 	if err != nil {
 		return nil, err
 	}
+	st, err := l.store()
+	if err != nil {
+		return nil, err
+	}
+	users, err := st.List()
+	if err != nil {
+		return nil, err
+	}
 	tokens := make([]Token, len(entries))
 	for i, t := range entries {
-		tokens[i] = Token{Name: t.Name, Scopes: TokenScopes(t), Owner: t.Owner, Created: t.Created}
+		scopes := TokenScopes(t)
+		if t.Device != "" {
+			// a device's login has its user's permissions now
+			scopes = nil
+			if j := slices.IndexFunc(users, func(u storage.User) bool { return strings.EqualFold(u.Name, t.Owner) }); j >= 0 {
+				scopes, _ = NormalizeScopes(users[j].Perms)
+			}
+		}
+		tokens[i] = Token{Name: t.Name, Scopes: scopes, Owner: t.Owner, Created: t.Created}
 	}
 	return tokens, nil
 }
@@ -536,6 +552,9 @@ func (l localUsers) SetTokenScopes(_ context.Context, name string, scopes []stri
 		if i < 0 {
 			return nil, &NotFoundError{What: fmt.Sprintf("no token %q", name)}
 		}
+		if entries[i].Device != "" {
+			return nil, &RefusedError{Reasons: []string{fmt.Sprintf("%s is a device's login, it has %s's permissions: change theirs", name, entries[i].Owner)}}
+		}
 		entries[i].Perms = scopes
 		return entries, nil
 	})
@@ -555,8 +574,9 @@ func (l localUsers) RemoveToken(_ context.Context, name string) error {
 const DevicePrefix = "tui@"
 
 // DeviceToken makes the user's token for the device (its hostname), replacing the one they have
-// there, with their permissions now; it lasts while their logins do (generation). Someone else's
-// token of that name stays: this one's name then says whose it is.
+// there; it always has the user's permissions of the moment (perms is what it's made with) and
+// lasts while their logins do (generation: a new password, a rename, ended logins). Someone
+// else's token of that name stays: this one's name then says whose it is.
 func DeviceToken(owner, device string, generation int64, perms []string) (Token, string, error) {
 	if device == "" || strings.TrimSpace(device) != device || strings.ContainsFunc(device, unicode.IsControl) {
 		return Token{}, "", invalid("%q can't be a device's name", device)

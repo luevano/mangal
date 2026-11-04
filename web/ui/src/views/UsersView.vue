@@ -123,7 +123,7 @@ async function submit() {
       )
       break
     case 'perms':
-      r = await run(() => ok(client.PATCH('/v1/users/{name}', { params: { path: { name: u!.name } }, body: { perms: perms.value } })), `Changed the permissions of ${u!.name}, its logins ended`)
+      r = await run(() => ok(client.PATCH('/v1/users/{name}', { params: { path: { name: u!.name } }, body: { perms: perms.value } })), `Changed the permissions of ${u!.name}, its logins have them now`)
       break
     case 'rename':
       r = await run(() => ok(client.PATCH('/v1/users/{name}', { params: { path: { name: u!.name } }, body: { name: name.value.trim() } })), `Renamed ${u!.name} to ${name.value.trim()}, their logins ended`)
@@ -184,7 +184,7 @@ async function copySecret() {
   <template v-if="isAdmin">
   <h4>Users</h4>
   <p class="small text-secondary">
-    Who logs in (the web UI, OPDS readers). A new password or new permissions end the user's logins. Also from the
+    Who logs in (the web UI, OPDS readers). A new password ends the user's logins, new permissions apply to them at once. Also from the
     server: <code>mangal user</code>, the TUI's accounts screen.
   </p>
   <div class="mb-2"><button class="btn btn-sm btn-primary" data-test="user-add" @click="open('add')">Add a user</button></div>

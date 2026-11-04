@@ -433,13 +433,41 @@ func TestDeviceLogin(t *testing.T) {
 		t.Errorf("a named token replaced: %v", got)
 	}
 
-	// never above the user, even if an admin asks; ends with their logins and with them
-	if err := u.SetTokenScopes(t.Context(), "tui@box", core.Scopes); err != nil {
+	// the user's permissions of the moment, more or fewer (its own can't be set); ends with
+	// a new password, their ended logins and with them
+	if err := u.SetTokenScopes(t.Context(), "tui@box", core.Scopes); err == nil {
+		t.Error("a device's login got permissions of its own")
+	}
+	if err := users.SetPerms("reader", []string{ScopeRead, ScopeProgress, ScopeDownload}); err != nil {
 		t.Fatal(err)
 	}
 	s.api.authChanged()
-	if code, who := me(again.Secret); code != http.StatusOK || slices.Contains(who.Scopes, ScopeAdmin) {
-		t.Errorf("above its user: %d %+v", code, who)
+	if code, who := me(again.Secret); code != http.StatusOK || !slices.Contains(who.Scopes, ScopeDownload) {
+		t.Errorf("more permissions: %d %+v", code, who)
+	}
+	if err := users.SetPerms("reader", []string{ScopeRead}); err != nil {
+		t.Fatal(err)
+	}
+	s.api.authChanged()
+	if code, who := me(again.Secret); code != http.StatusOK || slices.Contains(who.Scopes, ScopeProgress) {
+		t.Errorf("fewer permissions: %d %+v", code, who)
+	}
+	if rec := do(h, "GET", "/api/v1/me/accounts", "", from, "Bearer "+again.Secret, nil); rec.Code != http.StatusForbidden {
+		t.Errorf("what its user no longer may: %d", rec.Code)
+	}
+	if got, _ := core.NewUsersOf(users).Tokens(t.Context()); !slices.ContainsFunc(got, func(tk core.Token) bool { return tk.Name == "tui@box" && slices.Equal(tk.Scopes, []string{ScopeRead}) }) {
+		t.Errorf("listed with its user's permissions: %+v", got)
+	}
+	hash, err := core.HashPassword("a new password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := users.SetHash("reader", hash); err != nil {
+		t.Fatal(err)
+	}
+	s.api.authChanged()
+	if code, _ := me(again.Secret); code != http.StatusUnauthorized {
+		t.Errorf("after a new password: %d", code)
 	}
 	if err := users.EndSessions("reader"); err != nil {
 		t.Fatal(err)

@@ -418,7 +418,7 @@ func (s *state) submitForm(ctx context.Context) tea.Cmd {
 	case formPerms:
 		perms := permsOf(f.Fields)
 		return s.userAction(ctx, "Changing the permissions", func(ctx context.Context, svc core.Users) (tea.Msg, error) {
-			return done("Changed the permissions of " + target + ", its logins ended"), svc.SetPerms(ctx, target, perms)
+			return done("Changed the permissions of " + target + ", its logins have them now"), svc.SetPerms(ctx, target, perms)
 		})
 	}
 	return nil

@@ -269,12 +269,17 @@ func (a *Auth) bearer(r *http.Request, token string) (identity, error) {
 		if subtle.ConstantTimeCompare([]byte(hash), []byte(t.Hash)) == 1 {
 			id := identity{Name: t.Name, Kind: KindToken, Scopes: core.TokenScopes(t), Owner: t.Owner}
 			if t.Owner != "" {
-				// never more than its owner has now (a removed owner: nothing)
+				// never more than its owner has now (a removed owner: nothing), a device's login
+				// what they have now
 				u, err := a.user(t.Owner)
 				if err != nil && !errors.Is(err, storage.ErrUserNotFound) {
 					return identity{}, err
 				}
-				id.Scopes = core.CapScopes(id.Scopes, userIdentity(u).Scopes)
+				if t.Device != "" {
+					id.Scopes = userIdentity(u).Scopes
+				} else {
+					id.Scopes = core.CapScopes(id.Scopes, userIdentity(u).Scopes)
+				}
 				if len(id.Scopes) == 0 || (t.Device != "" && t.Generation != u.Generation) {
 					break
 				}

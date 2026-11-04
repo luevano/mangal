@@ -92,10 +92,11 @@ export interface paths {
         /**
          * Log a device in, it gets its token
          * @description For a frontend on another machine (mangal connection login): the user's name and password
-         *     once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+         *     once, a token back. Named tui@<device>, it has the user's permissions of the moment (a
+         *     change applies at once, what they no longer may is refused) and needs no tokens
          *     permission; one per device per user (logging in again replaces it). It ends with the
-         *     user's logins (a new password or permissions, end logins, a removed user). Rate limited as
-         *     the login (429 with Retry-After).
+         *     user's logins (a new password, a rename, end logins, a removed user). Rate limited as the
+         *     login (429 with Retry-After).
          */
         post: operations["loginDevice"];
         delete?: never;
@@ -250,8 +251,9 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Rename a user, change their password or permissions (their logins end)
-         * @description The last admin stays admin (409).
+         * Rename a user, change their password or permissions
+         * @description A new name or password ends their logins, new permissions apply to them at once. The last
+         *     admin stays admin (409).
          */
         patch: operations["updateUser"];
         trace?: never;

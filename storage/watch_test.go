@@ -539,3 +539,44 @@ func TestDefaultUserRenameClaim(t *testing.T) {
 		t.Errorf("only the case: %v", err)
 	}
 }
+
+// TestUserGeneration: a new password, a rename and ended logins end the sessions, new
+// permissions don't.
+func TestUserGeneration(t *testing.T) {
+	data, err := OpenData(filepath.Join(t.TempDir(), FilenameData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	users := Users{DB: data}
+	if err := users.Add(User{Name: "kid", Hash: "h", Perms: []string{"read"}}); err != nil {
+		t.Fatal(err)
+	}
+	gen := func(name string) int64 {
+		u, err := users.Get(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u.Generation
+	}
+	before := gen("kid")
+	if err := users.SetPerms("kid", []string{"read", "progress"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := gen("kid"); got != before {
+		t.Errorf("new permissions: generation %d, was %d", got, before)
+	}
+	for name, change := range map[string]func() error{
+		"password": func() error { return users.SetHash("kid", "h2") },
+		"end":      func() error { return users.EndSessions("kid") },
+		"rename":   func() error { return users.Rename("kid", "Kid") },
+	} {
+		before := gen("kid")
+		if err := change(); err != nil {
+			t.Fatal(err)
+		}
+		if gen("kid") == before {
+			t.Errorf("%s: the sessions go on", name)
+		}
+	}
+}

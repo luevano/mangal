@@ -107,10 +107,11 @@ type ClientInterface interface {
 	// LoginDeviceWithBody Log a device in, it gets its token
 	//
 	// For a frontend on another machine (mangal connection login): the user's name and password
-	// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+	// once, a token back. Named tui@<device>, it has the user's permissions of the moment (a
+	// change applies at once, what they no longer may is refused) and needs no tokens
 	// permission; one per device per user (logging in again replaces it). It ends with the
-	// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
-	// the login (429 with Retry-After).
+	// user's logins (a new password, a rename, end logins, a removed user). Rate limited as the
+	// login (429 with Retry-After).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -120,10 +121,11 @@ type ClientInterface interface {
 	// LoginDevice Log a device in, it gets its token
 	//
 	// For a frontend on another machine (mangal connection login): the user's name and password
-	// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+	// once, a token back. Named tui@<device>, it has the user's permissions of the moment (a
+	// change applies at once, what they no longer may is refused) and needs no tokens
 	// permission; one per device per user (logging in again replaces it). It ends with the
-	// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
-	// the login (429 with Retry-After).
+	// user's logins (a new password, a rename, end logins, a removed user). Rate limited as the
+	// login (429 with Retry-After).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1096,18 +1098,20 @@ type ClientInterface interface {
 	// Corresponds with DELETE /v1/users/{name} (the `RemoveUser` operationId).
 	RemoveUser(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpdateUserWithBody Rename a user, change their password or permissions (their logins end)
+	// UpdateUserWithBody Rename a user, change their password or permissions
 	//
-	// The last admin stays admin (409).
+	// A new name or password ends their logins, new permissions apply to them at once. The last
+	// admin stays admin (409).
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PATCH /v1/users/{name} (the `UpdateUser` operationId).
 	UpdateUserWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpdateUser Rename a user, change their password or permissions (their logins end)
+	// UpdateUser Rename a user, change their password or permissions
 	//
-	// The last admin stays admin (409).
+	// A new name or password ends their logins, new permissions apply to them at once. The last
+	// admin stays admin (409).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1242,10 +1246,11 @@ func (c *Client) ListAccounts(ctx context.Context, reqEditors ...RequestEditorFn
 // LoginDeviceWithBody Log a device in, it gets its token
 //
 // For a frontend on another machine (mangal connection login): the user's name and password
-// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+// once, a token back. Named tui@<device>, it has the user's permissions of the moment (a
+// change applies at once, what they no longer may is refused) and needs no tokens
 // permission; one per device per user (logging in again replaces it). It ends with the
-// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
-// the login (429 with Retry-After).
+// user's logins (a new password, a rename, end logins, a removed user). Rate limited as the
+// login (429 with Retry-After).
 //
 // Takes any type of body and a specified content type.
 //
@@ -1265,10 +1270,11 @@ func (c *Client) LoginDeviceWithBody(ctx context.Context, contentType string, bo
 // LoginDevice Log a device in, it gets its token
 //
 // For a frontend on another machine (mangal connection login): the user's name and password
-// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+// once, a token back. Named tui@<device>, it has the user's permissions of the moment (a
+// change applies at once, what they no longer may is refused) and needs no tokens
 // permission; one per device per user (logging in again replaces it). It ends with the
-// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
-// the login (429 with Retry-After).
+// user's logins (a new password, a rename, end logins, a removed user). Rate limited as the
+// login (429 with Retry-After).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -3601,9 +3607,10 @@ func (c *Client) RemoveUser(ctx context.Context, name string, reqEditors ...Requ
 	return c.Client.Do(req)
 }
 
-// UpdateUserWithBody Rename a user, change their password or permissions (their logins end)
+// UpdateUserWithBody Rename a user, change their password or permissions
 //
-// The last admin stays admin (409).
+// A new name or password ends their logins, new permissions apply to them at once. The last
+// admin stays admin (409).
 //
 // Takes any type of body and a specified content type.
 //
@@ -3620,9 +3627,10 @@ func (c *Client) UpdateUserWithBody(ctx context.Context, name string, contentTyp
 	return c.Client.Do(req)
 }
 
-// UpdateUser Rename a user, change their password or permissions (their logins end)
+// UpdateUser Rename a user, change their password or permissions
 //
-// The last admin stays admin (409).
+// A new name or password ends their logins, new permissions apply to them at once. The last
+// admin stays admin (409).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -9459,10 +9467,11 @@ type ClientWithResponsesInterface interface {
 	// LoginDeviceWithBodyWithResponse Log a device in, it gets its token
 	//
 	// For a frontend on another machine (mangal connection login): the user's name and password
-	// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+	// once, a token back. Named tui@<device>, it has the user's permissions of the moment (a
+	// change applies at once, what they no longer may is refused) and needs no tokens
 	// permission; one per device per user (logging in again replaces it). It ends with the
-	// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
-	// the login (429 with Retry-After).
+	// user's logins (a new password, a rename, end logins, a removed user). Rate limited as the
+	// login (429 with Retry-After).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -9472,10 +9481,11 @@ type ClientWithResponsesInterface interface {
 	// LoginDeviceWithResponse Log a device in, it gets its token
 	//
 	// For a frontend on another machine (mangal connection login): the user's name and password
-	// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+	// once, a token back. Named tui@<device>, it has the user's permissions of the moment (a
+	// change applies at once, what they no longer may is refused) and needs no tokens
 	// permission; one per device per user (logging in again replaces it). It ends with the
-	// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
-	// the login (429 with Retry-After).
+	// user's logins (a new password, a rename, end logins, a removed user). Rate limited as the
+	// login (429 with Retry-After).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10578,18 +10588,20 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /v1/users/{name} (the `RemoveUser` operationId).
 	RemoveUserWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*RemoveUserResponse, error)
 
-	// UpdateUserWithBodyWithResponse Rename a user, change their password or permissions (their logins end)
+	// UpdateUserWithBodyWithResponse Rename a user, change their password or permissions
 	//
-	// The last admin stays admin (409).
+	// A new name or password ends their logins, new permissions apply to them at once. The last
+	// admin stays admin (409).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /v1/users/{name} (the `UpdateUser` operationId).
 	UpdateUserWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error)
 
-	// UpdateUserWithResponse Rename a user, change their password or permissions (their logins end)
+	// UpdateUserWithResponse Rename a user, change their password or permissions
 	//
-	// The last admin stays admin (409).
+	// A new name or password ends their logins, new permissions apply to them at once. The last
+	// admin stays admin (409).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -16134,10 +16146,11 @@ func (c *ClientWithResponses) ListAccountsWithResponse(ctx context.Context, reqE
 // LoginDeviceWithBodyWithResponse Log a device in, it gets its token
 //
 // For a frontend on another machine (mangal connection login): the user's name and password
-// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+// once, a token back. Named tui@<device>, it has the user's permissions of the moment (a
+// change applies at once, what they no longer may is refused) and needs no tokens
 // permission; one per device per user (logging in again replaces it). It ends with the
-// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
-// the login (429 with Retry-After).
+// user's logins (a new password, a rename, end logins, a removed user). Rate limited as the
+// login (429 with Retry-After).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16153,10 +16166,11 @@ func (c *ClientWithResponses) LoginDeviceWithBodyWithResponse(ctx context.Contex
 // LoginDeviceWithResponse Log a device in, it gets its token
 //
 // For a frontend on another machine (mangal connection login): the user's name and password
-// once, a token back. Named tui@<device>, it has the user's permissions and needs no tokens
+// once, a token back. Named tui@<device>, it has the user's permissions of the moment (a
+// change applies at once, what they no longer may is refused) and needs no tokens
 // permission; one per device per user (logging in again replaces it). It ends with the
-// user's logins (a new password or permissions, end logins, a removed user). Rate limited as
-// the login (429 with Retry-After).
+// user's logins (a new password, a rename, end logins, a removed user). Rate limited as the
+// login (429 with Retry-After).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -18075,9 +18089,10 @@ func (c *ClientWithResponses) RemoveUserWithResponse(ctx context.Context, name s
 	return ParseRemoveUserResponse(rsp)
 }
 
-// UpdateUserWithBodyWithResponse Rename a user, change their password or permissions (their logins end)
+// UpdateUserWithBodyWithResponse Rename a user, change their password or permissions
 //
-// The last admin stays admin (409).
+// A new name or password ends their logins, new permissions apply to them at once. The last
+// admin stays admin (409).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -18090,9 +18105,10 @@ func (c *ClientWithResponses) UpdateUserWithBodyWithResponse(ctx context.Context
 	return ParseUpdateUserResponse(rsp)
 }
 
-// UpdateUserWithResponse Rename a user, change their password or permissions (their logins end)
+// UpdateUserWithResponse Rename a user, change their password or permissions
 //
-// The last admin stays admin (409).
+// A new name or password ends their logins, new permissions apply to them at once. The last
+// admin stays admin (409).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
