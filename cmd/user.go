@@ -9,6 +9,7 @@ import (
 
 	"github.com/luevano/mangal/v5/client"
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/core/remote"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/spf13/cobra"
 )
@@ -29,7 +30,8 @@ seconds; a new password or new permissions end the user's logins. No server need
 they're changed in the data db of this config. There's always one: "mangal", an admin
 without a password, is made when there's none (mangal on this machine is a user too, see
 auth.user); a user without a password can't log in, "mangal user passwd" gives one. On a server
-(the connection), the server's users, with an admin's login.`,
+(the connection), the server's users, with an admin's login; a password isn't sent there over
+plain HTTP, except to this machine.`,
 	Args: cobra.NoArgs,
 }
 
@@ -63,15 +65,15 @@ The first user is an admin, the others readers unless --role or --perms say.`,
 		if err := core.CheckUserName(args[0]); err != nil {
 			return err
 		}
-		password, err := askPassword(cmd)
-		if err != nil {
-			return err
-		}
 		perms, err := core.WithRole(userArgs.Role, userArgs.Perms)
 		if err != nil {
 			return err
 		}
-		users, _, err := usersOf(cmd)
+		users, err := passwordUsers(cmd)
+		if err != nil {
+			return err
+		}
+		password, err := askPassword(cmd)
 		if err != nil {
 			return err
 		}
@@ -93,11 +95,11 @@ var userPasswdCmd = &cobra.Command{
 	Short: "Change a user's password (their logins end)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		password, err := askPassword(cmd)
+		users, err := passwordUsers(cmd)
 		if err != nil {
 			return err
 		}
-		users, _, err := usersOf(cmd)
+		password, err := askPassword(cmd)
 		if err != nil {
 			return err
 		}
@@ -333,6 +335,20 @@ var userRolesCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// passwordUsers are usersOf's, refused before the password is asked when it would go to the
+// server over plain HTTP (as the login's).
+func passwordUsers(cmd *cobra.Command) (core.Users, error) {
+	users, onServer, err := usersOf(cmd)
+	if err != nil || !onServer {
+		return users, err
+	}
+	url, err := remoteTarget(cmd).Address()
+	if err != nil {
+		return nil, err
+	}
+	return users, remote.CheckPasswordAddress(url)
 }
 
 // askPassword reads a new password (twice on a terminal).

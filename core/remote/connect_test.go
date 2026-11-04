@@ -203,6 +203,17 @@ func TestLoginAddress(t *testing.T) {
 	if _, err := Login(t.Context(), "http://nas.lan:6977", "david", "the password", nil); err == nil || !strings.Contains(err.Error(), "plain HTTP") {
 		t.Errorf("over plain HTTP: %v", err)
 	}
+	c, err := New(Options{URL: "http://nas.lan:6977"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	users := c.Services().Users
+	if _, err := users.Add(t.Context(), "kid", "the password", nil); err == nil || !strings.Contains(err.Error(), "plain HTTP") {
+		t.Errorf("a new user over plain HTTP: %v", err)
+	}
+	if err := users.SetPassword(t.Context(), "kid", "the password"); err == nil || !strings.Contains(err.Error(), "plain HTTP") {
+		t.Errorf("a new password over plain HTTP: %v", err)
+	}
 	if asked {
 		t.Error("the password was sent")
 	}

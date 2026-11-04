@@ -50,6 +50,9 @@ func (u remoteUsers) List(ctx context.Context) ([]core.User, error) {
 }
 
 func (u remoteUsers) Add(ctx context.Context, name, password string, perms []string) (core.User, error) {
+	if err := CheckPasswordAddress(u.c.URL); err != nil {
+		return core.User{}, err
+	}
 	r, err := u.c.API.AddUserWithResponse(ctx, apiv1.NewUser{Name: name, Password: password, Perms: optList(perms)})
 	if err != nil {
 		return core.User{}, fmt.Errorf("mangal serve: %w", err)
@@ -67,6 +70,9 @@ func (u remoteUsers) update(ctx context.Context, name string, change apiv1.UserC
 }
 
 func (u remoteUsers) SetPassword(ctx context.Context, name, password string) error {
+	if err := CheckPasswordAddress(u.c.URL); err != nil {
+		return err
+	}
 	return u.update(ctx, name, apiv1.UserChange{Password: &password})
 }
 
