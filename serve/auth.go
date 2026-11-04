@@ -41,6 +41,8 @@ var Scopes = core.Scopes
 const (
 	AuthLogin = "login"
 	AuthNone  = "none"
+	// AuthScript is the in-process API's (NewLocal): every request is the script.
+	AuthScript = "script"
 )
 
 // NormalizeScopes are the scopes checked, sorted as Scopes, with read when there's any.
@@ -60,6 +62,9 @@ const (
 	// discovery file.
 	KindLocal = "local"
 	KindNone  = "none"
+	// KindScript is a script or mangal api --local on the in-process API, with
+	// script.api_scopes.
+	KindScript = "script"
 )
 
 // identity is who a request is: a user, an API token, the server's own CLI, or anyone
@@ -86,7 +91,7 @@ func (id identity) user() string {
 		return id.Name
 	case id.Owner != "":
 		return id.Owner
-	case id.Kind == KindLocal || id.Kind == KindNone:
+	case id.Kind == KindLocal || id.Kind == KindNone || id.Kind == KindScript:
 		user, _ := cache.LocalUser()
 		return user
 	}
@@ -100,6 +105,8 @@ func (id identity) String() string {
 		return "none (serve.auth)"
 	case KindLocal:
 		return "local (this config's mangal)"
+	case KindScript:
+		return "script (this machine's, in-process)"
 	}
 	return id.Kind + " " + id.Name
 }
@@ -125,8 +132,10 @@ type UserStore interface {
 
 // Auth is how the server authenticates requests.
 type Auth struct {
-	// Mode is AuthLogin or AuthNone.
+	// Mode is AuthLogin, AuthNone or AuthScript.
 	Mode string
+	// ScriptScopes are the script's permissions with AuthScript.
+	ScriptScopes []string
 	// Users log in with their password (the login page, basic auth), nil for none.
 	Users UserStore
 	// Sessions are the logins' sessions (the cookie), nil without Users.
@@ -250,8 +259,11 @@ var errUnauthorized = errors.New("not logged in")
 // password); the context has the session.
 func (a *Auth) identify(r *http.Request) (identity, context.Context, error) {
 	ctx := r.Context()
-	if a.Mode == AuthNone {
+	switch a.Mode {
+	case AuthNone:
 		return identity{Name: AuthNone, Kind: KindNone, Scopes: Scopes}, ctx, nil
+	case AuthScript:
+		return identity{Name: KindScript, Kind: KindScript, Scopes: a.ScriptScopes}, ctx, nil
 	}
 	if h := r.Header.Get("Authorization"); h != "" {
 		if token, ok := strings.CutPrefix(h, "Bearer "); ok {

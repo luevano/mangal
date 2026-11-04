@@ -485,7 +485,7 @@ func (a *API) logRequests() echo.MiddlewareFunc {
 			line := fmt.Sprintf("%s %s %d %s", r.Method, path, v.Status, v.Latency.Round(time.Millisecond))
 			if id, ok := identityOf(r.Context()); ok && id.Kind != KindNone {
 				line += " by " + id.Kind
-				if id.Kind != KindLocal {
+				if id.Kind != KindLocal && id.Kind != KindScript {
 					line += " " + id.Name
 				}
 			}

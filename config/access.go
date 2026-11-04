@@ -23,7 +23,7 @@ import (
 // mangal keeps its data, downloads and runs providers from, the files' permissions, the log.
 // Over HTTP only an admin sees them; every other key is seen with read, changed by an admin.
 var (
-	riskyPrefixes = []string{"serve.", "auth.", "log.", "remote.", "connection"}
+	riskyPrefixes = []string{"serve.", "auth.", "log.", "remote.", "connection", "script."}
 	riskyKeys     = []string{
 		"providers.allow_private_addresses", "providers.private_allowlist", "providers.headless.flaresolverr_url",
 		"providers.mirrors", "data.path", "cache.path", "providers.path",
@@ -54,7 +54,7 @@ const (
 
 var (
 	// clientPrefixes are this terminal's look, the serve it uses, what opens a chapter here
-	clientPrefixes = []string{"tui.", "icons", "cli.", "remote.", "connection", "read.format", "read.download_on_read"}
+	clientPrefixes = []string{"tui.", "icons", "cli.", "remote.", "connection", "read.format", "read.download_on_read", "script."}
 	// bothPrefixes are what a process reads before anything else: where its data and log are
 	bothPrefixes = []string{"log.", "data.path", "cache.path", "auth.keyring"}
 )
