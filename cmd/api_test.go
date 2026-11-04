@@ -72,3 +72,34 @@ func TestAPICommand(t *testing.T) {
 		t.Errorf("list: %v %q", err, out)
 	}
 }
+
+// mangal api --local without a mangal serve: the API in this process, as the script with
+// script.api_scopes; --write adds manage.
+func TestAPICommandLocal(t *testing.T) {
+	t.Setenv("MANGAL_API_TOKEN", "")
+	remoteArgs.Local = true
+	t.Cleanup(func() { remoteArgs.Local = false; apiArgs.Write = false })
+	reset := func() {
+		apiArgs.Data, apiArgs.SSE, apiArgs.List, apiArgs.Raw, apiArgs.Server, apiArgs.Write = "", false, false, false, "", false
+	}
+
+	reset()
+	out, err := runCmd(t, apiCmd, func() error { return apiCmd.RunE(apiCmd, []string{"status"}) })
+	if err != nil || !strings.Contains(out, "the API in this process (read, progress, browse)") || !strings.Contains(out, `"version"`) {
+		t.Fatalf("status: %v %q", err, out)
+	}
+
+	reset()
+	apiArgs.Data = `{"mangas":[1]}`
+	out, err = runCmd(t, apiCmd, func() error { return apiCmd.RunE(apiCmd, []string{"library/forget"}) })
+	if err == nil || !strings.Contains(err.Error(), "forbidden") || !strings.Contains(out, "script") {
+		t.Errorf("forget without manage: %v %q", err, out)
+	}
+
+	reset()
+	apiArgs.Data, apiArgs.Write = `{"mangas":[1]}`, true
+	out, err = runCmd(t, apiCmd, func() error { return apiCmd.RunE(apiCmd, []string{"library/forget"}) })
+	if err != nil && strings.Contains(err.Error(), "forbidden") {
+		t.Errorf("forget with --write: %v %q", err, out)
+	}
+}

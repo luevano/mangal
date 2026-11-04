@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,11 @@ import (
 
 var scriptArgs = script.Args{}
 
+var scriptAPIArgs = struct {
+	Server string
+	Write  bool
+}{}
+
 func init() {
 	rootCmd.AddCommand(scriptCmd)
 	f := scriptCmd.Flags()
@@ -27,6 +33,8 @@ func init() {
 	f.BoolVarP(&scriptArgs.Stdin, "stdin", "i", false, "Read script from stdin")
 	f.StringVarP(&scriptArgs.Provider, "provider", "p", "", "Load provider by tag")
 	f.StringToStringVarP(&scriptArgs.Variables, "vars", "V", nil, "Variables to set in the `Vars` table")
+	f.StringVar(&scriptAPIArgs.Server, "server", "", "mangal.api's server (its token in MANGAL_API_TOKEN), instead of the connection's or this config's")
+	f.BoolVar(&scriptAPIArgs.Write, "write", false, "mangal.api without a mangal serve (the API in this process): download and manage on top of script.api_scopes")
 	addLoaderFlags(f)
 
 	scriptCmd.MarkFlagRequired("provider")
@@ -40,7 +48,9 @@ var scriptCmd = &cobra.Command{
 	Short: "Useful for custom process with Lua",
 	Long: `script, useful for custom process with Lua. On a server (the connection) the provider is the
 server's, browsed through it; its mangal.api is the server's API, its download_chapter refuses
-(it writes on this machine). mangal.api works locally with a running mangal serve of this config.`,
+(it writes on this machine). Locally mangal.api is the running mangal serve of this config, else
+the API in this process with script.api_scopes (--write adds download and manage): its downloads
+run in this process, the script waits for them at the end (ctrl+c cancels).`,
 	GroupID: groupMode,
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -68,8 +78,10 @@ server's, browsed through it; its mangal.api is the server's API, its download_c
 		if args.Server != nil {
 			sayOn(cmd, args.Server.URL)
 		}
-		args.API = apiCall(cmd)
-		return script.Run(cmd.Context(), args, reader)
+		var done func() error
+		args.API, done = scriptAPI(cmd, scriptAPIArgs.Server, scriptAPIArgs.Write)
+		err = script.Run(cmd.Context(), args, reader)
+		return cmp.Or(err, done())
 	},
 }
 

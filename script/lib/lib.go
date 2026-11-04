@@ -13,8 +13,8 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// Lib is the mangal library, client and call may be nil (their functions then raise an error).
-func Lib(state *lua.LState, lmclient *libmangal.Client, sdkOptions *sdk.Options, call api.Call) *luadoc.Lib {
+// Lib is the mangal library, client and connect may be nil (their functions then raise an error).
+func Lib(state *lua.LState, lmclient *libmangal.Client, sdkOptions *sdk.Options, connect api.Connect) *luadoc.Lib {
 	return &luadoc.Lib{
 		Name:        meta.AppName,
 		Description: meta.AppName + " scripting mode utilities",
@@ -24,12 +24,12 @@ func Lib(state *lua.LState, lmclient *libmangal.Client, sdkOptions *sdk.Options,
 			json.Lib(),
 			client.Lib(lmclient),
 			anilist.Lib(),
-			api.Lib(call),
+			api.Lib(connect),
 		},
 	}
 }
 
-func Preload(state *lua.LState, client *libmangal.Client, sdkOptions *sdk.Options, call api.Call) {
-	lib := Lib(state, client, sdkOptions, call)
+func Preload(state *lua.LState, client *libmangal.Client, sdkOptions *sdk.Options, connect api.Connect) {
+	lib := Lib(state, client, sdkOptions, connect)
 	state.PreloadModule(lib.Name, lib.Loader())
 }

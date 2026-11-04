@@ -25,3 +25,14 @@ func TestSDKErrorMessage(t *testing.T) {
 		t.Errorf("error %q", msg)
 	}
 }
+
+// mangal.api's errors are tables: the script's error is their tostring
+func TestTableErrorMessage(t *testing.T) {
+	state := lua.NewState()
+	defer state.Close()
+	state.SetContext(context.Background())
+	err := run(state, strings.NewReader(`error(setmetatable({ code = "forbidden" }, { __tostring = function() return "GET /x: 403 forbidden" end }))`))
+	if err == nil || !strings.Contains(err.Error(), "403 forbidden") {
+		t.Errorf("error %v", err)
+	}
+}

@@ -2,6 +2,7 @@ package script
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -28,8 +29,8 @@ type Args struct {
 	Variables Variables
 	// Server is the connection's server, nil for this machine: its providers.
 	Server *remote.Client
-	// API is what mangal.api calls.
-	API api.Call
+	// API is what mangal.api connects to.
+	API api.Connect
 }
 
 func addVarsTable(state *lua.LState, variables Variables) {
@@ -100,6 +101,12 @@ func run(state *lua.LState, script io.Reader) error {
 		Protect: true,
 	})
 	if err != nil {
+		// mangal.api's errors are tables, their tostring says it
+		if apiErr, ok := errors.AsType[*lua.ApiError](err); ok {
+			if t, ok := apiErr.Object.(*lua.LTable); ok && state.GetMetaField(t, "__tostring") != lua.LNil {
+				return fmt.Errorf("run script: %s", state.ToStringMeta(t))
+			}
+		}
 		return fmt.Errorf("run script: %w", util.GoError(err))
 	}
 	return nil
