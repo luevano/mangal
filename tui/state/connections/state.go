@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/core/remote"
 	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/theme/color"
@@ -189,8 +191,15 @@ func (s *state) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 			return base.NotifyWarning("This machine has no login")
 		}
 		s.err, s.login = "", i.url
+		host, _ := os.Hostname()
 		s.form = huhform.New(huhform.Text("User", "", "empty to paste an API token (from mangal token add on "+i.name+")", nil),
-			huhform.Secret("Password or token", "", "the password isn't kept, the server answers with this device's token", nil))
+			huhform.Secret("Password or token", "", "the password isn't kept, the server answers with this device's token", nil),
+			huhform.Text("Device", host, "this device's name there, its token is tui@<device> (with a user)", func(v string) error {
+				if v == "" {
+					return nil
+				}
+				return core.CheckDeviceName(v)
+			}))
 		s.form.SetSubmit("log in")
 		return s.form.Focus(0)
 	}
@@ -233,7 +242,7 @@ func (s *state) updateForm(ctx context.Context, msg tea.Msg) tea.Cmd {
 type loginErrMsg struct{ err error }
 
 func (s *state) saveToken(ctx context.Context) tea.Cmd {
-	url, user, secret := s.login, s.form.Fields[0].Value(), s.form.Fields[1].Raw()
+	url, user, secret, device := s.login, s.form.Fields[0].Value(), s.form.Fields[1].Raw(), s.form.Fields[2].Value()
 	warn := func(w string) { log.Warn("%s", w) }
 	if user == "" {
 		secret = strings.TrimSpace(secret)
@@ -258,7 +267,7 @@ func (s *state) saveToken(ctx context.Context) tea.Cmd {
 		return nil
 	}
 	return base.Load(ctx, "Logging in to "+remote.Name(url), func(ctx context.Context) (tea.Msg, error) {
-		who, err := remote.Login(ctx, url, user, secret, warn)
+		who, err := remote.Login(ctx, url, user, secret, device, warn)
 		if err != nil {
 			return loginErrMsg{err: err}, nil
 		}

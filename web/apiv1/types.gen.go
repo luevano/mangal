@@ -474,7 +474,7 @@ type DeleteRequest struct {
 
 // DeviceLogin defines model for DeviceLogin.
 type DeviceLogin struct {
-	// Device the device's name, its hostname
+	// Device the device's name (mangal's login sends the hostname unless given one), the token is tui@<device>
 	Device   string `json:"device"`
 	Name     string `json:"name"`
 	Password string `json:"password"`

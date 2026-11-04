@@ -263,24 +263,27 @@ var connectionUseCmd = &cobra.Command{
 }
 
 var connectionLoginArgs = struct {
-	User string
+	User   string
+	Device string
 }{}
 
 func init() {
 	connectionLoginCmd.Flags().StringVarP(&connectionLoginArgs.User, "user", "u", "", "Log in as this user (asked on a terminal, empty for an API token)")
+	connectionLoginCmd.Flags().StringVar(&connectionLoginArgs.Device, "device", "", "This device's name there, its token is tui@<device> (the hostname by default)")
 }
 
 var connectionLoginCmd = &cobra.Command{
 	Use:   "login [name|address]",
 	Short: "Log in to a mangal serve, or save an API token of it",
 	Long: `Log in to the mangal serve (the connection by default). With a user and password, once: the
-server answers with this device's token (tui@<hostname>, the user's permissions, no tokens
-permission needed; logging in again replaces it; it ends with the user's logins) and the password
-isn't kept. A password is refused over plain HTTP except to this machine. With an empty user, an
+server answers with this device's token (tui@<hostname>, or --device's name; the user's
+permissions of the moment, no tokens permission needed; logging in again replaces it; it ends with
+the user's logins) and the password isn't kept. A password is refused over plain HTTP except to this machine. With an empty user, an
 API token is asked for, checked there and saved for that address. Without a terminal, stdin's line
 is the token, or the password with --user.`,
 	Example: `  mangal connection login nas
   mangal connection login nas --user david
+  mangal connection login nas --user david --device wsl-tui
   echo "$TOKEN" | mangal connection login http://nas.lan:6977`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -319,6 +322,12 @@ func loginUser(cmd *cobra.Command, in *bufio.Reader, url, user string) error {
 	if err := remote.CheckPasswordAddress(url); err != nil {
 		return err
 	}
+	device := connectionLoginArgs.Device
+	if cmd.Flags().Changed("device") {
+		if err := core.CheckDeviceName(device); err != nil {
+			return err
+		}
+	}
 	password, err := readSecret(cmd, in, "Password of "+user+": ")
 	if err != nil {
 		return err
@@ -326,7 +335,7 @@ func loginUser(cmd *cobra.Command, in *bufio.Reader, url, user string) error {
 	if password == "" {
 		return errors.New("no password: nothing saved")
 	}
-	who, err := remote.Login(ctxOf(cmd), url, user, password, remoteWarn(cmd))
+	who, err := remote.Login(ctxOf(cmd), url, user, password, device, remoteWarn(cmd))
 	if err != nil {
 		return err
 	}

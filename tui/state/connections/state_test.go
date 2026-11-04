@@ -2,6 +2,7 @@ package connections
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -61,8 +62,11 @@ func TestLoginForm(t *testing.T) {
 	s := New("", "").(*state)
 	s.List.Select(1)
 	s.Update(context.Background(), util.KeyPress("i"))
-	if s.form == nil || len(s.form.Fields) != 2 {
+	if s.form == nil || len(s.form.Fields) != 3 {
 		t.Fatal("no login form")
+	}
+	if host, _ := os.Hostname(); s.form.Fields[2].Value() != host {
+		t.Errorf("the device is %q, not the hostname", s.form.Fields[2].Value())
 	}
 	s.form.Fields[0].SetValue("david")
 	s.form.Fields[1].SetValue("the password")

@@ -570,6 +570,14 @@ func (l localUsers) RemoveToken(_ context.Context, name string) error {
 	})
 }
 
+// CheckDeviceName refuses what can't be a device's name (its token's is tui@<device>).
+func CheckDeviceName(device string) error {
+	if device == "" || strings.TrimSpace(device) != device || strings.ContainsFunc(device, unicode.IsControl) {
+		return invalid("%q can't be a device's name", device)
+	}
+	return nil
+}
+
 // DevicePrefix goes before a device's name in its token's: tui@host.
 const DevicePrefix = "tui@"
 
@@ -578,8 +586,8 @@ const DevicePrefix = "tui@"
 // lasts while their logins do (generation: a new password, a rename, ended logins). Someone
 // else's token of that name stays: this one's name then says whose it is.
 func DeviceToken(owner, device string, generation int64, perms []string) (Token, string, error) {
-	if device == "" || strings.TrimSpace(device) != device || strings.ContainsFunc(device, unicode.IsControl) {
-		return Token{}, "", invalid("%q can't be a device's name", device)
+	if err := CheckDeviceName(device); err != nil {
+		return Token{}, "", err
 	}
 	scopes, err := NormalizeScopes(perms)
 	if err != nil {

@@ -1943,7 +1943,7 @@ export interface components {
         DeviceLogin: {
             name: string;
             password: string;
-            /** @description the device's name, its hostname */
+            /** @description the device's name (mangal's login sends the hostname unless given one), the token is tui@<device> */
             device: string;
         };
         User: {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/luevano/mangal/v5/client/watch"
 	"github.com/luevano/mangal/v5/config"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
@@ -233,22 +234,26 @@ func CheckPasswordAddress(url string) error {
 	return nil
 }
 
-// Login logs the user in on the server at url: the password goes once and isn't kept, the device
-// token the server answers (tui@<hostname>, with the user's permissions) is saved as SaveToken
-// does. who is the token's name there.
-func Login(ctx context.Context, url, user, password string, warn func(string)) (who string, err error) {
+// Login logs the user in on the server at url as the device (empty: this machine's hostname):
+// the password goes once and isn't kept, the device token the server answers (tui@<device>,
+// with the user's permissions) is saved as SaveToken does. who is the token's name there.
+func Login(ctx context.Context, url, user, password, device string, warn func(string)) (who string, err error) {
 	if err := CheckPasswordAddress(url); err != nil {
 		return "", err
 	}
-	host, err := os.Hostname()
-	if err != nil {
-		return "", fmt.Errorf("this machine's name: %w", err)
+	if device == "" {
+		if device, err = os.Hostname(); err != nil {
+			return "", fmt.Errorf("this machine's name: %w", err)
+		}
+	}
+	if err := core.CheckDeviceName(device); err != nil {
+		return "", err
 	}
 	c, err := Open(url, "", warn)
 	if err != nil {
 		return "", err
 	}
-	r, err := c.API.LoginDeviceWithResponse(ctx, apiv1.DeviceLogin{Name: user, Password: password, Device: host})
+	r, err := c.API.LoginDeviceWithResponse(ctx, apiv1.DeviceLogin{Name: user, Password: password, Device: device})
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", url, err)
 	}

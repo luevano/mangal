@@ -200,7 +200,7 @@ func TestLoginAddress(t *testing.T) {
 	defer srv.Close()
 	// the fake server's address as another machine's, through a proxy nothing goes to
 	t.Setenv("HTTP_PROXY", srv.URL)
-	if _, err := Login(t.Context(), "http://nas.lan:6977", "david", "the password", nil); err == nil || !strings.Contains(err.Error(), "plain HTTP") {
+	if _, err := Login(t.Context(), "http://nas.lan:6977", "david", "the password", "", nil); err == nil || !strings.Contains(err.Error(), "plain HTTP") {
 		t.Errorf("over plain HTTP: %v", err)
 	}
 	c, err := New(Options{URL: "http://nas.lan:6977"})

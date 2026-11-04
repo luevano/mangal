@@ -2600,7 +2600,7 @@ components:
           type: string
         device:
           type: string
-          description: the device's name, its hostname
+          description: the device's name (mangal's login sends the hostname unless given one), the token is tui@<device>
     User:
       type: object
       required: [name, perms, role, password, admin, created]
