@@ -26,10 +26,10 @@ require (
 	github.com/labstack/echo/v5 v5.4.0
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luevano/gopher-luadoc v0.3.7
-	github.com/luevano/libmangal v0.33.0
-	github.com/luevano/luaprovider v0.20.0
+	github.com/luevano/libmangal v0.34.0
+	github.com/luevano/luaprovider v0.20.1
 	github.com/luevano/mangoplus v0.7.6
-	github.com/luevano/mangoprovider v0.25.0
+	github.com/luevano/mangoprovider v0.25.1
 	github.com/maruel/natural v1.3.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/pelletier/go-toml/v2 v2.4.3
@@ -47,6 +47,7 @@ require (
 	github.com/yuin/gopher-lua v1.1.2
 	github.com/zalando/go-keyring v0.2.8
 	go.etcd.io/bbolt v1.5.0
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/image v0.47.0
 	golang.org/x/net v0.61.0
 	golang.org/x/oauth2 v0.37.0
@@ -90,6 +91,7 @@ require (
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
+	github.com/gen2brain/vpx v0.2.1 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.2 // indirect
 	github.com/go-openapi/jsonpointer v1.0.2 // indirect
@@ -141,7 +143,6 @@ require (
 	github.com/ysmood/got v0.42.3 // indirect
 	github.com/ysmood/gson v0.7.3 // indirect
 	github.com/ysmood/leakless v0.9.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
