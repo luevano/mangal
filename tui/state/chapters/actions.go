@@ -90,7 +90,12 @@ func (s *state) askRead(ctx context.Context, hovered *item) tea.Cmd {
 		return base.Notify("Chapter unavailable: " + reason)
 	}
 	if base.CurrentRemote != nil {
-		return s.readRemoteCmd(ctx, i)
+		read := s.readRemoteCmd(ctx, i)
+		// read.download_on_read: the server downloads it too, in its download.format
+		if config.Read.DownloadOnRead.Get() && len(i.downloaded) == 0 {
+			return tea.Batch(read, s.download(ctx, downloadMsg{item: i}))
+		}
+		return read
 	}
 	if i.readPath != "" {
 		log.Debug("read format of %q already downloaded", i.chapter)
@@ -278,7 +283,7 @@ func (s *state) readCmd(ctx context.Context, path string, chapter mangadata.Chap
 }
 
 // readRemoteCmd fetches the chapter from the server into the read cache (its file in the
-// library, else its pages), opens it and records the read there.
+// library, else its pages written in read.format), opens it and records the read there.
 func (s *state) readRemoteCmd(ctx context.Context, i *item) tea.Cmd {
 	rc, cache := base.CurrentRemote.Client, base.ReadCache()
 	file := i.readPath
@@ -289,14 +294,14 @@ func (s *state) readRemoteCmd(ctx context.Context, i *item) tea.Cmd {
 		}
 	}
 	chapter, manga, provider, libraryManga := i.chapter, s.manga.Info(), s.client.Info().ID, s.libraryManga
-	info, volume := chapter.Info(), chapter.Volume().Info().Number
+	info, volume, format := chapter.Info(), chapter.Volume().Info().Number, config.Read.Format.Get()
 	return base.Load(ctx, fmt.Sprintf("Fetching %q for reading", chapter), func(ctx context.Context) (readMsg, error) {
 		var path string
 		var err error
 		if file != "" && libraryManga != 0 {
 			path, err = rc.ChapterFile(ctx, cache, libraryManga, file)
 		} else {
-			path, err = rc.OnlineChapter(ctx, cache, provider, manga.ID, volume, info.Number, manga.Title+" "+stringutil.FormatFloat32(info.Number))
+			path, err = rc.OnlineChapter(ctx, cache, provider, manga.ID, volume, info.Number, manga.Title+" "+stringutil.FormatFloat32(info.Number), format)
 		}
 		if err != nil {
 			return readMsg{}, err

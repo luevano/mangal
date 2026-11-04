@@ -2,13 +2,26 @@ package remote
 
 import (
 	"archive/zip"
+	"bytes"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/luevano/libmangal"
 )
+
+func pngImage(t *testing.T) []byte {
+	var b bytes.Buffer
+	if err := png.Encode(&b, image.NewGray(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
 
 // TestReadCache: the fetched chapters stay in the private cache whatever the server's
 // names, a second read is the cached file, the oldest go past the limit.
@@ -26,7 +39,7 @@ func TestReadCache(t *testing.T) {
 			_, _ = w.Write([]byte(`{"format":"ONLINE","pages":[{"index":0,"name":"0001.png"},{"index":1,"name":"../x"}]}`))
 		case "/api/v1/providers/p/pages/0", "/api/v1/providers/p/pages/1":
 			w.Header().Set("Content-Type", "image/png")
-			_, _ = w.Write([]byte("png"))
+			_, _ = w.Write(pngImage(t))
 		default:
 			http.NotFound(w, r)
 		}
@@ -49,8 +62,8 @@ func TestReadCache(t *testing.T) {
 	if again, err := c.ChapterFile(ctx, rc, 1, "../../../Berserk/Vol 1/Ch 1.cbz"); err != nil || again != got || fetched != 1 {
 		t.Errorf("again %q %v (fetched %d)", again, err, fetched)
 	}
-	online, err := c.OnlineChapter(ctx, rc, "p", "m", 1, 2, "../Berserk 2")
-	if err != nil || filepath.Dir(online) != dir {
+	online, err := c.OnlineChapter(ctx, rc, "p", "m", 1, 2, "../Berserk 2", libmangal.FormatCBZ)
+	if err != nil || filepath.Dir(online) != dir || !strings.HasSuffix(online, ".cbz") {
 		t.Fatalf("online %q %v", online, err)
 	}
 	z, err := zip.OpenReader(online)
@@ -58,7 +71,7 @@ func TestReadCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer z.Close()
-	if len(z.File) != 2 || z.File[0].Name != "0001.png" || z.File[1].Name != "0002.jpg" {
+	if len(z.File) != 2 || z.File[0].Name != "0001.png" || z.File[1].Name != "0002.png" {
 		t.Errorf("pages %v", z.File)
 	}
 	// a second chapter file is over the limit: the oldest goes
@@ -67,6 +80,17 @@ func TestReadCache(t *testing.T) {
 	}
 	if _, err := os.Stat(got); !os.IsNotExist(err) {
 		t.Errorf("the oldest is still there: %v", err)
+	}
+	// read.format: the default pdf, written here
+	pdf, err := c.OnlineChapter(ctx, ReadCache{Dir: dir}, "p", "m", 1, 2, "Berserk 2", libmangal.FormatPDF)
+	if err != nil || !strings.HasSuffix(pdf, ".pdf") {
+		t.Fatalf("pdf %q %v", pdf, err)
+	}
+	if b, err := os.ReadFile(pdf); err != nil || !strings.HasPrefix(string(b), "%PDF") {
+		t.Errorf("not a pdf: %v", err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, ".part-*")); len(left) != 0 {
+		t.Errorf("left %v", left)
 	}
 	if got := safeName("..\\../a/b"); strings.ContainsAny(got, `/\`) || strings.HasPrefix(got, ".") {
 		t.Errorf("safe name %q", got)

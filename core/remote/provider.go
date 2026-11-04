@@ -282,6 +282,13 @@ type page struct {
 	ext     string
 }
 
-func (p *page) String() string             { return fmt.Sprintf("page %d", p.index+1) }
-func (p *page) Extension() string          { return strings.ToLower(p.ext) }
+func (p *page) String() string { return fmt.Sprintf("page %d", p.index+1) }
+
+// Extension is the page name's, .jpg when the server's isn't one (it ends up in names).
+func (p *page) Extension() string {
+	if ext := strings.ToLower(p.ext); imageExt.MatchString(ext) {
+		return ext
+	}
+	return ".jpg"
+}
 func (p *page) Chapter() mangadata.Chapter { return p.chapter }

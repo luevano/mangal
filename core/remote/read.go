@@ -1,7 +1,6 @@
 package remote
 
 import (
-	"archive/zip"
 	"cmp"
 	"context"
 	"crypto/sha256"
@@ -21,6 +20,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/luevano/libmangal"
+	"github.com/luevano/libmangal/mangadata"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/web/apiv1"
 )
@@ -96,7 +97,8 @@ func (rc ReadCache) open() (*os.Root, error) {
 // cached is the file's path when it's in the cache already (it's then the newest).
 func (rc ReadCache) cached(root *os.Root, file string) (string, bool) {
 	info, err := root.Stat(file)
-	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+	// a directory is a chapter of plain images
+	if err != nil || !info.IsDir() && (!info.Mode().IsRegular() || info.Size() == 0) {
 		return "", false
 	}
 	now := time.Now()
@@ -136,24 +138,41 @@ func (rc ReadCache) prune(root *os.Root, keep string) {
 	if err != nil {
 		return
 	}
-	var files []fs.FileInfo
+	type entry struct {
+		info fs.FileInfo
+		size int64
+	}
+	var files []entry
 	var total int64
 	for _, e := range entries {
-		if info, err := e.Info(); err == nil && info.Mode().IsRegular() {
-			files = append(files, info)
+		info, err := e.Info()
+		switch {
+		case err != nil || strings.HasPrefix(e.Name(), ".part-"):
+		case info.Mode().IsRegular():
+			files = append(files, entry{info, info.Size()})
 			total += info.Size()
+		case info.IsDir():
+			var size int64
+			_ = fs.WalkDir(root.FS(), e.Name(), func(_ string, d fs.DirEntry, err error) error {
+				if i, ierr := d.Info(); err == nil && ierr == nil && i.Mode().IsRegular() {
+					size += i.Size()
+				}
+				return nil
+			})
+			files = append(files, entry{info, size})
+			total += size
 		}
 	}
-	slices.SortFunc(files, func(a, b fs.FileInfo) int { return a.ModTime().Compare(b.ModTime()) })
+	slices.SortFunc(files, func(a, b entry) int { return a.info.ModTime().Compare(b.info.ModTime()) })
 	for _, f := range files {
 		if total <= rc.Max {
 			return
 		}
-		if f.Name() == keep {
+		if f.info.Name() == keep {
 			continue
 		}
-		if root.Remove(f.Name()) == nil {
-			total -= f.Size()
+		if root.RemoveAll(f.info.Name()) == nil {
+			total -= f.size
 		}
 	}
 }
@@ -195,55 +214,48 @@ func (c *Client) ChapterFile(ctx context.Context, rc ReadCache, manga int64, fil
 	})
 }
 
-// OnlineChapter is the provider's chapter, its pages fetched through the server, as a CBZ
-// in the cache: its path there.
-func (c *Client) OnlineChapter(ctx context.Context, rc ReadCache, provider, mangaID string, volume, chapter float32, title string) (string, error) {
+// OnlineChapter is the provider's chapter, its pages fetched through the server, written
+// in the format (read.format) by libmangal on this machine into the cache: its path there.
+func (c *Client) OnlineChapter(ctx context.Context, rc ReadCache, provider, mangaID string, vol, number float32, title string, format libmangal.Format) (string, error) {
 	root, err := rc.open()
 	if err != nil {
 		return "", err
 	}
 	defer root.Close()
-	key := fmt.Sprintf("%s\x00online\x00%s\x00%s\x00%g\x00%g", c.URL, provider, mangaID, volume, chapter)
-	out := name(key, title, ".cbz")
+	key := fmt.Sprintf("%s\x00online\x00%s\x00%s\x00%g\x00%g", c.URL, provider, mangaID, vol, number)
+	out := name(key, title, format.Extension())
 	if p, ok := rc.cached(root, out); ok {
 		return p, nil
 	}
-	r, err := c.API.ListProviderPagesWithResponse(ctx, provider, &apiv1.ListProviderPagesParams{MangaId: mangaID, Chapter: chapter, Volume: &volume})
-	if err != nil {
-		return "", fmt.Errorf("mangal serve: %w", err)
-	}
-	list, err := answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
+	lc, err := libmangal.NewClientContext(ctx, Loader{c: c, info: libmangal.ProviderInfo{ID: provider, Name: provider, Version: "0.0.0"}},
+		libmangal.DefaultClientOptions())
 	if err != nil {
 		return "", err
 	}
-	if len(list.Pages) == 0 {
-		return "", fmt.Errorf("chapter %g has no pages", chapter)
+	defer lc.Close()
+	tmp, err := os.MkdirTemp(rc.Dir, ".part-")
+	if err != nil {
+		return "", fmt.Errorf("read cache: %w", err)
 	}
-	return rc.write(root, out, func(w io.Writer) error {
-		z := zip.NewWriter(w)
-		for i, pg := range list.Pages {
-			img, err := c.API.GetProviderPageWithResponse(ctx, provider, pg.Index, &apiv1.GetProviderPageParams{MangaId: mangaID, Chapter: chapter, Volume: &volume})
-			if err != nil {
-				return fmt.Errorf("mangal serve: %w", err)
-			}
-			if img.StatusCode() != http.StatusOK {
-				return errorOf(img.StatusCode(), img.Body, img.JSONDefault)
-			}
-			ext := strings.ToLower(path.Ext(deref(pg.Name)))
-			if !imageExt.MatchString(ext) {
-				ext = ".jpg"
-			}
-			// the images are compressed already
-			f, err := z.CreateHeader(&zip.FileHeader{Name: fmt.Sprintf("%04d%s", i+1, ext), Method: zip.Store})
-			if err != nil {
-				return err
-			}
-			if _, err := f.Write(img.Body); err != nil {
-				return err
-			}
-		}
-		return z.Close()
-	})
+	defer os.RemoveAll(tmp)
+	options := libmangal.DefaultDownloadOptions()
+	options.Format, options.Directory = format, tmp
+	options.CreateMangaDir, options.ReuseMangaDir, options.Strict, options.SkipIfExists, options.SearchMetadata = false, false, false, false, false
+	ch := &chapter{volume: &volume{manga: &manga{info: mangadata.MangaInfo{ID: mangaID, Title: title}}, info: mangadata.VolumeInfo{Number: vol}},
+		info: mangadata.ChapterInfo{Title: title, Number: number}}
+	got, err := lc.DownloadChapterContext(ctx, ch, options)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(rc.Dir, filepath.Join(got.Directory, got.Filename))
+	if err != nil {
+		return "", fmt.Errorf("read cache: %w", err)
+	}
+	if err := root.Rename(rel, out); err != nil {
+		return "", fmt.Errorf("read cache: %w", err)
+	}
+	rc.prune(root, out)
+	return filepath.Join(rc.Dir, out), nil
 }
 
 // RecordRead records the read in the server's history of the token's user, the server
