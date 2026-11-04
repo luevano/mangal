@@ -161,7 +161,8 @@ func (s Bindings) Default(provider, mangaID string) (Binding, bool, error) {
 }
 
 // Set binds the manga to b.Source's manga b.ID, replacing the source's binding (b.Default
-// is ignored).
+// is ignored). The same binding again changes nothing (not even its time): it would block
+// the undo of the operation that made it.
 func (s Bindings) Set(b Binding) error {
 	if b.Provider == "" || b.MangaID == "" || b.Source == "" || b.ID == "" {
 		return fmt.Errorf("bind %s %q: incomplete binding %+v", b.Provider, b.MangaID, b)
@@ -171,7 +172,8 @@ func (s Bindings) Set(b Binding) error {
 	}
 	err := s.DB.InTx(func(tx *sql.Tx) error {
 		_, err := tx.Exec(`INSERT INTO metadata_bindings (provider, manga_id, source, metadata_id, updated) VALUES (?, ?, ?, ?, ?)
-ON CONFLICT (provider, manga_id, source) DO UPDATE SET metadata_id = excluded.metadata_id, updated = excluded.updated`,
+ON CONFLICT (provider, manga_id, source) DO UPDATE SET metadata_id = excluded.metadata_id, updated = excluded.updated
+WHERE metadata_id != excluded.metadata_id`,
 			b.Provider, b.MangaID, b.Source, b.ID, unix(b.Updated))
 		if err != nil {
 			return err

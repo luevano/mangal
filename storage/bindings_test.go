@@ -180,3 +180,27 @@ func TestMigrateOldIDsBindings(t *testing.T) {
 		t.Errorf("left %+v", left)
 	}
 }
+
+// the same binding again leaves the row as it is (an undo checks the rows didn't change)
+func TestBindingsSameAgain(t *testing.T) {
+	bindings := Bindings{DB: openData(t)}
+	first := time.Unix(1000, 0)
+	b := Binding{Provider: "p", MangaID: "m", Source: metadata.IDCodeKitsu, ID: "5", Updated: first}
+	if err := bindings.Set(b); err != nil {
+		t.Fatal(err)
+	}
+	b.Updated = time.Unix(2000, 0)
+	if err := bindings.Set(b); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := bindings.Get("p", "m"); len(got) != 1 || !got[0].Updated.Equal(first) {
+		t.Errorf("same binding rewritten: %+v", got)
+	}
+	b.ID = "6"
+	if err := bindings.Set(b); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := bindings.Get("p", "m"); len(got) != 1 || got[0].ID != "6" || !got[0].Updated.Equal(b.Updated) {
+		t.Errorf("new id: %+v", got)
+	}
+}
