@@ -7,6 +7,7 @@ import (
 
 	"github.com/luevano/mangal/v5/auth/oauth"
 	"github.com/luevano/mangal/v5/client/myanimelist"
+	"github.com/luevano/mangal/v5/core"
 	"github.com/luevano/mangal/v5/tui/base"
 	myAnimeListViewer "github.com/luevano/mangal/v5/tui/model/myanimelist"
 	"github.com/spf13/cobra"
@@ -72,34 +73,58 @@ var myAnimeListClientCmd = &cobra.Command{
 	Short: "Save the MyAnimeList API client mangal logs in with",
 	Long: `Save the client ID (and secret, only for App Types other than "other") of your
 MyAnimeList API client, kept with the logins (auth.keyring keeps them in the OS keyring).
-Both are asked, the secret without echo, or read from stdin a line each.
+Both are asked, the secret without echo, or read from stdin a line each. On a server it's
+the server's client, every user's login goes through (admin).
 
 ` + myAnimeListSetup,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		if myAnimeListClientArgs.Clear {
-			if err := myanimelist.SetClient("", ""); err != nil {
-				return err
-			}
-			successf(cmd, "removed the MyAnimeList API client")
-			return nil
-		}
-		in := bufio.NewReader(cmd.InOrStdin())
-		id, err := prompt(cmd, in, "MyAnimeList client ID: ")
-		if err != nil {
-			return err
-		}
-		if id == "" {
-			return errors.New("empty client id, --clear removes the saved one")
-		}
-		secret, err := readSecret(cmd, in, "Client secret (empty for none): ")
-		if err != nil {
-			return err
-		}
-		if err := myanimelist.SetClient(id, secret); err != nil {
-			return err
-		}
-		successf(cmd, "saved the MyAnimeList API client, log in with mangal myanimelist")
-		return nil
+		return setAPIClient(cmd, "myanimelist", "MyAnimeList", myAnimeListClientArgs.Clear, "Client secret (empty for none): ")
 	},
+}
+
+// setAPIClient asks for the tracker's API client and saves it (on the connection's server),
+// clear removes it.
+func setAPIClient(cmd *cobra.Command, source, name string, clear bool, secretLabel string) error {
+	rc, err := connectRemote(cmd)
+	if err != nil {
+		return err
+	}
+	accounts := core.NewAccounts()
+	if rc != nil {
+		sayOn(cmd, rc.URL)
+		accounts = rc.Services().Accounts
+	}
+	ctx := cmd.Context()
+	if clear {
+		if err := accounts.SetAPIClient(ctx, source, "", nil); err != nil {
+			return err
+		}
+		successf(cmd, "removed the %s API client", name)
+		return nil
+	}
+	in := bufio.NewReader(cmd.InOrStdin())
+	id, err := prompt(cmd, in, name+" client ID: ")
+	if err != nil {
+		return err
+	}
+	if id == "" {
+		return errors.New("empty client id, --clear removes the saved one")
+	}
+	secret, err := readSecret(cmd, in, secretLabel)
+	if err != nil {
+		return err
+	}
+	if err := accounts.SetAPIClient(ctx, source, id, &secret); err != nil {
+		return err
+	}
+	successf(cmd, "saved the %s API client", name)
+	if clients, err := accounts.APIClients(ctx); err == nil {
+		for _, c := range clients {
+			if c.Source == source {
+				cmd.PrintErrf("its redirect URL must be %s (%s)\n", c.RedirectURL, c.RegisterURL)
+			}
+		}
+	}
+	return nil
 }

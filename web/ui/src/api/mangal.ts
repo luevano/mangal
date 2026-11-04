@@ -1749,6 +1749,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/accounts/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The server's AniList and MyAnimeList API clients (never their secrets)
+         * @description The API client every user's login of the tracker goes through, registered by the admin at the tracker (no default one ships with mangal).
+         */
+        get: operations["listAPIClients"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/accounts/clients/{source}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source: "anilist" | "myanimelist";
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the server's API client of a tracker
+         * @description The secret is never answered back; without secret the saved one stays (same id).
+         */
+        put: operations["setAPIClient"];
+        post?: never;
+        /** Remove the server's API client of a tracker (new logins need one again) */
+        delete: operations["removeAPIClient"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/watches": {
         parameters: {
             query?: never;
@@ -2025,8 +2068,33 @@ export interface components {
              * @enum {string}
              */
             login: "code" | "address" | "password";
-            /** @description false when the server has no API client for it yet (an admin logs in once from mangal on the server) */
+            /** @description false when the server has no API client for it yet (an admin sets it, PUT /v1/accounts/clients/{source}) */
             ready: boolean;
+        };
+        APIClient: {
+            /** @enum {string} */
+            source: "anilist" | "myanimelist";
+            name: string;
+            /** @description an API client is saved */
+            configured: boolean;
+            /** @description its client id, none when not configured */
+            id?: string;
+            /** @description a client secret is saved (it's never answered) */
+            secret: boolean;
+            /**
+             * @description AniList only, metadata.anilist.redirect (pin when the browser isn't on the server's machine)
+             * @enum {string}
+             */
+            redirect?: "local" | "pin";
+            /** @description the redirect URL the client must be registered with */
+            redirectUrl: string;
+            /** @description where the client is registered */
+            registerUrl: string;
+        };
+        APIClientSet: {
+            id: string;
+            /** @description empty for none (AniList then logs in with an implicit grant); left out keeps the saved one of the same id */
+            secret?: string;
         };
         TrackerLogin: {
             paste?: string;
@@ -5723,6 +5791,75 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Account"][];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAPIClients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description one per tracker */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIClient"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setAPIClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source: "anilist" | "myanimelist";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APIClientSet"];
+            };
+        };
+        responses: {
+            /** @description the client as saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIClient"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeAPIClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source: "anilist" | "myanimelist";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

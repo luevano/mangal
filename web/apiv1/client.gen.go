@@ -104,6 +104,36 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/accounts (the `ListAccounts` operationId).
 	ListAccounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAPIClients The server's AniList and MyAnimeList API clients (never their secrets)
+	//
+	// The API client every user's login of the tracker goes through, registered by the admin at the tracker (no default one ships with mangal).
+	//
+	// Corresponds with GET /v1/accounts/clients (the `ListAPIClients` operationId).
+	ListAPIClients(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveAPIClient Remove the server's API client of a tracker (new logins need one again)
+	//
+	// Corresponds with DELETE /v1/accounts/clients/{source} (the `RemoveAPIClient` operationId).
+	RemoveAPIClient(ctx context.Context, source string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAPIClientWithBody Set the server's API client of a tracker
+	//
+	// The secret is never answered back; without secret the saved one stays (same id).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/accounts/clients/{source} (the `SetAPIClient` operationId).
+	SetAPIClientWithBody(ctx context.Context, source string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAPIClient Set the server's API client of a tracker
+	//
+	// The secret is never answered back; without secret the saved one stays (same id).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/accounts/clients/{source} (the `SetAPIClient` operationId).
+	SetAPIClient(ctx context.Context, source string, body SetAPIClientJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// LoginDeviceWithBody Log a device in, it gets its token
 	//
 	// For a frontend on another machine (mangal connection login): the user's name and password
@@ -1233,6 +1263,76 @@ func (c *Client) GetIndex(ctx context.Context, reqEditors ...RequestEditorFn) (*
 // Corresponds with GET /v1/accounts (the `ListAccounts` operationId).
 func (c *Client) ListAccounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAccountsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAPIClients The server's AniList and MyAnimeList API clients (never their secrets)
+//
+// The API client every user's login of the tracker goes through, registered by the admin at the tracker (no default one ships with mangal).
+//
+// Corresponds with GET /v1/accounts/clients (the `ListAPIClients` operationId).
+func (c *Client) ListAPIClients(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAPIClientsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveAPIClient Remove the server's API client of a tracker (new logins need one again)
+//
+// Corresponds with DELETE /v1/accounts/clients/{source} (the `RemoveAPIClient` operationId).
+func (c *Client) RemoveAPIClient(ctx context.Context, source string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveAPIClientRequest(c.Server, source)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetAPIClientWithBody Set the server's API client of a tracker
+//
+// The secret is never answered back; without secret the saved one stays (same id).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/accounts/clients/{source} (the `SetAPIClient` operationId).
+func (c *Client) SetAPIClientWithBody(ctx context.Context, source string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAPIClientRequestWithBody(c.Server, source, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetAPIClient Set the server's API client of a tracker
+//
+// The secret is never answered back; without secret the saved one stays (same id).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/accounts/clients/{source} (the `SetAPIClient` operationId).
+func (c *Client) SetAPIClient(ctx context.Context, source string, body SetAPIClientJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAPIClientRequest(c.Server, source, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3929,6 +4029,114 @@ func NewListAccountsRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListAPIClientsRequest constructs an http.Request for the ListAPIClients method
+func NewListAPIClientsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/accounts/clients")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRemoveAPIClientRequest constructs an http.Request for the RemoveAPIClient method
+func NewRemoveAPIClientRequest(server string, source string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "source", source, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/accounts/clients/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetAPIClientRequest calls the generic SetAPIClient builder with application/json body
+func NewSetAPIClientRequest(server string, source string, body SetAPIClientJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetAPIClientRequestWithBody(server, source, "application/json", bodyReader)
+}
+
+// NewSetAPIClientRequestWithBody constructs an http.Request for the SetAPIClient method, with any body, and a specified content type
+func NewSetAPIClientRequestWithBody(server string, source string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "source", source, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/accounts/clients/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -9464,6 +9672,40 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/accounts (the `ListAccounts` operationId).
 	ListAccountsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAccountsResponse, error)
 
+	// ListAPIClientsWithResponse The server's AniList and MyAnimeList API clients (never their secrets)
+	//
+	// The API client every user's login of the tracker goes through, registered by the admin at the tracker (no default one ships with mangal).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/accounts/clients (the `ListAPIClients` operationId).
+	ListAPIClientsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAPIClientsResponse, error)
+
+	// RemoveAPIClientWithResponse Remove the server's API client of a tracker (new logins need one again)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/accounts/clients/{source} (the `RemoveAPIClient` operationId).
+	RemoveAPIClientWithResponse(ctx context.Context, source string, reqEditors ...RequestEditorFn) (*RemoveAPIClientResponse, error)
+
+	// SetAPIClientWithBodyWithResponse Set the server's API client of a tracker
+	//
+	// The secret is never answered back; without secret the saved one stays (same id).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/accounts/clients/{source} (the `SetAPIClient` operationId).
+	SetAPIClientWithBodyWithResponse(ctx context.Context, source string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAPIClientResponse, error)
+
+	// SetAPIClientWithResponse Set the server's API client of a tracker
+	//
+	// The secret is never answered back; without secret the saved one stays (same id).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/accounts/clients/{source} (the `SetAPIClient` operationId).
+	SetAPIClientWithResponse(ctx context.Context, source string, body SetAPIClientJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAPIClientResponse, error)
+
 	// LoginDeviceWithBodyWithResponse Log a device in, it gets its token
 	//
 	// For a frontend on another machine (mangal connection login): the user's name and password
@@ -10803,6 +11045,143 @@ func (r ListAccountsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListAccountsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListAPIClientsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]APIClient
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAPIClientsResponse) GetJSON200() *[]APIClient {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListAPIClientsResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAPIClientsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAPIClientsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAPIClientsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAPIClientsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RemoveAPIClientResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RemoveAPIClientResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveAPIClientResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveAPIClientResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveAPIClientResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveAPIClientResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetAPIClientResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *APIClient
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetAPIClientResponse) GetJSON200() *APIClient {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r SetAPIClientResponse) GetJSONDefault() *Error {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SetAPIClientResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetAPIClientResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetAPIClientResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetAPIClientResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -16143,6 +16522,64 @@ func (c *ClientWithResponses) ListAccountsWithResponse(ctx context.Context, reqE
 	return ParseListAccountsResponse(rsp)
 }
 
+// ListAPIClientsWithResponse The server's AniList and MyAnimeList API clients (never their secrets)
+//
+// The API client every user's login of the tracker goes through, registered by the admin at the tracker (no default one ships with mangal).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/accounts/clients (the `ListAPIClients` operationId).
+func (c *ClientWithResponses) ListAPIClientsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListAPIClientsResponse, error) {
+	rsp, err := c.ListAPIClients(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAPIClientsResponse(rsp)
+}
+
+// RemoveAPIClientWithResponse Remove the server's API client of a tracker (new logins need one again)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/accounts/clients/{source} (the `RemoveAPIClient` operationId).
+func (c *ClientWithResponses) RemoveAPIClientWithResponse(ctx context.Context, source string, reqEditors ...RequestEditorFn) (*RemoveAPIClientResponse, error) {
+	rsp, err := c.RemoveAPIClient(ctx, source, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveAPIClientResponse(rsp)
+}
+
+// SetAPIClientWithBodyWithResponse Set the server's API client of a tracker
+//
+// The secret is never answered back; without secret the saved one stays (same id).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/accounts/clients/{source} (the `SetAPIClient` operationId).
+func (c *ClientWithResponses) SetAPIClientWithBodyWithResponse(ctx context.Context, source string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAPIClientResponse, error) {
+	rsp, err := c.SetAPIClientWithBody(ctx, source, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAPIClientResponse(rsp)
+}
+
+// SetAPIClientWithResponse Set the server's API client of a tracker
+//
+// The secret is never answered back; without secret the saved one stays (same id).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/accounts/clients/{source} (the `SetAPIClient` operationId).
+func (c *ClientWithResponses) SetAPIClientWithResponse(ctx context.Context, source string, body SetAPIClientJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAPIClientResponse, error) {
+	rsp, err := c.SetAPIClient(ctx, source, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAPIClientResponse(rsp)
+}
+
 // LoginDeviceWithBodyWithResponse Log a device in, it gets its token
 //
 // For a frontend on another machine (mangal connection login): the user's name and password
@@ -18358,6 +18795,101 @@ func ParseListAccountsResponse(rsp *http.Response) (*ListAccountsResponse, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []Account
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAPIClientsResponse parses an HTTP response from a ListAPIClientsWithResponse call
+func ParseListAPIClientsResponse(rsp *http.Response) (*ListAPIClientsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAPIClientsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []APIClient
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveAPIClientResponse parses an HTTP response from a RemoveAPIClientWithResponse call
+func ParseRemoveAPIClientResponse(rsp *http.Response) (*RemoveAPIClientResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveAPIClientResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetAPIClientResponse parses an HTTP response from a SetAPIClientWithResponse call
+func ParseSetAPIClientResponse(rsp *http.Response) (*SetAPIClientResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetAPIClientResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest APIClient
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

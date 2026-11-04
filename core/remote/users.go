@@ -225,7 +225,7 @@ func (a remoteAccounts) trackers(ctx context.Context) ([]core.Account, error) {
 		acc := metadata.Account{Service: t.Name, User: deref(t.Account), Expires: deref(t.Expires), Status: "logged out"}
 		switch {
 		case !t.Ready:
-			acc.Status, acc.Details = "not set up", []string{"an admin logs in once from mangal on the server"}
+			acc.Status, acc.Details = "not set up", []string{"needs the server's API client, an admin sets it"}
 		case deref(t.Expired):
 			acc.Status = "expired"
 		case t.Account != nil:
@@ -265,4 +265,37 @@ func (c *Client) TrackerLogout(ctx context.Context, source string) error {
 		return fmt.Errorf("mangal serve: %w", err)
 	}
 	return done(r.StatusCode(), r.Body, r.JSONDefault)
+}
+
+func (a remoteAccounts) APIClients(ctx context.Context) ([]core.APIClient, error) {
+	r, err := a.c.API.ListAPIClientsWithResponse(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("mangal serve: %w", err)
+	}
+	list, err := answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]core.APIClient, len(list))
+	for i, c := range list {
+		out[i] = core.APIClient{Source: string(c.Source), Name: c.Name, ID: deref(c.Id), Secret: c.Secret,
+			Pin: deref(c.Redirect) == apiv1.APIClientRedirectPin, RedirectURL: c.RedirectUrl, RegisterURL: c.RegisterUrl}
+	}
+	return out, nil
+}
+
+func (a remoteAccounts) SetAPIClient(ctx context.Context, source, id string, secret *string) error {
+	if id == "" {
+		r, err := a.c.API.RemoveAPIClientWithResponse(ctx, source)
+		if err != nil {
+			return fmt.Errorf("mangal serve: %w", err)
+		}
+		return done(r.StatusCode(), r.Body, r.JSONDefault)
+	}
+	r, err := a.c.API.SetAPIClientWithResponse(ctx, source, apiv1.APIClientSet{Id: id, Secret: secret})
+	if err != nil {
+		return fmt.Errorf("mangal serve: %w", err)
+	}
+	_, err = answer(r.StatusCode(), r.Body, r.JSON200, r.JSONDefault)
+	return err
 }

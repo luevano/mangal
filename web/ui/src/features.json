@@ -414,6 +414,17 @@
       ]
     },
     {
+      "name": "tracker API clients",
+      "web": [
+        "accounts"
+      ],
+      "api": [
+        "listAPIClients",
+        "setAPIClient",
+        "removeAPIClient"
+      ]
+    },
+    {
       "name": "config",
       "web": [
         "config"

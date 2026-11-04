@@ -13,6 +13,42 @@ import (
 	"github.com/luevano/mangal/v5/storage"
 )
 
+// Defines values for APIClientRedirect.
+const (
+	APIClientRedirectLocal APIClientRedirect = "local"
+	APIClientRedirectPin   APIClientRedirect = "pin"
+)
+
+// Valid indicates whether the value is a known member of the APIClientRedirect enum.
+func (e APIClientRedirect) Valid() bool {
+	switch e {
+	case APIClientRedirectLocal:
+		return true
+	case APIClientRedirectPin:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for APIClientSource.
+const (
+	APIClientSourceAnilist     APIClientSource = "anilist"
+	APIClientSourceMyanimelist APIClientSource = "myanimelist"
+)
+
+// Valid indicates whether the value is a known member of the APIClientSource enum.
+func (e APIClientSource) Valid() bool {
+	switch e {
+	case APIClientSourceAnilist:
+		return true
+	case APIClientSourceMyanimelist:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConfigEntryApplies.
 const (
 	Now     ConfigEntryApplies = "now"
@@ -212,6 +248,43 @@ func (e LogoutMyAccountParamsSource) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// APIClient defines model for APIClient.
+type APIClient struct {
+	// Configured an API client is saved
+	Configured bool `json:"configured"`
+
+	// Id its client id, none when not configured
+	Id   *string `json:"id,omitempty"`
+	Name string  `json:"name"`
+
+	// Redirect AniList only, metadata.anilist.redirect (pin when the browser isn't on the server's machine)
+	Redirect *APIClientRedirect `json:"redirect,omitempty"`
+
+	// RedirectUrl the redirect URL the client must be registered with
+	RedirectUrl string `json:"redirectUrl"`
+
+	// RegisterUrl where the client is registered
+	RegisterUrl string `json:"registerUrl"`
+
+	// Secret a client secret is saved (it's never answered)
+	Secret bool            `json:"secret"`
+	Source APIClientSource `json:"source"`
+}
+
+// APIClientRedirect AniList only, metadata.anilist.redirect (pin when the browser isn't on the server's machine)
+type APIClientRedirect string
+
+// APIClientSource defines model for APIClient.Source.
+type APIClientSource string
+
+// APIClientSet defines model for APIClientSet.
+type APIClientSet struct {
+	Id string `json:"id"`
+
+	// Secret empty for none (AniList then logs in with an implicit grant); left out keeps the saved one of the same id
+	Secret *string `json:"secret,omitempty"`
 }
 
 // Account defines model for Account.
@@ -1478,7 +1551,7 @@ type TrackerAccount struct {
 	Login TrackerAccountLogin `json:"login"`
 	Name  string              `json:"name"`
 
-	// Ready false when the server has no API client for it yet (an admin logs in once from mangal on the server)
+	// Ready false when the server has no API client for it yet (an admin sets it, PUT /v1/accounts/clients/{source})
 	Ready  bool   `json:"ready"`
 	Source string `json:"source"`
 }
@@ -1992,6 +2065,9 @@ type ListStaleWatchesParams struct {
 	// Since a duration (90d by default)
 	Since *string `form:"since,omitempty" json:"since,omitempty"`
 }
+
+// SetAPIClientJSONRequestBody defines body for SetAPIClient for application/json ContentType.
+type SetAPIClientJSONRequestBody = APIClientSet
 
 // LoginDeviceJSONRequestBody defines body for LoginDevice for application/json ContentType.
 type LoginDeviceJSONRequestBody = DeviceLogin

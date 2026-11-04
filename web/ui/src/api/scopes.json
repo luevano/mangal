@@ -1,4 +1,5 @@
 {
+  "DELETE /v1/accounts/clients/{source}": "admin",
   "DELETE /v1/bindings": "manage",
   "DELETE /v1/jobs/{id}": "download",
   "DELETE /v1/tokens/{name}": "tokens",
@@ -7,6 +8,7 @@
   "DELETE /v1/watches/{id}": "manage",
   "GET /v1/": "read",
   "GET /v1/accounts": "admin",
+  "GET /v1/accounts/clients": "admin",
   "GET /v1/auth/me": "public",
   "GET /v1/bindings": "read",
   "GET /v1/config": "read",
@@ -108,6 +110,7 @@
   "POST /v1/watches": "manage",
   "POST /v1/watches/{id}/hold": "manage",
   "POST /v1/watches/{id}/relink": "manage",
+  "PUT /v1/accounts/clients/{source}": "admin",
   "PUT /v1/bindings": "manage",
   "PUT /v1/config/{key}": "admin",
   "PUT /v1/jobs/kinds/{kind}/settings": "admin",

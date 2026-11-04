@@ -22,6 +22,10 @@ var anilistLoginArgs = struct {
 	Pin     bool
 }{}
 
+var anilistClientArgs = struct {
+	Clear bool
+}{}
+
 func init() {
 	rootCmd.AddCommand(anilistCmd)
 	anilistCmd.AddCommand(anilistLoginCmd)
@@ -29,6 +33,8 @@ func init() {
 	anilistLoginCmd.Flags().StringVar(&anilistLoginArgs.Secret, "secret", "", "Secret of the Anilist API client, without it the login is an implicit grant")
 	_ = anilistLoginCmd.Flags().MarkDeprecated("secret", "it ends up in the shell history and the process list; leave it out to be asked for it")
 	anilistLoginCmd.Flags().BoolVar(&anilistLoginArgs.Browser, "browser", false, "Also open the address in the browser")
+	anilistCmd.AddCommand(anilistClientCmd)
+	anilistClientCmd.Flags().BoolVar(&anilistClientArgs.Clear, "clear", false, "Remove the saved API client")
 	anilistLoginCmd.Flags().BoolVar(&anilistLoginArgs.Pin, "pin", false, "Log in with AniList's pin page, the client's redirect URL must be "+lmanilist.OAuthPinURL+" (default from metadata.anilist.redirect)")
 }
 
@@ -110,6 +116,21 @@ per client: use one client per mode.`,
 		}
 		cmd.Printf("logged in to Anilist as %q\n", user.Name())
 		return nil
+	},
+}
+
+var anilistClientCmd = &cobra.Command{
+	Use:   "client",
+	Short: "Save the Anilist API client new logins use",
+	Long: `Save the client ID and secret of your Anilist API client (https://anilist.co/settings/developer),
+kept with the logins; without a secret the login is an implicit grant. Both are asked, the
+secret without echo, or read from stdin a line each. On a server it's the server's client,
+every user's login goes through (admin). Its redirect URL must be
+` + oauth.AnilistServerCallbackURL + `, or ` + lmanilist.OAuthPinURL + `
+with metadata.anilist.redirect = "pin" (a server behind a proxy: the browser isn't on its machine).`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		return setAPIClient(cmd, "anilist", "Anilist", anilistClientArgs.Clear, "Client secret (empty for an implicit grant): ")
 	},
 }
 

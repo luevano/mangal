@@ -129,6 +129,15 @@ func Client() (id, secret string, err error) {
 	return cache.AnilistClient()
 }
 
+// SetClient saves the AniList API client new logins use, an empty id removes it. The saved
+// logins stay (their tokens don't need it).
+func SetClient(id, secret string) error {
+	if err := cache.SetAnilistClient(clean(id), clean(secret)); err != nil {
+		return fmt.Errorf("save the anilist client: %w", err)
+	}
+	return nil
+}
+
 // Logout is LogoutContext with context.Background.
 func Logout() error {
 	return LogoutContext(context.Background())
@@ -158,7 +167,7 @@ func LoginFor(ctx context.Context, user string, manual oauth.Manual) (metadata.U
 		return nil, err
 	}
 	if id == "" {
-		return nil, errors.New("no AniList API client yet: log in once from mangal on the server (mangal anilist login)")
+		return nil, errors.New("no AniList API client yet: an admin sets the server's (the web UI's Accounts, mangal anilist client)")
 	}
 	if local, err := cache.LocalUser(); err != nil || local == user {
 		if err != nil {

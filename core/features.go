@@ -113,6 +113,8 @@ var Features = []Feature{
 	{Name: "watch check", Web: []string{"watches", "watch", "run"}, API: []string{"checkWatches", "cancelRun"}, Script: "api", CLI: []string{"watch check"}, TUI: "u (watches)", TUIKey: "u"},
 	{Name: "watch history", Web: []string{"runs", "run", "watch"}, API: []string{"listRuns", "getRun", "removeWatchRun"}, Script: "api", CLI: []string{"watch log"}, TUI: "V (watches)", TUIKey: "V"},
 	{Name: "accounts", Web: []string{"accounts"}, API: []string{"listAccounts", "listMyAccounts", "loginMyAccount", "logoutMyAccount"}, Script: "api", CLI: []string{"accounts", "anilist", "anilist login", "kitsu", "myanimelist", "myanimelist login", "myanimelist client", "notify webhook"}, TUI: "K (home)", TUIKey: "K"},
+	{Name: "tracker API clients", Web: []string{"accounts"}, API: []string{"listAPIClients", "setAPIClient", "removeAPIClient"}, Script: "api", CLI: []string{"anilist client", "myanimelist client"},
+		TUI: "e (accounts on a server, the AniList and MyAnimeList login screens)", TUIKey: "e"},
 	{Name: "config", Web: []string{"config"}, API: []string{"listConfig", "setConfig"}, Script: "api", CLI: []string{"config get", "config set", "config info", "config write", "config clean", "config export", "config import"}, TUI: ", (anywhere)"},
 	{Name: "config history", Web: []string{"config"}, API: []string{"listConfigHistory", "undoConfigChange"}, Script: "api", CLI: []string{"config history", "config undo"}, TUI: "alt+h (config)", TUIKey: "alt+h"},
 	{Name: "logs", Web: []string{"logs"}, API: []string{"listLogs", "listLogFiles"}, Script: "api", CLI: []string{"logs"}, TUI: "ctrl+l (anywhere)"},

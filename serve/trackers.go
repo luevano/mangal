@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/luevano/mangal/v5/log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -193,4 +194,78 @@ func (a *API) LogoutMyAccount(ctx context.Context, request apiv1.LogoutMyAccount
 		return nil, err
 	}
 	return apiv1.LogoutMyAccount204Response{}, nil
+}
+
+func toAPIClient(c core.APIClient) apiv1.APIClient {
+	o := apiv1.APIClient{Source: apiv1.APIClientSource(c.Source), Name: c.Name, Configured: c.ID != "", Secret: c.Secret,
+		RedirectUrl: c.RedirectURL, RegisterUrl: c.RegisterURL}
+	if c.ID != "" {
+		o.Id = &c.ID
+	}
+	if c.Source == "anilist" {
+		o.Redirect = new(apiv1.APIClientRedirectLocal)
+		if c.Pin {
+			*o.Redirect = apiv1.APIClientRedirectPin
+		}
+	}
+	return o
+}
+
+// ListAPIClients implements apiv1.StrictServerInterface.
+func (a *API) ListAPIClients(ctx context.Context, _ apiv1.ListAPIClientsRequestObject) (apiv1.ListAPIClientsResponseObject, error) {
+	list, err := core.NewAccounts().APIClients(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := apiv1.ListAPIClients200JSONResponse{}
+	for _, c := range list {
+		out = append(out, toAPIClient(c))
+	}
+	return out, nil
+}
+
+// SetAPIClient implements apiv1.StrictServerInterface: the one secret set over HTTP, as
+// every user's login needs the client (never answered, never logged).
+func (a *API) SetAPIClient(ctx context.Context, request apiv1.SetAPIClientRequestObject) (apiv1.SetAPIClientResponseObject, error) {
+	b := deref(request.Body)
+	if strings.TrimSpace(b.Id) == "" {
+		return nil, badRequest("id is needed (DELETE removes the client)")
+	}
+	if err := a.setAPIClient(ctx, request.Source, b.Id, b.Secret); err != nil {
+		return nil, err
+	}
+	list, err := core.NewAccounts().APIClients(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range list {
+		if c.Source == request.Source {
+			return apiv1.SetAPIClient200JSONResponse(toAPIClient(c)), nil
+		}
+	}
+	return nil, errors.New("the saved client isn't listed")
+}
+
+// RemoveAPIClient implements apiv1.StrictServerInterface.
+func (a *API) RemoveAPIClient(ctx context.Context, request apiv1.RemoveAPIClientRequestObject) (apiv1.RemoveAPIClientResponseObject, error) {
+	if err := a.setAPIClient(ctx, request.Source, "", new("")); err != nil {
+		return nil, err
+	}
+	return apiv1.RemoveAPIClient204Response{}, nil
+}
+
+func (a *API) setAPIClient(ctx context.Context, source, id string, secret *string) error {
+	err := core.NewAccounts().SetAPIClient(ctx, source, id, secret)
+	if errors.Is(err, core.ErrInvalid) {
+		return badRequest("%w", err)
+	}
+	if err != nil {
+		return err
+	}
+	if id == "" {
+		log.Info("the %s API client removed through the API", source)
+	} else {
+		log.Info("the %s API client set through the API", source)
+	}
+	return nil
 }

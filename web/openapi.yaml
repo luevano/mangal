@@ -2191,6 +2191,65 @@ paths:
                   $ref: '#/components/schemas/Account'
         default:
           $ref: '#/components/responses/Error'
+  /v1/accounts/clients:
+    get:
+      summary: The server's AniList and MyAnimeList API clients (never their secrets)
+      description: >-
+        The API client every user's login of the tracker goes through, registered by the
+        admin at the tracker (no default one ships with mangal).
+      operationId: listAPIClients
+      tags: [v1, accounts]
+      x-mangal-scope: admin
+      responses:
+        '200':
+          description: one per tracker
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/APIClient'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/accounts/clients/{source}:
+    parameters:
+      - name: source
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [anilist, myanimelist]
+    put:
+      summary: Set the server's API client of a tracker
+      description: The secret is never answered back; without secret the saved one stays (same id).
+      operationId: setAPIClient
+      tags: [v1, accounts]
+      x-mangal-scope: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIClientSet'
+      responses:
+        '200':
+          description: the client as saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIClient'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      summary: Remove the server's API client of a tracker (new logins need one again)
+      operationId: removeAPIClient
+      tags: [v1, accounts]
+      x-mangal-scope: admin
+      responses:
+        '204':
+          description: removed
+        default:
+          $ref: '#/components/responses/Error'
 
   /v1/watches:
     get:
@@ -2742,7 +2801,44 @@ components:
           enum: [code, address, password]
         ready:
           type: boolean
-          description: false when the server has no API client for it yet (an admin logs in once from mangal on the server)
+          description: false when the server has no API client for it yet (an admin sets it, PUT /v1/accounts/clients/{source})
+    APIClient:
+      type: object
+      required: [source, name, configured, secret, redirectUrl, registerUrl]
+      properties:
+        source:
+          type: string
+          enum: [anilist, myanimelist]
+        name:
+          type: string
+        configured:
+          type: boolean
+          description: an API client is saved
+        id:
+          type: string
+          description: its client id, none when not configured
+        secret:
+          type: boolean
+          description: a client secret is saved (it's never answered)
+        redirect:
+          type: string
+          enum: [local, pin]
+          description: AniList only, metadata.anilist.redirect (pin when the browser isn't on the server's machine)
+        redirectUrl:
+          type: string
+          description: the redirect URL the client must be registered with
+        registerUrl:
+          type: string
+          description: where the client is registered
+    APIClientSet:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        secret:
+          type: string
+          description: empty for none (AniList then logs in with an implicit grant); left out keeps the saved one of the same id
     TrackerLogin:
       type: object
       properties:

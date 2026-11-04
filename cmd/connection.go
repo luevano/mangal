@@ -448,7 +448,7 @@ var commandClass = map[string]string{
 	"path": connThisMachine, "cache clear": connThisMachine, "version": connThisMachine, "templates funcs": connThisMachine,
 	"templates exec": connThisMachine, "formats": connThisMachine, "script doc": connThisMachine, "providers new": connThisMachine,
 	"anilist": connThisMachine, "anilist login": connThisMachine, "kitsu": connThisMachine, "myanimelist": connThisMachine,
-	"myanimelist login": connThisMachine, "myanimelist client": connThisMachine,
+	"myanimelist login": connThisMachine, "myanimelist client": connFollows, "anilist client": connFollows,
 	"inline json": connFollows, "inline download": connFollows, "script": connFollows,
 }
 
