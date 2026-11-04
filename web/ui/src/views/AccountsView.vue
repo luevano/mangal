@@ -7,7 +7,7 @@ import { useAction } from '@/composables/useAction'
 import { date } from '@/composables/format'
 import { crumbs } from '@/stores/crumbs'
 import { useStatus } from '@/stores/status'
-import type { TrackerAccount } from '@/api/schemas'
+import type { APIClient, TrackerAccount } from '@/api/schemas'
 
 crumbs(() => [{ title: 'Accounts' }])
 const st = useStatus()
@@ -55,6 +55,47 @@ async function logout(t: TrackerAccount) {
   mine.load()
 }
 
+// the server's API clients (an admin's): every user's AniList/MyAnimeList login goes through them
+const clients = useLoad(() => (st.allows('GET /v1/accounts/clients') ? ok(client.GET('/v1/accounts/clients')) : Promise.resolve([] as APIClient[])))
+type ClientSource = APIClient['source']
+const editing = ref<ClientSource>()
+const clientID = ref('')
+const clientSecret = ref('')
+
+function editClient(c: APIClient) {
+  editing.value = c.source
+  clientID.value = c.id ?? ''
+  clientSecret.value = ''
+}
+
+async function saveClient(c: APIClient) {
+  // an empty secret keeps the saved one (same id): it's never sent back to fill the field
+  const body = { id: clientID.value.trim(), ...(clientSecret.value ? { secret: clientSecret.value.trim() } : {}) }
+  const r = await run(() => ok(client.PUT('/v1/accounts/clients/{source}', { params: { path: { source: c.source } }, body })), `Saved the ${c.name} API client`)
+  clientSecret.value = ''
+  if (r === undefined) return
+  editing.value = undefined
+  clients.load()
+  mine.load()
+}
+
+async function noSecret(c: APIClient) {
+  await run(() => ok(client.PUT('/v1/accounts/clients/{source}', { params: { path: { source: c.source } }, body: { id: c.id!, secret: '' } })), `Dropped the ${c.name} client secret`)
+  clients.load()
+}
+
+async function removeClient(c: APIClient) {
+  if (!confirm(`Remove the ${c.name} API client? New logins need one again (the logins made stay).`)) return
+  await run(() => ok(client.DELETE('/v1/accounts/clients/{source}', { params: { path: { source: c.source } } })), `Removed the ${c.name} API client`)
+  clients.load()
+  mine.load()
+}
+
+async function setRedirect(value: string) {
+  await run(() => ok(client.PUT('/v1/config/{key}', { params: { path: { key: 'metadata.anilist.redirect' } }, body: { value } })), `AniList logins: ${value}`)
+  clients.load()
+}
+
 const pasteHint: Record<string, string> = {
   code: 'the code AniList shows (or the address the page ends on)',
   address: 'the address MyAnimeList sends you to (the page may not load: copy it from the address bar)'
@@ -75,7 +116,7 @@ const pasteHint: Record<string, string> = {
           <td>
             <template v-if="t.account">{{ t.account }}<span v-if="t.expired" class="text-danger small"> · expired, log in again</span></template>
             <span v-else class="text-secondary">not logged in</span>
-            <div v-if="!t.ready" class="small text-secondary">needs the server's API client: an admin logs in once from mangal on the server</div>
+            <div v-if="!t.ready" class="small text-secondary">needs the server's API client: an admin sets it<template v-if="st.allows('GET /v1/accounts/clients')"> below</template></div>
           </td>
           <td class="d-none d-md-table-cell small">{{ date(t.expires) }}</td>
           <td class="text-end text-nowrap">
@@ -106,6 +147,72 @@ const pasteHint: Record<string, string> = {
       </template>
       <div class="mt-2"><button class="btn btn-sm btn-link px-0" @click="loggingIn = undefined">Cancel</button></div>
     </div>
+  </template>
+
+  <template v-if="st.allows('GET /v1/accounts/clients')">
+    <h5 class="mt-4">API clients</h5>
+    <p class="small text-secondary">
+      Every user's AniList and MyAnimeList login goes through the server's API client: register your own at the tracker (none ships with mangal) and set it here. The client ID isn't secret, the
+      secret is never shown again.
+    </p>
+    <LoadState :loading="clients.loading.value && !clients.data.value" :error="clients.error.value" />
+    <table v-if="clients.data.value?.length" class="table table-sm align-middle" data-test="api-clients">
+      <thead><tr><th>Tracker</th><th>Client</th><th /></tr></thead>
+      <tbody>
+        <template v-for="c in clients.data.value" :key="c.source">
+          <tr>
+            <td>{{ c.name }}</td>
+            <td>
+              <template v-if="c.configured">{{ c.id }}<span class="small text-secondary"> · {{ c.secret ? 'with a secret' : 'no secret' }}</span></template>
+              <span v-else class="text-secondary">not set</span>
+              <div class="small text-secondary">
+                Register it at <a :href="c.registerUrl" target="_blank" rel="noopener noreferrer">{{ c.registerUrl }}</a> with the redirect URL <code>{{ c.redirectUrl }}</code>
+              </div>
+              <div v-if="c.redirect" class="small mt-1">
+                Logins:
+                <select
+                  class="form-select form-select-sm d-inline-block w-auto"
+                  :value="c.redirect"
+                  :disabled="busy || !st.allows('PUT /v1/config/{key}')"
+                  :data-test="`redirect-${c.source}`"
+                  @change="setRedirect(($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="pin">pin: AniList shows a code to paste (a server behind a proxy)</option>
+                  <option value="local">local: back to mangal on the server's machine</option>
+                </select>
+                <span class="text-secondary"> (metadata.anilist.redirect; AniList takes one redirect URL per client)</span>
+              </div>
+            </td>
+            <td class="text-end text-nowrap">
+              <button class="btn btn-sm btn-outline-primary" :disabled="busy" :data-test="`client-${c.source}`" @click="editClient(c)">{{ c.configured ? 'Change' : 'Set' }}</button>
+              <button v-if="c.configured && c.secret" class="btn btn-sm btn-outline-secondary ms-1" :disabled="busy" @click="noSecret(c)">No secret</button>
+              <button v-if="c.configured" class="btn btn-sm btn-outline-danger ms-1" :disabled="busy" @click="removeClient(c)">Remove</button>
+            </td>
+          </tr>
+          <tr v-if="editing === c.source">
+            <td colspan="3">
+              <div class="row g-2" data-test="client-form">
+                <div class="col-12 col-md-5"><input v-model="clientID" class="form-control form-control-sm" placeholder="client ID" autocomplete="off" spellcheck="false" data-test="client-id" /></div>
+                <div class="col-12 col-md-5">
+                  <input
+                    v-model="clientSecret"
+                    type="password"
+                    class="form-control form-control-sm"
+                    :placeholder="c.secret && clientID.trim() === c.id ? 'client secret (empty keeps the saved one)' : 'client secret (optional)'"
+                    autocomplete="new-password"
+                    data-test="client-secret"
+                  />
+                </div>
+                <div class="col-12 col-md-2 text-nowrap">
+                  <button class="btn btn-sm btn-primary" :disabled="busy || !clientID.trim()" data-test="client-save" @click="saveClient(c)">Save</button>
+                  <button class="btn btn-sm btn-link" @click="editing = undefined">Cancel</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
   </template>
 
   <template v-if="st.allows('GET /v1/accounts')">
