@@ -1988,6 +1988,13 @@ export interface components {
             owner?: string;
             /** Format: date-time */
             created: string;
+            /**
+             * Format: date-time
+             * @description when the server last took it (to the minute), none when never
+             */
+            last_used?: string;
+            /** @description the client address it was last used from (a trusted proxy's X-Forwarded-For) */
+            last_address?: string;
         };
         NewToken: {
             name: string;

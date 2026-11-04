@@ -225,12 +225,13 @@ async function copySecret() {
   <div class="mb-2"><button class="btn btn-sm btn-outline-primary" data-test="token-add" @click="open('token')">Make a token</button></div>
   <LoadState :loading="tokens.loading.value && !tokens.data.value" :error="tokens.error.value" :empty="tokens.data.value && !tokens.data.value.length" empty-text="No API tokens." />
   <table v-if="tokens.data.value?.length" class="table table-sm align-middle" data-test="tokens-table">
-    <thead><tr><th>Name</th><th>Role</th><th class="d-none d-md-table-cell">Made</th><th /></tr></thead>
+    <thead><tr><th>Name</th><th>Role</th><th class="d-none d-md-table-cell">Made</th><th class="d-none d-md-table-cell">Last used</th><th /></tr></thead>
     <tbody>
       <tr v-for="t in tokens.data.value" :key="t.name">
         <td>{{ t.name }}</td>
         <td><span class="badge text-bg-light" :title="t.scopes.join(', ')">{{ t.role }}</span></td>
         <td class="d-none d-md-table-cell small">{{ date(t.created) }}<template v-if="t.owner"> · {{ t.owner }}'s</template></td>
+        <td class="d-none d-md-table-cell small">{{ t.last_used ? `${ago(t.last_used)} · ${t.last_address}` : 'never' }}</td>
         <td class="text-end">
           <button class="btn btn-sm btn-outline-danger" :disabled="busy" @click="removeToken(t)"><i class="bi bi-trash" /></button>
         </td>

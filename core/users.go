@@ -242,6 +242,10 @@ type Token struct {
 	// admin for nobody).
 	Owner   string    `json:"owner,omitempty"`
 	Created time.Time `json:"created"`
+	// LastUsed and LastAddress are when and from which client address the server last took
+	// it (to the minute), zero when never.
+	LastUsed    time.Time `json:"last_used,omitzero"`
+	LastAddress string    `json:"last_address,omitempty"`
 }
 
 // TokenScopes are the token's permissions (the ones before 5.28 migrated).
@@ -496,6 +500,10 @@ func (l localUsers) Tokens(context.Context) ([]Token, error) {
 	if err != nil {
 		return nil, err
 	}
+	uses, err := st.TokenUses()
+	if err != nil {
+		return nil, err
+	}
 	tokens := make([]Token, len(entries))
 	for i, t := range entries {
 		scopes := TokenScopes(t)
@@ -506,7 +514,8 @@ func (l localUsers) Tokens(context.Context) ([]Token, error) {
 				scopes, _ = NormalizeScopes(users[j].Perms)
 			}
 		}
-		tokens[i] = Token{Name: t.Name, Scopes: scopes, Owner: t.Owner, Created: t.Created}
+		use := uses[t.Hash]
+		tokens[i] = Token{Name: t.Name, Scopes: scopes, Owner: t.Owner, Created: t.Created, LastUsed: use.Used, LastAddress: use.Address}
 	}
 	return tokens, nil
 }

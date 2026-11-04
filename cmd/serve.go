@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -144,7 +145,11 @@ func listServeTokens(cmd *cobra.Command, users core.Users, remote bool) error {
 		if t.Owner != "" {
 			owner = ", " + t.Owner + "'s"
 		}
-		cmd.Printf("%s  %s: %s  (made %s%s)\n", t.Name, core.RoleOf(t.Scopes), strings.Join(t.Scopes, ", "), t.Created.Format(time.DateOnly), owner)
+		used := ", never used"
+		if !t.LastUsed.IsZero() {
+			used = fmt.Sprintf(", used %s from %s", t.LastUsed.Format(time.DateTime), t.LastAddress)
+		}
+		cmd.Printf("%s  %s: %s  (made %s%s%s)\n", t.Name, core.RoleOf(t.Scopes), strings.Join(t.Scopes, ", "), t.Created.Format(time.DateOnly), owner, used)
 	}
 	if len(tokens) == 0 {
 		cmd.Println("no API tokens")

@@ -1444,7 +1444,13 @@ type Status struct {
 // Token defines model for Token.
 type Token struct {
 	Created time.Time `json:"created"`
-	Name    string    `json:"name"`
+
+	// LastAddress the client address it was last used from (a trusted proxy's X-Forwarded-For)
+	LastAddress *string `json:"last_address,omitempty"`
+
+	// LastUsed when the server last took it (to the minute), none when never
+	LastUsed *time.Time `json:"last_used,omitempty"`
+	Name     string     `json:"name"`
 
 	// Owner the user who made it (it never has more than they do now), none for the server's
 	Owner *string `json:"owner,omitempty"`

@@ -2681,6 +2681,13 @@ components:
         created:
           type: string
           format: date-time
+        last_used:
+          type: string
+          format: date-time
+          description: when the server last took it (to the minute), none when never
+        last_address:
+          type: string
+          description: the client address it was last used from (a trusted proxy's X-Forwarded-For)
     NewToken:
       type: object
       required: [name]

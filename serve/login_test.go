@@ -493,3 +493,50 @@ func TestDeviceLogin(t *testing.T) {
 	}
 
 }
+
+// a token's last use is recorded with the client's address, at most once a minute, and
+// listed to an admin
+func TestTokenLastUsed(t *testing.T) {
+	s := newTestServer(t, "s3cret")
+	s.api.Users = core.NewUsersOf(storage.Users{DB: s.svc.Watches.DB})
+	s.api.Auth.Tokens = cache.ServeTokens
+	t.Cleanup(func() { _ = cache.SetServeTokens(nil) })
+	addUser(t, s, "david", "correct horse", Scopes...)
+	h := s.handler(t)
+	admin := "Basic " + base64.StdEncoding.EncodeToString([]byte("david:correct horse"))
+	var made apiv1.NewTokenResponse
+	rec := do(h, "POST", "/api/v1/tokens", `{"name":"script","scopes":["read"]}`, "192.0.2.1:1", admin, nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &made); err != nil || made.Secret == "" {
+		t.Fatalf("token: %d %s", rec.Code, rec.Body)
+	}
+	if made.Token.LastUsed != nil {
+		t.Errorf("a new token was used: %v", *made.Token.LastUsed)
+	}
+	last := func() (time.Time, string) {
+		var list []apiv1.Token
+		rec := do(h, "GET", "/api/v1/tokens", "", "192.0.2.1:1", admin, nil)
+		if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list) != 1 {
+			t.Fatalf("list: %d %s", rec.Code, rec.Body)
+		}
+		return deref(list[0].LastUsed), deref(list[0].LastAddress)
+	}
+	if rec := do(h, "GET", "/api/v1/watches", "", "192.0.2.7:1", "Bearer "+made.Secret, nil); rec.Code != http.StatusOK {
+		t.Fatalf("the token: %d", rec.Code)
+	}
+	used, from := last()
+	if used.IsZero() || from != "192.0.2.7" {
+		t.Errorf("used %v from %q", used, from)
+	}
+	// within the minute nothing is written
+	do(h, "GET", "/api/v1/watches", "", "192.0.2.8:1", "Bearer "+made.Secret, nil)
+	if _, from := last(); from != "192.0.2.7" {
+		t.Errorf("written again within the minute: %q", from)
+	}
+	s.api.Auth.mu.Lock()
+	s.api.Auth.used[HashToken(made.Secret)] = time.Now().Add(-2 * time.Minute)
+	s.api.Auth.mu.Unlock()
+	do(h, "GET", "/api/v1/watches", "", "192.0.2.8:1", "Bearer "+made.Secret, nil)
+	if _, from := last(); from != "192.0.2.8" {
+		t.Errorf("a minute later: %q", from)
+	}
+}

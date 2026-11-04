@@ -149,6 +149,9 @@ func tokenOut(t core.Token) apiv1.Token {
 	if t.Owner != "" {
 		out.Owner = &t.Owner
 	}
+	if !t.LastUsed.IsZero() {
+		out.LastUsed, out.LastAddress = &t.LastUsed, &t.LastAddress
+	}
 	return out
 }
 

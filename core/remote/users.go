@@ -30,7 +30,7 @@ func userOf(u apiv1.User) core.User {
 }
 
 func tokenOf(t apiv1.Token) core.Token {
-	return core.Token{Name: t.Name, Scopes: t.Scopes, Owner: deref(t.Owner), Created: t.Created}
+	return core.Token{Name: t.Name, Scopes: t.Scopes, Owner: deref(t.Owner), Created: t.Created, LastUsed: deref(t.LastUsed), LastAddress: deref(t.LastAddress)}
 }
 
 func (u remoteUsers) List(ctx context.Context) ([]core.User, error) {

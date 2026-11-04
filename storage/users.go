@@ -219,6 +219,50 @@ func removeUser(ex execer, name string) error {
 	return nil
 }
 
+// tokenUsesTable: when and from which client address each API token (by its hash) was last
+// used. No trigger: a use isn't a change of the logins.
+const tokenUsesTable = `CREATE TABLE serve_token_uses (
+	hash    TEXT PRIMARY KEY,
+	used    INTEGER NOT NULL,
+	address TEXT NOT NULL
+)`
+
+// TokenUse is when and from which client address an API token was last used.
+type TokenUse struct {
+	Used    time.Time
+	Address string
+}
+
+// TokenUsed records a use of the API token with the hash.
+// shortcut: a removed token's row stays (a hash nothing matches), prune if it ever matters.
+func (u Users) TokenUsed(hash, address string, at time.Time) error {
+	_, err := u.DB.Exec(`INSERT INTO serve_token_uses (hash, used, address) VALUES (?, ?, ?)
+ON CONFLICT (hash) DO UPDATE SET used = excluded.used, address = excluded.address`, hash, at.Unix(), address)
+	if err != nil {
+		return fmt.Errorf("record the token's use: %w", err)
+	}
+	return nil
+}
+
+// TokenUses are the API tokens' last uses, by their hash.
+func (u Users) TokenUses() (map[string]TokenUse, error) {
+	rows, err := u.DB.Query(`SELECT hash, used, address FROM serve_token_uses`)
+	if err != nil {
+		return nil, fmt.Errorf("read the tokens' uses: %w", err)
+	}
+	defer rows.Close()
+	uses := map[string]TokenUse{}
+	for rows.Next() {
+		var hash, address string
+		var used int64
+		if err := rows.Scan(&hash, &used, &address); err != nil {
+			return nil, fmt.Errorf("read the tokens' uses: %w", err)
+		}
+		uses[hash] = TokenUse{Used: time.Unix(used, 0), Address: address}
+	}
+	return uses, rows.Err()
+}
+
 // sessionKey is how a session id is kept: its sha256, so the table can't be replayed.
 func sessionKey(id string) string {
 	sum := sha256.Sum256([]byte(id))

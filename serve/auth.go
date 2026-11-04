@@ -15,6 +15,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/labstack/echo/v5"
 	"github.com/luevano/mangal/v5/core"
+	"github.com/luevano/mangal/v5/log"
 	"github.com/luevano/mangal/v5/storage"
 	"github.com/luevano/mangal/v5/util/cache"
 	"github.com/luevano/mangal/v5/web"
@@ -119,6 +120,7 @@ func identityOf(ctx context.Context) (identity, bool) {
 type UserStore interface {
 	Get(name string) (storage.User, error)
 	LoggedIn(name string, at time.Time) error
+	TokenUsed(hash, address string, at time.Time) error
 }
 
 // Auth is how the server authenticates requests.
@@ -150,6 +152,8 @@ type Auth struct {
 	users  map[string]storage.User
 	basic  map[string]cachedBasic
 	limits *limiter
+	// used is when each API token's (by hash) use was last written, kept across Forget
+	used map[string]time.Time
 
 	extractOnce sync.Once
 	extract     echo.IPExtractor
@@ -164,6 +168,30 @@ type cachedBasic struct {
 
 // basicFor is how long a basic auth password is believed without hashing it again.
 const basicFor = 10 * time.Minute
+
+// tokenUseEvery is how often a token's use is written: not a write per request.
+const tokenUseEvery = time.Minute
+
+// tokenUsed records the API token's use by the request, at most every tokenUseEvery.
+func (a *Auth) tokenUsed(r *http.Request, hash string) {
+	if a.Users == nil {
+		return
+	}
+	now := time.Now()
+	a.mu.Lock()
+	if now.Sub(a.used[hash]) < tokenUseEvery {
+		a.mu.Unlock()
+		return
+	}
+	if a.used == nil {
+		a.used = map[string]time.Time{}
+	}
+	a.used[hash] = now
+	a.mu.Unlock()
+	if err := a.Users.TokenUsed(hash, a.clientIP(r), now); err != nil {
+		log.Warn("serve: %s", err)
+	}
+}
 
 func (a *Auth) apiTokens() ([]cache.ServeTokenEntry, error) {
 	a.mu.Lock()
@@ -284,6 +312,7 @@ func (a *Auth) bearer(r *http.Request, token string) (identity, error) {
 					break
 				}
 			}
+			a.tokenUsed(r, t.Hash)
 			return id, nil
 		}
 	}
